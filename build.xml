@@ -622,7 +622,7 @@ url=${svn.entry.url}?pathrev=${svn.entry.commit.revision}
     -->
     <target name="gen-thrift-java" depends="rat-init" description="Generate Thrift Java artifacts">
       <echo>Generating Thrift Java code from ${basedir}/interface/cassandra.thrift ....</echo>
-      <exec executable="thrift" dir="${basedir}/interface" failonerror="true">
+      <exec executable="c:\users\jonathan\projects\thrift-0.7.0" dir="c:\users\jonathan\projects\cassandra\git\interface" failonerror="true">
         <arg line="--gen java:hashcode" />
         <arg line="-o ${interface.thrift.dir}" />
         <arg line="cassandra.thrift" />
