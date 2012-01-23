@@ -20,12 +20,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.cql3.CFDefinition;
 import org.apache.cassandra.thrift.*;
 import org.apache.cassandra.hadoop.ColumnFamilyOutputFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.google.common.base.Charsets.UTF_8;
 
 import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.hadoop.ColumnFamilyInputFormat;
@@ -86,17 +85,17 @@ public class WordCount extends Configured implements Tool
 
         public void map(ByteBuffer key, SortedMap<ByteBuffer, IColumn> columns, Context context) throws IOException, InterruptedException
         {
-            IColumn column = columns.get(sourceColumn);
-            if (column == null)
-                return;
-            String value = ByteBufferUtil.string(column.value());
-            logger.debug("read " + key + ":" + value + " from " + context.getInputSplit());
-
-            StringTokenizer itr = new StringTokenizer(value);
-            while (itr.hasMoreTokens())
+            for (IColumn column : columns.values())
             {
-                word.set(itr.nextToken());
-                context.write(word, one);
+                String value = ByteBufferUtil.string(column.value());
+                logger.debug("read " + key + ":" + value + " from " + context.getInputSplit());
+
+                StringTokenizer itr = new StringTokenizer(value);
+                while (itr.hasMoreTokens())
+                {
+                    word.set(itr.nextToken());
+                    context.write(word, one);
+                }
             }
         }
     }
@@ -155,10 +154,12 @@ public class WordCount extends Configured implements Tool
         }
         logger.info("output reducer type: " + outputReducerType);
 
+        // use a smaller page size that doesn't divide the row count evenly to exercise the paging logic better
+        ConfigHelper.setRangeBatchSize(getConf(), 99);
+
         for (int i = 0; i < WordCountSetup.TEST_COUNT; i++)
         {
             String columnName = "text" + i;
-            getConf().set(CONF_COLUMN_NAME, columnName);
 
             Job job = new Job(getConf(), "wordcount");
             job.setJarByClass(WordCount.class);
@@ -194,10 +195,17 @@ public class WordCount extends Configured implements Tool
             ConfigHelper.setInputColumnFamily(job.getConfiguration(), KEYSPACE, COLUMN_FAMILY);
             SlicePredicate predicate = new SlicePredicate().setColumn_names(Arrays.asList(ByteBufferUtil.bytes(columnName)));
             ConfigHelper.setInputSlicePredicate(job.getConfiguration(), predicate);
+
             if (i == 4)
             {
                 IndexExpression expr = new IndexExpression(ByteBufferUtil.bytes("int4"), IndexOperator.EQ, ByteBufferUtil.bytes(0));
                 ConfigHelper.setInputRange(job.getConfiguration(), Arrays.asList(expr));
+            }
+
+            if (i == 5)
+            {
+                // this will cause the predicate to be ignored in favor of scanning everything as a wide row
+                ConfigHelper.setInputColumnFamily(job.getConfiguration(), KEYSPACE, COLUMN_FAMILY, CFDefinition.Kind.DYNAMIC);
             }
 
             ConfigHelper.setOutputInitialAddress(job.getConfiguration(), "localhost");
