@@ -415,6 +415,8 @@ struct CfDef {
     32: optional map<string,string> compression_options,
     33: optional double bloom_filter_fp_chance,
     34: optional string caching="keys_only",
+    35: optional list<binary> column_aliases,
+    36: optional binary value_alias,
 }
 
 /* describes a keyspace. */
@@ -723,6 +725,6 @@ service Cassandra {
             2:UnavailableException ue,
             3:TimedOutException te,
             4:SchemaDisagreementException sde)
-           
 
+  void set_cql_version(1: required string version) throws (1:InvalidRequestException ire)
 }

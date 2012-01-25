@@ -202,6 +202,9 @@
       <uptodate property="cqlcurrent" 
                 srcfile="${build.src.java}/org/apache/cassandra/cql/Cql.g" 
                 targetfile="${build.src.gen-java}/org/apache/cassandra/cql/Cql.tokens"/>
+      <uptodate property="cqlcurrent"
+                srcfile="${build.src.java}/org/apache/cassandra/cql3/Cql.g"
+                targetfile="${build.src.gen-java}/org/apache/cassandra/cql3/Cql.tokens"/>
     </target>
  
     <target name="gen-cql-grammar" depends="check-gen-cql-grammar" unless="cqlcurrent">
@@ -213,9 +216,17 @@
          <arg value="${build.src.java}/org/apache/cassandra/cql/Cql.g" />
          <arg value="-fo" />
          <arg value="${build.src.gen-java}/org/apache/cassandra/cql/" />
-      </java> 
+      </java>
+      <java classname="org.antlr.Tool"
+            classpath="${build.lib}/antlr-3.2.jar"
+            fork="true"
+            failonerror="true">
+         <arg value="${build.src.java}/org/apache/cassandra/cql3/Cql.g" />
+         <arg value="-fo" />
+         <arg value="${build.src.gen-java}/org/apache/cassandra/cql3/" />
+      </java>
     </target>
-	
+
 	<target name="generate-cql-html" depends="maven-ant-tasks-init" description="Generate HTML from textile source">
 	  <artifact:dependencies pathId="wikitext.classpath">
 	    <dependency groupId="com.datastax.wikitext" artifactId="wikitext-core-ant" version="1.3"/>	    	  
@@ -622,7 +633,7 @@ url=${svn.entry.url}?pathrev=${svn.entry.commit.revision}
     -->
     <target name="gen-thrift-java" depends="rat-init" description="Generate Thrift Java artifacts">
       <echo>Generating Thrift Java code from ${basedir}/interface/cassandra.thrift ....</echo>
-      <exec executable="c:\users\jonathan\projects\thrift-0.7.0" dir="c:\users\jonathan\projects\cassandra\git\interface" failonerror="true">
+      <exec executable="thrift" dir="${basedir}/interface" failonerror="true">
         <arg line="--gen java:hashcode" />
         <arg line="-o ${interface.thrift.dir}" />
         <arg line="cassandra.thrift" />

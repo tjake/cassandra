@@ -32,6 +32,7 @@ import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.commons.lang.builder.ToStringBuilder;
 
+import org.apache.cassandra.cql3.CFDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.compaction.AbstractCompactionStrategy;
@@ -173,6 +174,8 @@ public final class CFMetaData
     // thrift compatibility
     private double mergeShardsChance;                 // default 0.1, chance [0.0, 1.0] of merging old shards during replication
     private ByteBuffer keyAlias;                      // default NULL
+    private List<ByteBuffer> columnAliases = new ArrayList<ByteBuffer>();
+    private ByteBuffer valueAlias;                    // default NULL
     private Double bloomFilterFpChance;               // default NULL
     private Caching caching;                          // default KEYS_ONLY (possible: all, key_only, row_only, none)
 
@@ -182,17 +185,24 @@ public final class CFMetaData
 
     private CompressionParameters compressionParameters;
 
+    // Processed infos used by CQL. This can be fully reconstructed from the CFMedata,
+    // so it's not saved on disk. It is however costlyish to recreate for each query
+    // so we cache it here (and update on each relevant CFMetadata change)
+    private CFDefinition cqlCfDef;
+
     public CFMetaData comment(String prop) { comment = enforceCommentNotNull(prop); return this;}
     public CFMetaData readRepairChance(double prop) {readRepairChance = prop; return this;}
     public CFMetaData replicateOnWrite(boolean prop) {replicateOnWrite = prop; return this;}
     public CFMetaData gcGraceSeconds(int prop) {gcGraceSeconds = prop; return this;}
-    public CFMetaData defaultValidator(AbstractType<?> prop) {defaultValidator = prop; return this;}
-    public CFMetaData keyValidator(AbstractType<?> prop) {keyValidator = prop; return this;}
+    public CFMetaData defaultValidator(AbstractType<?> prop) {defaultValidator = prop; updateCfDef(); return this;}
+    public CFMetaData keyValidator(AbstractType<?> prop) {keyValidator = prop; updateCfDef(); return this;}
     public CFMetaData minCompactionThreshold(int prop) {minCompactionThreshold = prop; return this;}
     public CFMetaData maxCompactionThreshold(int prop) {maxCompactionThreshold = prop; return this;}
     public CFMetaData mergeShardsChance(double prop) {mergeShardsChance = prop; return this;}
-    public CFMetaData keyAlias(ByteBuffer prop) {keyAlias = prop; return this;}
-    public CFMetaData columnMetadata(Map<ByteBuffer,ColumnDefinition> prop) {column_metadata = prop; return this;}
+    public CFMetaData keyAlias(ByteBuffer prop) {keyAlias = prop; updateCfDef(); return this;}
+    public CFMetaData columnAliases(List<ByteBuffer> prop) {columnAliases = prop; updateCfDef(); return this;}
+    public CFMetaData valueAlias(ByteBuffer prop) {valueAlias = prop; updateCfDef(); return this;}
+    public CFMetaData columnMetadata(Map<ByteBuffer,ColumnDefinition> prop) {column_metadata = prop; updateCfDef(); return this;}
     public CFMetaData compactionStrategyClass(Class<? extends AbstractCompactionStrategy> prop) {compactionStrategyClass = prop; return this;}
     public CFMetaData compactionStrategyOptions(Map<String, String> prop) {compactionStrategyOptions = prop; return this;}
     public CFMetaData compressionParameters(CompressionParameters prop) {compressionParameters = prop; return this;}
@@ -246,6 +256,7 @@ public final class CFMetaData
         keyValidator = BytesType.instance;
         comment = "";
         keyAlias = null; // This qualifies as a 'strange default'.
+        valueAlias = null;
         column_metadata = new HashMap<ByteBuffer,ColumnDefinition>();
 
         try
@@ -259,6 +270,7 @@ public final class CFMetaData
         compactionStrategyOptions = new HashMap<String, String>();
 
         compressionParameters = new CompressionParameters(null);
+        updateCfDef(); // init cqlCfDef
     }
 
     private static CFMetaData newSystemMetadata(String cfName, int cfId, String comment, AbstractType<?> comparator, AbstractType<?> subcc)
@@ -369,6 +381,8 @@ public final class CFMetaData
         if (cf.max_compaction_threshold != null) { newCFMD.maxCompactionThreshold(cf.max_compaction_threshold); }
         if (cf.merge_shards_chance != null) { newCFMD.mergeShardsChance(cf.merge_shards_chance); }
         if (cf.key_alias != null) { newCFMD.keyAlias(cf.key_alias); }
+        if (cf.column_aliases != null) { newCFMD.columnAliases(fixAvroRetardation(cf.column_aliases)); }
+        if (cf.value_alias != null) { newCFMD.valueAlias(cf.value_alias); }
         if (cf.compaction_strategy != null)
         {
             try
@@ -417,6 +431,18 @@ public final class CFMetaData
                       .compressionParameters(cp)
                       .bloomFilterFpChance(cf.bloom_filter_fp_chance)
                       .caching(caching);
+    }
+
+    /*
+     * Avro handles array with it's own class, GenericArray, that extends
+     * AbstractList but redefine equals() in a way that violate List.equals()
+     * specification (basically only a GenericArray can ever be equal to a
+     * GenericArray).
+     * (Concretely, keeping the list returned by avro breaks DefsTest.saveAndRestore())
+     */
+    private static <T> List<T> fixAvroRetardation(List<T> array)
+    {
+        return new ArrayList<T>(array);
     }
     
     public String getComment()
@@ -467,6 +493,21 @@ public final class CFMetaData
     public ByteBuffer getKeyName()
     {
         return keyAlias == null ? DEFAULT_KEY_NAME : keyAlias;
+    }
+
+    public ByteBuffer getKeyAlias()
+    {
+        return keyAlias;
+    }
+
+    public List<ByteBuffer> getColumnAliases()
+    {
+        return columnAliases;
+    }
+
+    public ByteBuffer getValueAlias()
+    {
+        return valueAlias;
     }
 
     public CompressionParameters compressionParameters()
@@ -524,6 +565,8 @@ public final class CFMetaData
             .append(column_metadata, rhs.column_metadata)
             .append(mergeShardsChance, rhs.mergeShardsChance)
             .append(keyAlias, rhs.keyAlias)
+            .append(columnAliases, rhs.columnAliases)
+            .append(valueAlias, rhs.valueAlias)
             .append(compactionStrategyClass, rhs.compactionStrategyClass)
             .append(compactionStrategyOptions, rhs.compactionStrategyOptions)
             .append(compressionParameters, rhs.compressionParameters)
@@ -552,6 +595,8 @@ public final class CFMetaData
             .append(column_metadata)
             .append(mergeShardsChance)
             .append(keyAlias)
+            .append(columnAliases)
+            .append(valueAlias)
             .append(compactionStrategyClass)
             .append(compactionStrategyOptions)
             .append(compressionParameters)
@@ -613,6 +658,8 @@ public final class CFMetaData
         if (cf_def.isSetMax_compaction_threshold()) { newCFMD.maxCompactionThreshold(cf_def.max_compaction_threshold); }
         if (cf_def.isSetMerge_shards_chance()) { newCFMD.mergeShardsChance(cf_def.merge_shards_chance); }
         if (cf_def.isSetKey_alias()) { newCFMD.keyAlias(cf_def.key_alias); }
+        if (cf_def.isSetColumn_aliases() && cf_def.column_aliases != null) { newCFMD.columnAliases(cf_def.column_aliases); }
+        if (cf_def.isSetValue_alias()) { newCFMD.valueAlias(cf_def.value_alias); }
         if (cf_def.isSetKey_validation_class()) { newCFMD.keyValidator(TypeParser.parse(cf_def.key_validation_class)); }
         if (cf_def.isSetCompaction_strategy())
             newCFMD.compactionStrategyClass = createCompactionStrategy(cf_def.compaction_strategy);
@@ -698,6 +745,8 @@ public final class CFMetaData
         maxCompactionThreshold = cf_def.max_compaction_threshold;
         mergeShardsChance = cf_def.merge_shards_chance;
         keyAlias = cf_def.key_alias;
+        columnAliases = cf_def.column_aliases;
+        valueAlias = cf_def.value_alias;
         if (cf_def.isSetBloom_filter_fp_chance())
             bloomFilterFpChance = cf_def.bloom_filter_fp_chance;
         caching = Caching.fromString(cf_def.caching);
@@ -825,7 +874,7 @@ public final class CFMetaData
         def.setMin_compaction_threshold(minCompactionThreshold);
         def.setMax_compaction_threshold(maxCompactionThreshold);
         def.setMerge_shards_chance(mergeShardsChance);
-        def.setKey_alias(getKeyName());
+        def.setKey_alias(keyAlias);
         List<org.apache.cassandra.thrift.ColumnDef> column_meta = new ArrayList<org.apache.cassandra.thrift.ColumnDef>(column_metadata.size());
         for (ColumnDefinition cd : column_metadata.values())
         {
@@ -975,8 +1024,8 @@ public final class CFMetaData
             if (field.equals(CfDef._Fields.COLUMN_METADATA))
                 continue; // deal with columns after main attributes
 
-            Object curValue = curState.getFieldValue(field);
-            Object newValue = newState.getFieldValue(field);
+            Object curValue = curState.isSet(field) ? curState.getFieldValue(field) : null;
+            Object newValue = newState.isSet(field) ? newState.getFieldValue(field) : null;
 
             if (Objects.equal(curValue, newValue))
                 continue;
@@ -1064,20 +1113,36 @@ public final class CFMetaData
             if (field.equals(CfDef._Fields.COLUMN_METADATA))
                 continue;
 
+            Object value = cfDef.isSet(field) ? cfDef.getFieldValue(field) : null;
             mutation.add(new QueryPath(SystemTable.SCHEMA_COLUMNFAMILIES_CF, null, compositeNameFor(cfDef.name, field.getFieldName())),
-                         valueAsBytes(cfDef.getFieldValue(field)),
+                         valueAsBytes(value),
                          timestamp);
         }
 
         if (!cfDef.isSetColumn_metadata())
             return;
 
-        AbstractType comparator = TypeParser.parse(cfDef.column_type.equals("Super")
-                                           ? cfDef.subcomparator_type
-                                           : cfDef.comparator_type);
+        AbstractType comparator = getColumnDefinitionComparator(cfDef);
 
         for (ColumnDef columnDef : cfDef.column_metadata)
             ColumnDefinition.addToSchema(mutation, cfDef.name, comparator, columnDef, timestamp);
+    }
+
+    public static AbstractType<?> getColumnDefinitionComparator(CfDef cfDef) throws ConfigurationException
+    {
+        AbstractType<?> cfComparator = TypeParser.parse(cfDef.column_type.equals("Super")
+                                     ? cfDef.subcomparator_type
+                                     : cfDef.comparator_type);
+
+        if (cfComparator instanceof CompositeType)
+        {
+            List<AbstractType<?>> types = ((CompositeType)cfComparator).types;
+            return types.get(types.size() - 1);
+        }
+        else
+        {
+            return cfComparator;
+        }
     }
 
     /**
@@ -1090,6 +1155,15 @@ public final class CFMetaData
      * @throws IOException on any I/O related error
      */
     public static CfDef fromSchema(ColumnFamily serializedCfDef) throws IOException
+    {
+        CfDef cfDef = fromSchemaNoColumnDefinition(serializedCfDef);
+
+        ColumnFamily serializedColumnDefinitions = ColumnDefinition.readSchema(cfDef.keyspace, cfDef.name);
+        return addColumnDefinitionSchema(cfDef, serializedColumnDefinitions);
+    }
+
+    // Package protected for use by tests
+    static CfDef fromSchemaNoColumnDefinition(ColumnFamily serializedCfDef)
     {
         assert serializedCfDef != null;
 
@@ -1109,11 +1183,26 @@ public final class CFMetaData
             CfDef._Fields field = CfDef._Fields.findByName(attr[1]);
             cfDef.setFieldValue(field, deserializeValue(cfAttr.value(), getValueClass(CfDef.class, field.getFieldName())));
         }
-
-        for (ColumnDef columnDef : ColumnDefinition.fromSchema(cfDef.keyspace, cfDef.name))
-            cfDef.addToColumn_metadata(columnDef);
-
         return cfDef;
+    }
+
+    // Package protected for use by tests
+    static CfDef addColumnDefinitionSchema(CfDef cfDef, ColumnFamily serializedColumnDefinitions)
+    {
+        for (ColumnDef columnDef : ColumnDefinition.fromSchema(serializedColumnDefinitions))
+            cfDef.addToColumn_metadata(columnDef);
+        return cfDef;
+    }
+
+    private void updateCfDef()
+    {
+        cqlCfDef = new CFDefinition(this);
+    }
+
+    public CFDefinition getCfDef()
+    {
+        assert cqlCfDef != null;
+        return cqlCfDef;
     }
 
     @Override
@@ -1136,6 +1225,8 @@ public final class CFMetaData
             .append("maxCompactionThreshold", maxCompactionThreshold)
             .append("mergeShardsChance", mergeShardsChance)
             .append("keyAlias", keyAlias)
+            .append("columnAliases", columnAliases)
+            .append("valueAlias", keyAlias)
             .append("column_metadata", column_metadata)
             .append("compactionStrategyClass", compactionStrategyClass)
             .append("compactionStrategyOptions", compactionStrategyOptions)
