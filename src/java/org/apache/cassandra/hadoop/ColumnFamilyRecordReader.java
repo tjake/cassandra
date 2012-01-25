@@ -453,9 +453,15 @@ public class ColumnFamilyRecordReader extends RecordReader<ByteBuffer, SortedMap
             {
                 rows = client.get_paged_slice(cfName, keyRange, startColumn, consistencyLevel);
 
+                // nothing found?
+                if (rows == null || rows.isEmpty() || rows.get(0).columns.isEmpty())
+                {
+                    rows = null;
+                    return;
+                }
+                    
                 // nothing new? reached the end
-                if (rows.get(0).columns.isEmpty()
-                    || (rows.get(0).key.equals(lastRow.key) && rows.get(0).columns.get(0).column.equals(startColumn)))
+                if (lastRow != null && (rows.get(0).key.equals(lastRow.key) || rows.get(0).columns.get(0).column.equals(startColumn)))
                 {
                     rows = null;
                     return;

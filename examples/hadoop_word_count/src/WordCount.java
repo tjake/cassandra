@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import org.apache.cassandra.cql3.CFDefinition;
 import org.apache.cassandra.thrift.*;
 import org.apache.cassandra.hadoop.ColumnFamilyOutputFormat;
 import org.slf4j.Logger;
@@ -80,15 +79,21 @@ public class WordCount extends Configured implements Tool
         protected void setup(org.apache.hadoop.mapreduce.Mapper.Context context)
         throws IOException, InterruptedException
         {
-            sourceColumn = ByteBufferUtil.bytes(context.getConfiguration().get(CONF_COLUMN_NAME));
         }
 
         public void map(ByteBuffer key, SortedMap<ByteBuffer, IColumn> columns, Context context) throws IOException, InterruptedException
         {
             for (IColumn column : columns.values())
             {
-                String value = ByteBufferUtil.string(column.value());
-                logger.debug("read " + key + ":" + value + " from " + context.getInputSplit());
+                String name  = ByteBufferUtil.string(column.name());
+                String value = null;
+                
+                if (name.contains("int"))
+                    value = String.valueOf(ByteBufferUtil.toInt(column.value()));
+                else
+                    value = ByteBufferUtil.string(column.value());
+                               
+                System.err.println("read " + ByteBufferUtil.string(key) + ":" +name + ":" + value + " from " + context.getInputSplit());
 
                 StringTokenizer itr = new StringTokenizer(value);
                 while (itr.hasMoreTokens())
@@ -185,6 +190,7 @@ public class WordCount extends Configured implements Tool
                 job.setOutputFormatClass(ColumnFamilyOutputFormat.class);
 
                 ConfigHelper.setOutputColumnFamily(job.getConfiguration(), KEYSPACE, OUTPUT_COLUMN_FAMILY);
+                job.getConfiguration().set(CONF_COLUMN_NAME, "sum");
             }
 
             job.setInputFormatClass(ColumnFamilyInputFormat.class);
@@ -205,7 +211,7 @@ public class WordCount extends Configured implements Tool
             if (i == 5)
             {
                 // this will cause the predicate to be ignored in favor of scanning everything as a wide row
-                ConfigHelper.setInputColumnFamily(job.getConfiguration(), KEYSPACE, COLUMN_FAMILY, CFDefinition.Kind.DYNAMIC);
+                ConfigHelper.setInputColumnFamily(job.getConfiguration(), KEYSPACE, COLUMN_FAMILY, true);
             }
 
             ConfigHelper.setOutputInitialAddress(job.getConfiguration(), "localhost");
