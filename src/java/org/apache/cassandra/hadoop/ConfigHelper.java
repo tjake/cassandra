@@ -191,6 +191,11 @@ public class ConfigHelper
     {
         return predicateFromString(conf.get(INPUT_PREDICATE_CONFIG));
     }
+    
+    public static String getRawInputSlicePredicate(Configuration conf)
+    {
+        return conf.get(INPUT_PREDICATE_CONFIG);
+    }
 
     private static String thriftToString(TBase object)
     {
