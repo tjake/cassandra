@@ -73,6 +73,8 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     protected abstract ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column);
 
+    protected abstract ByteBuffer getIndexedValue(IColumn column);
+
     protected abstract AbstractType getExpressionComparator();
 
     public String expressionString(IndexExpression expr)
@@ -81,16 +83,15 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
                              baseCfs.name,
                              getExpressionComparator().getString(expr.column_name),
                              expr.op,
-                             baseCfs.metadata.getColumn_metadata().get(expr.column_name).getValidator().getString(expr.value));
+                             baseCfs.metadata.getColumnDefinition(expr.column_name).getValidator().getString(expr.value));
     }
-
 
     public void delete(ByteBuffer rowKey, Column column)
     {
         if (column.isMarkedForDelete())
             return;
 
-        DecoratedKey valueKey = getIndexKeyFor(column.value());
+        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(column));
         int localDeletionTime = (int) (System.currentTimeMillis() / 1000);
         ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
         cfi.addTombstone(makeIndexColumnName(rowKey, column), localDeletionTime, column.timestamp());
@@ -101,7 +102,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     public void insert(ByteBuffer rowKey, Column column)
     {
-        DecoratedKey valueKey = getIndexKeyFor(column.value());
+        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(column));
         ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
         ByteBuffer name = makeIndexColumnName(rowKey, column);
         if (column instanceof ExpiringColumn)

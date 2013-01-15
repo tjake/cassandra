@@ -37,6 +37,7 @@ import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.io.sstable.ReducingKeyIterator;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.thrift.IndexExpression;
+import org.apache.cassandra.thrift.IndexType;
 
 /**
  * Manages all the indexes associated with a given CFS
@@ -94,12 +95,13 @@ public class SecondaryIndexManager
         Collection<ByteBuffer> indexedColumnNames = indexesByColumn.keySet();
         for (ByteBuffer indexedColumn : indexedColumnNames)
         {
-            ColumnDefinition def = baseCfs.metadata.getColumn_metadata().get(indexedColumn);
+            ColumnDefinition def = baseCfs.metadata.getColumnDefinition(indexedColumn);
             if (def == null || def.getIndexType() == null)
                 removeIndexedColumn(indexedColumn);
         }
 
-        for (ColumnDefinition cdef : baseCfs.metadata.getColumn_metadata().values())
+        // TODO: allow all ColumnDefinition type
+        for (ColumnDefinition cdef : baseCfs.metadata.regularColumns())
             if (cdef.getIndexType() != null && !indexedColumnNames.contains(cdef.name))
                 addIndexedColumn(cdef);
 
@@ -274,6 +276,9 @@ public class SecondaryIndexManager
         }
         else
         {
+            // TODO: We sould do better than throw a RuntimeException
+            if (cdef.getIndexType() == IndexType.CUSTOM && index instanceof AbstractSimplePerColumnSecondaryIndex)
+                throw new RuntimeException("Cannot use a subclass of AbstractSimplePerColumnSecondaryIndex as a CUSTOM index, as they assume they are CFS backed");
             index.init();
         }
 

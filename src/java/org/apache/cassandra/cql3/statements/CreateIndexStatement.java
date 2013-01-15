@@ -67,7 +67,7 @@ public class CreateIndexStatement extends SchemaAlteringStatement
         CFMetaData cfm = oldCfm.clone();
         CFDefinition cfDef = oldCfm.getCfDef();
 
-        for (ColumnDefinition cd : cfm.getColumn_metadata().values())
+        for (ColumnDefinition cd : cfm.allColumns())
         {
             if (cd.name.equals(columnName.key))
             {
@@ -78,6 +78,8 @@ public class CreateIndexStatement extends SchemaAlteringStatement
 
                 if (cd.getValidator().isCollection())
                     throw new InvalidRequestException("Indexes on collections are no yet supported");
+
+                // TODO: deal with Clustering key indexes
 
                 if (cfDef.isComposite)
                 {
@@ -113,7 +115,7 @@ public class CreateIndexStatement extends SchemaAlteringStatement
         }
 
         cfm.addDefaultIndexNames();
-        MigrationManager.announceColumnFamilyUpdate(cfm);
+        MigrationManager.announceColumnFamilyUpdate(cfm, false);
     }
 
     public ResultMessage.SchemaChange.Change changeType()

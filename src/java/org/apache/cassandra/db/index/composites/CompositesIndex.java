@@ -56,6 +56,11 @@ public class CompositesIndex extends AbstractSimplePerColumnSecondaryIndex
         indexComparator = (CompositeType)SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
     }
 
+    protected ByteBuffer getIndexedValue(IColumn column)
+    {
+        return column.value();
+    }
+
     protected ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column)
     {
         CompositeType baseComparator = (CompositeType)baseCfs.getComparator();

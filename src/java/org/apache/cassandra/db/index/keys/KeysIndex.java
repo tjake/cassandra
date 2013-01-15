@@ -38,6 +38,11 @@ public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
         // Nothing specific
     }
 
+    protected ByteBuffer getIndexedValue(IColumn column)
+    {
+        return column.value();
+    }
+
     protected ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column)
     {
         return rowKey;
