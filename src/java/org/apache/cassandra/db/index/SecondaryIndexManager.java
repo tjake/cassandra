@@ -101,7 +101,7 @@ public class SecondaryIndexManager
         }
 
         // TODO: allow all ColumnDefinition type
-        for (ColumnDefinition cdef : baseCfs.metadata.regularColumns())
+        for (ColumnDefinition cdef : baseCfs.metadata.allColumns())
             if (cdef.getIndexType() != null && !indexedColumnNames.contains(cdef.name))
                 addIndexedColumn(cdef);
 

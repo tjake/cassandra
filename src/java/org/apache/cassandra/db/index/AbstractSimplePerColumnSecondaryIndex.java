@@ -33,14 +33,19 @@ import org.apache.cassandra.utils.ByteBufferUtil;
  */
 public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSecondaryIndex
 {
-    private ColumnFamilyStore indexCfs;
+    protected ColumnFamilyStore indexCfs;
+
+    // SecondaryIndex "forces" a set of ColumnDefinition. However this class (and thus it's subclass)
+    // only support one def per index. So inline it in a field for 1) convenience and 2) avoid creating
+    // an iterator each time we need to access it.
+    // TODO: we should fix SecondaryIndex API
+    protected ColumnDefinition columnDef;
 
     public void init()
     {
         assert baseCfs != null && columnDefs != null && columnDefs.size() == 1;
 
-        ColumnDefinition columnDef = columnDefs.iterator().next();
-        init(columnDef);
+        columnDef = columnDefs.iterator().next();
 
         AbstractType indexComparator = SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
         CFMetaData indexedCfMetadata = CFMetaData.newIndexMetadata(baseCfs.metadata, columnDef, indexComparator);
@@ -69,11 +74,9 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         }
     }
 
-    protected abstract void init(ColumnDefinition columnDef);
-
     protected abstract ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column);
 
-    protected abstract ByteBuffer getIndexedValue(IColumn column);
+    protected abstract ByteBuffer getIndexedValue(ByteBuffer rowKey, IColumn column);
 
     protected abstract AbstractType getExpressionComparator();
 
@@ -91,7 +94,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         if (column.isMarkedForDelete())
             return;
 
-        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(column));
+        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(rowKey, column));
         int localDeletionTime = (int) (System.currentTimeMillis() / 1000);
         ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
         cfi.addTombstone(makeIndexColumnName(rowKey, column), localDeletionTime, column.timestamp());
@@ -102,7 +105,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     public void insert(ByteBuffer rowKey, Column column)
     {
-        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(column));
+        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(rowKey, column));
         ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
         ByteBuffer name = makeIndexColumnName(rowKey, column);
         if (column instanceof ExpiringColumn)

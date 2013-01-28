@@ -73,20 +73,31 @@ public class CreateIndexStatement extends SchemaAlteringStatement
             {
                 if (cd.getIndexType() != null)
                     throw new InvalidRequestException("Index already exists");
-                if (logger.isDebugEnabled())
-                    logger.debug("Updating column {} definition for index {}", columnName, indexName);
+
+                if (cd.type == ColumnDefinition.Type.PARTITION_KEY && (cd.componentIndex == null || cd.componentIndex == 0))
+                    throw new InvalidRequestException(String.format("Cannot add secondary index to already primarily indexed column %s", columnName));
+
+                // TODO: we could lift that limitation
+                if (cd.type == ColumnDefinition.Type.PARTITION_KEY)
+                    throw new InvalidRequestException(String.format("Secondary index on partition key column %s is not yet supported", columnName));
+
+                // TODO: we could lift that limitation
+                if (cd.type == ColumnDefinition.Type.COMPACT_VALUE)
+                    throw new InvalidRequestException(String.format("Secondary index on column %s is not yet supported for compact table", columnName));
+
+                // TODO: we could lift that limitation
+                if (!cfDef.isComposite && cd.type == ColumnDefinition.CLUSTERING_KEY)
+                    throw new InvalidRequestException(String.format("Secondary index on clustering column %s is not yet supported for compact table", columnName));
 
                 if (cd.getValidator().isCollection())
                     throw new InvalidRequestException("Indexes on collections are no yet supported");
 
-                // TODO: deal with Clustering key indexes
+                if (logger.isDebugEnabled())
+                    logger.debug("Updating column {} definition for index {}", columnName, indexName);
 
                 if (cfDef.isComposite)
                 {
-                    CompositeType composite = (CompositeType)cfm.comparator;
-                    Map<String, String> opts = new HashMap<String, String>();
-                    opts.put(CompositesIndex.PREFIX_SIZE_OPTION, String.valueOf(composite.types.size() - (cfDef.hasCollections ? 2 : 1)));
-                    cd.setIndexType(IndexType.COMPOSITES, opts);
+                    cd.setIndexType(IndexType.COMPOSITES, Collections.<String, String>emptyMap());
                 }
                 else
                 {
