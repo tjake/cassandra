@@ -63,7 +63,7 @@ public class CompositesIndexOnClusteringKey extends CompositesIndex
         return CompositeType.getInstance(types);
     }
 
-    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, IColumn column)
+    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column)
     {
         CompositeType baseComparator = (CompositeType)baseCfs.getComparator();
         ByteBuffer[] components = baseComparator.split(column.name());
@@ -84,7 +84,7 @@ public class CompositesIndexOnClusteringKey extends CompositesIndex
         return builder;
     }
 
-    public IndexedEntry decodeEntry(DecoratedKey indexedValue, IColumn indexEntry)
+    public IndexedEntry decodeEntry(DecoratedKey indexedValue, Column indexEntry)
     {
         int ckCount = baseCfs.metadata.clusteringKeyColumns().size();
         ByteBuffer[] components = getIndexComparator().split(indexEntry.name());

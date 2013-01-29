@@ -331,7 +331,6 @@ public class SchemaLoader
     }
     private static CFMetaData compositeIndexCFMD(String ksName, String cfName, final Boolean withIdxType, boolean withOldCfIds) throws ConfigurationException
     {
-        final Map<String, String> idxOpts = Collections.singletonMap(CompositesIndex.PREFIX_SIZE_OPTION, "1");
         final CompositeType composite = CompositeType.getInstance(Arrays.asList(new AbstractType<?>[]{UTF8Type.instance, UTF8Type.instance})); 
         return new CFMetaData(ksName,
                 cfName,
@@ -342,7 +341,8 @@ public class SchemaLoader
                 {{
                    ByteBuffer cName = ByteBuffer.wrap("col1".getBytes(Charsets.UTF_8));
                    IndexType idxType = withIdxType ? IndexType.COMPOSITES : null;
-                   put(cName, ColumnDefinition.regularDef(cName, UTF8Type.instance, 1).setIndex(withIdxType ? "col1_idx" : null, idxType, idxOpts));
+                   put(cName, ColumnDefinition.regularDef(cName, UTF8Type.instance, 1)
+                                              .setIndex(withIdxType ? "col1_idx" : null, idxType, Collections.<String, String>emptyMap()));
                 }});
     }
     

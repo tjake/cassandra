@@ -1535,7 +1535,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                             data.addAll(cf, HeapAllocator.instance);
                     }
 
-                    if (!filter.isSatisfiedBy(data, null))
+                    if (!filter.isSatisfiedBy(rawRow.key.key, data, null))
                         continue;
 
                     logger.trace("{} satisfies all filter expressions", data);

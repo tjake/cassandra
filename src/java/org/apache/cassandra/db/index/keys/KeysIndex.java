@@ -34,7 +34,7 @@ import org.apache.cassandra.exceptions.ConfigurationException;
  */
 public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
 {
-    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, IColumn column)
+    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column)
     {
         return column.value();
     }
@@ -51,7 +51,7 @@ public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
 
     public boolean isIndexEntryStale(ByteBuffer indexedValue, ColumnFamily data)
     {
-        IColumn liveColumn = data.getColumn(columnDef.name);
+        Column liveColumn = data.getColumn(columnDef.name);
         if (liveColumn == null || liveColumn.isMarkedForDelete())
             return true;
 

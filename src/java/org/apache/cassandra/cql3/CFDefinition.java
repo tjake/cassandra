@@ -289,6 +289,14 @@ public class CFDefinition implements Iterable<CFDefinition.Name>
             return columnName == null ? 1 : 0;
         }
 
+        public ByteBuffer get(int i)
+        {
+            if (i < 0 || i >= (columnName == null ? 0 : 1))
+                throw new IllegalArgumentException();
+
+            return columnName;
+        }
+
         public ByteBuffer build()
         {
             return columnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : columnName;
@@ -304,6 +312,14 @@ public class CFDefinition implements Iterable<CFDefinition.Name>
             NonCompositeBuilder newBuilder = new NonCompositeBuilder(type);
             newBuilder.columnName = columnName;
             return newBuilder;
+        }
+
+        public ByteBuffer getComponent(int i)
+        {
+            if (i != 0 || columnName == null)
+                throw new IllegalArgumentException();
+
+            return columnName;
         }
     }
 }

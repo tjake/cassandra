@@ -256,7 +256,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
 
                         assert newData != null : "An entry with not data should have been considered stale";
 
-                        if (!filter.isSatisfiedBy(newData, entry.indexedEntryNameBuilder))
+                        if (!filter.isSatisfiedBy(dk.key, newData, entry.indexedEntryNameBuilder))
                             continue;
 
                         if (data == null)

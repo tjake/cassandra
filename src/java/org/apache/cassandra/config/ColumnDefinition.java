@@ -347,6 +347,11 @@ public class ColumnDefinition
         return setIndexName(s).setIndexType(index_type, index_options);
     }
 
+    public boolean isIndexed()
+    {
+        return index_type != null;
+    }
+
     public IndexType getIndexType()
     {
         return index_type;

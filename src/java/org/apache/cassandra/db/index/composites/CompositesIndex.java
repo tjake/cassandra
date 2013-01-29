@@ -93,7 +93,7 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
 
     protected abstract ColumnNameBuilder makeIndexColumnNameBuilder(ByteBuffer rowKey, ByteBuffer columnName);
 
-    public abstract IndexedEntry decodeEntry(DecoratedKey indexedValue, IColumn indexEntry);
+    public abstract IndexedEntry decodeEntry(DecoratedKey indexedValue, Column indexEntry);
 
     public abstract boolean isStale(IndexedEntry entry, ColumnFamily data);
 

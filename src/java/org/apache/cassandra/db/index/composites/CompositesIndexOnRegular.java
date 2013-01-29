@@ -58,7 +58,7 @@ public class CompositesIndexOnRegular extends CompositesIndex
         return CompositeType.getInstance(types);
     }
 
-    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, IColumn column)
+    protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column)
     {
         return column.value();
     }
@@ -74,7 +74,7 @@ public class CompositesIndexOnRegular extends CompositesIndex
         return builder;
     }
 
-    public IndexedEntry decodeEntry(DecoratedKey indexedValue, IColumn indexEntry)
+    public IndexedEntry decodeEntry(DecoratedKey indexedValue, Column indexEntry)
     {
         ByteBuffer[] components = getIndexComparator().split(indexEntry.name());
         CompositeType.Builder builder = getBaseComparator().builder();
@@ -94,7 +94,8 @@ public class CompositesIndexOnRegular extends CompositesIndex
 
     public boolean isStale(IndexedEntry entry, ColumnFamily data)
     {
-        IColumn liveColumn = data.getColumn(columnDef.name);
+        ByteBuffer bb = entry.indexedEntryNameBuilder.copy().add(columnDef.name).build();
+        Column liveColumn = data.getColumn(bb);
         if (liveColumn == null || liveColumn.isMarkedForDelete())
             return true;
 

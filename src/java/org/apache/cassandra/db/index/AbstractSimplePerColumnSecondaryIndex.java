@@ -76,7 +76,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     protected abstract ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column);
 
-    protected abstract ByteBuffer getIndexedValue(ByteBuffer rowKey, IColumn column);
+    protected abstract ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column);
 
     protected abstract AbstractType getExpressionComparator();
 

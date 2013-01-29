@@ -86,7 +86,7 @@ public class CreateIndexStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException(String.format("Secondary index on column %s is not yet supported for compact table", columnName));
 
                 // TODO: we could lift that limitation
-                if (!cfDef.isComposite && cd.type == ColumnDefinition.CLUSTERING_KEY)
+                if (!cfDef.isComposite && cd.type == ColumnDefinition.Type.CLUSTERING_KEY)
                     throw new InvalidRequestException(String.format("Secondary index on clustering column %s is not yet supported for compact table", columnName));
 
                 if (cd.getValidator().isCollection())

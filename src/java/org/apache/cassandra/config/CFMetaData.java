@@ -1752,7 +1752,7 @@ public final class CFMetaData
         List<ColumnDefinition> pkCols = nullInitializedList(keyValidator.componentsCount());
         int nbCkCols = isDense(comparator, column_metadata.values())
                      ? comparator.componentsCount()
-                     : comparator.componentsCount() - (hasCollection(comparator) ? 2 : 1);
+                     : comparator.componentsCount() - (hasCollection() ? 2 : 1);
         List<ColumnDefinition> ckCols = nullInitializedList(nbCkCols);
         Set<ColumnDefinition> regCols = new HashSet<ColumnDefinition>();
         ColumnDefinition compactCol = null;
@@ -1786,9 +1786,9 @@ public final class CFMetaData
         compactValueColumn = compactCol;
     }
 
-    private static boolean hasCollection(AbstractType<?> comparator)
+    private boolean hasCollection()
     {
-        if (isSuper() || !cqlCfDef.isComposite)
+        if (isSuper() || !(comparator instanceof CompositeType))
             return false;
 
         List<AbstractType<?>> types = ((CompositeType)comparator).types;
