@@ -109,8 +109,9 @@ public class UpdateStatement extends ModificationStatement
     {
         List<ByteBuffer> keys = buildKeyNames(cfDef, processedKeys, variables);
 
-        ColumnNameBuilder builder = cfDef.getColumnNameBuilder();
+        CBuilder builder = cfDef.cfm.comparator.builder();
         buildColumnNames(cfDef, processedKeys, builder, variables, true);
+        Composite prefix = builder.build();
 
         // Lists SET operation incurs a read.
         Set<ByteBuffer> toRead = null;
@@ -120,23 +121,23 @@ public class UpdateStatement extends ModificationStatement
             {
                 if (toRead == null)
                     toRead = new TreeSet<ByteBuffer>(UTF8Type.instance);
-                toRead.add(op.columnName.key);
+                toRead.add(op.columnName.name.key);
             }
         }
 
-        Map<ByteBuffer, ColumnGroupMap> rows = toRead != null ? readRows(keys, builder, toRead, (CompositeType)cfDef.cfm.comparator, local, cl) : null;
+        Map<ByteBuffer, CQL3Row> rows = toRead != null ? readRows(keys, prefix, toRead, cfDef.cfm, local, cl) : null;
 
         Collection<IMutation> mutations = new LinkedList<IMutation>();
         UpdateParameters params = new UpdateParameters(cfDef.cfm, variables, getTimestamp(now), getTimeToLive(), rows);
 
         for (ByteBuffer key: keys)
-            mutations.add(mutationForKey(cfDef, key, builder, params, cl, isBatch));
+            mutations.add(mutationForKey(cfDef, key, prefix, params, cl, isBatch));
 
         return mutations;
     }
 
     // Returns the first empty component or null if none are
-    static CFDefinition.Name buildColumnNames(CFDefinition cfDef, Map<ColumnIdentifier, List<Term>> processed, ColumnNameBuilder builder, List<ByteBuffer> variables, boolean requireAllComponent)
+    static CFDefinition.Name buildColumnNames(CFDefinition cfDef, Map<ColumnIdentifier, List<Term>> processed, CBuilder builder, List<ByteBuffer> variables, boolean requireAllComponent)
     throws InvalidRequestException
     {
         CFDefinition.Name firstEmpty = null;
@@ -146,7 +147,7 @@ public class UpdateStatement extends ModificationStatement
             if (values == null || values.isEmpty())
             {
                 firstEmpty = name;
-                if (requireAllComponent && cfDef.isComposite && !cfDef.isCompact)
+                if (requireAllComponent && !cfDef.cfm.comparator.isPacked() && !cfDef.cfm.comparator.isDense())
                     throw new InvalidRequestException(String.format("Missing mandatory PRIMARY KEY part %s", name));
             }
             else if (firstEmpty != null)
@@ -206,12 +207,10 @@ public class UpdateStatement extends ModificationStatement
      *
      * @throws InvalidRequestException on the wrong request
      */
-    private IMutation mutationForKey(CFDefinition cfDef, ByteBuffer key, ColumnNameBuilder builder, UpdateParameters params, ConsistencyLevel cl, boolean isBatch)
+    private IMutation mutationForKey(CFDefinition cfDef, ByteBuffer key, Composite prefix, UpdateParameters params, ConsistencyLevel cl, boolean isBatch)
     throws InvalidRequestException
     {
         validateKey(key);
-
-        QueryProcessor.validateKey(key);
         ColumnFamily cf = UnsortedColumns.factory.create(Schema.instance.getCFMetaData(cfDef.cfm.ksName, cfDef.cfm.cfName));
 
         // Inserting the CQL row marker (see #4361)
@@ -225,40 +224,23 @@ public class UpdateStatement extends ModificationStatement
         // 'DELETE FROM t WHERE k = 1' does remove the row entirely)
         //
         // We never insert markers for Super CF as this would confuse the thrift side.
-        if (cfDef.isComposite && !cfDef.isCompact && !cfDef.cfm.isSuper())
+        if (!cfDef.cfm.comparator.isPacked() && !cfDef.cfm.comparator.isDense() && !cfDef.cfm.isSuper())
         {
-            ByteBuffer name = builder.copy().add(ByteBufferUtil.EMPTY_BYTE_BUFFER).build();
+            CellName name = CellNames.makeRowMarker(prefix);
             cf.addColumn(params.makeColumn(name, ByteBufferUtil.EMPTY_BYTE_BUFFER));
         }
-
-        if (cfDef.isCompact)
+        else if (processedColumns.isEmpty())
         {
-            if (builder.componentCount() == 0)
-                throw new InvalidRequestException(String.format("Missing PRIMARY KEY part %s", cfDef.columns.values().iterator().next()));
-
-            if (cfDef.value == null)
-            {
-                // compact + no compact value implies there is no column outside the PK. So no operation could
-                // have passed through validation
-                assert processedColumns.isEmpty();
-                setToEmptyOperation.execute(key, cf, builder.copy(), params);
-            }
+            // If we don't have a row marker, we only accept to set only the PK
+            // for dense CF. In which case we set the (unique) value to empty
+            if (cfDef.cfm.comparator.isDense())
+                processedColumns.add(setToEmptyOperation);
             else
-            {
-                // compact means we don't have a row marker, so don't accept to set only the PK (Note: we
-                // could accept it and use an empty value!?)
-                if (processedColumns.isEmpty())
-                    throw new InvalidRequestException(String.format("Missing mandatory column %s", cfDef.value));
+                throw new InvalidRequestException(String.format("Missing mandatory column %s", cfDef.value));
+        }
 
-                for (Operation op : processedColumns)
-                    op.execute(key, cf, builder.copy(), params);
-            }
-        }
-        else
-        {
-            for (Operation op : processedColumns)
-                op.execute(key, cf, builder.copy(), params);
-        }
+        for (Operation op : processedColumns)
+            op.execute(key, cf, prefix, params);
 
         RowMutation rm;
         if (isBatch)

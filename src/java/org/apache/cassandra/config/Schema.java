@@ -225,27 +225,13 @@ public class Schema
      *
      * @return The comparator of the ColumnFamily
      */
-    public AbstractType<?> getComparator(String ksName, String cfName)
+    public CellNameType getComparator(String ksName, String cfName)
     {
         assert ksName != null;
         CFMetaData cfmd = getCFMetaData(ksName, cfName);
         if (cfmd == null)
             throw new IllegalArgumentException("Unknown ColumnFamily " + cfName + " in keyspace " + ksName);
         return cfmd.comparator;
-    }
-
-    /**
-     * Get value validator for specific column
-     *
-     * @param ksName The keyspace name
-     * @param cfName The ColumnFamily name
-     * @param column The name of the column
-     *
-     * @return value validator specific to the column or default (per-cf) one
-     */
-    public AbstractType<?> getValueValidator(String ksName, String cfName, ByteBuffer column)
-    {
-        return getCFMetaData(ksName, cfName).getValueValidator(column);
     }
 
     /**

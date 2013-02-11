@@ -17,7 +17,6 @@
  */
 package org.apache.cassandra.db;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -100,16 +99,16 @@ public class UnsortedColumns extends AbstractThreadUnsafeSortedColumns
         throw new UnsupportedOperationException();
     }
 
-    public Column getColumn(ByteBuffer name)
+    public Column getColumn(CellName name)
     {
         throw new UnsupportedOperationException();
     }
 
-    public Iterable<ByteBuffer> getColumnNames()
+    public Iterable<CellName> getColumnNames()
     {
-        return Iterables.transform(columns, new Function<Column, ByteBuffer>()
+        return Iterables.transform(columns, new Function<Column, CellName>()
         {
-            public ByteBuffer apply(Column column)
+            public CellName apply(Column column)
             {
                 return column.name;
             }

@@ -33,12 +33,12 @@ import org.apache.cassandra.utils.HeapAllocator;
  */
 public class CounterUpdateColumn extends Column
 {
-    public CounterUpdateColumn(ByteBuffer name, long value, long timestamp)
+    public CounterUpdateColumn(CellName name, long value, long timestamp)
     {
         this(name, ByteBufferUtil.bytes(value), timestamp);
     }
 
-    public CounterUpdateColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public CounterUpdateColumn(CellName name, ByteBuffer value, long timestamp)
     {
         super(name, value, timestamp);
     }
@@ -81,7 +81,7 @@ public class CounterUpdateColumn extends Column
     @Override
     public CounterColumn localCopy(ColumnFamilyStore cfs)
     {
-        return new CounterColumn(cfs.internOrCopy(name, HeapAllocator.instance),
+        return new CounterColumn(name.copy(HeapAllocator.instance),
                                  CounterContext.instance().create(delta(), HeapAllocator.instance),
                                  timestamp(),
                                  Long.MIN_VALUE);
@@ -90,7 +90,7 @@ public class CounterUpdateColumn extends Column
     @Override
     public Column localCopy(ColumnFamilyStore cfs, Allocator allocator)
     {
-        return new CounterColumn(cfs.internOrCopy(name, allocator),
+        return new CounterColumn(name.copy(allocator),
                                  CounterContext.instance().create(delta(), allocator),
                                  timestamp(),
                                  Long.MIN_VALUE);

@@ -34,7 +34,7 @@ import org.apache.cassandra.utils.Allocator;
 
 public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumns
 {
-    private final TreeMap<ByteBuffer, Column> map;
+    private final TreeMap<CellName, Column> map;
 
     public static final ColumnFamily.Factory<TreeMapBackedSortedColumns> factory = new Factory<TreeMapBackedSortedColumns>()
     {
@@ -45,21 +45,21 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
         }
     };
 
-    public AbstractType<?> getComparator()
+    public CellNameType getComparator()
     {
-        return (AbstractType<?>)map.comparator();
+        return (CellNameType)map.comparator();
     }
 
     private TreeMapBackedSortedColumns(CFMetaData metadata)
     {
         super(metadata);
-        this.map = new TreeMap<ByteBuffer, Column>(metadata.comparator);
+        this.map = new TreeMap<CellName, Column>(metadata.comparator);
     }
 
-    private TreeMapBackedSortedColumns(CFMetaData metadata, SortedMap<ByteBuffer, Column> columns)
+    private TreeMapBackedSortedColumns(CFMetaData metadata, SortedMap<CellName, Column> columns)
     {
         super(metadata);
-        this.map = new TreeMap<ByteBuffer, Column>(columns);
+        this.map = new TreeMap<CellName, Column>(columns);
     }
 
     public ColumnFamily.Factory getFactory()
@@ -88,7 +88,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
     */
     public long addColumn(Column column, Allocator allocator, SecondaryIndexManager.Updater indexer)
     {
-        ByteBuffer name = column.name();
+        CellName name = column.name();
         // this is a slightly unusual way to structure this; a more natural way is shown in ThreadSafeSortedColumns,
         // but TreeMap lacks putAbsent.  Rather than split it into a "get, then put" check, we do it as follows,
         // which saves the extra "get" in the no-conflict case [for both normal and super columns],
@@ -142,7 +142,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
         return true;
     }
 
-    public Column getColumn(ByteBuffer name)
+    public Column getColumn(CellName name)
     {
         return map.get(name);
     }
@@ -167,7 +167,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
         return map.descendingMap().values();
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return map.navigableKeySet();
     }

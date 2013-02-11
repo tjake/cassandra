@@ -390,7 +390,7 @@ public class SSTableReader extends SSTable
             while (readIndex && (indexPosition = primaryIndex.getFilePointer()) != indexSize)
             {
                 ByteBuffer key = ByteBufferUtil.readWithShortLength(primaryIndex);
-                RowIndexEntry indexEntry = RowIndexEntry.serializer.deserialize(primaryIndex, descriptor.version);
+                RowIndexEntry indexEntry = metadata.comparator.rowIndexEntrySerializer().deserialize(primaryIndex, descriptor.version);
                 DecoratedKey decoratedKey = decodeKey(partitioner, descriptor, key);
                 if (first == null)
                     first = decoratedKey;
@@ -860,7 +860,7 @@ public class SSTableReader extends SSTable
                     if (opSatisfied)
                     {
                         // read data position from index entry
-                        RowIndexEntry indexEntry = RowIndexEntry.serializer.deserialize(in, descriptor.version);
+                        RowIndexEntry indexEntry = metadata.comparator.rowIndexEntrySerializer().deserialize(in, descriptor.version);
                         if (exactMatch && updateCacheAndStats)
                         {
                             assert key instanceof DecoratedKey; // key can be == to the index key only if it's a true row key
@@ -885,7 +885,7 @@ public class SSTableReader extends SSTable
                         return indexEntry;
                     }
 
-                    RowIndexEntry.serializer.skip(in, descriptor.version);
+                    metadata.comparator.rowIndexEntrySerializer().skip(in, descriptor.version);
                 }
             }
             catch (IOException e)

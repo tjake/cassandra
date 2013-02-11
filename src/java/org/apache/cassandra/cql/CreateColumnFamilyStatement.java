@@ -26,6 +26,7 @@ import java.util.Map;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.CellNames;
 import org.apache.cassandra.db.ColumnFamilyType;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.TypeParser;
@@ -174,8 +175,7 @@ public class CreateColumnFamilyStatement
             newCFMD = new CFMetaData(keyspace,
                                      name,
                                      ColumnFamilyType.Standard,
-                                     comparator,
-                                     null);
+                                     CellNames.simpleDenseType(comparator));
 
             if (CFMetaData.DEFAULT_COMPRESSOR != null && cfProps.compressionParameters.isEmpty())
                 cfProps.compressionParameters.put(CompressionParameters.SSTABLE_COMPRESSION, CFMetaData.DEFAULT_COMPRESSOR);

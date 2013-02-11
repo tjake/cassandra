@@ -55,22 +55,22 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         return baseCfs.filter(getIndexedIterator(range, filter), filter);
     }
 
-    private ByteBuffer makePrefix(CompositesIndex index, ByteBuffer key, ExtendedFilter filter, boolean isStart)
+    private Composite makePrefix(CompositesIndex index, ByteBuffer key, ExtendedFilter filter, boolean isStart)
     {
         if (key.remaining() == 0)
-            return ByteBufferUtil.EMPTY_BYTE_BUFFER;
+            return Composites.EMPTY;
 
-        ColumnNameBuilder builder;
+        Composite prefix;
         if (filter.originalFilter() instanceof SliceQueryFilter)
         {
             SliceQueryFilter originalFilter = (SliceQueryFilter)filter.originalFilter();
-            builder = index.makeIndexColumnNameBuilder(key, isStart ? originalFilter.start() : originalFilter.finish());
+            prefix = index.makeIndexColumnPrefix(key, isStart ? originalFilter.start() : originalFilter.finish());
         }
         else
         {
-            builder = index.getIndexComparator().builder().add(key);
+            prefix = index.getIndexComparator().builder().add(key).build();
         }
-        return isStart ? builder.build() : builder.buildAsEndOfRange();
+        return isStart ? prefix : prefix.end();
     }
 
     public ColumnFamilyStore.AbstractScanIterator getIndexedIterator(final AbstractBounds<RowPosition> range, final ExtendedFilter filter)
@@ -96,16 +96,16 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         ByteBuffer startKey = range.left instanceof DecoratedKey ? ((DecoratedKey)range.left).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
         ByteBuffer endKey = range.right instanceof DecoratedKey ? ((DecoratedKey)range.right).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
 
-        final CompositeType baseComparator = (CompositeType)baseCfs.getComparator();
-        final CompositeType indexComparator = (CompositeType)index.getIndexCfs().getComparator();
+        final CellNameType baseComparator = baseCfs.getComparator();
+        final CellNameType indexComparator = index.getIndexCfs().getComparator();
 
         CompositeType.Builder builder = null;
-        final ByteBuffer startPrefix = makePrefix(index, startKey, filter, true);
-        final ByteBuffer endPrefix = makePrefix(index, endKey, filter, false);
+        final Composite startPrefix = makePrefix(index, startKey, filter, true);
+        final Composite endPrefix = makePrefix(index, endKey, filter, false);
 
         return new ColumnFamilyStore.AbstractScanIterator()
         {
-            private ByteBuffer lastSeenPrefix = startPrefix;
+            private Composite lastSeenPrefix = startPrefix;
             private Deque<Column> indexColumns;
             private int columnsRead = Integer.MAX_VALUE;
 
@@ -234,7 +234,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                         }
 
                         // Check if this entry cannot be a hit due to the original column filter
-                        ByteBuffer start = entry.indexedEntryStart();
+                        Composite start = entry.indexedEntryPrefix.start();
                         if (!filter.originalFilter().maySelectPrefix(baseComparator, start))
                             continue;
 
@@ -243,7 +243,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                         // We always query the whole CQL3 row. In the case where the original filter was a name filter this might be
                         // slightly wasteful, but this probably doesn't matter in practice and it simplify things.
                         SliceQueryFilter dataFilter = new SliceQueryFilter(start,
-                                                                           entry.indexedEntryEnd(),
+                                                                           entry.indexedEntryPrefix.end(),
                                                                            false,
                                                                            Integer.MAX_VALUE,
                                                                            baseCfs.metadata.clusteringKeyColumns().size());
@@ -256,7 +256,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
 
                         assert newData != null : "An entry with not data should have been considered stale";
 
-                        if (!filter.isSatisfiedBy(dk.key, newData, entry.indexedEntryNameBuilder))
+                        if (!filter.isSatisfiedBy(dk.key, newData, entry.indexedEntryPrefix))
                             continue;
 
                         if (data == null)

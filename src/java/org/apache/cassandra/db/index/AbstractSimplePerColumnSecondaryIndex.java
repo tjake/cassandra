@@ -47,7 +47,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
         columnDef = columnDefs.iterator().next();
 
-        AbstractType indexComparator = SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
+        CellNameType indexComparator = SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
         CFMetaData indexedCfMetadata = CFMetaData.newIndexMetadata(baseCfs.metadata, columnDef, indexComparator);
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.table,
                                                              indexedCfMetadata.cfName,
@@ -74,7 +74,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         }
     }
 
-    protected abstract ByteBuffer makeIndexColumnName(ByteBuffer rowKey, Column column);
+    protected abstract CellName makeIndexColumnName(ByteBuffer rowKey, Column column);
 
     protected abstract ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column);
 
@@ -107,7 +107,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
     {
         DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(rowKey, column));
         ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
-        ByteBuffer name = makeIndexColumnName(rowKey, column);
+        CellName name = makeIndexColumnName(rowKey, column);
         if (column instanceof ExpiringColumn)
         {
             ExpiringColumn ec = (ExpiringColumn)column;

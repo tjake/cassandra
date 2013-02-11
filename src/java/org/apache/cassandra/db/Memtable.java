@@ -127,7 +127,7 @@ public class Memtable
     // Record the comparator of the CFS at the creation of the memtable. This
     // is only used when a user update the CF comparator, to know if the
     // memtable was created with the new or old comparator.
-    public final AbstractType initialComparator;
+    public final CellNameType initialComparator;
 
     public Memtable(ColumnFamilyStore cfs)
     {
@@ -366,7 +366,7 @@ public class Memtable
 
         return new SimpleAbstractColumnIterator()
         {
-            private Iterator<ByteBuffer> iter = filter.columns.iterator();
+            private Iterator<CellName> iter = filter.columns.iterator();
 
             public ColumnFamily getColumnFamily()
             {
@@ -382,7 +382,7 @@ public class Memtable
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer current = iter.next();
+                    CellName current = iter.next();
                     Column column = cf.getColumn(current);
                     if (column != null)
                         return column;

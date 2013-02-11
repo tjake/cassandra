@@ -276,7 +276,7 @@ public class ThriftValidation
 
             validateTtl(cosc.column);
             validateColumnPath(metadata, new ColumnPath(metadata.cfName).setSuper_column((ByteBuffer)null).setColumn(cosc.column.name));
-            validateColumnData(metadata, cosc.column, false);
+            validateColumnData(metadata, null, cosc.column);
         }
 
         if (cosc.super_column != null)
@@ -287,7 +287,7 @@ public class ThriftValidation
             for (Column c : cosc.super_column.columns)
             {
                 validateColumnPath(metadata, new ColumnPath(metadata.cfName).setSuper_column(cosc.super_column.name).setColumn(c.name));
-                validateColumnData(metadata, c, true);
+                validateColumnData(metadata, cosc.super_column.name, c);
             }
         }
 
@@ -396,7 +396,7 @@ public class ThriftValidation
     /**
      * Validates the data part of the column (everything in the Column object but the name, which is assumed to be valid)
      */
-    public static void validateColumnData(CFMetaData metadata, Column column, boolean isSubColumn) throws org.apache.cassandra.exceptions.InvalidRequestException
+    public static void validateColumnData(CFMetaData metadata, ByteBuffer scName, Column column) throws org.apache.cassandra.exceptions.InvalidRequestException
     {
         validateTtl(column);
         if (!column.isSetValue())
@@ -404,7 +404,10 @@ public class ThriftValidation
         if (!column.isSetTimestamp())
             throw new org.apache.cassandra.exceptions.InvalidRequestException("Column timestamp is required");
 
-        ColumnDefinition columnDef = metadata.getColumnDefinitionFromColumnName(column.name);
+        CellName colName = scName == null
+                         ? metadata.comparator.cellFromByteBuffer(column.name)
+                         : metadata.comparator.make(scName, column.name);
+        ColumnDefinition columnDef = metadata.getColumnDefinitionFromColumnName(colName);
         try
         {
             AbstractType<?> validator = metadata.getValueValidator(columnDef);
@@ -420,11 +423,11 @@ public class ThriftValidation
                                                                       me.getMessage(),
                                                                       metadata.ksName,
                                                                       metadata.cfName,
-                                                                      (SuperColumns.getComparatorFor(metadata, isSubColumn)).getString(column.name)));
+                                                                      (SuperColumns.getComparatorFor(metadata, scName != null)).getString(column.name)));
         }
 
         // Indexed column values cannot be larger than 64K.  See CASSANDRA-3057/4240 for more details
-        if (!Table.open(metadata.ksName).getColumnFamilyStore(metadata.cfName).indexManager.validate(asDBColumn(column)))
+        if (!Table.open(metadata.ksName).getColumnFamilyStore(metadata.cfName).indexManager.validate(asDBColumn(colName, column)))
                     throw new org.apache.cassandra.exceptions.InvalidRequestException(String.format("Can't index column value of size %d for index %s in CF %s of KS %s",
                                                                               column.value.remaining(),
                                                                               columnDef.getIndexName(),
@@ -432,12 +435,12 @@ public class ThriftValidation
                                                                               metadata.ksName));
     }
 
-    private static org.apache.cassandra.db.Column asDBColumn(Column column)
+    private static org.apache.cassandra.db.Column asDBColumn(CellName name, Column column)
     {
         if (column.ttl <= 0)
-            return new org.apache.cassandra.db.Column(column.name, column.value, column.timestamp);
+            return new org.apache.cassandra.db.Column(name, column.value, column.timestamp);
         else
-            return new org.apache.cassandra.db.ExpiringColumn(column.name, column.value, column.timestamp, column.ttl);
+            return new org.apache.cassandra.db.ExpiringColumn(name, column.value, column.timestamp, column.ttl);
     }
 
     /**
@@ -558,7 +561,7 @@ public class ThriftValidation
             if (expression.value.remaining() > 0xFFFF)
                 throw new org.apache.cassandra.exceptions.InvalidRequestException("Index expression values may not be larger than 64K");
 
-            AbstractType<?> valueValidator = Schema.instance.getValueValidator(metadata.ksName, metadata.cfName, expression.column_name);
+            AbstractType<?> valueValidator = Schema.instance.getCFMetaData(metadata.ksName, metadata.cfName).getValueValidator(expression.column_name);
             try
             {
                 valueValidator.validate(expression.value);
@@ -571,7 +574,7 @@ public class ThriftValidation
                                                                                   me.getMessage()));
             }
 
-            isIndexed |= (expression.op == IndexOperator.EQ) && idxManager.indexes(expression.column_name);
+            isIndexed |= (expression.op == IndexOperator.EQ) && idxManager.indexes(metadata.comparator.cellFromByteBuffer(expression.column_name));
         }
 
         return isIndexed;
@@ -601,23 +604,28 @@ public class ThriftValidation
     {
         SliceRange sr = sp.slice_range;
         IDiskAtomFilter filter;
+
+        CellNameType comparator = metadata.isSuper()
+                                ? CellNames.simpleDenseType(metadata.comparator.subtype(superColumn == null ? 0 : 1))
+                                : metadata.comparator;
         if (sr == null)
         {
-            AbstractType<?> comparator = metadata.isSuper()
-                    ? ((CompositeType)metadata.comparator).types.get(superColumn == null ? 0 : 1)
-                    : metadata.comparator;
 
-            SortedSet<ByteBuffer> ss = new TreeSet<ByteBuffer>(comparator);
-            ss.addAll(sp.column_names);
+            SortedSet<CellName> ss = new TreeSet<CellName>(comparator);
+            for (ByteBuffer bb : sp.column_names)
+                ss.add(comparator.cellFromByteBuffer(bb));
             filter = new NamesQueryFilter(ss);
         }
         else
         {
-            filter = new SliceQueryFilter(sr.start, sr.finish, sr.reversed, sr.count);
+            filter = new SliceQueryFilter(comparator.fromByteBuffer(sr.start),
+                                          comparator.fromByteBuffer(sr.finish),
+                                          sr.reversed,
+                                          sr.count);
         }
 
         if (metadata.isSuper())
-            filter = SuperColumns.fromSCFilter((CompositeType)metadata.comparator, superColumn, filter);
+            filter = SuperColumns.fromSCFilter(metadata.comparator, superColumn, filter);
         return filter;
     }
 }

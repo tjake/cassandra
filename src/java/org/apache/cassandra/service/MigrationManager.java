@@ -384,12 +384,13 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
         DecoratedKey dkey = StorageService.getPartitioner().decorateKey(LAST_MIGRATION_KEY);
         Table defs = Table.open(Table.SYSTEM_KS);
         ColumnFamilyStore cfStore = defs.getColumnFamilyStore(DefsTable.OLD_SCHEMA_CF);
-        QueryFilter filter = QueryFilter.getNamesFilter(dkey, DefsTable.OLD_SCHEMA_CF, LAST_MIGRATION_KEY);
+        CellNameType type = cfStore.getComparator();
+        QueryFilter filter = QueryFilter.getNamesFilter(dkey, DefsTable.OLD_SCHEMA_CF, FBUtilities.singleton(type.make(LAST_MIGRATION_KEY), type));
         ColumnFamily cf = cfStore.getColumnFamily(filter);
         if (cf == null || Iterables.isEmpty(cf.getColumnNames()))
             return null;
         else
-            return UUIDGen.getUUID(cf.getColumn(LAST_MIGRATION_KEY).value());
+            return UUIDGen.getUUID(cf.getColumn(type.make(LAST_MIGRATION_KEY)).value());
     }
 
     public static class MigrationsSerializer implements IVersionedSerializer<Collection<RowMutation>>

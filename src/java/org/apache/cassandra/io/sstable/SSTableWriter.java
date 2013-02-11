@@ -192,7 +192,7 @@ public class SSTableWriter extends SSTable
             dataFile.stream.writeLong(buffer.getLength() + delSize + typeSizes.sizeof(0));
 
             // Write deletion infos + column count
-            DeletionInfo.serializer().serializeForSSTable(cf.deletionInfo(), dataFile.stream);
+            cf.getComparator().deletionInfoSerializer().serializeForSSTable(cf.deletionInfo(), dataFile.stream);
             dataFile.stream.writeInt(builder.writtenAtomCount());
             dataFile.stream.write(buffer.getData(), 0, buffer.getLength());
             afterAppend(decoratedKey, startPosition, cf.deletionInfo(), index);
@@ -224,12 +224,13 @@ public class SSTableWriter extends SSTable
             throw new FSWriteError(e, dataFile.getPath());
         }
 
-        DeletionInfo deletionInfo = DeletionInfo.serializer().deserializeFromSSTable(in, descriptor.version);
+        DeletionInfo.Serializer delSerializer = metadata.comparator.deletionInfoSerializer();
+        DeletionInfo deletionInfo = delSerializer.deserializeFromSSTable(in, descriptor.version);
         int columnCount = in.readInt();
 
         try
         {
-            DeletionInfo.serializer().serializeForSSTable(deletionInfo, dataFile.stream);
+            delSerializer.serializeForSSTable(deletionInfo, dataFile.stream);
             dataFile.stream.writeInt(columnCount);
         }
         catch (IOException e)
@@ -246,7 +247,7 @@ public class SSTableWriter extends SSTable
         cf.delete(deletionInfo);
 
         ColumnIndex.Builder columnIndexer = new ColumnIndex.Builder(cf, key.key, dataFile.stream);
-        OnDiskAtom.Serializer atomSerializer = Column.onDiskSerializer();
+        OnDiskAtom.Serializer atomSerializer = metadata.comparator.onDiskAtomSerializer();
         for (int i = 0; i < columnCount; i++)
         {
             // deserialize column with PRESERVE_SIZE because we've written the dataSize based on the
@@ -424,7 +425,7 @@ public class SSTableWriter extends SSTable
             try
             {
                 ByteBufferUtil.writeWithShortLength(key.key, indexFile.stream);
-                RowIndexEntry.serializer.serialize(indexEntry, indexFile.stream);
+                metadata.comparator.rowIndexEntrySerializer().serialize(indexEntry, indexFile.stream);
             }
             catch (IOException e)
             {

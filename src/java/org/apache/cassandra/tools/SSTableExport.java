@@ -43,6 +43,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.CellNameType;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.CounterColumn;
 import org.apache.cassandra.db.DecoratedKey;
@@ -148,7 +149,7 @@ public class SSTableExport
      * @param comparator columns comparator
      * @param cfMetaData Column Family metadata (to get validator)
      */
-    private static void serializeAtoms(Iterator<OnDiskAtom> atoms, PrintStream out, AbstractType<?> comparator, CFMetaData cfMetaData)
+    private static void serializeAtoms(Iterator<OnDiskAtom> atoms, PrintStream out, CellNameType comparator, CFMetaData cfMetaData)
     {
         while (atoms.hasNext())
         {
@@ -159,7 +160,7 @@ public class SSTableExport
         }
     }
 
-    private static void serializeColumns(Iterator<Column> columns, PrintStream out, AbstractType<?> comparator, CFMetaData cfMetaData)
+    private static void serializeColumns(Iterator<Column> columns, PrintStream out, CellNameType comparator, CFMetaData cfMetaData)
     {
         while (columns.hasNext())
         {
@@ -170,7 +171,7 @@ public class SSTableExport
         }
     }
 
-    private static List<Object> serializeAtom(OnDiskAtom atom, AbstractType<?> comparator, CFMetaData cfMetaData)
+    private static List<Object> serializeAtom(OnDiskAtom atom, CellNameType comparator, CFMetaData cfMetaData)
     {
         if (atom instanceof Column)
         {
@@ -199,21 +200,20 @@ public class SSTableExport
      *
      * @return column as serialized list
      */
-    private static List<Object> serializeColumn(Column column, AbstractType<?> comparator, CFMetaData cfMetaData)
+    private static List<Object> serializeColumn(Column column, CellNameType comparator, CFMetaData cfMetaData)
     {
         ArrayList<Object> serializedColumn = new ArrayList<Object>();
 
-        ByteBuffer name = ByteBufferUtil.clone(column.name());
         ByteBuffer value = ByteBufferUtil.clone(column.value());
 
-        serializedColumn.add(comparator.getString(name));
+        serializedColumn.add(comparator.getString(column.name()));
         if (column instanceof DeletedColumn)
         {
             serializedColumn.add(ByteBufferUtil.bytesToHex(value));
         }
         else
         {
-            AbstractType<?> validator = cfMetaData.getValueValidator(cfMetaData.getColumnDefinitionFromColumnName(name));
+            AbstractType<?> validator = cfMetaData.getValueValidator(cfMetaData.getColumnDefinitionFromColumnName(column.name()));
             serializedColumn.add(validator.getString(value));
         }
         serializedColumn.add(column.timestamp());
@@ -247,7 +247,7 @@ public class SSTableExport
     {
         ColumnFamily columnFamily = row.getColumnFamily();
         CFMetaData cfMetaData = columnFamily.metadata();
-        AbstractType<?> comparator = columnFamily.getComparator();
+        CellNameType comparator = columnFamily.getComparator();
 
         out.print("{");
         writeKey(out, "key");

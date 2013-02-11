@@ -96,9 +96,6 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
     public final SecondaryIndexManager indexManager;
 
-    private static final int INTERN_CUTOFF = 256;
-    public final ConcurrentMap<ByteBuffer, ByteBuffer> internedNames = new NonBlockingHashMap<ByteBuffer, ByteBuffer>();
-
     /* These are locally held copies to be changed from the config during runtime */
     private volatile DefaultInteger minCompactionThreshold;
     private volatile DefaultInteger maxCompactionThreshold;
@@ -1176,7 +1173,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return metric.writeLatency.recentLatencyHistogram.getBuckets(true);
     }
 
-    public ColumnFamily getColumnFamily(DecoratedKey key, ByteBuffer start, ByteBuffer finish, boolean reversed, int limit)
+    public ColumnFamily getColumnFamily(DecoratedKey key, Composite start, Composite finish, boolean reversed, int limit)
     {
         return getColumnFamily(QueryFilter.getSliceFilter(key, name, start, finish, reversed, limit));
     }
@@ -1568,7 +1565,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
-    public AbstractType<?> getComparator()
+    public CellNameType getComparator()
     {
         return metadata.comparator;
     }
@@ -2048,35 +2045,6 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     public boolean isIndex()
     {
         return partitioner instanceof LocalPartitioner;
-    }
-
-    private ByteBuffer intern(ByteBuffer name)
-    {
-        ByteBuffer internedName = internedNames.get(name);
-        if (internedName == null)
-        {
-            internedName = ByteBufferUtil.clone(name);
-            ByteBuffer concurrentName = internedNames.putIfAbsent(internedName, internedName);
-            if (concurrentName != null)
-                internedName = concurrentName;
-        }
-        return internedName;
-    }
-
-    public ByteBuffer internOrCopy(ByteBuffer name, Allocator allocator)
-    {
-        if (internedNames.size() >= INTERN_CUTOFF)
-            return allocator.clone(name);
-
-        return intern(name);
-    }
-
-    public ByteBuffer maybeIntern(ByteBuffer name)
-    {
-        if (internedNames.size() >= INTERN_CUTOFF)
-            return null;
-
-        return intern(name);
     }
 
     public SSTableWriter createCompactionWriter(OperationType operationType, long estimatedRows, File location, Collection<SSTableReader> sstables)

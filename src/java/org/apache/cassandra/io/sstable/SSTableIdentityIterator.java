@@ -138,7 +138,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
                     try
                     {
                         // skipping the old row-level BF should have left the file position ready to deserialize index
-                        IndexHelper.deserializeIndex(file);
+                        IndexHelper.deserializeIndex(file, sstable.metadata.comparator);
                     }
                     catch (Exception e)
                     {
@@ -155,7 +155,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
                 IndexHelper.skipIndex(inputWithTracker);
             }
             columnFamily = EmptyColumns.factory.create(metadata);
-            columnFamily.delete(DeletionInfo.serializer().deserializeFromSSTable(inputWithTracker, dataVersion));
+            columnFamily.delete(columnFamily.getComparator().deletionInfoSerializer().deserializeFromSSTable(inputWithTracker, dataVersion));
 
             columnCount = inputWithTracker.readInt();
             atomIterator = columnFamily.metadata().getOnDiskIterator(inputWithTracker, columnCount, dataVersion);

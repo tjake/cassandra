@@ -27,7 +27,8 @@ import org.apache.cassandra.cql3.ColumnNameBuilder;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
-import org.apache.cassandra.db.marshal.*;
+import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CompositeType;
 
 /**
  * Index on a PARTITION_KEY column definition.
@@ -49,13 +50,14 @@ import org.apache.cassandra.db.marshal.*;
  */
 public class CompositesIndexOnPartitionKey extends CompositesIndex
 {
-    public static CompositeType buildIndexComparator(CFMetaData baseMetadata, ColumnDefinition columnDef)
+    public static CellNameType buildIndexComparator(CFMetaData baseMetadata, ColumnDefinition columnDef)
     {
         int ckCount = baseMetadata.clusteringKeyColumns().size();
         List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(ckCount + 1);
         types.add(SecondaryIndex.keyComparator);
-        types.addAll(baseMetadata.comparator.getComponents());
-        return CompositeType.getInstance(types);
+        for (int i = 0; i < ckCount; i++)
+            types.add(baseMetadata.comparator.subtype(i));
+        return CellNames.compositeDenseType(types);
     }
 
     protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column)
@@ -65,32 +67,28 @@ public class CompositesIndexOnPartitionKey extends CompositesIndex
         return components[columnDef.componentIndex];
     }
 
-    protected ColumnNameBuilder makeIndexColumnNameBuilder(ByteBuffer rowKey, ByteBuffer columnName)
+    protected Composite makeIndexColumnPrefix(ByteBuffer rowKey, Composite columnName)
     {
-        int ckCount = baseCfs.metadata.clusteringKeyColumns().size();
-        CompositeType baseComparator = (CompositeType)baseCfs.getComparator();
-        ByteBuffer[] components = baseComparator.split(columnName);
-        CompositeType.Builder builder = getIndexComparator().builder();
+        int count = Math.min(baseCfs.metadata.clusteringKeyColumns().size(), columnName.size());
+        CBuilder builder = getIndexComparator().builder();
         builder.add(rowKey);
-        for (int i = 0; i < ckCount; i++)
-            builder.add(components[i]);
-        return builder;
+        for (int i = 0; i < count; i++)
+            builder.add(columnName.get(i));
+        return builder.build();
     }
 
     public IndexedEntry decodeEntry(DecoratedKey indexedValue, Column indexEntry)
     {
         int ckCount = baseCfs.metadata.clusteringKeyColumns().size();
-        ByteBuffer[] components = getIndexComparator().split(indexEntry.name());
-
-        ColumnNameBuilder builder = getBaseComparator().builder();
+        CBuilder builder = baseCfs.getComparator().builder();
         for (int i = 0; i < ckCount; i++)
-            builder.add(components[i + 1]);
+            builder.add(indexEntry.name().get(i + 1));
 
-        return new IndexedEntry(indexedValue, indexEntry.name(), indexEntry.timestamp(), components[0], builder);
+        return new IndexedEntry(indexedValue, indexEntry.name(), indexEntry.timestamp(), indexEntry.name().get(0), builder.build());
     }
 
     @Override
-    public boolean indexes(ByteBuffer name)
+    public boolean indexes(CellName name)
     {
         // Since a partition key is always full, we always index it
         return true;

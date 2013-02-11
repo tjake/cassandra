@@ -53,28 +53,28 @@ public class CounterColumn extends Column
 
     private final long timestampOfLastDelete;
 
-    public CounterColumn(ByteBuffer name, long value, long timestamp)
+    public CounterColumn(CellName name, long value, long timestamp)
     {
         this(name, contextManager.create(value, HeapAllocator.instance), timestamp);
     }
 
-    public CounterColumn(ByteBuffer name, long value, long timestamp, long timestampOfLastDelete)
+    public CounterColumn(CellName name, long value, long timestamp, long timestampOfLastDelete)
     {
         this(name, contextManager.create(value, HeapAllocator.instance), timestamp, timestampOfLastDelete);
     }
 
-    public CounterColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public CounterColumn(CellName name, ByteBuffer value, long timestamp)
     {
         this(name, value, timestamp, Long.MIN_VALUE);
     }
 
-    public CounterColumn(ByteBuffer name, ByteBuffer value, long timestamp, long timestampOfLastDelete)
+    public CounterColumn(CellName name, ByteBuffer value, long timestamp, long timestampOfLastDelete)
     {
         super(name, value, timestamp);
         this.timestampOfLastDelete = timestampOfLastDelete;
     }
 
-    public static CounterColumn create(ByteBuffer name, ByteBuffer value, long timestamp, long timestampOfLastDelete, ColumnSerializer.Flag flag)
+    public static CounterColumn create(CellName name, ByteBuffer value, long timestamp, long timestampOfLastDelete, ColumnSerializer.Flag flag)
     {
         // #elt being negative means we have to clean delta
         short count = value.getShort(value.position());
@@ -84,7 +84,7 @@ public class CounterColumn extends Column
     }
 
     @Override
-    public Column withUpdatedName(ByteBuffer newName)
+    public Column withUpdatedName(CellName newName)
     {
         return new CounterColumn(newName, value, timestamp, timestampOfLastDelete);
     }
@@ -110,9 +110,9 @@ public class CounterColumn extends Column
     }
 
     @Override
-    public int serializedSize(TypeSizes typeSizes)
+    public int serializedSize(CellNameType type, TypeSizes typeSizes)
     {
-        return super.serializedSize(typeSizes) + typeSizes.sizeof(timestampOfLastDelete);
+        return super.serializedSize(type, typeSizes) + typeSizes.sizeof(timestampOfLastDelete);
     }
 
     @Override
@@ -147,7 +147,7 @@ public class CounterColumn extends Column
     @Override
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.toByteBuffer().duplicate());
         // We don't take the deltas into account in a digest
         contextManager.updateDigest(digest, value);
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -215,17 +215,17 @@ public class CounterColumn extends Column
     @Override
     public Column localCopy(ColumnFamilyStore cfs)
     {
-        return new CounterColumn(cfs.internOrCopy(name, HeapAllocator.instance), ByteBufferUtil.clone(value), timestamp, timestampOfLastDelete);
+        return localCopy(cfs, HeapAllocator.instance);
     }
 
     @Override
     public Column localCopy(ColumnFamilyStore cfs, Allocator allocator)
     {
-        return new CounterColumn(cfs.internOrCopy(name, allocator), allocator.clone(value), timestamp, timestampOfLastDelete);
+        return new CounterColumn(name.copy(allocator), allocator.clone(value), timestamp, timestampOfLastDelete);
     }
 
     @Override
-    public String getString(AbstractType<?> comparator)
+    public String getString(CellNameType comparator)
     {
         StringBuilder sb = new StringBuilder();
         sb.append(comparator.getString(name));

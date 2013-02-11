@@ -26,6 +26,7 @@ import com.google.common.collect.Maps;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.StorageService;
@@ -249,7 +250,7 @@ public class ColumnDefinition
      * @return Thrift-based deserialized representation of the column
      * @param row
      */
-    public static List<ColumnDefinition> fromSchema(Row row, CFMetaData cfm)
+    public static List<ColumnDefinition> fromSchema(Row row, AbstractType<?> rawComparator, boolean isSuper)
     {
         if (row.cf == null)
             return Collections.emptyList();
@@ -273,14 +274,23 @@ public class ColumnDefinition
                 if (result.has("component_index"))
                     componentIndex = result.getInt("component_index");
                 // A ColumnDefinition for super columns applies to the column component
-                else if (cfm.isSuper())
+                else if (isSuper)
                     componentIndex = 1;
 
                 Type type = result.has("type")
                           ? Enum.valueOf(Type.class, result.getString("type").toUpperCase())
                           : Type.REGULAR;
 
-                cds.add(new ColumnDefinition(cfm.getComponentComparator(componentIndex, type).fromString(result.getString("column_name")),
+
+                AbstractType<?> componentComparator;
+                if (type == Type.REGULAR)
+                    componentComparator = componentIndex == null || !(rawComparator instanceof org.apache.cassandra.db.marshal.CompositeType)
+                                        ? rawComparator
+                                        : ((org.apache.cassandra.db.marshal.CompositeType)rawComparator).types.get(componentIndex);
+                else
+                    componentComparator = UTF8Type.instance; // CQL3 column names are UTF8
+
+                cds.add(new ColumnDefinition(componentComparator.fromString(result.getString("column_name")),
                                              TypeParser.parse(result.getString("validator")),
                                              index_type,
                                              index_options,
@@ -301,9 +311,10 @@ public class ColumnDefinition
     {
         DecoratedKey key = StorageService.getPartitioner().decorateKey(SystemTable.getSchemaKSKey(ksName));
         ColumnFamilyStore columnsStore = SystemTable.schemaCFS(SystemTable.SCHEMA_COLUMNS_CF);
+        Composite prefixToFetch = CFMetaData.SchemaColumnsCf.comparator.builder().add(cfName).build();
         ColumnFamily cf = columnsStore.getColumnFamily(key,
-                                                       DefsTable.searchComposite(cfName, true),
-                                                       DefsTable.searchComposite(cfName, false),
+                                                       prefixToFetch.start(),
+                                                       prefixToFetch.end(),
                                                        false,
                                                        Integer.MAX_VALUE);
         return new Row(key, cf);

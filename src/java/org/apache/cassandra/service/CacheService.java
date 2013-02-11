@@ -42,7 +42,9 @@ import org.apache.cassandra.cache.*;
 import org.apache.cassandra.cache.AutoSavingCache.CacheSerializer;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
@@ -127,7 +129,8 @@ public class CacheService implements CacheServiceMBean
             {
                 public int weightOf(KeyCacheKey key, RowIndexEntry entry)
                 {
-                    return key.key.length + entry.serializedSize();
+                    CFMetaData cfm = Schema.instance.getCFMetaData(key.desc.ksname, key.desc.cfname);
+                    return key.key.length + cfm.comparator.rowIndexEntrySerializer().serializedSize(entry);
                 }
             };
             kc = ConcurrentLinkedHashCache.create(keyCacheInMemoryCapacity, weigher);
@@ -353,7 +356,8 @@ public class CacheService implements CacheServiceMBean
             out.writeBoolean(desc.version.hasPromotedIndexes);
             if (!desc.version.hasPromotedIndexes)
                 return;
-            RowIndexEntry.serializer.serialize(entry, out);
+            CFMetaData cfm = Schema.instance.getCFMetaData(key.desc.ksname, key.desc.cfname);
+            cfm.comparator.rowIndexEntrySerializer().serialize(entry, out);
         }
 
         public Future<Pair<KeyCacheKey, RowIndexEntry>> deserialize(DataInputStream input, ColumnFamilyStore cfs) throws IOException
@@ -363,12 +367,12 @@ public class CacheService implements CacheServiceMBean
             SSTableReader reader = findDesc(generation, cfs.getSSTables());
             if (reader == null)
             {
-                RowIndexEntry.serializer.skipPromotedIndex(input);
+                RowIndexEntry.Serializer.skipPromotedIndex(input);
                 return null;
             }
             RowIndexEntry entry;
             if (input.readBoolean())
-                entry = RowIndexEntry.serializer.deserialize(input, reader.descriptor.version);
+                entry = reader.metadata.comparator.rowIndexEntrySerializer().deserialize(input, reader.descriptor.version);
             else
                 entry = reader.getPosition(reader.partitioner.decorateKey(key), Operator.EQ);
             return Futures.immediateFuture(Pair.create(new KeyCacheKey(reader.descriptor, key), entry));

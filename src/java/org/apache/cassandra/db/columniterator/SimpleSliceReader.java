@@ -37,13 +37,13 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
 {
     private final FileDataInput file;
     private final boolean needsClosing;
-    private final ByteBuffer finishColumn;
-    private final AbstractType<?> comparator;
+    private final Composite finishColumn;
+    private final CellNameType comparator;
     private final ColumnFamily emptyColumnFamily;
     private FileMark mark;
     private final Iterator<OnDiskAtom> atomIterator;
 
-    public SimpleSliceReader(SSTableReader sstable, RowIndexEntry indexEntry, FileDataInput input, ByteBuffer finishColumn)
+    public SimpleSliceReader(SSTableReader sstable, RowIndexEntry indexEntry, FileDataInput input, Composite finishColumn)
     {
         this.finishColumn = finishColumn;
         this.comparator = sstable.metadata.comparator;
@@ -74,8 +74,8 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
             }
 
             emptyColumnFamily = EmptyColumns.factory.create(sstable.metadata);
-            emptyColumnFamily.delete(DeletionInfo.serializer().deserializeFromSSTable(file, version));
-            atomIterator = emptyColumnFamily.metadata().getOnDiskIterator(file, file.readInt(), version);
+            emptyColumnFamily.delete(sstable.metadata.comparator.deletionInfoSerializer().deserializeFromSSTable(file, sstable.descriptor.version));
+            atomIterator = emptyColumnFamily.metadata().getOnDiskIterator(file, file.readInt(), sstable.descriptor.version);
             mark = file.mark();
         }
         catch (IOException e)
@@ -100,7 +100,7 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
         {
             throw new CorruptSSTableException(e, file.getPath());
         }
-        if (finishColumn.remaining() > 0 && comparator.compare(column.name(), finishColumn) > 0)
+        if (!finishColumn.isEmpty() && comparator.compare(column.name(), finishColumn) > 0)
             return endOfData();
 
         mark = file.mark();

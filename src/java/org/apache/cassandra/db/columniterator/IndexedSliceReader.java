@@ -54,7 +54,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
     private final ColumnSlice[] slices;
     private final BlockFetcher fetcher;
     private final Deque<OnDiskAtom> blockColumns = new ArrayDeque<OnDiskAtom>();
-    private final AbstractType<?> comparator;
+    private final CellNameType comparator;
 
     /**
      * This slice reader assumes that slices are sorted correctly, e.g. that for forward lookup slices are in
@@ -80,7 +80,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
                 {
                     setToRowStart(sstable, indexEntry, input);
                     this.emptyColumnFamily = EmptyColumns.factory.create(sstable.metadata);
-                    emptyColumnFamily.delete(DeletionInfo.serializer().deserializeFromSSTable(file, version));
+                    emptyColumnFamily.delete(emptyColumnFamily.getComparator().deletionInfoSerializer().deserializeFromSSTable(file, sstable.descriptor.version));
                     fetcher = new SimpleBlockFetcher();
                 }
                 else
@@ -94,9 +94,9 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
             {
                 setToRowStart(sstable, indexEntry, input);
                 IndexHelper.skipBloomFilter(file, version.filterType);
-                this.indexes = IndexHelper.deserializeIndex(file);
+                this.indexes = IndexHelper.deserializeIndex(file, sstable.metadata.comparator);
                 this.emptyColumnFamily = EmptyColumns.factory.create(sstable.metadata);
-                emptyColumnFamily.delete(DeletionInfo.serializer().deserializeFromSSTable(file, version));
+                emptyColumnFamily.delete(sstable.metadata.comparator.deletionInfoSerializer().deserializeFromSSTable(file, sstable.descriptor.version));
                 fetcher = indexes.isEmpty()
                         ? new SimpleBlockFetcher()
                         : new IndexedBlockFetcher(file.getFilePointer() + 4); // We still have the column count to
@@ -181,7 +181,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
         /*
          * Return the smallest key selected by the current ColumnSlice.
          */
-        protected ByteBuffer currentStart()
+        protected Composite currentStart()
         {
             return reversed ? slices[currentSliceIdx].finish : slices[currentSliceIdx].start;
         }
@@ -189,7 +189,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
         /*
          * Return the biggest key selected by the current ColumnSlice.
          */
-        protected ByteBuffer currentFinish()
+        protected Composite currentFinish()
         {
             return reversed ? slices[currentSliceIdx].start : slices[currentSliceIdx].finish;
         }
@@ -203,22 +203,22 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
             return isBeforeSliceStart(column.name());
         }
 
-        protected boolean isBeforeSliceStart(ByteBuffer name)
+        protected boolean isBeforeSliceStart(Composite name)
         {
-            ByteBuffer start = currentStart();
-            return start.remaining() != 0 && comparator.compare(name, start) < 0;
+            Composite start = currentStart();
+            return !start.isEmpty() && comparator.compare(name, start) < 0;
         }
 
         protected boolean isColumnBeforeSliceFinish(OnDiskAtom column)
         {
-            ByteBuffer finish = currentFinish();
-            return finish.remaining() == 0 || comparator.compare(column.name(), finish) <= 0;
+            Composite finish = currentFinish();
+            return finish.isEmpty() || comparator.compare(column.name(), finish) <= 0;
         }
 
-        protected boolean isAfterSliceFinish(ByteBuffer name)
+        protected boolean isAfterSliceFinish(Composite name)
         {
-            ByteBuffer finish = currentFinish();
-            return finish.remaining() != 0 && comparator.compare(name, finish) > 0;
+            Composite finish = currentFinish();
+            return !finish.isEmpty() && comparator.compare(name, finish) > 0;
         }
     }
 

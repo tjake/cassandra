@@ -89,7 +89,7 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
         return new IntervalTree<C, D, I>(intervals, null);
     }
 
-    public static <C, D, I extends Interval<C, D>> Serializer<C, D, I> serializer(ISerializer<C> pointSerializer, ISerializer<D> dataSerializer, Constructor<I> constructor)
+    public static <C, D, I extends Interval<C, D>> Serializer<C, D, I> serializer(IVersionedSerializer<C> pointSerializer, IVersionedSerializer<D> dataSerializer, Constructor<I> constructor)
     {
         return new Serializer(pointSerializer, dataSerializer, constructor);
     }
@@ -379,11 +379,11 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
 
     public static class Serializer<C, D, I extends Interval<C, D>> implements IVersionedSerializer<IntervalTree<C, D, I>>
     {
-        private final ISerializer<C> pointSerializer;
-        private final ISerializer<D> dataSerializer;
+        private final IVersionedSerializer<C> pointSerializer;
+        private final IVersionedSerializer<D> dataSerializer;
         private final Constructor<I> constructor;
 
-        private Serializer(ISerializer<C> pointSerializer, ISerializer<D> dataSerializer, Constructor<I> constructor)
+        private Serializer(IVersionedSerializer<C> pointSerializer, IVersionedSerializer<D> dataSerializer, Constructor<I> constructor)
         {
             this.pointSerializer = pointSerializer;
             this.dataSerializer = dataSerializer;
@@ -395,9 +395,9 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
             out.writeInt(it.count);
             for (Interval<C, D> interval : it)
             {
-                pointSerializer.serialize(interval.min, out);
-                pointSerializer.serialize(interval.max, out);
-                dataSerializer.serialize(interval.data, out);
+                pointSerializer.serialize(interval.min, out, version);
+                pointSerializer.serialize(interval.max, out, version);
+                dataSerializer.serialize(interval.data, out, version);
             }
         }
 
@@ -420,9 +420,9 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
                 List<Interval<C, D>> intervals = new ArrayList<Interval<C, D>>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    C min = pointSerializer.deserialize(in);
-                    C max = pointSerializer.deserialize(in);
-                    D data = dataSerializer.deserialize(in);
+                    C min = pointSerializer.deserialize(in, version);
+                    C max = pointSerializer.deserialize(in, version);
+                    D data = dataSerializer.deserialize(in, version);
                     intervals.add(constructor.newInstance(min, max, data));
                 }
                 return new IntervalTree(intervals, comparator);
@@ -441,21 +441,16 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
             }
         }
 
-        public long serializedSize(IntervalTree<C, D, I> it, TypeSizes typeSizes, int version)
-        {
-            long size = typeSizes.sizeof(0);
-            for (Interval<C, D> interval : it)
-            {
-                size += pointSerializer.serializedSize(interval.min, typeSizes);
-                size += pointSerializer.serializedSize(interval.max, typeSizes);
-                size += dataSerializer.serializedSize(interval.data, typeSizes);
-            }
-            return size;
-        }
-
         public long serializedSize(IntervalTree<C, D, I> it, int version)
         {
-            return serializedSize(it, TypeSizes.NATIVE, version);
+            long size = TypeSizes.NATIVE.sizeof(0);
+            for (Interval<C, D> interval : it)
+            {
+                size += pointSerializer.serializedSize(interval.min, version);
+                size += pointSerializer.serializedSize(interval.max, version);
+                size += dataSerializer.serializedSize(interval.data, version);
+            }
+            return size;
         }
     }
 }

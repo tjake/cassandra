@@ -158,12 +158,12 @@ public class SecondaryIndexManager
         logger.info("Index build of " + idxNames + " complete");
     }
 
-    public boolean indexes(ByteBuffer name, Collection<SecondaryIndex> indexes)
+    public boolean indexes(CellName name, Collection<SecondaryIndex> indexes)
     {
         return !indexFor(name, indexes).isEmpty();
     }
 
-    public List<SecondaryIndex> indexFor(ByteBuffer name, Collection<SecondaryIndex> indexes)
+    public List<SecondaryIndex> indexFor(CellName name, Collection<SecondaryIndex> indexes)
     {
         List<SecondaryIndex> matching = null;
         for (SecondaryIndex index : indexes)
@@ -183,12 +183,12 @@ public class SecondaryIndexManager
         return indexes(column.name());
     }
 
-    public boolean indexes(ByteBuffer name)
+    public boolean indexes(CellName name)
     {
         return indexes(name, indexesByColumn.values());
     }
 
-    public List<SecondaryIndex> indexFor(ByteBuffer name)
+    public List<SecondaryIndex> indexFor(CellName name)
     {
         return indexFor(name, indexesByColumn.values());
     }
@@ -310,14 +310,6 @@ public class SecondaryIndexManager
     public SecondaryIndex getIndexForColumn(ByteBuffer column)
     {
         return indexesByColumn.get(column);
-    }
-
-    private SecondaryIndex getIndexForFullColumnName(ByteBuffer column)
-    {
-        for (SecondaryIndex index : indexesByColumn.values())
-            if (index.indexes(column))
-                return index;
-        return null;
     }
 
     /**
@@ -583,8 +575,13 @@ public class SecondaryIndexManager
 
     public boolean validate(Column column)
     {
-        SecondaryIndex index = getIndexForColumn(column.name());
-        return index != null ? index.validate(column) : true;
+        List<SecondaryIndex> indexes = indexFor(column.name());
+        for (SecondaryIndex index : indexes)
+        {
+            if (!index.validate(column))
+                return false;
+        }
+        return true;
     }
 
     public static interface Updater
@@ -619,7 +616,7 @@ public class SecondaryIndexManager
             for (SecondaryIndex index : indexFor(column.name()))
             {
                 ((PerColumnSecondaryIndex) index).delete(key.key, oldColumn);
-                if (column.isMarkedForDelete())
+                if (!column.isMarkedForDelete())
                     ((PerColumnSecondaryIndex) index).insert(key.key, column);
             }
         }

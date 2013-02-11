@@ -49,7 +49,7 @@ public abstract class SecondaryIndexSearcher
         return highestSelectivityPredicate(clause) != null;
     }
 
-    protected boolean isIndexValueStale(ColumnFamily liveData, ByteBuffer indexedColumnName, ByteBuffer indexedValue)
+    protected boolean isIndexValueStale(ColumnFamily liveData, CellName indexedColumnName, ByteBuffer indexedValue)
     {
         Column liveColumn = liveData.getColumn(indexedColumnName);
         if (liveColumn == null || liveColumn.isMarkedForDelete())

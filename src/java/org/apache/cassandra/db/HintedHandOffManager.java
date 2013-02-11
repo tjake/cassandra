@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.compaction.CompactionManager;
@@ -99,8 +100,6 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
 
     private volatile boolean hintedHandOffPaused = false;
 
-    static final CompositeType comparator = CompositeType.getInstance(Arrays.<AbstractType<?>>asList(UUIDType.instance, Int32Type.instance));
-
     private final NonBlockingHashSet<InetAddress> queuedDeliveries = new NonBlockingHashSet<InetAddress>();
 
     private final ThreadPoolExecutor executor = new JMXEnabledThreadPoolExecutor(DatabaseDescriptor.getMaxHintsThread(),
@@ -127,7 +126,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
             ttl = Math.min(ttl, cf.metadata().getGcGraceSeconds());
 
         // serialize the hint with id and version as a composite column name
-        ByteBuffer name = comparator.decompose(hintId, MessagingService.current_version);
+        CellName name = CFMetaData.HintsCf.comparator.make(hintId, MessagingService.current_version);
         ByteBuffer value = ByteBuffer.wrap(FBUtilities.serialize(mutation, RowMutation.serializer, MessagingService.current_version));
         ColumnFamily cf = ArrayBackedSortedColumns.factory.create(Schema.instance.getCFMetaData(Table.SYSTEM_KS, SystemTable.HINTS_CF));
         cf.addColumn(name, value, System.currentTimeMillis(), ttl);
@@ -159,7 +158,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         StorageService.optionalTasks.scheduleWithFixedDelay(runnable, 10, 10, TimeUnit.MINUTES);
     }
 
-    private static void deleteHint(ByteBuffer tokenBytes, ByteBuffer columnName, long timestamp)
+    private static void deleteHint(ByteBuffer tokenBytes, CellName columnName, long timestamp)
     {
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, tokenBytes);
         rm.delete(SystemTable.HINTS_CF, columnName, timestamp);
@@ -219,11 +218,11 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         return CompactionManager.instance.submitUserDefined(hintStore, descriptors, (int) (System.currentTimeMillis() / 1000));
     }
 
-    private static boolean pagingFinished(ColumnFamily hintColumnFamily, ByteBuffer startColumn)
+    private static boolean pagingFinished(ColumnFamily hintColumnFamily, Composite startColumn)
     {
         // done if no hints found or the start column (same as last column processed in previous iteration) is the only one
         return hintColumnFamily == null
-               || (hintColumnFamily.getSortedColumns().size() == 1 && hintColumnFamily.getColumn(startColumn) != null);
+               || (hintColumnFamily.getSortedColumns().size() == 1 && !startColumn.isEmpty() && hintColumnFamily.getColumn((CellName)startColumn) != null);
     }
 
     private int waitForSchemaAgreement(InetAddress endpoint) throws TimeoutException
@@ -316,7 +315,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         DecoratedKey epkey =  StorageService.getPartitioner().decorateKey(hostIdBytes);
 
         final AtomicInteger rowsReplayed = new AtomicInteger(0);
-        ByteBuffer startColumn = ByteBufferUtil.EMPTY_BYTE_BUFFER;
+        Composite startColumn = Composites.EMPTY;
 
         int pageSize = calculatePageSize();
         logger.debug("Using pageSize of {}", pageSize);
@@ -331,7 +330,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
             QueryFilter filter = QueryFilter.getSliceFilter(epkey,
                                                             SystemTable.HINTS_CF,
                                                             startColumn,
-                                                            ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                            Composites.EMPTY,
                                                             false,
                                                             pageSize);
 
@@ -369,8 +368,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
 
                 startColumn = hint.name();
 
-                ByteBuffer[] components = comparator.split(hint.name());
-                int version = Int32Type.instance.compose(components[1]);
+                int version = Int32Type.instance.compose(hint.name().get(1));
                 DataInputStream in = new DataInputStream(ByteBufferUtil.inputStream(hint.value()));
                 RowMutation rm;
                 try
@@ -456,7 +454,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         IPartitioner p = StorageService.getPartitioner();
         RowPosition minPos = p.getMinimumToken().minKeyBound();
         Range<RowPosition> range = new Range<RowPosition>(minPos, minPos, p);
-        IDiskAtomFilter filter = new NamesQueryFilter(ImmutableSortedSet.<ByteBuffer>of());
+        IDiskAtomFilter filter = new NamesQueryFilter(ImmutableSortedSet.<CellName>of());
         List<Row> rows = hintStore.getRangeSlice(range, Integer.MAX_VALUE, filter, null);
         for (Row row : rows)
         {
@@ -544,8 +542,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
     private List<Row> getHintsSlice(int columnCount)
     {
         // Get count # of columns...
-        SliceQueryFilter predicate = new SliceQueryFilter(ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                          ByteBufferUtil.EMPTY_BYTE_BUFFER,
+        SliceQueryFilter predicate = new SliceQueryFilter(ColumnSlice.ALL_COLUMNS_ARRAY,
                                                           false,
                                                           columnCount);
 

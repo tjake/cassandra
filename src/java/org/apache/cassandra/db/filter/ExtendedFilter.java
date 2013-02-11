@@ -59,9 +59,9 @@ public abstract class ExtendedFilter
         {
             if (isPaging)
                 throw new IllegalArgumentException("Cross-row paging is not supported along with index clauses");
-            return cfs.getComparator() instanceof CompositeType
-                 ? new FilterWithCompositeClauses(cfs, filter, clause, maxResults, countCQL3Rows)
-                 : new FilterWithClauses(cfs, filter, clause, maxResults, countCQL3Rows);
+            return cfs.getComparator().isPacked()
+                 ? new FilterWithClauses(cfs, filter, clause, maxResults, countCQL3Rows)
+                 : new FilterWithCompositeClauses(cfs, filter, clause, maxResults, countCQL3Rows);
         }
     }
 
@@ -76,7 +76,7 @@ public abstract class ExtendedFilter
         this.isPaging = isPaging;
         if (countCQL3Rows)
             originalFilter.updateColumnsLimit(maxResults);
-        if (isPaging && (!(originalFilter instanceof SliceQueryFilter) || ((SliceQueryFilter)originalFilter).finish().remaining() != 0))
+        if (isPaging && (!(originalFilter instanceof SliceQueryFilter) || !((SliceQueryFilter)originalFilter).finish().isEmpty()))
             throw new IllegalArgumentException("Cross-row paging is only supported for SliceQueryFilter having an empty finish column");
     }
 
@@ -98,7 +98,7 @@ public abstract class ExtendedFilter
     {
         // As soon as we'd done our first call, we want to reset the start column if we're paging
         if (isPaging)
-            ((SliceQueryFilter)initialFilter()).setStart(ByteBufferUtil.EMPTY_BYTE_BUFFER);
+            ((SliceQueryFilter)initialFilter()).setStart(Composites.EMPTY);
 
         if (!countCQL3Rows)
             return;
@@ -141,7 +141,7 @@ public abstract class ExtendedFilter
      * @return true if the provided data satisfies all the expressions from
      * the clause of this filter.
      */
-    public abstract boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, ColumnNameBuilder builder);
+    public abstract boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, Composite prefix);
 
     public static boolean satisfies(int comparison, IndexOperator op)
     {
@@ -185,8 +185,8 @@ public abstract class ExtendedFilter
                 if (cfs.getMaxRowSize() < DatabaseDescriptor.getColumnIndexSize())
                 {
                     logger.trace("Expanding slice filter to entire row to cover additional expressions");
-                    return new SliceQueryFilter(ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                    return new SliceQueryFilter(Composites.EMPTY,
+                                                Composites.EMPTY,
                                                 ((SliceQueryFilter) originalFilter).reversed,
                                                 Integer.MAX_VALUE);
                 }
@@ -197,10 +197,11 @@ public abstract class ExtendedFilter
                 assert originalFilter instanceof NamesQueryFilter;
                 if (!clause.isEmpty())
                 {
-                    SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+                    // We need to fix, make that composite aware
+                    SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
                     for (IndexExpression expr : clause)
                     {
-                        columns.add(expr.column_name);
+                        columns.add(cfs.getComparator().cellFromByteBuffer(expr.column_name));
                     }
                     columns.addAll(((NamesQueryFilter) originalFilter).columns);
                     return ((NamesQueryFilter)originalFilter).withUpdatedColumns(columns);
@@ -226,6 +227,7 @@ public abstract class ExtendedFilter
          */
         private boolean needsExtraQuery(ColumnFamily data)
         {
+            // Note: this is not called for composites
             if (!(originalFilter instanceof SliceQueryFilter))
                 return false;
 
@@ -239,7 +241,7 @@ public abstract class ExtendedFilter
 
             for (IndexExpression expr : clause)
             {
-                if (data.getColumn(expr.column_name) == null)
+                if (data.getColumn(data.getComparator().cellFromByteBuffer(expr.column_name)) == null)
                 {
                     logger.debug("adding extraFilter to cover additional expressions");
                     return true;
@@ -250,16 +252,20 @@ public abstract class ExtendedFilter
 
         public IDiskAtomFilter getExtraFilter(ColumnFamily data)
         {
+            // We only do that for KEYS index. For COMPOSITES ones, we alway
+            // query the full CQL3 rows entirely for now, so we don't have an
+            // "extra" filter.
             if (!needsExtraQuery(data))
                 return null;
 
             // Note: for counters we must be careful to not add a column that was already there (to avoid overcount). That is
             // why we do the dance of avoiding to query any column we already have (it's also more efficient anyway)
-            SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+            SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
             for (IndexExpression expr : clause)
             {
-                if (data.getColumn(expr.column_name) == null)
-                    columns.add(expr.column_name);
+                CellName name = data.getComparator().cellFromByteBuffer(expr.column_name);
+                if (data.getColumn(name) == null)
+                    columns.add(name);
             }
             assert !columns.isEmpty();
             return new NamesQueryFilter(columns);
@@ -275,7 +281,7 @@ public abstract class ExtendedFilter
             return pruned;
         }
 
-        public boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, ColumnNameBuilder builder)
+        public boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, Composite prefix)
         {
             // We enforces even the primary clause because reads are not synchronized with writes and it is thus possible to have a race
             // where the index returned a row which doesn't have the primary column when we actually read it
@@ -288,7 +294,7 @@ public abstract class ExtendedFilter
                 {
                     // This can't happen with CQL3 as this should be rejected upfront. For thrift however,
                     // column name are not predefined. But that means the column name correspond to an internal one.
-                    Column column = data.getColumn(expression.column_name);
+                    Column column = data.getColumn(data.getComparator().cellFromByteBuffer(expression.column_name));
                     if (column != null)
                     {
                         dataValue = column.value();
@@ -297,7 +303,7 @@ public abstract class ExtendedFilter
                 }
                 else
                 {
-                    dataValue = extractDataValue(def, rowKey, data, builder);
+                    dataValue = extractDataValue(def, rowKey, data, prefix);
                     validator = def.getValidator();
                 }
 
@@ -311,7 +317,7 @@ public abstract class ExtendedFilter
             return true;
         }
 
-        private ByteBuffer extractDataValue(ColumnDefinition def, ByteBuffer rowKey, ColumnFamily data, ColumnNameBuilder builder)
+        private ByteBuffer extractDataValue(ColumnDefinition def, ByteBuffer rowKey, ColumnFamily data, Composite prefix)
         {
             switch (def.type)
             {
@@ -320,10 +326,12 @@ public abstract class ExtendedFilter
                          ? rowKey
                          : ((CompositeType)data.metadata().getKeyValidator()).split(rowKey)[def.componentIndex];
                 case CLUSTERING_KEY:
-                    return builder.get(def.componentIndex);
+                    return prefix.get(def.componentIndex);
                 case REGULAR:
-                    ByteBuffer colName = builder == null ? def.name : builder.copy().add(def.name).build();
-                    Column column = data.getColumn(colName);
+                    CellName cname = prefix == null
+                                   ? data.getComparator().cellFromByteBuffer(def.name)
+                                   : CellNames.make(prefix, def.name);
+                    Column column = data.getColumn(cname);
                     return column == null ? null : column.value();
                 case COMPACT_VALUE:
                     assert data.getColumnCount() == 1;
@@ -345,7 +353,7 @@ public abstract class ExtendedFilter
          * one of the component), which means we should not do the
          * NamesQueryFilter part of FilterWithClauses in particular.
          * Besides, CompositesSearcher doesn't really use the initial filter
-         * expect to know the limit set by the user, so create a fake filter
+         * except to know the limit set by the user, so create a fake filter
          * with only the count information.
          */
         protected IDiskAtomFilter computeInitialFilter()
@@ -384,7 +392,7 @@ public abstract class ExtendedFilter
             return data;
         }
 
-        public boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, ColumnNameBuilder builder)
+        public boolean isSatisfiedBy(ByteBuffer rowKey, ColumnFamily data, Composite prefix)
         {
             return true;
         }

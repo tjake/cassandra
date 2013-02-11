@@ -78,7 +78,7 @@ public class CreateIndexStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException(String.format("Cannot add secondary index to already primarily indexed column %s", columnName));
 
                 // TODO: we could lift that limitation
-                if (cfDef.isCompact && cd.type != ColumnDefinition.Type.REGULAR)
+                if (cfm.comparator.isDense() && cd.type != ColumnDefinition.Type.REGULAR)
                     throw new InvalidRequestException(String.format("Secondary index on %s column %s is not yet supported for compact table", cd.type, columnName));
 
                 if (cd.getValidator().isCollection())
@@ -87,13 +87,13 @@ public class CreateIndexStatement extends SchemaAlteringStatement
                 if (logger.isDebugEnabled())
                     logger.debug("Updating column {} definition for index {}", columnName, indexName);
 
-                if (cfDef.isComposite)
+                if (cfm.comparator.isPacked())
                 {
-                    cd.setIndexType(IndexType.COMPOSITES, Collections.<String, String>emptyMap());
+                    cd.setIndexType(IndexType.KEYS, Collections.<String, String>emptyMap());
                 }
                 else
                 {
-                    cd.setIndexType(IndexType.KEYS, Collections.<String, String>emptyMap());
+                    cd.setIndexType(IndexType.COMPOSITES, Collections.<String, String>emptyMap());
                 }
                 cd.setIndexName(indexName);
                 columnExists = true;

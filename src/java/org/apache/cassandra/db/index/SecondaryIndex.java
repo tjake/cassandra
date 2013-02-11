@@ -28,6 +28,9 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.db.CellName;
+import org.apache.cassandra.db.CellNames;
+import org.apache.cassandra.db.CellNameType;
 import org.apache.cassandra.db.Column;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
@@ -289,19 +292,8 @@ public abstract class SecondaryIndex
 
     /**
      * Returns true if the provided column name is indexed by this secondary index.
-     *
-     * The default implement checks whether the name is one the columnDef name,
-     * but this should be overriden but subclass if needed.
      */
-    public boolean indexes(ByteBuffer name)
-    {
-        for (ColumnDefinition columnDef : columnDefs)
-        {
-            if (baseCfs.getComparator().compare(columnDef.name, name) == 0)
-                return true;
-        }
-        return false;
-    }
+    public abstract boolean indexes(CellName name);
 
     /**
      * This is the primary way to create a secondary index instance for a CF column.
@@ -357,12 +349,12 @@ public abstract class SecondaryIndex
      * Note: it would be cleaner to have this be a member method. However we need this when opening indexes
      * sstables, but by then the CFS won't be fully initiated, so the SecondaryIndex object won't be accessible.
      */
-    public static AbstractType<?> getIndexComparator(CFMetaData baseMetadata, ColumnDefinition cdef)
+    public static CellNameType getIndexComparator(CFMetaData baseMetadata, ColumnDefinition cdef)
     {
         switch (cdef.getIndexType())
         {
             case KEYS:
-                return keyComparator;
+                return CellNames.simpleDenseType(keyComparator);
             case COMPOSITES:
                 return CompositesIndex.getIndexComparator(baseMetadata, cdef);
             case CUSTOM:

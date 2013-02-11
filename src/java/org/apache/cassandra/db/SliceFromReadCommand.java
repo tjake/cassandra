@@ -148,7 +148,8 @@ class SliceFromReadCommandSerializer implements IVersionedSerializer<ReadCommand
         else
             out.writeUTF(realRM.cfName);
 
-        SliceQueryFilter.serializer.serialize(realRM.filter, out, version);
+        CFMetaData metadata = Schema.instance.getCFMetaData(realRM.table, realRM.cfName);
+        metadata.comparator.sliceQueryFilterSerializer().serialize(realRM.filter, out, version);
     }
 
     public ReadCommand deserialize(DataInput in, int version) throws IOException
@@ -171,18 +172,9 @@ class SliceFromReadCommandSerializer implements IVersionedSerializer<ReadCommand
         }
 
         CFMetaData metadata = Schema.instance.getCFMetaData(table, cfName);
-        SliceQueryFilter filter;
-        if (version < MessagingService.VERSION_20)
-        {
-            filter = SliceQueryFilter.serializer.deserialize(in, version);
-
-            if (metadata.cfType == ColumnFamilyType.Super)
-                filter = SuperColumns.fromSCSliceFilter((CompositeType)metadata.comparator, sc, filter);
-        }
-        else
-        {
-            filter = SliceQueryFilter.serializer.deserialize(in, version);
-        }
+        SliceQueryFilter filter = metadata.comparator.sliceQueryFilterSerializer().deserialize(in, version);
+        if (version < MessagingService.VERSION_20 && metadata.cfType == ColumnFamilyType.Super)
+            filter = SuperColumns.fromSCSliceFilter(metadata.comparator, sc, filter);
 
         ReadCommand command = new SliceFromReadCommand(table, key, cfName, filter);
         command.setDigestQuery(isDigest);
@@ -213,7 +205,8 @@ class SliceFromReadCommandSerializer implements IVersionedSerializer<ReadCommand
             size += sizes.sizeof(command.cfName);
         }
 
-        size += SliceQueryFilter.serializer.serializedSize(command.filter, version);
+        CFMetaData metadata = Schema.instance.getCFMetaData(cmd.table, cmd.cfName);
+        size += metadata.comparator.sliceQueryFilterSerializer().serializedSize(command.filter, version);
         return size;
     }
 }

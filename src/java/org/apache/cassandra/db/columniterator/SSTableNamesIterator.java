@@ -18,7 +18,6 @@
 package org.apache.cassandra.db.columniterator;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -38,10 +37,10 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
     private final SSTableReader sstable;
     private FileDataInput fileToClose;
     private Iterator<OnDiskAtom> iter;
-    public final SortedSet<ByteBuffer> columns;
+    public final SortedSet<CellName> columns;
     public final DecoratedKey key;
 
-    public SSTableNamesIterator(SSTableReader sstable, DecoratedKey key, SortedSet<ByteBuffer> columns)
+    public SSTableNamesIterator(SSTableReader sstable, DecoratedKey key, SortedSet<CellName> columns)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -68,7 +67,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         }
     }
 
-    public SSTableNamesIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<ByteBuffer> columns, RowIndexEntry indexEntry)
+    public SSTableNamesIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<CellName> columns, RowIndexEntry indexEntry)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -124,8 +123,8 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         else
         {
             assert file != null;
-            IndexHelper.skipBloomFilter(file, sstable.descriptor.version.filterType );
-            indexList = IndexHelper.deserializeIndex(file);
+            IndexHelper.skipBloomFilter(file, sstable.descriptor.version.filterType);
+            indexList = IndexHelper.deserializeIndex(file, sstable.metadata.comparator);
         }
 
         if (!indexEntry.isIndexed())
@@ -134,7 +133,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
             try
             {
                 cf = ArrayBackedSortedColumns.factory.create(sstable.metadata);
-                cf.delete(DeletionInfo.serializer().deserializeFromSSTable(file, sstable.descriptor.version));
+                cf.delete(cf.getComparator().deletionInfoSerializer().deserializeFromSSTable(file, sstable.descriptor.version));
             }
             catch (Exception e)
             {
@@ -172,7 +171,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         iter = result.iterator();
     }
 
-    private void readSimpleColumns(FileDataInput file, SortedSet<ByteBuffer> columnNames, List<OnDiskAtom> result) throws IOException
+    private void readSimpleColumns(FileDataInput file, SortedSet<CellName> columnNames, List<OnDiskAtom> result) throws IOException
     {
         Iterator<OnDiskAtom> atomIterator = cf.metadata().getOnDiskIterator(file, file.readInt(), sstable.descriptor.version);
         int n = 0;
@@ -197,17 +196,17 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
 
     private void readIndexedColumns(CFMetaData metadata,
                                     FileDataInput file,
-                                    SortedSet<ByteBuffer> columnNames,
+                                    SortedSet<CellName> columnNames,
                                     List<IndexHelper.IndexInfo> indexList,
                                     long basePosition,
                                     List<OnDiskAtom> result)
     throws IOException
     {
         /* get the various column ranges we have to read */
-        AbstractType<?> comparator = metadata.comparator;
+        CellNameType comparator = metadata.comparator;
         List<IndexHelper.IndexInfo> ranges = new ArrayList<IndexHelper.IndexInfo>();
         int lastIndexIdx = -1;
-        for (ByteBuffer name : columnNames)
+        for (CellName name : columnNames)
         {
             int index = IndexHelper.indexFor(name, indexList, comparator, false, lastIndexIdx);
             if (index < 0 || index == indexList.size())

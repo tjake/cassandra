@@ -27,6 +27,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.CellName;
+import org.apache.cassandra.db.CellNames;
+import org.apache.cassandra.db.Composite;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
@@ -258,14 +261,14 @@ public abstract class Constants
 
     public static class Setter extends Operation
     {
-        public Setter(ColumnIdentifier column, Term t)
+        public Setter(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            CellName cname = columnName == null ? CellNames.makeDense(prefix) : CellNames.make(prefix, columnName);
             ByteBuffer value = t.bindAndGet(params.variables);
             cf.addColumn(value == null ? params.makeTombstone(cname) : params.makeColumn(cname, value));
         }
@@ -273,30 +276,30 @@ public abstract class Constants
 
     public static class Adder extends Operation
     {
-        public Adder(ColumnIdentifier column, Term t)
+        public Adder(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
             ByteBuffer bytes = t.bindAndGet(params.variables);
             if (bytes == null)
                 throw new InvalidRequestException("Invalid null value for counter increment");
             long increment = ByteBufferUtil.toLong(bytes);
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            CellName cname = CellNames.make(prefix,  columnName);
             cf.addCounter(cname, increment);
         }
     }
 
     public static class Substracter extends Operation
     {
-        public Substracter(ColumnIdentifier column, Term t)
+        public Substracter(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
             ByteBuffer bytes = t.bindAndGet(params.variables);
             if (bytes == null)
@@ -306,7 +309,7 @@ public abstract class Constants
             if (increment == Long.MIN_VALUE)
                 throw new InvalidRequestException("The negation of " + increment + " overflows supported counter precision (signed 8 bytes integer)");
 
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            CellName cname = CellNames.make(prefix,  columnName);
             cf.addCounter(cname, -increment);
         }
     }
@@ -315,22 +318,18 @@ public abstract class Constants
     // duplicating this further
     public static class Deleter extends Operation
     {
-        private final boolean isCollection;
-
-        public Deleter(ColumnIdentifier column, boolean isCollection)
+        public Deleter(CFDefinition.Name column)
         {
             super(column, null);
-            this.isCollection = isCollection;
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
-            ColumnNameBuilder column = prefix.add(columnName.key);
-
-            if (isCollection)
-                cf.addAtom(params.makeRangeTombstone(column.build(), column.buildAsEndOfRange()));
+            CellName cname = CellNames.make(prefix, columnName);
+            if (columnName.type instanceof CollectionType)
+                cf.addAtom(params.makeRangeTombstone(cname.slice()));
             else
-                cf.addColumn(params.makeTombstone(column.build()));
+                cf.addColumn(params.makeTombstone(cname));
         }
     };
 }

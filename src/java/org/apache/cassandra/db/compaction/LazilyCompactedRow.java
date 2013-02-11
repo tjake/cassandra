@@ -117,7 +117,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
         assert !closed;
 
         DataOutputBuffer clockOut = new DataOutputBuffer();
-        DeletionInfo.serializer().serializeForSSTable(emptyColumnFamily.deletionInfo(), clockOut);
+        emptyColumnFamily.getComparator().deletionInfoSerializer().serializeForSSTable(emptyColumnFamily.deletionInfo(), clockOut);
 
         long dataSize = clockOut.getLength() + columnSerializedSize;
         if (logger.isDebugEnabled())
@@ -149,7 +149,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
 
         try
         {
-            DeletionInfo.serializer().serializeForSSTable(emptyColumnFamily.deletionInfo(), out);
+            emptyColumnFamily.getComparator().deletionInfoSerializer().serializeForSSTable(emptyColumnFamily.deletionInfo(), out);
             out.writeInt(columnStats.columnCount);
             digest.update(out.getData(), 0, out.getLength());
         }
@@ -182,7 +182,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
         return n;
     }
 
-    public AbstractType<?> getComparator()
+    public CellNameType getComparator()
     {
         return emptyColumnFamily.getComparator();
     }
@@ -192,7 +192,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
         for (ICountableColumnIterator row : rows)
             row.reset();
         reducer = new Reducer();
-        Iterator<OnDiskAtom> iter = MergeIterator.get(rows, getComparator().onDiskAtomComparator, reducer);
+        Iterator<OnDiskAtom> iter = MergeIterator.get(rows, getComparator().onDiskAtomComparator(), reducer);
         return Iterators.filter(iter, Predicates.notNull());
     }
 
@@ -278,7 +278,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
                 }
                 else
                 {
-                    serializedSize += t.serializedSizeForSSTable();
+                    serializedSize += container.getComparator().rangeTombstoneSerializer().serializedSizeForSSTable(t);
                     return t;
                 }
             }
@@ -299,7 +299,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow implements Iterable
                 if (indexBuilder.tombstoneTracker().isDeleted(reduced))
                     return null;
 
-                serializedSize += reduced.serializedSizeForSSTable();
+                serializedSize += purged.getComparator().columnSerializer().serializedSize(reduced, TypeSizes.NATIVE);
                 columns++;
                 minTimestampSeen = Math.min(minTimestampSeen, reduced.minTimestamp());
                 maxTimestampSeen = Math.max(maxTimestampSeen, reduced.maxTimestamp());

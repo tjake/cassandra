@@ -80,21 +80,17 @@ public class QueryProcessor
         }
     }
 
-    public static void validateColumnNames(Iterable<ByteBuffer> columns)
+    public static void validateColumnNames(Iterable<CellName> columns)
     throws InvalidRequestException
     {
-        for (ByteBuffer name : columns)
+        for (CellName name : columns)
         {
-            if (name.remaining() > Column.MAX_NAME_LENGTH)
-                throw new InvalidRequestException(String.format("column name is too long (%s > %s)",
-                                                                name.remaining(),
-                                                                Column.MAX_NAME_LENGTH));
-            if (name.remaining() == 0)
+            if (name.isEmpty())
                 throw new InvalidRequestException("zero-length column name");
         }
     }
 
-    public static void validateColumnName(ByteBuffer column)
+    public static void validateColumnName(CellName column)
     throws InvalidRequestException
     {
         validateColumnNames(Collections.singletonList(column));

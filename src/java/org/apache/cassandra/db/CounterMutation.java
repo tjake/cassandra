@@ -103,7 +103,7 @@ public class CounterMutation implements IMutation
 
     private void addReadCommandFromColumnFamily(String table, ByteBuffer key, ColumnFamily columnFamily, List<ReadCommand> commands)
     {
-        SortedSet<ByteBuffer> s = new TreeSet<ByteBuffer>(columnFamily.metadata().comparator);
+        SortedSet<CellName> s = new TreeSet<CellName>(columnFamily.metadata().comparator);
         Iterables.addAll(s, columnFamily.getColumnNames());
         commands.add(new SliceByNamesReadCommand(table, key, columnFamily.metadata().cfName, new NamesQueryFilter(s)));
     }

@@ -146,7 +146,7 @@ class ReadCommandSerializer implements IVersionedSerializer<ReadCommand>
             CFMetaData metadata = Schema.instance.getCFMetaData(command.table, command.cfName);
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC((CompositeType)metadata.comparator, command.filter());
+                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC(metadata.comparator, command.filter());
                 newCommand = ReadCommand.create(command.table, command.key, command.cfName, scFilter.updatedFilter);
                 newCommand.setDigestQuery(command.isDigestQuery());
                 superColumn = scFilter.scName;
@@ -190,7 +190,7 @@ class ReadCommandSerializer implements IVersionedSerializer<ReadCommand>
             CFMetaData metadata = Schema.instance.getCFMetaData(command.table, command.cfName);
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC((CompositeType)metadata.comparator, command.filter());
+                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC(metadata.comparator, command.filter());
                 newCommand = ReadCommand.create(command.table, command.key, command.cfName, scFilter.updatedFilter);
                 newCommand.setDigestQuery(command.isDigestQuery());
                 superColumn = scFilter.scName;

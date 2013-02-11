@@ -69,9 +69,9 @@ public class AtomicSortedColumns extends ColumnFamily
         this.ref = new AtomicReference<Holder>(holder);
     }
 
-    public AbstractType<?> getComparator()
+    public CellNameType getComparator()
     {
-        return (AbstractType<?>)ref.get().map.comparator();
+        return (CellNameType)ref.get().map.comparator();
     }
 
     public ColumnFamily.Factory getFactory()
@@ -204,12 +204,12 @@ public class AtomicSortedColumns extends ColumnFamily
         while (!ref.compareAndSet(current, modified));
     }
 
-    public Column getColumn(ByteBuffer name)
+    public Column getColumn(CellName name)
     {
         return ref.get().map.get(name);
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return ref.get().map.keySet();
     }
@@ -251,20 +251,20 @@ public class AtomicSortedColumns extends ColumnFamily
 
     private static class Holder
     {
-        final SnapTreeMap<ByteBuffer, Column> map;
+        final SnapTreeMap<CellName, Column> map;
         final DeletionInfo deletionInfo;
 
-        Holder(AbstractType<?> comparator)
+        Holder(CellNameType comparator)
         {
-            this(new SnapTreeMap<ByteBuffer, Column>(comparator), DeletionInfo.LIVE);
+            this(new SnapTreeMap<CellName, Column>(comparator), DeletionInfo.LIVE);
         }
 
-        Holder(SortedMap<ByteBuffer, Column> columns)
+        Holder(SortedMap<CellName, Column> columns)
         {
-            this(new SnapTreeMap<ByteBuffer, Column>(columns), DeletionInfo.LIVE);
+            this(new SnapTreeMap<CellName, Column>(columns), DeletionInfo.LIVE);
         }
 
-        Holder(SnapTreeMap<ByteBuffer, Column> map, DeletionInfo deletionInfo)
+        Holder(SnapTreeMap<CellName, Column> map, DeletionInfo deletionInfo)
         {
             this.map = map;
             this.deletionInfo = deletionInfo;
@@ -280,7 +280,7 @@ public class AtomicSortedColumns extends ColumnFamily
             return new Holder(map, info);
         }
 
-        Holder with(SnapTreeMap<ByteBuffer, Column> newMap)
+        Holder with(SnapTreeMap<CellName, Column> newMap)
         {
             return new Holder(newMap, deletionInfo);
         }
@@ -289,12 +289,12 @@ public class AtomicSortedColumns extends ColumnFamily
         // afterwards.
         Holder clear()
         {
-            return new Holder(new SnapTreeMap<ByteBuffer, Column>(map.comparator()), deletionInfo);
+            return new Holder(new SnapTreeMap<CellName, Column>(map.comparator()), deletionInfo);
         }
 
         long addColumn(Column column, Allocator allocator, SecondaryIndexManager.Updater indexer)
         {
-            ByteBuffer name = column.name();
+            CellName name = column.name();
             while (true)
             {
                 Column oldColumn = map.putIfAbsent(name, column);
@@ -326,7 +326,7 @@ public class AtomicSortedColumns extends ColumnFamily
             Iterator<Column> toRetain = columns.iterator();
             Column current = iter.hasNext() ? iter.next() : null;
             Column retain = toRetain.hasNext() ? toRetain.next() : null;
-            Comparator<? super ByteBuffer> comparator = map.comparator();
+            Comparator<? super CellName> comparator = map.comparator();
             while (current != null && retain != null)
             {
                 int c = comparator.compare(current.name(), retain.name());

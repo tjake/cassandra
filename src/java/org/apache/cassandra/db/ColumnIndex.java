@@ -42,8 +42,6 @@ public class ColumnIndex
      */
     public static class Builder
     {
-        private static final OnDiskAtom.Serializer atomSerializer = Column.onDiskSerializer();
-
         private final ColumnIndex result;
         private final long indexOffset;
         private long startPosition = -1;
@@ -56,6 +54,8 @@ public class ColumnIndex
         private final RangeTombstone.Tracker tombstoneTracker;
         private int atomCount;
 
+        private final OnDiskAtom.Serializer atomSerializer;
+
         public Builder(ColumnFamily cf,
                        ByteBuffer key,
                        DataOutput output)
@@ -64,6 +64,7 @@ public class ColumnIndex
             this.result = new ColumnIndex(new ArrayList<IndexHelper.IndexInfo>());
             this.output = output;
             this.tombstoneTracker = new RangeTombstone.Tracker(cf.getComparator());
+            this.atomSerializer = cf.getComparator().onDiskAtomSerializer();
         }
 
         /**
@@ -103,7 +104,7 @@ public class ColumnIndex
         {
             Iterator<RangeTombstone> rangeIter = cf.deletionInfo().rangeIterator();
             RangeTombstone tombstone = rangeIter.hasNext() ? rangeIter.next() : null;
-            Comparator<ByteBuffer> comparator = cf.getComparator();
+            Comparator<Composite> comparator = cf.getComparator();
 
             for (Column c : cf)
             {
@@ -146,7 +147,7 @@ public class ColumnIndex
                                // where we wouldn't make any problem because a block is filled by said marker
             }
 
-            long size = column.serializedSizeForSSTable();
+            long size = atomSerializer.serializedSizeForSSTable(column);
             endPosition += size;
             blockSize += size;
 

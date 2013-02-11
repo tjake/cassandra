@@ -73,7 +73,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
         switch (oType)
         {
             case ADD:
-                if (cfDef.isCompact)
+                if (cfDef.cfm.comparator.isDense())
                     throw new InvalidRequestException("Cannot add new column to a compact CF");
                 if (name != null)
                 {
@@ -90,28 +90,17 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 AbstractType<?> type = validator.getType();
                 if (type instanceof CollectionType)
                 {
-                    if (!cfDef.isComposite)
+                    if (!cfm.comparator.supportCollections())
                         throw new InvalidRequestException("Cannot use collection types with non-composite PRIMARY KEY");
-                    if (cfDef.cfm.isSuper())
+                    if (cfm.isSuper())
                         throw new InvalidRequestException("Cannot use collection types with Super column family");
 
-                    Map<ByteBuffer, CollectionType> collections = cfDef.hasCollections
-                                                                ? new HashMap<ByteBuffer, CollectionType>(cfDef.getCollectionType().defined)
-                                                                : new HashMap<ByteBuffer, CollectionType>();
-
-                    collections.put(columnName.key, (CollectionType)type);
-                    ColumnToCollectionType newColType = ColumnToCollectionType.getInstance(collections);
-                    List<AbstractType<?>> ctypes = new ArrayList<AbstractType<?>>(((CompositeType)cfm.comparator).types);
-                    if (cfDef.hasCollections)
-                        ctypes.set(ctypes.size() - 1, newColType);
-                    else
-                        ctypes.add(newColType);
-                    cfm.comparator = CompositeType.getInstance(ctypes);
+                    cfm.comparator = cfm.comparator.addCollection(columnName.key, (CollectionType)type);
                 }
 
-                Integer componentIndex = cfDef.isComposite
-                                       ? ((CompositeType)meta.comparator).types.size() - (cfDef.hasCollections ? 2 : 1)
-                                       : null;
+                Integer componentIndex = cfm.comparator.isPacked()
+                                       ? null
+                                       : cfm.comparator.clusteringPrefixSize();
                 cfm.addColumnDefinition(ColumnDefinition.regularDef(columnName.key, type, componentIndex));
                 break;
 
@@ -137,10 +126,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         }
                         break;
                     case COLUMN_ALIAS:
-                        assert cfDef.isComposite;
-                        List<AbstractType<?>> newTypes = new ArrayList<AbstractType<?>>(((CompositeType) cfm.comparator).types);
-                        newTypes.set(name.position, validator.getType());
-                        cfm.comparator = CompositeType.getInstance(newTypes);
+                        cfm.comparator = cfm.comparator.setSubtype(name.position, validator.getType());
                         break;
                     case VALUE_ALIAS:
                         cfm.defaultValidator(validator.getType());
@@ -153,7 +139,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 break;
 
             case DROP:
-                if (cfDef.isCompact)
+                if (cfDef.cfm.comparator.isDense())
                     throw new InvalidRequestException("Cannot drop columns from a compact CF");
                 if (name == null)
                     throw new InvalidRequestException(String.format("Column %s was not found in table %s", columnName, columnFamily()));

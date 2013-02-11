@@ -64,13 +64,11 @@ public class DeleteStatement extends ModificationStatement
         List<ByteBuffer> keys = UpdateStatement.buildKeyNames(cfDef, processedKeys, variables);
 
         // columns
-        ColumnNameBuilder builder = cfDef.getColumnNameBuilder();
+        CBuilder builder = cfDef.cfm.comparator.builder();
         CFDefinition.Name firstEmpty = UpdateStatement.buildColumnNames(cfDef, processedKeys, builder, variables, false);
+        Composite prefix = builder.build();
 
-        boolean fullKey = builder.componentCount() == cfDef.columns.size();
-        boolean isRange = cfDef.isCompact ? !fullKey : (!fullKey || toRemove.isEmpty());
-
-        if (!toRemove.isEmpty() && isRange)
+        if (prefix.size() < cfDef.columns.size() && !toRemove.isEmpty())
             throw new InvalidRequestException(String.format("Missing mandatory PRIMARY KEY part %s since %s specified", firstEmpty, toRemove.iterator().next().columnName));
 
         Set<ByteBuffer> toRead = null;
@@ -80,55 +78,51 @@ public class DeleteStatement extends ModificationStatement
             {
                 if (toRead == null)
                     toRead = new TreeSet<ByteBuffer>(UTF8Type.instance);
-                toRead.add(op.columnName.key);
+                toRead.add(op.columnName.name.key);
             }
         }
 
-        Map<ByteBuffer, ColumnGroupMap> rows = toRead != null ? readRows(keys, builder, toRead, (CompositeType)cfDef.cfm.comparator, local, cl) : null;
+        Map<ByteBuffer, CQL3Row> rows = toRead != null ? readRows(keys, prefix, toRead, cfDef.cfm, local, cl) : null;
 
         Collection<RowMutation> rowMutations = new ArrayList<RowMutation>(keys.size());
         UpdateParameters params = new UpdateParameters(cfDef.cfm, variables, getTimestamp(now), -1, rows);
 
         for (ByteBuffer key : keys)
-            rowMutations.add(mutationForKey(cfDef, key, builder, isRange, params, isBatch));
+            rowMutations.add(mutationForKey(cfDef, key, prefix, params, isBatch));
 
         return rowMutations;
     }
 
-    public RowMutation mutationForKey(CFDefinition cfDef, ByteBuffer key, ColumnNameBuilder builder, boolean isRange, UpdateParameters params, boolean isBatch)
+    public RowMutation mutationForKey(CFDefinition cfDef, ByteBuffer key, Composite prefix, UpdateParameters params, boolean isBatch)
     throws InvalidRequestException
     {
         QueryProcessor.validateKey(key);
         ColumnFamily cf = TreeMapBackedSortedColumns.factory.create(Schema.instance.getCFMetaData(cfDef.cfm.ksName, columnFamily()));
 
-        if (toRemove.isEmpty() && builder.componentCount() == 0)
+        if (toRemove.isEmpty())
         {
-            // No columns specified, delete the row
-            cf.delete(new DeletionInfo(params.timestamp, params.localDeletionTime));
-        }
-        else
-        {
-            if (isRange)
+            // We delete the slice selected by the prefix.
+            // However, for performance reasons, we distinguish 2 cases:
+            //   - It's a full internal row delete
+            //   - It's a full cell name (i.e it's a dense layout and the prefix is full)
+            if (prefix.isEmpty())
             {
-                assert toRemove.isEmpty();
-                ByteBuffer start = builder.build();
-                ByteBuffer end = builder.buildAsEndOfRange();
-                cf.addAtom(params.makeRangeTombstone(start, end));
+                // No columns specified, delete the row
+                cf.delete(new DeletionInfo(params.timestamp, params.localDeletionTime));
+            }
+            else if (cfDef.cfm.comparator.isDense() && prefix.size() == cfDef.columns.size())
+            {
+                cf.addAtom(params.makeTombstone(CellNames.makeDense(prefix)));
             }
             else
             {
-                // Delete specific columns
-                if (cfDef.isCompact)
-                {
-                    ByteBuffer columnName = builder.build();
-                    cf.addColumn(params.makeTombstone(columnName));
-                }
-                else
-                {
-                    for (Operation op : toRemove)
-                        op.execute(key, cf, builder.copy(), params);
-                }
+                cf.addAtom(params.makeRangeTombstone(prefix.slice()));
             }
+        }
+        else
+        {
+            for (Operation op : toRemove)
+                op.execute(key, cf, prefix, params);
         }
 
         RowMutation rm;

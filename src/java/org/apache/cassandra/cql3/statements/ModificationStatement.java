@@ -24,10 +24,10 @@ import java.util.*;
 
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
-import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.ExpiringColumn;
@@ -139,7 +139,7 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
         return timeToLive;
     }
 
-    protected Map<ByteBuffer, ColumnGroupMap> readRows(List<ByteBuffer> keys, ColumnNameBuilder builder, Set<ByteBuffer> toRead, CompositeType composite, boolean local, ConsistencyLevel cl)
+    protected Map<ByteBuffer, CQL3Row> readRows(List<ByteBuffer> keys, Composite rowPrefix, Set<ByteBuffer> toRead, CFMetaData cfm, boolean local, ConsistencyLevel cl)
     throws RequestExecutionException, RequestValidationException
     {
         try
@@ -154,11 +154,7 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
         ColumnSlice[] slices = new ColumnSlice[toRead.size()];
         int i = 0;
         for (ByteBuffer name : toRead)
-        {
-            ByteBuffer start = builder.copy().add(name).build();
-            ByteBuffer finish = builder.copy().add(name).buildAsEndOfRange();
-            slices[i++] = new ColumnSlice(start, finish);
-        }
+            slices[i++] = CellNames.make(rowPrefix, name).slice();
 
         List<ReadCommand> commands = new ArrayList<ReadCommand>(keys.size());
         for (ByteBuffer key : keys)
@@ -173,20 +169,19 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
                            ? SelectStatement.readLocally(keyspace(), commands)
                            : StorageProxy.read(commands, cl);
 
-            Map<ByteBuffer, ColumnGroupMap> map = new HashMap<ByteBuffer, ColumnGroupMap>();
+            Map<ByteBuffer, CQL3Row> map = new HashMap<ByteBuffer, CQL3Row>();
             for (Row row : rows)
             {
                 if (row.cf == null || row.cf.isEmpty())
                     continue;
 
-                ColumnGroupMap.Builder groupBuilder = new ColumnGroupMap.Builder(composite, true);
-                for (Column column : row.cf)
-                    groupBuilder.add(column);
-
-                List<ColumnGroupMap> groups = groupBuilder.groups();
-                assert groups.isEmpty() || groups.size() == 1;
-                if (!groups.isEmpty())
-                    map.put(row.key.key, groups.get(0));
+                Iterator<CQL3Row> iter = cfm.comparator.CQL3RowBuilder().group(row.cf.getSortedColumns().iterator());
+                if (iter.hasNext())
+                {
+                    map.put(row.key.key, iter.next());
+                    // We can only update one CQ3Row per partition key at a time (we don't allow IN for clustering key)
+                    assert !iter.hasNext();
+                }
             }
             return map;
         }

@@ -27,20 +27,20 @@ import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.IVersionedSerializer;
+import org.apache.cassandra.utils.Allocator;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class ColumnSlice
 {
-    public static final Serializer serializer = new Serializer();
-
-    public static final ColumnSlice ALL_COLUMNS = new ColumnSlice(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER);
+    public static final ColumnSlice ALL_COLUMNS = new ColumnSlice(Composites.EMPTY, Composites.EMPTY);
     public static final ColumnSlice[] ALL_COLUMNS_ARRAY = new ColumnSlice[]{ ALL_COLUMNS };
 
-    public final ByteBuffer start;
-    public final ByteBuffer finish;
+    public final Composite start;
+    public final Composite finish;
 
-    public ColumnSlice(ByteBuffer start, ByteBuffer finish)
+    public ColumnSlice(Composite start, Composite finish)
     {
         assert start != null && finish != null;
         this.start = start;
@@ -53,7 +53,7 @@ public class ColumnSlice
      *
      * @throws IllegalArgumentException if the input slices are not valid.
      */
-    public static void validate(ColumnSlice[] slices, AbstractType<?> comparator, boolean reversed)
+    public static void validate(ColumnSlice[] slices, CType comparator, boolean reversed)
     {
         for (int i = 0; i < slices.length; i++)
         {
@@ -61,7 +61,7 @@ public class ColumnSlice
             validate(slice, comparator, reversed);
             if (i > 0)
             {
-                if (slices[i - 1].finish.remaining() == 0 || slice.start.remaining() == 0)
+                if (slices[i - 1].finish.isEmpty() || slice.start.isEmpty())
                     throw new IllegalArgumentException("Invalid column slices: slices must be sorted and non-overlapping");
 
                 int cmp = comparator.compare(slices[i -1].finish, slice.start);
@@ -77,16 +77,16 @@ public class ColumnSlice
      *
      * @throws IllegalArgumentException if the slice is not valid.
      */
-    public static void validate(ColumnSlice slice, AbstractType<?> comparator, boolean reversed)
+    public static void validate(ColumnSlice slice, CType comparator, boolean reversed)
     {
-        Comparator<ByteBuffer> orderedComparator = reversed ? comparator.reverseComparator : comparator;
-        if (slice.start.remaining() > 0 && slice.finish.remaining() > 0 && orderedComparator.compare(slice.start, slice.finish) > 0)
+        Comparator<Composite> orderedComparator = reversed ? comparator.reverseComparator() : comparator;
+        if (!slice.start.isEmpty() && !slice.finish.isEmpty() && orderedComparator.compare(slice.start, slice.finish) > 0)
             throw new IllegalArgumentException("Slice finish must come after start in traversal order");
     }
 
-    public boolean includes(Comparator<ByteBuffer> cmp, ByteBuffer name)
+    public boolean includes(Comparator<Composite> cmp, Composite name)
     {
-        return cmp.compare(start, name) <= 0 && (finish.equals(ByteBufferUtil.EMPTY_BYTE_BUFFER) || cmp.compare(finish, name) >= 0);
+        return cmp.compare(start, name) <= 0 && (finish.isEmpty() || cmp.compare(finish, name) >= 0);
     }
 
     @Override
@@ -108,47 +108,49 @@ public class ColumnSlice
     @Override
     public String toString()
     {
-        return "[" + ByteBufferUtil.bytesToHex(start) + ", " + ByteBufferUtil.bytesToHex(finish) + "]";
+        return "[" + start + ", " + finish + "]";
     }
 
     public static class Serializer implements IVersionedSerializer<ColumnSlice>
     {
+        private final CType type;
+
+        public Serializer(CType type)
+        {
+            this.type = type;
+        }
+
         public void serialize(ColumnSlice cs, DataOutput out, int version) throws IOException
         {
-            ByteBufferUtil.writeWithShortLength(cs.start, out);
-            ByteBufferUtil.writeWithShortLength(cs.finish, out);
+            ISerializer<Composite> serializer = type.serializer();
+            serializer.serialize(cs.start, out);
+            serializer.serialize(cs.finish, out);
         }
 
         public ColumnSlice deserialize(DataInput in, int version) throws IOException
         {
-            ByteBuffer start = ByteBufferUtil.readWithShortLength(in);
-            ByteBuffer finish = ByteBufferUtil.readWithShortLength(in);
+            ISerializer<Composite> serializer = type.serializer();
+            Composite start = serializer.deserialize(in);
+            Composite finish = serializer.deserialize(in);
             return new ColumnSlice(start, finish);
         }
 
         public long serializedSize(ColumnSlice cs, int version)
         {
-            TypeSizes sizes = TypeSizes.NATIVE;
-
-            int startSize = cs.start.remaining();
-            int finishSize = cs.finish.remaining();
-
-            int size = 0;
-            size += sizes.sizeof((short) startSize) + startSize;
-            size += sizes.sizeof((short) finishSize) + finishSize;
-            return size;
+            ISerializer<Composite> serializer = type.serializer();
+            return serializer.serializedSize(cs.start, TypeSizes.NATIVE) + serializer.serializedSize(cs.finish, TypeSizes.NATIVE);
         }
     }
 
     public static class NavigableMapIterator extends AbstractIterator<Column>
     {
-        private final NavigableMap<ByteBuffer, Column> map;
+        private final NavigableMap<CellName, Column> map;
         private final ColumnSlice[] slices;
 
         private int idx = 0;
         private Iterator<Column> currentSlice;
 
-        public NavigableMapIterator(NavigableMap<ByteBuffer, Column> map, ColumnSlice[] slices)
+        public NavigableMapIterator(NavigableMap<CellName, Column> map, ColumnSlice[] slices)
         {
             this.map = map;
             this.slices = slices;
@@ -164,20 +166,20 @@ public class ColumnSlice
                 ColumnSlice slice = slices[idx++];
                 // Note: we specialize the case of start == "" and finish = "" because it is slightly more efficient, but also they have a specific
                 // meaning (namely, they always extend to the beginning/end of the range).
-                if (slice.start.remaining() == 0)
+                if (slice.start.isEmpty())
                 {
-                    if (slice.finish.remaining() == 0)
+                    if (slice.finish.isEmpty())
                         currentSlice = map.values().iterator();
                     else
-                        currentSlice = map.headMap(slice.finish, true).values().iterator();
+                        currentSlice = map.headMap(fakeCell(slice.finish), true).values().iterator();
                 }
-                else if (slice.finish.remaining() == 0)
+                else if (slice.finish.isEmpty())
                 {
-                    currentSlice = map.tailMap(slice.start, true).values().iterator();
+                    currentSlice = map.tailMap(fakeCell(slice.start), true).values().iterator();
                 }
                 else
                 {
-                    currentSlice = map.subMap(slice.start, true, slice.finish, true).values().iterator();
+                    currentSlice = map.subMap(fakeCell(slice.start), true, fakeCell(slice.finish), true).values().iterator();
                 }
             }
 
@@ -186,6 +188,37 @@ public class ColumnSlice
 
             currentSlice = null;
             return computeNext();
+        }
+
+        /*
+         * We need to take a slice (headMap/tailMap/subMap) of a CellName map
+         * based on a Composite. While CellName and Composite are comparable
+         * and so this should work, I haven't found how to generify it properly.
+         * So instead we create a "fake" CellName object that just encapsulate
+         * the prefix. I might not be a valid CellName with respect to the CF
+         * CellNameType, but this doesn't matter here (since we only care about
+         * comparison). This is arguably a bit of a hack.
+         */
+        private static CellName fakeCell(Composite prefix)
+        {
+            return new AbstractCellName(prefix)
+            {
+                @Override
+                public EOC eoc()
+                {
+                    return prefix.eoc();
+                }
+
+                public boolean isSameCQL3RowThan(CellName other)
+                {
+                    throw new UnsupportedOperationException();
+                }
+
+                public CellName copy(Allocator allocator)
+                {
+                    throw new UnsupportedOperationException();
+                }
+            };
         }
     }
 }

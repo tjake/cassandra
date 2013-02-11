@@ -34,6 +34,7 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
@@ -41,6 +42,7 @@ import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
+import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.dht.Range;
@@ -149,9 +151,9 @@ public class SystemTable
         ColumnFamilyStore oldStatusCfs = table.getColumnFamilyStore(OLD_STATUS_CF);
         if (oldStatusCfs.getSSTables().size() > 0)
         {
-            SortedSet<ByteBuffer> cols = new TreeSet<ByteBuffer>(BytesType.instance);
-            cols.add(ByteBufferUtil.bytes("ClusterName"));
-            cols.add(ByteBufferUtil.bytes("Token"));
+            SortedSet<CellName> cols = new TreeSet<CellName>(oldStatusCfs.getComparator());
+            cols.add(CellNames.simpleDense(ByteBufferUtil.bytes("ClusterName")));
+            cols.add(CellNames.simpleDense(ByteBufferUtil.bytes("Token")));
             QueryFilter filter = QueryFilter.getNamesFilter(decorate(ByteBufferUtil.bytes("L")), OLD_STATUS_CF, cols);
             ColumnFamily oldCf = oldStatusCfs.getColumnFamily(filter);
             Iterator<Column> oldColumns = oldCf.iterator();
@@ -581,14 +583,14 @@ public class SystemTable
         ColumnFamilyStore cfs = Table.open(Table.SYSTEM_KS).getColumnFamilyStore(INDEX_CF);
         QueryFilter filter = QueryFilter.getNamesFilter(decorate(ByteBufferUtil.bytes(table)),
                                                         INDEX_CF,
-                                                        ByteBufferUtil.bytes(indexName));
+                                                        FBUtilities.singleton(cfs.getComparator().make(indexName), cfs.getComparator()));
         return ColumnFamilyStore.removeDeleted(cfs.getColumnFamily(filter), Integer.MAX_VALUE) != null;
     }
 
     public static void setIndexBuilt(String table, String indexName)
     {
         ColumnFamily cf = ArrayBackedSortedColumns.factory.create(Table.SYSTEM_KS, INDEX_CF);
-        cf.addColumn(new Column(ByteBufferUtil.bytes(indexName), ByteBufferUtil.EMPTY_BYTE_BUFFER, FBUtilities.timestampMicros()));
+        cf.addColumn(new Column(cf.getComparator().make(indexName), ByteBufferUtil.EMPTY_BYTE_BUFFER, FBUtilities.timestampMicros()));
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, ByteBufferUtil.bytes(table), cf);
         rm.apply();
         forceBlockingFlush(INDEX_CF);
@@ -596,8 +598,9 @@ public class SystemTable
 
     public static void setIndexRemoved(String table, String indexName)
     {
+        ColumnFamilyStore cfs = Table.open(Table.SYSTEM_KS).getColumnFamilyStore(INDEX_CF);
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, ByteBufferUtil.bytes(table));
-        rm.delete(INDEX_CF, ByteBufferUtil.bytes(indexName), FBUtilities.timestampMicros());
+        rm.delete(INDEX_CF, cfs.getComparator().make(indexName), FBUtilities.timestampMicros());
         rm.apply();
         forceBlockingFlush(INDEX_CF);
     }
@@ -639,13 +642,13 @@ public class SystemTable
         // Get the last CounterId (since CounterId are timeuuid is thus ordered from the older to the newer one)
         QueryFilter filter = QueryFilter.getSliceFilter(decorate(ALL_LOCAL_NODE_ID_KEY),
                                                         COUNTER_ID_CF,
-                                                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                        Composites.EMPTY,
+                                                        Composites.EMPTY,
                                                         true,
                                                         1);
         ColumnFamily cf = table.getColumnFamilyStore(COUNTER_ID_CF).getColumnFamily(filter);
         if (cf != null && cf.getColumnCount() != 0)
-            return CounterId.wrap(cf.iterator().next().name());
+            return CounterId.wrap(cf.iterator().next().name().toByteBuffer());
         else
             return null;
     }
@@ -664,7 +667,7 @@ public class SystemTable
         ByteBuffer ip = ByteBuffer.wrap(FBUtilities.getBroadcastAddress().getAddress());
 
         ColumnFamily cf = ArrayBackedSortedColumns.factory.create(Table.SYSTEM_KS, COUNTER_ID_CF);
-        cf.addColumn(new Column(newCounterId.bytes(), ip, now));
+        cf.addColumn(new Column(CellNames.simpleDense(newCounterId.bytes()), ip, now));
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, ALL_LOCAL_NODE_ID_KEY, cf);
         rm.apply();
         forceBlockingFlush(COUNTER_ID_CF);
@@ -686,7 +689,7 @@ public class SystemTable
 
             // this will ignore the last column on purpose since it is the
             // current local node id
-            previous = CounterId.wrap(c.name());
+            previous = CounterId.wrap(c.name().toByteBuffer());
         }
         return l;
     }
@@ -785,9 +788,10 @@ public class SystemTable
         DecoratedKey key = StorageService.getPartitioner().decorateKey(getSchemaKSKey(ksName));
 
         ColumnFamilyStore schemaCFS = SystemTable.schemaCFS(SCHEMA_COLUMNFAMILIES_CF);
+        Composite prefixToFetch = CFMetaData.SchemaColumnFamiliesCf.comparator.builder().add(cfName).build();
         ColumnFamily result = schemaCFS.getColumnFamily(key,
-                                                        DefsTable.searchComposite(cfName, true),
-                                                        DefsTable.searchComposite(cfName, false),
+                                                        prefixToFetch,
+                                                        prefixToFetch.end(),
                                                         false,
                                                         Integer.MAX_VALUE);
 

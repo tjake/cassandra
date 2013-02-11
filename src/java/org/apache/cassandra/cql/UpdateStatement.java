@@ -23,6 +23,8 @@ import java.util.*;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.CellName;
+import org.apache.cassandra.db.CellNameType;
 import org.apache.cassandra.db.CounterMutation;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.IMutation;
@@ -177,7 +179,8 @@ public class UpdateStatement extends AbstractModification
     throws InvalidRequestException
     {
         validateKey(key);
-        AbstractType<?> comparator = getComparator(keyspace);
+        CellNameType comparator = getComparator(keyspace);
+        AbstractType<?> at = comparator.asAbstractType();
 
         // if true we need to wrap RowMutation into CounterMutation
         boolean hasCounterColumn = false;
@@ -185,7 +188,7 @@ public class UpdateStatement extends AbstractModification
 
         for (Map.Entry<Term, Operation> column : getColumns().entrySet())
         {
-            ByteBuffer colName = column.getKey().getByteBuffer(comparator, variables);
+            CellName colName = comparator.cellFromByteBuffer(column.getKey().getByteBuffer(at, variables));
             Operation op = column.getValue();
 
             if (op.isUnary())
@@ -277,14 +280,14 @@ public class UpdateStatement extends AbstractModification
         return Schema.instance.getCFMetaData(keyspace, columnFamily).getKeyValidator();
     }
 
-    public AbstractType<?> getComparator(String keyspace)
+    public CellNameType getComparator(String keyspace)
     {
         return Schema.instance.getComparator(keyspace, columnFamily);
     }
 
-    public AbstractType<?> getValueValidator(String keyspace, ByteBuffer column)
+    public AbstractType<?> getValueValidator(String keyspace, CellName column)
     {
-        return Schema.instance.getValueValidator(keyspace, columnFamily, column);
+        return Schema.instance.getCFMetaData(keyspace, columnFamily).getValueValidator(column);
     }
 
     public List<Term> getColumnNames()

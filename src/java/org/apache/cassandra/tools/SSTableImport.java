@@ -106,12 +106,12 @@ public class SSTableImport
         {
             if (json instanceof List)
             {
-                AbstractType<?> comparator = oldSCFormat ? SuperColumns.getComparatorFor(meta, isSubColumn) : meta.comparator;
+                CellNameType comparator = oldSCFormat ? CellNames.simpleDenseType(SuperColumns.getComparatorFor(meta, isSubColumn)) : meta.comparator;
                 List fields = (List<?>) json;
 
                 assert fields.size() >= 3 : "Column definition should have at least 3";
 
-                name  = stringAsType((String) fields.get(0), comparator);
+                name  = stringAsType((String) fields.get(0), comparator.asAbstractType());
                 timestamp = (Long) fields.get(2);
                 kind = "";
 
@@ -228,7 +228,21 @@ public class SSTableImport
         for (Object c : row)
         {
             JsonColumn col = new JsonColumn<List>((List) c, cfm, oldSCFormat, (superName != null));
-            ByteBuffer cname = superName == null ? col.getName() : CompositeType.build(superName, col.getName());
+            if (col.isRangeTombstone())
+            {
+                Composite start = superName == null 
+                                ? cfm.comparator.fromByteBuffer(col.getName())
+                                : cfm.comparator.make(superName, col.getName());
+                Composite end = superName == null 
+                              ? cfm.comparator.fromByteBuffer(col.getValue())
+                              : cfm.comparator.make(superName, col.getValue());
+                cfamily.addAtom(new RangeTombstone(start, end, col.timestamp, col.localExpirationTime));
+                continue;
+            }
+
+            CellName cname = superName == null 
+                           ? cfm.comparator.cellFromByteBuffer(col.getName())
+                           : cfm.comparator.make(superName, col.getName());
 
             if (col.isExpiring())
             {
@@ -241,11 +255,6 @@ public class SSTableImport
             else if (col.isDeleted())
             {
                 cfamily.addTombstone(cname, col.getValue(), col.timestamp);
-            }
-            else if (col.isRangeTombstone())
-            {
-                ByteBuffer end = superName == null ? col.getValue() : CompositeType.build(superName, col.getValue());
-                cfamily.addAtom(new RangeTombstone(cname, end, col.timestamp, col.localExpirationTime));
             }
             else
             {
@@ -282,14 +291,14 @@ public class SSTableImport
         CFMetaData metaData = cfamily.metadata();
         assert metaData != null;
 
-        AbstractType<?> comparator = metaData.comparator;
+        CellNameType comparator = metaData.comparator;
 
         // Super columns
         for (Map.Entry<?, ?> entry : row.entrySet())
         {
             Map<?, ?> data = (Map<?, ?>) entry.getValue();
 
-            ByteBuffer superName = stringAsType((String) entry.getKey(), ((CompositeType)comparator).types.get(0));
+            ByteBuffer superName = stringAsType((String) entry.getKey(), comparator.subtype(0));
 
             addColumnsToCF((List<?>) data.get("subColumns"), superName, cfamily);
 

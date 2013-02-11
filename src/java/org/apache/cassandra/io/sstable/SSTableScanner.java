@@ -98,7 +98,7 @@ public class SSTableScanner implements ICompactionScanner
                 }
                 else
                 {
-                    RowIndexEntry.serializer.skip(ifile, sstable.descriptor.version);
+                    sstable.metadata.comparator.rowIndexEntrySerializer().skip(ifile, sstable.descriptor.version);
                 }
             }
             exhausted = true;
@@ -218,7 +218,7 @@ public class SSTableScanner implements ICompactionScanner
                 if (row == null)
                 {
                     currentKey = sstable.decodeKey(ByteBufferUtil.readWithShortLength(ifile));
-                    currentEntry = RowIndexEntry.serializer.deserialize(ifile, sstable.descriptor.version);
+                    currentEntry = sstable.metadata.comparator.rowIndexEntrySerializer().deserialize(ifile, sstable.descriptor.version);
                 }
                 else
                 {
@@ -234,7 +234,7 @@ public class SSTableScanner implements ICompactionScanner
                 else
                 {
                     nextKey = sstable.decodeKey(ByteBufferUtil.readWithShortLength(ifile));
-                    nextEntry = RowIndexEntry.serializer.deserialize(ifile, sstable.descriptor.version);
+                    nextEntry = sstable.metadata.comparator.rowIndexEntrySerializer().deserialize(ifile, sstable.descriptor.version);
                 }
 
                 assert !dfile.isEOF();

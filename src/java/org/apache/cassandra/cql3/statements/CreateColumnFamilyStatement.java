@@ -30,6 +30,8 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.db.CellNames;
+import org.apache.cassandra.db.CellNameType;
 import org.apache.cassandra.db.ColumnFamilyType;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.io.compress.CompressionParameters;
@@ -42,7 +44,7 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 /** A <code>CREATE COLUMNFAMILY</code> parsed from a CQL query statement. */
 public class CreateColumnFamilyStatement extends SchemaAlteringStatement
 {
-    public AbstractType<?> comparator;
+    public CellNameType comparator;
     private AbstractType<?> defaultValidator;
     private AbstractType<?> keyValidator;
 
@@ -82,15 +84,7 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
     private Map<ByteBuffer, ColumnDefinition> getColumns() throws InvalidRequestException
     {
         Map<ByteBuffer, ColumnDefinition> columnDefs = new HashMap<ByteBuffer, ColumnDefinition>();
-        Integer componentIndex = null;
-        if (comparator instanceof CompositeType)
-        {
-            CompositeType ct = (CompositeType) comparator;
-            componentIndex = ct.types.get(ct.types.size() - 1) instanceof ColumnToCollectionType
-                           ? ct.types.size() - 2
-                           : ct.types.size() - 1;
-        }
-
+        int componentIndex = comparator.clusteringPrefixSize();
         for (Map.Entry<ColumnIdentifier, AbstractType> col : columns.entrySet())
         {
             columnDefs.put(col.getKey().key, ColumnDefinition.regularDef(col.getKey().key, col.getValue(), componentIndex));
@@ -122,8 +116,7 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
         newCFMD = new CFMetaData(keyspace(),
                                  columnFamily(),
                                  ColumnFamilyType.Standard,
-                                 comparator,
-                                 null);
+                                 comparator);
         applyPropertiesTo(newCFMD);
         return newCFMD;
     }
@@ -135,7 +128,7 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
             .columnMetadata(getColumns());
 
         cfmd.addColumnMetadataFromAliases(keyAliases, keyValidator, ColumnDefinition.Type.PARTITION_KEY);
-        cfmd.addColumnMetadataFromAliases(columnAliases, comparator, ColumnDefinition.Type.CLUSTERING_KEY);
+        cfmd.addColumnMetadataFromAliases(columnAliases, comparator.asAbstractType(), ColumnDefinition.Type.CLUSTERING_KEY);
         if (valueAlias != null)
             cfmd.addColumnMetadataFromAliases(Collections.<ByteBuffer>singletonList(valueAlias), defaultValidator, ColumnDefinition.Type.COMPACT_VALUE);
 
@@ -221,15 +214,12 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
                     if (definedCollections != null)
                         throw new InvalidRequestException("Collection types are not supported with COMPACT STORAGE");
 
-                    stmt.comparator = CFDefinition.definitionType;
+                    stmt.comparator = CellNames.simpleSparseType();
                 }
                 else
                 {
-                    List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(definedCollections == null ? 1 : 2);
-                    types.add(CFDefinition.definitionType);
-                    if (definedCollections != null)
-                        types.add(ColumnToCollectionType.getInstance(definedCollections));
-                    stmt.comparator = CompositeType.getInstance(types);
+                    ColumnToCollectionType collections = definedCollections == null ? null : ColumnToCollectionType.getInstance(definedCollections);
+                    stmt.comparator = CellNames.compositeSparseType(Collections.<AbstractType<?>>emptyList(), collections);
                 }
             }
             else
@@ -241,9 +231,10 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
                     if (definedCollections != null)
                         throw new InvalidRequestException("Collection types are not supported with COMPACT STORAGE");
                     stmt.columnAliases.add(columnAliases.get(0).key);
-                    stmt.comparator = getTypeAndRemove(stmt.columns, columnAliases.get(0));
-                    if (stmt.comparator instanceof CounterColumnType)
+                    AbstractType<?> at = getTypeAndRemove(stmt.columns, columnAliases.get(0));
+                    if (at instanceof CounterColumnType)
                         throw new InvalidRequestException(String.format("counter type is not supported for PRIMARY KEY part %s", stmt.columnAliases.get(0)));
+                    stmt.comparator = CellNames.simpleDenseType(at);
                 }
                 else
                 {
@@ -262,19 +253,14 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
                     {
                         if (definedCollections != null)
                             throw new InvalidRequestException("Collection types are not supported with COMPACT STORAGE");
+
+                        stmt.comparator = CellNames.compositeDenseType(types);
                     }
                     else
                     {
-                        // For sparse, we must add the last UTF8 component
-                        // and the collection type if there is one
-                        types.add(CFDefinition.definitionType);
-                        if (definedCollections != null)
-                            types.add(ColumnToCollectionType.getInstance(definedCollections));
+                        ColumnToCollectionType collections = definedCollections == null ? null : ColumnToCollectionType.getInstance(definedCollections);
+                        stmt.comparator = CellNames.compositeSparseType(types, collections);
                     }
-
-                    if (types.isEmpty())
-                        throw new IllegalStateException("Nonsensical empty parameter list for CompositeType");
-                    stmt.comparator = CompositeType.getInstance(types);
                 }
             }
 

@@ -21,7 +21,6 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
-import java.nio.ByteBuffer;
 import java.util.*;
 
 import com.google.common.base.Objects;
@@ -33,19 +32,16 @@ import org.apache.cassandra.io.ISSTableSerializer;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.IntervalTree;
 
 public class DeletionInfo
 {
-    private static final Serializer serializer = new Serializer();
-
     // We don't have way to represent the full interval of keys (Interval don't support the minimum token as the right bound),
     // so we keep the topLevel deletion info separatly. This also slightly optimize the case of full row deletion which is rather common.
     private final DeletionTime topLevel;
-    private final IntervalTree<ByteBuffer, DeletionTime, RangeTombstone> ranges;
+    private final IntervalTree<Composite, DeletionTime, RangeTombstone> ranges;
 
-    public static final DeletionInfo LIVE = new DeletionInfo(DeletionTime.LIVE, IntervalTree.<ByteBuffer, DeletionTime, RangeTombstone>emptyTree());
+    public static final DeletionInfo LIVE = new DeletionInfo(DeletionTime.LIVE, IntervalTree.<Composite, DeletionTime, RangeTombstone>emptyTree());
 
     public DeletionInfo(long markedForDeleteAt, int localDeletionTime)
     {
@@ -56,29 +52,24 @@ public class DeletionInfo
 
     public DeletionInfo(DeletionTime topLevel)
     {
-        this(topLevel, IntervalTree.<ByteBuffer, DeletionTime, RangeTombstone>emptyTree());
+        this(topLevel, IntervalTree.<Composite, DeletionTime, RangeTombstone>emptyTree());
     }
 
-    public DeletionInfo(ByteBuffer start, ByteBuffer end, Comparator<ByteBuffer> comparator, long markedForDeleteAt, int localDeletionTime)
+    public DeletionInfo(Composite start, Composite end, Comparator<Composite> comparator, long markedForDeleteAt, int localDeletionTime)
     {
         this(new RangeTombstone(start, end, new DeletionTime(markedForDeleteAt, localDeletionTime)), comparator);
     }
 
-    public DeletionInfo(RangeTombstone rangeTombstone, Comparator<ByteBuffer> comparator)
+    public DeletionInfo(RangeTombstone rangeTombstone, Comparator<Composite> comparator)
     {
         this(DeletionTime.LIVE, IntervalTree.build(Collections.<RangeTombstone>singletonList(rangeTombstone), comparator));
         assert comparator != null;
     }
 
-    private DeletionInfo(DeletionTime topLevel, IntervalTree<ByteBuffer, DeletionTime, RangeTombstone> ranges)
+    private DeletionInfo(DeletionTime topLevel, IntervalTree<Composite, DeletionTime, RangeTombstone> ranges)
     {
         this.topLevel = topLevel;
         this.ranges = ranges;
-    }
-
-    public static Serializer serializer()
-    {
-        return serializer;
     }
 
     /**
@@ -103,7 +94,7 @@ public class DeletionInfo
         return isDeleted(column.name(), column.mostRecentLiveChangeAt());
     }
 
-    public boolean isDeleted(ByteBuffer name, long timestamp)
+    public boolean isDeleted(Composite name, long timestamp)
     {
         if (isLive())
             return false;
@@ -142,9 +133,9 @@ public class DeletionInfo
                 if (range.data.localDeletionTime >= gcBefore)
                     nonExpired.add(range);
             }
-            IntervalTree<ByteBuffer, DeletionTime, RangeTombstone> newRanges = nonExpired.size() == ranges.intervalCount()
-                                                                             ? ranges
-                                                                             : IntervalTree.build(nonExpired, ranges.comparator());
+            IntervalTree<Composite, DeletionTime, RangeTombstone> newRanges = nonExpired.size() == ranges.intervalCount()
+                                                                            ? ranges
+                                                                            : IntervalTree.build(nonExpired, ranges.comparator());
             return topLevel.localDeletionTime < gcBefore
                  ? new DeletionInfo(DeletionTime.LIVE, newRanges)
                  : new DeletionInfo(topLevel, newRanges);
@@ -215,7 +206,7 @@ public class DeletionInfo
         return ranges.iterator();
     }
 
-    public List<DeletionTime> rangeCovering(ByteBuffer name)
+    public List<DeletionTime> rangeCovering(Composite name)
     {
         return ranges.search(name);
     }
@@ -225,7 +216,7 @@ public class DeletionInfo
         int size = TypeSizes.NATIVE.sizeof(topLevel.markedForDeleteAt);
         for (RangeTombstone r : ranges)
         {
-            size += r.min.remaining() + r.max.remaining();
+            size += r.min.dataSize() + r.max.dataSize();
             size += TypeSizes.NATIVE.sizeof(r.data.markedForDeleteAt);
         }
         return size;
@@ -244,13 +235,13 @@ public class DeletionInfo
     {
         assert !ranges.isEmpty();
         StringBuilder sb = new StringBuilder();
-        AbstractType at = (AbstractType)ranges.comparator();
-        assert at != null;
+        CType type = (CType)ranges.comparator();
+        assert type != null;
         for (RangeTombstone i : ranges)
         {
             sb.append("[");
-            sb.append(at.getString(i.min)).append("-");
-            sb.append(at.getString(i.max)).append(", ");
+            sb.append(type.getString(i.min)).append("-");
+            sb.append(type.getString(i.max)).append(", ");
             sb.append(i.data);
             sb.append("]");
         }
@@ -274,32 +265,55 @@ public class DeletionInfo
 
     public static class Serializer implements IVersionedSerializer<DeletionInfo>, ISSTableSerializer<DeletionInfo>
     {
-        private final static ISerializer<ByteBuffer> bbSerializer = new ISerializer<ByteBuffer>()
+        private final CType type;
+
+        private final IVersionedSerializer<Composite> cpSerializer = new IVersionedSerializer<Composite>()
         {
-            public void serialize(ByteBuffer bb, DataOutput out) throws IOException
+            public void serialize(Composite cp, DataOutput dos, int version) throws IOException
             {
-                ByteBufferUtil.writeWithShortLength(bb, out);
+                type.serializer().serialize(cp, dos);
             }
 
-            public ByteBuffer deserialize(DataInput in) throws IOException
+            public Composite deserialize(DataInput dis, int version) throws IOException
             {
-                return ByteBufferUtil.readWithShortLength(in);
+                return type.serializer().deserialize(dis);
             }
 
-            public long serializedSize(ByteBuffer bb, TypeSizes typeSizes)
+            public long serializedSize(Composite cp, int version)
             {
-                int bbSize = bb.remaining();
-                return typeSizes.sizeof((short)bbSize) + bbSize;
+                return type.serializer().serializedSize(cp, TypeSizes.NATIVE);
             }
         };
 
-        private final static IntervalTree.Serializer<ByteBuffer, DeletionTime, RangeTombstone> itSerializer;
-        static
+        // DeletionTime serializer is an ISerializer. But the intervalTree serializer builder takes IVersionedSerializer
+        // as it is more general. So create a simple wrapper that ignore the version.
+        private final IVersionedSerializer<DeletionTime> dtSerializer = new IVersionedSerializer<DeletionTime>()
         {
+            public void serialize(DeletionTime dt, DataOutput out, int version) throws IOException
+            {
+                DeletionTime.serializer.serialize(dt, out);
+            }
+
+            public DeletionTime deserialize(DataInput in, int version) throws IOException
+            {
+                return DeletionTime.serializer.deserialize(in);
+            }
+
+            public long serializedSize(DeletionTime bb, int version)
+            {
+                return DeletionTime.serializer.serializedSize(bb, TypeSizes.NATIVE);
+            }
+        };
+
+        private final IntervalTree.Serializer<Composite, DeletionTime, RangeTombstone> itSerializer;
+
+        public Serializer(CType type)
+        {
+            this.type = type;
             try
             {
-                Constructor<RangeTombstone> constructor = RangeTombstone.class.getConstructor(ByteBuffer.class, ByteBuffer.class, DeletionTime.class);
-                itSerializer = IntervalTree.serializer(bbSerializer, DeletionTime.serializer, constructor);
+                Constructor<RangeTombstone> constructor = RangeTombstone.class.getConstructor(Composite.class, Composite.class, DeletionTime.class);
+                itSerializer = IntervalTree.serializer(cpSerializer, dtSerializer, constructor);
             }
             catch (NoSuchMethodException e)
             {
@@ -331,28 +345,22 @@ public class DeletionInfo
 
         /*
          * Range tombstones internally depend on the column family serializer, but it is not serialized.
-         * Thus deserialize(DataInput, int, Comparator<ByteBuffer>) should be used instead of this method.
+         * Thus deserialize(DataInput, int, Comparator<Composite>) should be used instead of this method.
          */
         public DeletionInfo deserialize(DataInput in, int version) throws IOException
         {
-            throw new UnsupportedOperationException();
-        }
-
-        public DeletionInfo deserialize(DataInput in, int version, Comparator<ByteBuffer> comparator) throws IOException
-        {
-            assert version < MessagingService.VERSION_12 || comparator != null;
             DeletionTime topLevel = DeletionTime.serializer.deserialize(in);
             if (version < MessagingService.VERSION_12)
-                return new DeletionInfo(topLevel, IntervalTree.<ByteBuffer, DeletionTime, RangeTombstone>emptyTree());
+                return new DeletionInfo(topLevel, IntervalTree.<Composite, DeletionTime, RangeTombstone>emptyTree());
 
-            IntervalTree<ByteBuffer, DeletionTime, RangeTombstone> ranges = itSerializer.deserialize(in, version, comparator);
+            IntervalTree<Composite, DeletionTime, RangeTombstone> ranges = itSerializer.deserialize(in, version, type);
             return new DeletionInfo(topLevel, ranges);
         }
 
         public DeletionInfo deserializeFromSSTable(DataInput in, Descriptor.Version version) throws IOException
         {
             DeletionTime topLevel = DeletionTime.serializer.deserialize(in);
-            return new DeletionInfo(topLevel, IntervalTree.<ByteBuffer, DeletionTime, RangeTombstone>emptyTree());
+            return new DeletionInfo(topLevel, IntervalTree.<Composite, DeletionTime, RangeTombstone>emptyTree());
         }
 
         public long serializedSize(DeletionInfo info, TypeSizes typeSizes, int version)
@@ -361,7 +369,7 @@ public class DeletionInfo
             if (version < MessagingService.VERSION_12)
                 return size;
 
-            return size + itSerializer.serializedSize(info.ranges, typeSizes, version);
+            return size + itSerializer.serializedSize(info.ranges, version);
         }
 
         public long serializedSize(DeletionInfo info, int version)

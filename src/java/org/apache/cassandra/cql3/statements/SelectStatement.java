@@ -290,8 +290,8 @@ public class SelectStatement implements CQLStatement
             // to account for the grouping of columns.
             // Since that doesn't work for maps/sets/lists, we now use the compositesToGroup option of SliceQueryFilter.
             // But we must preserve backward compatibility too (for mixed version cluster that is).
-            int multiplier = cfDef.isCompact ? 1 : (cfDef.metadata.size() + 1);
-            int toGroup = cfDef.isCompact ? -1 : cfDef.columns.size();
+            int multiplier = cfDef.cfm.comparator.isDense() ? 1 : (cfDef.metadata.size() + 1);
+            int toGroup = cfDef.cfm.comparator.isDense() ? -1 : cfDef.columns.size();
             ColumnSlice slice = new ColumnSlice(getRequestedBound(Bound.START, variables),
                                                 getRequestedBound(Bound.END, variables));
             SliceQueryFilter filter = new SliceQueryFilter(new ColumnSlice[]{slice},
@@ -304,7 +304,7 @@ public class SelectStatement implements CQLStatement
         }
         else
         {
-            SortedSet<ByteBuffer> columnNames = getRequestedColumns(variables);
+            SortedSet<CellName> columnNames = getRequestedColumns(variables);
             QueryProcessor.validateColumnNames(columnNames);
             return new NamesQueryFilter(columnNames, true);
         }
@@ -352,7 +352,12 @@ public class SelectStatement implements CQLStatement
 
     private ByteBuffer getKeyBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
     {
-        return buildBound(b, cfDef.keys.values(), keyRestrictions, false, cfDef.getKeyNameBuilder(), variables);
+        // TODO: fix
+        AbstractType<?> kv = cfDef.cfm.getKeyValidator();
+        CBuilder builder = kv instanceof CompositeType
+                         ? Composites.compositeType(((CompositeType)kv).types).builder()
+                         : Composites.simpleType(kv).builder();
+        return buildBound(b, cfDef.keys.values(), keyRestrictions, false, builder, variables).toByteBuffer();
     }
 
     private Token getTokenBound(Bound b, List<ByteBuffer> variables, IPartitioner<?> p) throws InvalidRequestException
@@ -389,7 +394,7 @@ public class SelectStatement implements CQLStatement
     private boolean isColumnRange()
     {
         // Static CF never entails a column slice
-        if (!cfDef.isCompact && !cfDef.isComposite)
+        if (!cfDef.cfm.comparator.isDense() && cfDef.cfm.comparator.isPacked())
             return false;
 
         // However, collections always entails one
@@ -406,11 +411,11 @@ public class SelectStatement implements CQLStatement
         return false;
     }
 
-    private SortedSet<ByteBuffer> getRequestedColumns(List<ByteBuffer> variables) throws InvalidRequestException
+    private SortedSet<CellName> getRequestedColumns(List<ByteBuffer> variables) throws InvalidRequestException
     {
         assert !isColumnRange();
 
-        ColumnNameBuilder builder = cfDef.getColumnNameBuilder();
+        CBuilder builder = cfDef.cfm.comparator.builder();
         Iterator<ColumnIdentifier> idIter = cfDef.columns.keySet().iterator();
         for (Restriction r : columnRestrictions)
         {
@@ -419,22 +424,18 @@ public class SelectStatement implements CQLStatement
             if (r.eqValues.size() > 1)
             {
                 // We have a IN, which we only support for the last column.
-                // If compact, just add all values and we're done. Otherwise,
-                // for each value of the IN, creates all the columns corresponding to the selection.
-                SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfDef.cfm.comparator);
+                // For each value of the IN, creates all the columns corresponding to the selection.
+                SortedSet<CellName> columns = new TreeSet<CellName>(cfDef.cfm.comparator);
                 Iterator<Term> iter = r.eqValues.iterator();
                 while (iter.hasNext())
                 {
                     Term v = iter.next();
-                    ColumnNameBuilder b = iter.hasNext() ? builder.copy() : builder;
                     ByteBuffer val = v.bindAndGet(variables);
                     if (val == null)
                         throw new InvalidRequestException(String.format("Invalid null value for clustering key part %s", id));
-                    b.add(val);
-                    if (cfDef.isCompact)
-                        columns.add(b.build());
-                    else
-                        columns.addAll(addSelectedColumns(b));
+
+                    Composite prefix = builder.buildWith(val);
+                    columns.addAll(addSelectedColumns(prefix));
                 }
                 return columns;
             }
@@ -447,14 +448,14 @@ public class SelectStatement implements CQLStatement
             }
         }
 
-        return addSelectedColumns(builder);
+        return addSelectedColumns(builder.build());
     }
 
-    private SortedSet<ByteBuffer> addSelectedColumns(ColumnNameBuilder builder)
+    private SortedSet<CellName> addSelectedColumns(Composite prefix)
     {
-        if (cfDef.isCompact)
+        if (cfDef.cfm.comparator.isDense())
         {
-            return FBUtilities.singleton(builder.build());
+            return FBUtilities.singleton(CellNames.makeDense(prefix), cfDef.cfm.comparator);
         }
         else
         {
@@ -462,20 +463,20 @@ public class SelectStatement implements CQLStatement
             // non-know set of columns, so we shouldn't get there
             assert !selectACollection();
 
-            SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfDef.cfm.comparator);
+            SortedSet<CellName> columns = new TreeSet<CellName>(cfDef.cfm.comparator);
 
             // We need to query the selected column as well as the marker
             // column (for the case where the row exists but has no columns outside the PK)
             // Two exceptions are "static CF" (non-composite non-compact CF) and "super CF"
             // that don't have marker and for which we must query all columns instead
-            if (cfDef.isComposite && !cfDef.cfm.isSuper())
+            if (!cfDef.cfm.comparator.isPacked() && !cfDef.cfm.isSuper())
             {
                 // marker
-                columns.add(builder.copy().add(ByteBufferUtil.EMPTY_BYTE_BUFFER).build());
+                columns.add(CellNames.makeRowMarker(prefix));
 
                 // selected columns
                 for (ColumnIdentifier id : selection.regularColumnsToFetch())
-                    columns.add(builder.copy().add(id.key).build());
+                    columns.add(CellNames.make(prefix, id.key));
             }
             else
             {
@@ -483,9 +484,7 @@ public class SelectStatement implements CQLStatement
                 while (iter.hasNext())
                 {
                     ColumnIdentifier name = iter.next();
-                    ColumnNameBuilder b = iter.hasNext() ? builder.copy() : builder;
-                    ByteBuffer cname = b.add(name.key).build();
-                    columns.add(cname);
+                    columns.add(CellNames.make(prefix, name.key));
                 }
             }
             return columns;
@@ -494,7 +493,7 @@ public class SelectStatement implements CQLStatement
 
     private boolean selectACollection()
     {
-        if (!cfDef.hasCollections)
+        if (!cfDef.cfm.comparator.hasCollections())
             return false;
 
         for (CFDefinition.Name name : selection.getColumnsList())
@@ -506,12 +505,12 @@ public class SelectStatement implements CQLStatement
         return false;
     }
 
-    private static ByteBuffer buildBound(Bound bound,
-                                         Collection<CFDefinition.Name> names,
-                                         Restriction[] restrictions,
-                                         boolean isReversed,
-                                         ColumnNameBuilder builder,
-                                         List<ByteBuffer> variables) throws InvalidRequestException
+    private static Composite buildBound(Bound bound,
+                                        Collection<CFDefinition.Name> names,
+                                        Restriction[] restrictions,
+                                        boolean isReversed,
+                                        CBuilder builder,
+                                        List<ByteBuffer> variables) throws InvalidRequestException
     {
         // The end-of-component of composite doesn't depend on whether the
         // component type is reversed or not (i.e. the ReversedType is applied
@@ -530,10 +529,8 @@ public class SelectStatement implements CQLStatement
                 // There wasn't any non EQ relation on that key, we select all records having the preceding component as prefix.
                 // For composites, if there was preceding component and we're computing the end, we must change the last component
                 // End-Of-Component, otherwise we would be selecting only one record.
-                if (builder.componentCount() > 0 && eocBound == Bound.END)
-                    return builder.buildAsEndOfRange();
-                else
-                    return builder.build();
+                Composite prefix = builder.build();
+                return prefix.isEmpty() || eocBound == Bound.START ? prefix : prefix.end();
             }
 
             if (r.isEquality())
@@ -551,7 +548,7 @@ public class SelectStatement implements CQLStatement
                 ByteBuffer val = t.bindAndGet(variables);
                 if (val == null)
                     throw new InvalidRequestException(String.format("Invalid null clustering key part %s", name));
-                return builder.add(val, r.getRelation(eocBound, b)).build();
+                return builder.add(val).build().withEOC(eocForRelation(r.getRelation(eocBound, b)));
             }
         }
         // Means no relation at all or everything was an equal
@@ -559,14 +556,34 @@ public class SelectStatement implements CQLStatement
         // it would be harmless to do it. However, we use this method got the partition key too. And when a query
         // with 2ndary index is done, and with the the partition provided with an EQ, we'll end up here, and in that
         // case using the eoc would be bad, since for the random partitioner we have no guarantee that
-        // builder.buildAsEndOfRange() will sort after builder.build() (see #5240).
-        return (bound == Bound.END && builder.remainingCount() > 0) ? builder.buildAsEndOfRange() : builder.build();
+        // prefix.end() will sort after prefix (see #5240).
+        Composite prefix = builder.build();
+        return builder.isFull() || bound == Bound.START ? prefix : prefix.end();
     }
 
-    private ByteBuffer getRequestedBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
+    private static Composite.EOC eocForRelation(Relation.Type op)
+    {
+        switch (op)
+        {
+            case LT:
+                // < X => using startOf(X) as finish bound
+                return Composite.EOC.START;
+            case GT:
+            case LTE:
+                // > X => using endOf(X) as start bound
+                // <= X => using endOf(X) as finish bound
+                return Composite.EOC.END;
+            default:
+                // >= X => using X as start bound (could use START_OF too)
+                // = X => using X
+                return Composite.EOC.NONE;
+        }
+    }
+
+    private Composite getRequestedBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
     {
         assert isColumnRange();
-        return buildBound(b, cfDef.columns.values(), columnRestrictions, isReversed, cfDef.getColumnNameBuilder(), variables);
+        return buildBound(b, cfDef.columns.values(), columnRestrictions, isReversed, cfDef.cfm.comparator.builder(), variables);
     }
 
     private List<IndexExpression> getIndexExpressions(List<ByteBuffer> variables) throws InvalidRequestException
@@ -624,43 +641,30 @@ public class SelectStatement implements CQLStatement
         return expressions;
     }
 
-
-    private Iterable<Column> columnsInOrder(final ColumnFamily cf, final List<ByteBuffer> variables) throws InvalidRequestException
+    private Iterator<Column> applySliceRestriction(final Iterator<Column> cells, final List<ByteBuffer> variables) throws InvalidRequestException
     {
-        // If the restriction for the last column alias is an IN, respect
-        // requested order
-        Restriction last = columnRestrictions[columnRestrictions.length - 1];
-        if (last == null || !last.isEquality())
-            return cf.getSortedColumns();
+        assert sliceRestriction != null;
 
-        ColumnNameBuilder builder = cfDef.getColumnNameBuilder();
-        for (int i = 0; i < columnRestrictions.length - 1; i++)
-            builder.add(columnRestrictions[i].eqValues.get(0).bindAndGet(variables));
+        final CellNameType type = cfDef.cfm.comparator;
+        final CellName excludedStart = sliceRestriction.isInclusive(Bound.START) ? null : type.make(sliceRestriction.bound(Bound.START).bindAndGet(variables));
+        final CellName excludedEnd = sliceRestriction.isInclusive(Bound.END) ? null : type.make(sliceRestriction.bound(Bound.END).bindAndGet(variables));
 
-        final List<ByteBuffer> requested = new ArrayList<ByteBuffer>(last.eqValues.size());
-        Iterator<Term> iter = last.eqValues.iterator();
-        while (iter.hasNext())
+        return new AbstractIterator<Column>()
         {
-            Term t = iter.next();
-            ColumnNameBuilder b = iter.hasNext() ? builder.copy() : builder;
-            requested.add(b.add(t.bindAndGet(variables)).build());
-        }
-
-        return new Iterable<Column>()
-        {
-            public Iterator<Column> iterator()
+            protected Column computeNext()
             {
-                return new AbstractIterator<Column>()
-                {
-                    Iterator<ByteBuffer> iter = requested.iterator();
-                    public Column computeNext()
-                    {
-                        if (!iter.hasNext())
-                            return endOfData();
-                        Column column = cf.getColumn(iter.next());
-                        return column == null ? computeNext() : column;
-                    }
-                };
+                if (!cells.hasNext())
+                    return endOfData();
+
+                Column c = cells.next();
+
+                // For dynamic CF, the column could be out of the requested bounds (because we don't support strict bounds internally (unless
+                // the comparator is composite that is)), filter here
+                if ( (excludedStart != null && type.compare(c.name(), excludedStart) == 0)
+                  || (excludedEnd != null && type.compare(c.name(), excludedEnd) == 0) )
+                    return computeNext();
+
+                return c;
             }
         };
     }
@@ -684,93 +688,51 @@ public class SelectStatement implements CQLStatement
                 keyComponents = new ByteBuffer[]{ row.key.key };
             }
 
-            if (cfDef.isCompact)
+            Iterator<Column> cells = row.cf.getSortedColumns().iterator();
+            if (sliceRestriction != null)
+                cells = applySliceRestriction(cells, variables);
+
+            for (Iterator<CQL3Row> iter = cfDef.cfm.comparator.CQL3RowBuilder().group(cells); iter.hasNext();)
             {
-                // One cqlRow per column
-                for (Column c : columnsInOrder(row.cf, variables))
-                {
-                    if (c.isMarkedForDelete())
-                        continue;
+                CQL3Row cql3Row = iter.next();
 
-                    ByteBuffer[] components = null;
-                    if (cfDef.isComposite)
-                    {
-                        components = ((CompositeType)cfDef.cfm.comparator).split(c.name());
-                    }
-                    else if (sliceRestriction != null)
-                    {
-                        // For dynamic CF, the column could be out of the requested bounds, filter here
-                        if (!sliceRestriction.isInclusive(Bound.START) && c.name().equals(sliceRestriction.bound(Bound.START).bindAndGet(variables)))
-                            continue;
-                        if (!sliceRestriction.isInclusive(Bound.END) && c.name().equals(sliceRestriction.bound(Bound.END).bindAndGet(variables)))
-                            continue;
-                    }
-
-                    result.newRow();
-                    // Respect selection order
-                    for (CFDefinition.Name name : selection.getColumnsList())
-                    {
-                        switch (name.kind)
-                        {
-                            case KEY_ALIAS:
-                                result.add(keyComponents[name.position]);
-                                break;
-                            case COLUMN_ALIAS:
-                                ByteBuffer val = cfDef.isComposite
-                                               ? (name.position < components.length ? components[name.position] : null)
-                                               : c.name();
-                                result.add(val);
-                                break;
-                            case VALUE_ALIAS:
-                                result.add(c);
-                                break;
-                            case COLUMN_METADATA:
-                                // This should not happen for compact CF
-                                throw new AssertionError();
-                            default:
-                                throw new AssertionError();
-                        }
-                    }
-                }
-            }
-            else if (cfDef.isComposite)
-            {
-                // Sparse case: group column in cqlRow when composite prefix is equal
-                CompositeType composite = (CompositeType)cfDef.cfm.comparator;
-
-                ColumnGroupMap.Builder builder = new ColumnGroupMap.Builder(composite, cfDef.hasCollections);
-
-                for (Column c : row.cf)
-                {
-                    if (c.isMarkedForDelete())
-                        continue;
-
-                    builder.add(c);
-                }
-
-                for (ColumnGroupMap group : builder.groups())
-                    handleGroup(selection, result, row.key.key, keyComponents, group);
-            }
-            else
-            {
-                if (row.cf.hasOnlyTombstones())
-                    continue;
-
-                // Static case: One cqlRow for all columns
+                // Respect requested order
                 result.newRow();
                 for (CFDefinition.Name name : selection.getColumnsList())
                 {
-                    if (name.kind == CFDefinition.Name.Kind.KEY_ALIAS)
-                        result.add(keyComponents[name.position]);
-                    else
-                        result.add(row.cf.getColumn(name.name.key));
+                    switch (name.kind)
+                    {
+                        case KEY_ALIAS:
+                            result.add(keyComponents[name.position]);
+                            break;
+                        case COLUMN_ALIAS:
+                            result.add(cql3Row.clusteringKey().get(name.position));
+                            break;
+                        case VALUE_ALIAS:
+                            result.add(cql3Row.getColumn(null));
+                            break;
+                        case COLUMN_METADATA:
+                            if (name.type.isCollection())
+                            {
+                                List<Column> collection = cql3Row.getCollection(name.name.key);
+                                ByteBuffer value = collection == null
+                                                 ? null
+                                                 : ((CollectionType)name.type).serialize(collection);
+                                result.add(value);
+                            }
+                            else
+                            {
+                                result.add(cql3Row.getColumn(name.name.key));
+                            }
+                            break;
+                    }
                 }
             }
         }
 
         ResultSet cqlRows = result.build();
 
-        orderResults(cqlRows);
+        orderResults(cqlRows, variables);
 
         // Internal calls always return columns in the comparator order, even when reverse was set
         if (isReversed)
@@ -784,109 +746,105 @@ public class SelectStatement implements CQLStatement
     /**
      * Orders results when multiple keys are selected (using IN)
      */
-    private void orderResults(ResultSet cqlRows)
+    private void orderResults(ResultSet cqlRows, List<ByteBuffer> variables) throws InvalidRequestException
     {
-        // There is nothing to do if
-        //   a. there are no results,
-        //   b. no ordering information where given,
-        //   c. key restriction is a Range or not an IN expression
-        if (cqlRows.size() == 0 || parameters.orderings.isEmpty() || isKeyRange || !keyIsInRelation)
+        if (cqlRows.size() == 0)
             return;
 
+        /*
+         * We need to do post-query ordering in 2 cases:
+         *   1) if the last clustering key is restricted by a IN.
+         *   2) if the row key is restricted by a IN and there is some ORDER BY values
+         */
 
-        // optimization when only *one* order condition was given
-        // because there is no point of using composite comparator if there is only one order condition
-        if (parameters.orderings.size() == 1)
+        Restriction last = columnRestrictions.length == 0 ? null : columnRestrictions[columnRestrictions.length - 1];
+        boolean orderOnLast = last != null && last.isEquality() && last.eqValues.size() > 1;
+
+        if (!(orderOnLast || (keyIsInRelation && parameters.orderings.size() > 0)))
+            return;
+
+        List<ColumnIdentifier> idToSort = new ArrayList<ColumnIdentifier>();
+        List<Comparator<ByteBuffer>> sorters = new ArrayList<Comparator<ByteBuffer>>();
+
+        // If the restriction for the last column alias is an IN, respect requested order
+        if (orderOnLast)
         {
-            CFDefinition.Name ordering = cfDef.get(parameters.orderings.keySet().iterator().next());
-            Collections.sort(cqlRows.rows, new SingleColumnComparator(getColumnPositionInResultSet(cqlRows, ordering), ordering.type));
-            return;
+            List<ByteBuffer> values = new ArrayList<ByteBuffer>(last.eqValues.size());
+            for (Term t : last.eqValues)
+                values.add(t.bindAndGet(variables));
+            idToSort.add(cfDef.getLastClusteringKey());
+            sorters.add(makeComparatorFor(values));
         }
 
-        // builds a 'composite' type for multi-column comparison from the comparators of the ordering components
-        // and passes collected position information and built composite comparator to CompositeComparator to do
-        // an actual comparison of the CQL rows.
-        List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(parameters.orderings.size());
-        int[] positions = new int[parameters.orderings.size()];
-
-        int idx = 0;
+        // Then add the order by
         for (ColumnIdentifier identifier : parameters.orderings.keySet())
         {
             CFDefinition.Name orderingColumn = cfDef.get(identifier);
-            types.add(orderingColumn.type);
-            positions[idx++] = getColumnPositionInResultSet(cqlRows, orderingColumn);
+            idToSort.add(orderingColumn.name);
+            sorters.add(orderingColumn.type);
         }
 
-        Collections.sort(cqlRows.rows, new CompositeComparator(types, positions));
+        Comparator<List<ByteBuffer>> comparator;
+
+        // Optimization when there is only *one* order condition
+        if (idToSort.size() == 1)
+        {
+            comparator = new SingleColumnComparator(getColumnPositionInResultSet(cqlRows, idToSort.get(0)), sorters.get(0));
+        }
+        else
+        {
+            // builds a 'composite' type for multi-column comparison from the comparators of the ordering components
+            // and passes collected position information and built composite comparator to CompositeComparator to do
+            // an actual comparison of the CQL rows.
+            int[] positions = new int[idToSort.size()];
+
+            for (int i = 0; i < idToSort.size(); i++)
+                positions[i] = getColumnPositionInResultSet(cqlRows, idToSort.get(i));
+
+            comparator = new CompositeComparator(sorters, positions);
+        }
+        Collections.sort(cqlRows.rows, comparator);
+    }
+
+    // Comparator used when the last clustering key is an IN, to sort result
+    // rows in the order of the values provided for the IN.
+    private Comparator<ByteBuffer> makeComparatorFor(final List<ByteBuffer> values)
+    {
+        // This may not alwayas be the most efficient, but it probably is if
+        // values is small, which is likely to be the most common case.
+        return new Comparator<ByteBuffer>()
+        {
+            public int compare(ByteBuffer b1, ByteBuffer b2)
+            {
+                int idx1 = -1;
+                int idx2 = -1;
+                for (int i = 0; i < values.size(); i++)
+                {
+                    ByteBuffer bb = values.get(i);
+                    if (bb.equals(b1))
+                        idx1 = i;
+                    if (bb.equals(b2))
+                        idx2 = i;
+
+                    if (idx1 >= 0 && idx2 >= 0)
+                        break;
+                }
+                assert idx1 >= 0 && idx2 >= 0 : "Got CQL3 row that was not queried in resultset";
+                return idx1 - idx2;
+            }
+        };
     }
 
     // determine position of column in the select clause
-    private int getColumnPositionInResultSet(ResultSet rs, CFDefinition.Name columnName)
+    private int getColumnPositionInResultSet(ResultSet rs, ColumnIdentifier columnName)
     {
         for (int i = 0; i < rs.metadata.names.size(); i++)
         {
-            if (rs.metadata.names.get(i).name.equals(columnName.name))
+            if (rs.metadata.names.get(i).name.equals(columnName))
                 return i;
         }
 
         throw new IllegalArgumentException(String.format("Column %s wasn't found in select clause.", columnName));
-    }
-
-    /**
-     * For sparse composite, returns wheter two columns belong to the same
-     * cqlRow base on the full list of component in the name.
-     * Two columns do belong together if they differ only by the last
-     * component.
-     */
-    private static boolean isSameRow(ByteBuffer[] c1, ByteBuffer[] c2)
-    {
-        // Cql don't allow to insert columns who doesn't have all component of
-        // the composite set for sparse composite. Someone coming from thrift
-        // could hit that though. But since we have no way to handle this
-        // correctly, better fail here and tell whomever may hit that (if
-        // someone ever do) to change the definition to a dense composite
-        assert c1.length == c2.length : "Sparse composite should not have partial column names";
-        for (int i = 0; i < c1.length - 1; i++)
-        {
-            if (!c1[i].equals(c2[i]))
-                return false;
-        }
-        return true;
-    }
-
-    private void handleGroup(Selection selection, Selection.ResultSetBuilder result, ByteBuffer key, ByteBuffer[] keyComponents, ColumnGroupMap columns) throws InvalidRequestException
-    {
-        // Respect requested order
-        result.newRow();
-        for (CFDefinition.Name name : selection.getColumnsList())
-        {
-            switch (name.kind)
-            {
-                case KEY_ALIAS:
-                    result.add(keyComponents[name.position]);
-                    break;
-                case COLUMN_ALIAS:
-                    result.add(columns.getKeyComponent(name.position));
-                    break;
-                case VALUE_ALIAS:
-                    // This should not happen for SPARSE
-                    throw new AssertionError();
-                case COLUMN_METADATA:
-                    if (name.type.isCollection())
-                    {
-                        List<Pair<ByteBuffer, Column>> collection = columns.getCollection(name.name.key);
-                        ByteBuffer value = collection == null
-                                         ? null
-                                         : ((CollectionType)name.type).serialize(collection);
-                        result.add(value);
-                    }
-                    else
-                    {
-                        result.add(columns.getSimple(name.name.key));
-                    }
-                    break;
-            }
-        }
     }
 
     private static boolean isReversedType(CFDefinition.Name name)
@@ -1124,7 +1082,7 @@ public class SelectStatement implements CQLStatement
                         shouldBeDone = true;
                         // For non-composite slices, we don't support internally the difference between exclusive and
                         // inclusive bounds, so we deal with it manually.
-                        if (!cfDef.isComposite && (!restriction.isInclusive(Bound.START) || !restriction.isInclusive(Bound.END)))
+                        if (cfDef.cfm.comparator.isPacked() && (!restriction.isInclusive(Bound.START) || !restriction.isInclusive(Bound.END)))
                             stmt.sliceRestriction = restriction;
                     }
                     // We only support IN for the last name and for compact storage so far
@@ -1479,9 +1437,9 @@ public class SelectStatement implements CQLStatement
     private static class SingleColumnComparator implements Comparator<List<ByteBuffer>>
     {
         private final int index;
-        private final AbstractType<?> comparator;
+        private final Comparator<ByteBuffer> comparator;
 
-        public SingleColumnComparator(int columnIndex, AbstractType<?> orderer)
+        public SingleColumnComparator(int columnIndex, Comparator<ByteBuffer> orderer)
         {
             index = columnIndex;
             comparator = orderer;
@@ -1498,10 +1456,10 @@ public class SelectStatement implements CQLStatement
      */
     private static class CompositeComparator implements Comparator<List<ByteBuffer>>
     {
-        private final List<AbstractType<?>> orderTypes;
+        private final List<Comparator<ByteBuffer>> orderTypes;
         private final int[] positions;
 
-        private CompositeComparator(List<AbstractType<?>> orderTypes, int[] positions)
+        private CompositeComparator(List<Comparator<ByteBuffer>> orderTypes, int[] positions)
         {
             this.orderTypes = orderTypes;
             this.positions = positions;
@@ -1511,7 +1469,7 @@ public class SelectStatement implements CQLStatement
         {
             for (int i = 0; i < positions.length; i++)
             {
-                AbstractType<?> type = orderTypes.get(i);
+                Comparator<ByteBuffer> type = orderTypes.get(i);
                 int columnPos = positions[i];
 
                 ByteBuffer aValue = a.get(columnPos);

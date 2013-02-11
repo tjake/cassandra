@@ -44,14 +44,12 @@ public class Column implements OnDiskAtom
 {
     public static final int MAX_NAME_LENGTH = FBUtilities.MAX_UNSIGNED_SHORT;
 
-    public static final ColumnSerializer serializer = new ColumnSerializer();
-
-    public static OnDiskAtom.Serializer onDiskSerializer()
-    {
-        return OnDiskAtom.Serializer.instance;
-    }
-
-    public static Iterator<OnDiskAtom> onDiskIterator(final DataInput in, final int count, final ColumnSerializer.Flag flag, final int expireBefore, final Descriptor.Version version)
+    public static Iterator<OnDiskAtom> onDiskIterator(final DataInput in,
+                                                      final int count,
+                                                      final ColumnSerializer.Flag flag,
+                                                      final int expireBefore,
+                                                      final Descriptor.Version version,
+                                                      final CellNameType type)
     {
         return new Iterator<OnDiskAtom>()
         {
@@ -67,7 +65,7 @@ public class Column implements OnDiskAtom
                 ++i;
                 try
                 {
-                    return onDiskSerializer().deserializeFromSSTable(in, flag, expireBefore, version);
+                    return type.onDiskAtomSerializer().deserializeFromSSTable(in, flag, expireBefore, version);
                 }
                 catch (IOException e)
                 {
@@ -82,36 +80,35 @@ public class Column implements OnDiskAtom
         };
     }
 
-    protected final ByteBuffer name;
+    protected final CellName name;
     protected final ByteBuffer value;
     protected final long timestamp;
 
-    Column(ByteBuffer name)
+    Column(CellName name)
     {
         this(name, ByteBufferUtil.EMPTY_BYTE_BUFFER);
     }
 
-    public Column(ByteBuffer name, ByteBuffer value)
+    public Column(CellName name, ByteBuffer value)
     {
         this(name, value, 0);
     }
 
-    public Column(ByteBuffer name, ByteBuffer value, long timestamp)
+    public Column(CellName name, ByteBuffer value, long timestamp)
     {
         assert name != null;
         assert value != null;
-        assert name.remaining() <= Column.MAX_NAME_LENGTH;
         this.name = name;
         this.value = value;
         this.timestamp = timestamp;
     }
 
-    public Column withUpdatedName(ByteBuffer newName)
+    public Column withUpdatedName(CellName newName)
     {
         return new Column(newName, value, timestamp);
     }
 
-    public ByteBuffer name()
+    public CellName name()
     {
         return name;
     }
@@ -158,10 +155,10 @@ public class Column implements OnDiskAtom
 
     public int dataSize()
     {
-        return name().remaining() + value.remaining() + TypeSizes.NATIVE.sizeof(timestamp);
+        return name().dataSize() + value.remaining() + TypeSizes.NATIVE.sizeof(timestamp);
     }
 
-    public int serializedSize(TypeSizes typeSizes)
+    public int serializedSize(CellNameType type, TypeSizes typeSizes)
     {
         /*
          * Size of a column is =
@@ -171,14 +168,8 @@ public class Column implements OnDiskAtom
          * + 4 bytes which basically indicates the size of the byte array
          * + entire byte array.
         */
-        int nameSize = name.remaining();
         int valueSize = value.remaining();
-        return typeSizes.sizeof((short) nameSize) + nameSize + 1 + typeSizes.sizeof(timestamp) + typeSizes.sizeof(valueSize) + valueSize;
-    }
-
-    public long serializedSizeForSSTable()
-    {
-        return serializedSize(TypeSizes.NATIVE);
+        return ((int)type.cellSerializer().serializedSize(name, typeSizes)) + 1 + typeSizes.sizeof(timestamp) + typeSizes.sizeof(valueSize) + valueSize;
     }
 
     public int serializationFlags()
@@ -197,7 +188,7 @@ public class Column implements OnDiskAtom
 
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.toByteBuffer().duplicate());
         digest.update(value.duplicate());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -271,10 +262,10 @@ public class Column implements OnDiskAtom
 
     public Column localCopy(ColumnFamilyStore cfs, Allocator allocator)
     {
-        return new Column(cfs.internOrCopy(name, allocator), allocator.clone(value), timestamp);
+        return new Column(name.copy(allocator), allocator.clone(value), timestamp);
     }
 
-    public String getString(AbstractType<?> comparator)
+    public String getString(CellNameType comparator)
     {
         StringBuilder sb = new StringBuilder();
         sb.append(comparator.getString(name));
@@ -310,7 +301,7 @@ public class Column implements OnDiskAtom
         return getLocalDeletionTime() < gcBefore;
     }
 
-    public static Column create(ByteBuffer name, ByteBuffer value, long timestamp, int ttl, CFMetaData metadata)
+    public static Column create(CellName name, ByteBuffer value, long timestamp, int ttl, CFMetaData metadata)
     {
         if (ttl <= 0)
             ttl = metadata.getDefaultTimeToLive();
@@ -350,22 +341,18 @@ public class Column implements OnDiskAtom
         return new Column(decomposeName(names), InetAddressType.instance.decompose(value), timestamp);
     }
 
-    static ByteBuffer decomposeName(String... names)
+    static CellName decomposeName(String... names)
     {
         assert names.length > 0;
 
         if (names.length == 1)
-            return UTF8Type.instance.decompose(names[0]);
+            return CellNames.simpleSparseType().make(names[0]);
 
         // not super performant.  at this time, only infrequently called schema code uses this.
         List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(names.length);
-        for (int i = 0; i < names.length; i++)
+        for (int i = 0; i < names.length - 1; i++)
             types.add(UTF8Type.instance);
 
-        CompositeType.Builder builder = new CompositeType.Builder(CompositeType.getInstance(types));
-        for (String name : names)
-            builder.add(UTF8Type.instance.decompose(name));
-        return builder.build();
+        return CellNames.compositeSparseType(types).make((Object[])names);
     }
 }
-

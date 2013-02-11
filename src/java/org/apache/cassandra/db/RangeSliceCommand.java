@@ -176,12 +176,15 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         SlicePredicate sp = new SlicePredicate();
         if (predicate instanceof NamesQueryFilter)
         {
-            sp.setColumn_names(new ArrayList<ByteBuffer>(((NamesQueryFilter)predicate).columns));
+            List<ByteBuffer> l = new ArrayList<ByteBuffer>(((NamesQueryFilter)predicate).columns.size());
+            for (CellName name : ((NamesQueryFilter)predicate).columns)
+                l.add(name.toByteBuffer());
+            sp.setColumn_names(l);
         }
         else
         {
             SliceQueryFilter sqf = (SliceQueryFilter)predicate;
-            sp.setSlice_range(new SliceRange(sqf.start(), sqf.finish(), sqf.reversed, sqf.count));
+            sp.setSlice_range(new SliceRange(sqf.start().toByteBuffer(), sqf.finish().toByteBuffer(), sqf.reversed, sqf.count));
         }
         return sp;
     }
@@ -191,6 +194,7 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         out.writeUTF(sliceCommand.keyspace);
         out.writeUTF(sliceCommand.column_family);
 
+        CFMetaData metadata = Schema.instance.getCFMetaData(sliceCommand.keyspace, sliceCommand.column_family);
         IDiskAtomFilter filter = sliceCommand.predicate;
         if (version < MessagingService.VERSION_20)
         {
@@ -198,10 +202,9 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
             // must extract the super column name from the predicate (and
             // modify the predicate accordingly)
             ByteBuffer sc = null;
-            CFMetaData metadata = Schema.instance.getCFMetaData(sliceCommand.getKeyspace(), sliceCommand.column_family);
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC((CompositeType)metadata.comparator, filter);
+                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC(metadata.comparator, filter);
                 sc = scFilter.scName;
                 filter = scFilter.updatedFilter;
             }
@@ -217,7 +220,7 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         }
         else
         {
-            IDiskAtomFilter.Serializer.instance.serialize(sliceCommand.predicate, out, version);
+            metadata.comparator.diskAtomFilterSerializer().serialize(sliceCommand.predicate, out, version);
         }
 
         if (version >= MessagingService.VERSION_11)
@@ -272,15 +275,10 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
                 superColumn = ByteBuffer.wrap(buf);
             }
 
-            AbstractType<?> comparator;
+            CellNameType comparator = metadata.comparator;
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                CompositeType type = (CompositeType)metadata.comparator;
-                comparator = superColumn == null ? type.types.get(0) : type.types.get(1);
-            }
-            else
-            {
-                comparator = metadata.comparator;
+                comparator = CellNames.simpleDenseType(metadata.comparator.subtype(superColumn == null ? 0 : 1));
             }
 
             if (version < MessagingService.VERSION_12)
@@ -291,15 +289,15 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
             }
             else
             {
-                predicate = IDiskAtomFilter.Serializer.instance.deserialize(in, version, comparator);
+                predicate = comparator.diskAtomFilterSerializer().deserialize(in, version);
             }
 
             if (metadata.cfType == ColumnFamilyType.Super)
-                predicate = SuperColumns.fromSCFilter((CompositeType)metadata.comparator, superColumn, predicate);
+                predicate = SuperColumns.fromSCFilter(metadata.comparator, superColumn, predicate);
         }
         else
         {
-            predicate = IDiskAtomFilter.Serializer.instance.deserialize(in, version, metadata.comparator);
+            predicate = metadata.comparator.diskAtomFilterSerializer().deserialize(in, version);
         }
 
         List<IndexExpression> rowFilter = null;
@@ -342,14 +340,15 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         long size = TypeSizes.NATIVE.sizeof(rsc.keyspace);
         size += TypeSizes.NATIVE.sizeof(rsc.column_family);
 
+        CFMetaData metadata = Schema.instance.getCFMetaData(rsc.keyspace, rsc.column_family);
+
         IDiskAtomFilter filter = rsc.predicate;
         if (version < MessagingService.VERSION_20)
         {
             ByteBuffer sc = null;
-            CFMetaData metadata = Schema.instance.getCFMetaData(rsc.keyspace, rsc.column_family);
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC((CompositeType)metadata.comparator, filter);
+                SuperColumns.SCFilter scFilter = SuperColumns.filterToSC(metadata.comparator, filter);
                 sc = scFilter.scName;
                 filter = scFilter.updatedFilter;
             }
@@ -382,7 +381,7 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         }
         else
         {
-            size += IDiskAtomFilter.Serializer.instance.serializedSize(filter, version);
+            size += metadata.comparator.diskAtomFilterSerializer().serializedSize(filter, version);
         }
 
         if (version >= MessagingService.VERSION_11)

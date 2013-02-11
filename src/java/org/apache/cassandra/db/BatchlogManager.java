@@ -63,8 +63,8 @@ public class BatchlogManager implements BatchlogManagerMBean
     private static final int VERSION = MessagingService.VERSION_12;
     private static final long TIMEOUT = 2 * DatabaseDescriptor.getWriteRpcTimeout();
 
-    private static final ByteBuffer WRITTEN_AT = columnName("written_at");
-    private static final ByteBuffer DATA = columnName("data");
+    private static final CellName WRITTEN_AT = columnName("written_at");
+    private static final CellName DATA = columnName("data");
 
     private static final Logger logger = LoggerFactory.getLogger(BatchlogManager.class);
 
@@ -102,7 +102,7 @@ public class BatchlogManager implements BatchlogManagerMBean
     {
         int count = 0;
 
-        for (Row row : getRangeSlice(new NamesQueryFilter(ImmutableSortedSet.<ByteBuffer>of())))
+        for (Row row : getRangeSlice(new NamesQueryFilter(ImmutableSortedSet.<CellName>of())))
         {
             if (row.cf != null && !row.cf.isMarkedForDelete())
                 count++;
@@ -169,7 +169,7 @@ public class BatchlogManager implements BatchlogManagerMBean
         {
             logger.debug("Started replayAllFailedBatches");
 
-            for (Row row : getRangeSlice(new NamesQueryFilter(WRITTEN_AT)))
+            for (Row row : getRangeSlice(new NamesQueryFilter(FBUtilities.singleton(WRITTEN_AT, CFMetaData.BatchlogCF.comparator))))
             {
                 if (row.cf == null || row.cf.isMarkedForDelete())
                     continue;
@@ -247,10 +247,9 @@ public class BatchlogManager implements BatchlogManagerMBean
         rm.apply();
     }
 
-    private static ByteBuffer columnName(String name)
+    private static CellName columnName(String name)
     {
-        ByteBuffer raw = UTF8Type.instance.decompose(name);
-        return CFMetaData.BatchlogCF.getCfDef().getColumnNameBuilder().add(raw).build();
+        return CFMetaData.BatchlogCF.comparator.make(name);
     }
 
     private static List<Row> getRangeSlice(IDiskAtomFilter columnFilter)

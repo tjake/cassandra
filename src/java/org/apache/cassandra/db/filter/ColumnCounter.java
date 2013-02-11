@@ -22,6 +22,8 @@ package org.apache.cassandra.db.filter;
 
 import java.nio.ByteBuffer;
 
+import org.apache.cassandra.db.CellName;
+import org.apache.cassandra.db.CellNameType;
 import org.apache.cassandra.db.Column;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -57,9 +59,9 @@ public class ColumnCounter
 
     public static class GroupByPrefix extends ColumnCounter
     {
-        private final CompositeType type;
+        private final CellNameType type;
         private final int toGroup;
-        private ByteBuffer[] last;
+        private CellName last;
 
         /**
          * A column counter that count only 1 for all the columns sharing a
@@ -71,7 +73,7 @@ public class ColumnCounter
          *                column. If 0, all columns are grouped, otherwise we group
          *                those for which the {@code toGroup} first component are equals.
          */
-        public GroupByPrefix(CompositeType type, int toGroup)
+        public GroupByPrefix(CellNameType type, int toGroup)
         {
             this.type = type;
             this.toGroup = toGroup;
@@ -93,15 +95,15 @@ public class ColumnCounter
                 return;
             }
 
-            ByteBuffer[] current = type.split(column.name());
-            assert current.length >= toGroup;
+            CellName current = column.name();
+            assert current.size() >= toGroup;
 
             if (last != null)
             {
                 boolean isSameGroup = true;
                 for (int i = 0; i < toGroup; i++)
                 {
-                    if (ByteBufferUtil.compareUnsigned(last[i], current[i]) != 0)
+                    if (type.subtype(i).compare(last.get(i), current.get(i)) != 0)
                     {
                         isSameGroup = false;
                         break;

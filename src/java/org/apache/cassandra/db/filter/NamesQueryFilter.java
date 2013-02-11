@@ -20,7 +20,6 @@ package org.apache.cassandra.db.filter;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.SortedSet;
@@ -33,37 +32,30 @@ import org.apache.cassandra.db.columniterator.ISSTableColumnIterator;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.columniterator.SSTableNamesIterator;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
 public class NamesQueryFilter implements IDiskAtomFilter
 {
-    public static final Serializer serializer = new Serializer();
-
-    public final SortedSet<ByteBuffer> columns;
+    public final SortedSet<CellName> columns;
 
     // If true, getLiveCount will always return either 0 or 1. This uses the fact that we know 
     // CQL3 will never use a name filter with cell names spanning multiple CQL3 rows.
     private final boolean countCQL3Rows;
 
-    public NamesQueryFilter(SortedSet<ByteBuffer> columns)
+    public NamesQueryFilter(SortedSet<CellName> columns)
     {
         this(columns, false);
     }
 
-    public NamesQueryFilter(SortedSet<ByteBuffer> columns, boolean countCQL3Rows)
+    public NamesQueryFilter(SortedSet<CellName> columns, boolean countCQL3Rows)
     {
         this.columns = columns;
         this.countCQL3Rows = countCQL3Rows;
-    }
-
-    public NamesQueryFilter(ByteBuffer column)
-    {
-        this(FBUtilities.singleton(column));
     }
 
     public NamesQueryFilter cloneShallow()
@@ -72,7 +64,7 @@ public class NamesQueryFilter implements IDiskAtomFilter
         return this;
     }
 
-    public NamesQueryFilter withUpdatedColumns(SortedSet<ByteBuffer> newColumns)
+    public NamesQueryFilter withUpdatedColumns(SortedSet<CellName> newColumns)
     {
        return new NamesQueryFilter(newColumns, countCQL3Rows);
     }
@@ -102,9 +94,9 @@ public class NamesQueryFilter implements IDiskAtomFilter
         }
     }
 
-    public Comparator<Column> getColumnComparator(AbstractType<?> comparator)
+    public Comparator<Column> getColumnComparator(CellNameType comparator)
     {
-        return comparator.columnComparator;
+        return comparator.columnComparator();
     }
 
     @Override
@@ -138,11 +130,11 @@ public class NamesQueryFilter implements IDiskAtomFilter
         return count;
     }
 
-    public boolean maySelectPrefix(Comparator<ByteBuffer> cmp, ByteBuffer prefix)
+    public boolean maySelectPrefix(Comparator<Composite> cmp, Composite prefix)
     {
-        for (ByteBuffer column : columns)
+        for (CellName column : columns)
         {
-            if (ByteBufferUtil.isPrefix(prefix, column))
+            if (prefix.isPrefixOf(column))
                 return true;
         }
         return false;
@@ -150,12 +142,20 @@ public class NamesQueryFilter implements IDiskAtomFilter
 
     public static class Serializer implements IVersionedSerializer<NamesQueryFilter>
     {
+        private CellNameType type;
+
+        public Serializer(CellNameType type)
+        {
+            this.type = type;
+        }
+
         public void serialize(NamesQueryFilter f, DataOutput out, int version) throws IOException
         {
             out.writeInt(f.columns.size());
-            for (ByteBuffer cName : f.columns)
+            ISerializer<CellName> serializer = type.cellSerializer();
+            for (CellName cName : f.columns)
             {
-                ByteBufferUtil.writeWithShortLength(cName, out);
+                serializer.serialize(cName, out);
             }
             // If we talking against an older node, we have no way to tell him that we want to count CQL3 rows. This does mean that
             // this node may return less data than required. The workaround being to upgrade all nodes.
@@ -165,15 +165,11 @@ public class NamesQueryFilter implements IDiskAtomFilter
 
         public NamesQueryFilter deserialize(DataInput in, int version) throws IOException
         {
-            throw new UnsupportedOperationException();
-        }
-
-        public NamesQueryFilter deserialize(DataInput in, int version, AbstractType comparator) throws IOException
-        {
             int size = in.readInt();
-            SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(comparator);
+            SortedSet<CellName> columns = new TreeSet<CellName>(type);
+            ISerializer<CellName> serializer = type.cellSerializer();
             for (int i = 0; i < size; ++i)
-                columns.add(ByteBufferUtil.readWithShortLength(in));
+                columns.add(serializer.deserialize(in));
             boolean countCQL3Rows = version >= MessagingService.VERSION_12
                                   ? in.readBoolean()
                                   : false;
@@ -184,11 +180,9 @@ public class NamesQueryFilter implements IDiskAtomFilter
         {
             TypeSizes sizes = TypeSizes.NATIVE;
             int size = sizes.sizeof(f.columns.size());
-            for (ByteBuffer cName : f.columns)
-            {
-                int cNameSize = cName.remaining();
-                size += sizes.sizeof((short) cNameSize) + cNameSize;
-            }
+            ISerializer<CellName> serializer = type.cellSerializer();
+            for (CellName cName : f.columns)
+                size += serializer.serializedSize(cName, sizes);
             if (version >= MessagingService.VERSION_12)
                 size += sizes.sizeof(f.countCQL3Rows);
             return size;

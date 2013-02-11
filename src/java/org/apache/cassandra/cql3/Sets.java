@@ -27,7 +27,10 @@ import java.util.TreeSet;
 
 import com.google.common.base.Joiner;
 
+import org.apache.cassandra.db.CellName;
+import org.apache.cassandra.db.CellNames;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.Composite;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.db.marshal.MapType;
@@ -183,33 +186,33 @@ public abstract class Sets
 
     public static class Setter extends Operation
     {
-        public Setter(ColumnIdentifier column, Term t)
+        public Setter(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
             // delete + add
-            ColumnNameBuilder column = prefix.add(columnName.key);
-            cf.addAtom(params.makeTombstoneForOverwrite(column.build(), column.buildAsEndOfRange()));
-            Adder.doAdd(t, cf, column, params);
+            CellName name = CellNames.make(prefix, columnName);
+            cf.addAtom(params.makeTombstoneForOverwrite(name.slice()));
+            Adder.doAdd(t, cf, name, params);
         }
     }
 
     public static class Adder extends Operation
     {
-        public Adder(ColumnIdentifier column, Term t)
+        public Adder(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
-            doAdd(t, cf, prefix.add(columnName.key), params);
+            doAdd(t, cf, CellNames.make(prefix, columnName), params);
         }
 
-        static void doAdd(Term t, ColumnFamily cf, ColumnNameBuilder columnName, UpdateParameters params) throws InvalidRequestException
+        static void doAdd(Term t, ColumnFamily cf, CellName columnName, UpdateParameters params) throws InvalidRequestException
         {
             Term.Terminal value = t.bind(params.variables);
             if (value == null)
@@ -220,7 +223,7 @@ public abstract class Sets
             Set<ByteBuffer> toAdd = ((Sets.Value)value).elements;
             for (ByteBuffer bb : toAdd)
             {
-                ByteBuffer cellName = columnName.copy().add(bb).build();
+                CellName cellName = CellNames.makeCollectionCell(columnName, bb);
                 cf.addColumn(params.makeColumn(cellName, ByteBufferUtil.EMPTY_BYTE_BUFFER));
             }
         }
@@ -228,12 +231,12 @@ public abstract class Sets
 
     public static class Discarder extends Operation
     {
-        public Discarder(ColumnIdentifier column, Term t)
+        public Discarder(CFDefinition.Name column, Term t)
         {
             super(column, t);
         }
 
-        public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
+        public void execute(ByteBuffer rowKey, ColumnFamily cf, Composite prefix, UpdateParameters params) throws InvalidRequestException
         {
             Term.Terminal value = t.bind(params.variables);
             if (value == null)
@@ -244,11 +247,10 @@ public abstract class Sets
                                       ? Collections.singleton(((Constants.Value)value).bytes)
                                       : ((Sets.Value)value).elements;
 
-            ColumnNameBuilder column = prefix.add(columnName.key);
+            CellName name = CellNames.make(prefix, columnName);
             for (ByteBuffer bb : toDiscard)
             {
-                ByteBuffer cellName = column.copy().add(bb).build();
-                cf.addColumn(params.makeTombstone(cellName));
+                cf.addColumn(params.makeTombstone(CellNames.makeCollectionCell(name, bb)));
             }
         }
     }

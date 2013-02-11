@@ -24,24 +24,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.util.FileUtils;
 
 public class RowIndexEntry
 {
-    public static final Serializer serializer = new Serializer();
-
     public final long position;
 
     public RowIndexEntry(long position)
     {
         this.position = position;
-    }
-
-    public int serializedSize()
-    {
-        return TypeSizes.NATIVE.sizeof(position);
     }
 
     public static RowIndexEntry create(long position, DeletionInfo deletionInfo, ColumnIndex index)
@@ -69,16 +63,24 @@ public class RowIndexEntry
 
     public static class Serializer
     {
+        private final CType type;
+
+        public Serializer(CType type)
+        {
+            this.type = type;
+        }
+
         public void serialize(RowIndexEntry rie, DataOutput out) throws IOException
         {
             out.writeLong(rie.position);
             if (rie.isIndexed())
             {
-                out.writeInt(rie.serializedSize());
-                DeletionInfo.serializer().serializeForSSTable(rie.deletionInfo(), out);
+                out.writeInt(serializedSize(rie));
+                type.deletionInfoSerializer().serializeForSSTable(rie.deletionInfo(), out);
                 out.writeInt(rie.columnsIndex().size());
+                ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
                 for (IndexHelper.IndexInfo info : rie.columnsIndex())
-                    info.serialize(out);
+                    idxSerializer.serialize(info, out);
             }
             else
             {
@@ -94,11 +96,12 @@ public class RowIndexEntry
                 int size = in.readInt();
                 if (size > 0)
                 {
-                    DeletionInfo delInfo = DeletionInfo.serializer().deserializeFromSSTable(in, version);
+                    DeletionInfo delInfo = type.deletionInfoSerializer().deserializeFromSSTable(in, version);
                     int entries = in.readInt();
+                    ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
                     List<IndexHelper.IndexInfo> columnsIndex = new ArrayList<IndexHelper.IndexInfo>(entries);
                     for (int i = 0; i < entries; i++)
-                        columnsIndex.add(IndexHelper.IndexInfo.deserialize(in));
+                        columnsIndex.add(idxSerializer.deserialize(in));
 
                     if (version.hasRowLevelBF)
                         IndexHelper.skipBloomFilter(in, version.filterType);
@@ -115,20 +118,41 @@ public class RowIndexEntry
             }
         }
 
-        public void skip(DataInput in, Descriptor.Version version) throws IOException
+        public static void skip(DataInput in, Descriptor.Version version) throws IOException
         {
             in.readLong();
             if (version.hasPromotedIndexes)
                 skipPromotedIndex(in);
         }
 
-        public void skipPromotedIndex(DataInput in) throws IOException
+        public static void skipPromotedIndex(DataInput in) throws IOException
         {
             int size = in.readInt();
             if (size <= 0)
                 return;
 
             FileUtils.skipBytesFully(in, size);
+        }
+
+        public int serializedSize(RowIndexEntry rie)
+        {
+            TypeSizes typeSizes = TypeSizes.NATIVE;
+            if (rie.isIndexed())
+            {
+                IndexedEntry ie = (IndexedEntry)rie;
+                long size = DeletionTime.serializer.serializedSize(ie.deletionInfo().getTopLevelDeletion(), typeSizes);
+                size += typeSizes.sizeof(ie.columnsIndex().size()); // number of entries
+                ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
+                for (IndexHelper.IndexInfo info : ie.columnsIndex())
+                    size += idxSerializer.serializedSize(info, typeSizes);
+
+                assert size <= Integer.MAX_VALUE;
+                return (int)size;
+            }
+            else
+            {
+                return typeSizes.sizeof(rie.position);
+            }
         }
     }
 
@@ -159,19 +183,6 @@ public class RowIndexEntry
         public List<IndexHelper.IndexInfo> columnsIndex()
         {
             return columnsIndex;
-        }
-
-        @Override
-        public int serializedSize()
-        {
-            TypeSizes typeSizes = TypeSizes.NATIVE;
-            long size = DeletionTime.serializer.serializedSize(deletionInfo.getTopLevelDeletion(), typeSizes);
-            size += typeSizes.sizeof(columnsIndex.size()); // number of entries
-            for (IndexHelper.IndexInfo info : columnsIndex)
-                size += info.serializedSize(typeSizes);
-
-            assert size <= Integer.MAX_VALUE;
-            return (int)size;
         }
     }
 }

@@ -74,12 +74,13 @@ public class KeysSearcher extends SecondaryIndexSearcher
          * possible key having a given token. A fix would be to actually store the token along the key in the
          * indexed row.
          */
-        final ByteBuffer startKey = range.left instanceof DecoratedKey ? ((DecoratedKey)range.left).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
-        final ByteBuffer endKey = range.right instanceof DecoratedKey ? ((DecoratedKey)range.right).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
+        CellNameType type = index.getIndexCfs().getComparator();
+        final Composite startKey = range.left instanceof DecoratedKey ? type.make(((DecoratedKey)range.left).key) : Composites.EMPTY;
+        final Composite endKey = range.right instanceof DecoratedKey ? type.make(((DecoratedKey)range.right).key) : Composites.EMPTY;
 
         return new ColumnFamilyStore.AbstractScanIterator()
         {
-            private ByteBuffer lastSeenKey = startKey;
+            private Composite lastSeenKey = startKey;
             private Iterator<Column> indexColumns;
             private int columnsRead = Integer.MAX_VALUE;
 
@@ -100,7 +101,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
 
                         if (logger.isTraceEnabled() && (index instanceof AbstractSimplePerColumnSecondaryIndex))
                             logger.trace("Scanning index {} starting with {}",
-                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), index.getBaseCfs().metadata.getKeyValidator().getString(startKey));
+                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), index.getBaseCfs().metadata.getKeyValidator().getString(startKey.toByteBuffer()));
 
                         QueryFilter indexFilter = QueryFilter.getSliceFilter(indexKey,
                                                                              index.getIndexCfs().name,
@@ -126,7 +127,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
                         {
                             // skip the row we already saw w/ the last page of results
                             indexColumns.next();
-                            logger.trace("Skipping {}", baseCfs.metadata.getKeyValidator().getString(firstColumn.name()));
+                            logger.trace("Skipping {}", baseCfs.metadata.getKeyValidator().getString(firstColumn.name().toByteBuffer()));
                         }
                         else if (range instanceof Range && indexColumns.hasNext() && firstColumn.name().equals(startKey))
                         {
@@ -146,7 +147,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
                             continue;
                         }
 
-                        DecoratedKey dk = baseCfs.partitioner.decorateKey(lastSeenKey);
+                        DecoratedKey dk = baseCfs.partitioner.decorateKey(lastSeenKey.toByteBuffer());
                         if (!range.right.isMinimum(baseCfs.partitioner) && range.right.compareTo(dk) < 0)
                         {
                             logger.trace("Reached end of assigned scan range");
@@ -177,7 +178,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
                         if (((KeysIndex)index).isIndexEntryStale(indexKey.key, data))
                         {
                             // delete the index entry w/ its own timestamp
-                            Column dummyColumn = new Column(primary.column_name, indexKey.key, column.timestamp());
+                            Column dummyColumn = new Column(CellNames.simpleDense(primary.column_name), indexKey.key, column.timestamp());
                             ((PerColumnSecondaryIndex)index).delete(dk.key, dummyColumn);
                             continue;
                         }

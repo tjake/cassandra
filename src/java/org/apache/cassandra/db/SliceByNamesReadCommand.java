@@ -92,7 +92,8 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         else
             out.writeUTF(command.cfName);
 
-        NamesQueryFilter.serializer.serialize(command.filter, out, version);
+        CFMetaData metadata = Schema.instance.getCFMetaData(cmd.table, cmd.cfName);
+        metadata.comparator.namesQueryFilterSerializer().serialize(command.filter, out, version);
     }
 
     public ReadCommand deserialize(DataInput in, int version) throws IOException
@@ -118,21 +119,16 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         ReadCommand command;
         if (version < MessagingService.VERSION_20)
         {
-            AbstractType<?> comparator;
+            CellNameType comparator = metadata.comparator;
             if (metadata.cfType == ColumnFamilyType.Super)
             {
-                CompositeType type = (CompositeType)metadata.comparator;
-                comparator = sc == null ? type.types.get(0) : type.types.get(1);
-            }
-            else
-            {
-                comparator = metadata.comparator;
+                comparator = CellNames.simpleDenseType(metadata.comparator.subtype(sc == null ? 0 : 1));
             }
 
-            IDiskAtomFilter filter = NamesQueryFilter.serializer.deserialize(in, version, comparator);
+            IDiskAtomFilter filter = comparator.namesQueryFilterSerializer().deserialize(in, version);
 
             if (metadata.cfType == ColumnFamilyType.Super)
-                filter = SuperColumns.fromSCFilter((CompositeType)metadata.comparator, sc, filter);
+                filter = SuperColumns.fromSCFilter(metadata.comparator, sc, filter);
 
             // Due to SC compat, it's possible we get back a slice filter at this point
             if (filter instanceof NamesQueryFilter)
@@ -142,7 +138,7 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         }
         else
         {
-            NamesQueryFilter filter = NamesQueryFilter.serializer.deserialize(in, version, metadata.comparator);
+            NamesQueryFilter filter = metadata.comparator.namesQueryFilterSerializer().deserialize(in, version);
             command = new SliceByNamesReadCommand(table, key, cfName, filter);
         }
 
@@ -174,7 +170,8 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
             size += sizes.sizeof(command.cfName);
         }
 
-        size += NamesQueryFilter.serializer.serializedSize(command.filter, version);
+        CFMetaData metadata = Schema.instance.getCFMetaData(cmd.table, cmd.cfName);
+        size += metadata.comparator.namesQueryFilterSerializer().serializedSize(command.filter, version);
         return size;
     }
 }

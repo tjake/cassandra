@@ -27,7 +27,7 @@ import org.apache.cassandra.cql3.ColumnNameBuilder;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
-import org.apache.cassandra.db.marshal.*;
+import org.apache.cassandra.db.marshal.AbstractType;
 
 /**
  * Index on a REGULAR column definition on a composite type.
@@ -48,14 +48,14 @@ import org.apache.cassandra.db.marshal.*;
  */
 public class CompositesIndexOnRegular extends CompositesIndex
 {
-    public static CompositeType buildIndexComparator(CFMetaData baseMetadata, ColumnDefinition columnDef)
+    public static CellNameType buildIndexComparator(CFMetaData baseMetadata, ColumnDefinition columnDef)
     {
         int prefixSize = columnDef.componentIndex;
         List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(prefixSize + 1);
         types.add(SecondaryIndex.keyComparator);
         for (int i = 0; i < prefixSize; i++)
-            types.add(((CompositeType)baseMetadata.comparator).types.get(i));
-        return CompositeType.getInstance(types);
+            types.add(baseMetadata.comparator.subtype(i));
+        return CellNames.compositeDenseType(types);
     }
 
     protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Column column)
@@ -63,39 +63,35 @@ public class CompositesIndexOnRegular extends CompositesIndex
         return column.value();
     }
 
-    protected ColumnNameBuilder makeIndexColumnNameBuilder(ByteBuffer rowKey, ByteBuffer columnName)
+    protected Composite makeIndexColumnPrefix(ByteBuffer rowKey, Composite cellName)
     {
-        CompositeType baseComparator = (CompositeType)baseCfs.getComparator();
-        ByteBuffer[] components = baseComparator.split(columnName);
-        CompositeType.Builder builder = getIndexComparator().builder();
+        CBuilder builder = getIndexComparator().builder();
         builder.add(rowKey);
-        for (int i = 0; i < Math.min(columnDef.componentIndex, components.length); i++)
-            builder.add(components[i]);
-        return builder;
+        for (int i = 0; i < Math.min(columnDef.componentIndex, cellName.size()); i++)
+            builder.add(cellName.get(i));
+        return builder.build();
     }
 
     public IndexedEntry decodeEntry(DecoratedKey indexedValue, Column indexEntry)
     {
-        ByteBuffer[] components = getIndexComparator().split(indexEntry.name());
-        CompositeType.Builder builder = getBaseComparator().builder();
+        CBuilder builder = baseCfs.getComparator().builder();
         for (int i = 0; i < columnDef.componentIndex; i++)
-            builder.add(components[i + 1]);
-        return new IndexedEntry(indexedValue, indexEntry.name(), indexEntry.timestamp(), components[0], builder);
+            builder.add(indexEntry.name().get(i + 1));
+        return new IndexedEntry(indexedValue, indexEntry.name(), indexEntry.timestamp(), indexEntry.name().get(0), builder.build());
     }
 
     @Override
-    public boolean indexes(ByteBuffer name)
+    public boolean indexes(CellName name)
     {
-        ByteBuffer[] components = getBaseComparator().split(name);
         AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDef);
-        return components.length > columnDef.componentIndex
-            && comp.compare(components[columnDef.componentIndex], columnDef.name) == 0;
+        return name.size() > columnDef.componentIndex
+            && comp.compare(name.get(columnDef.componentIndex), columnDef.name) == 0;
     }
 
     public boolean isStale(IndexedEntry entry, ColumnFamily data)
     {
-        ByteBuffer bb = entry.indexedEntryNameBuilder.copy().add(columnDef.name).build();
-        Column liveColumn = data.getColumn(bb);
+        CellName name = CellNames.make(entry.indexedEntryPrefix, columnDef.name);
+        Column liveColumn = data.getColumn(name);
         if (liveColumn == null || liveColumn.isMarkedForDelete())
             return true;
 

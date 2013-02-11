@@ -46,12 +46,12 @@ public class ExpiringColumn extends Column
     private final int localExpirationTime;
     private final int timeToLive;
 
-    public ExpiringColumn(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive)
+    public ExpiringColumn(CellName name, ByteBuffer value, long timestamp, int timeToLive)
     {
       this(name, value, timestamp, timeToLive, (int) (System.currentTimeMillis() / 1000) + timeToLive);
     }
 
-    public ExpiringColumn(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime)
+    public ExpiringColumn(CellName name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime)
     {
         super(name, value, timestamp);
         assert timeToLive > 0 : timeToLive;
@@ -61,7 +61,7 @@ public class ExpiringColumn extends Column
     }
 
     /** @return Either a DeletedColumn, or an ExpiringColumn. */
-    public static Column create(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime, int expireBefore, ColumnSerializer.Flag flag)
+    public static Column create(CellName name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime, int expireBefore, ColumnSerializer.Flag flag)
     {
         if (localExpirationTime >= expireBefore || flag == ColumnSerializer.Flag.PRESERVE_SIZE)
             return new ExpiringColumn(name, value, timestamp, timeToLive, localExpirationTime);
@@ -78,7 +78,7 @@ public class ExpiringColumn extends Column
     }
 
     @Override
-    public Column withUpdatedName(ByteBuffer newName)
+    public Column withUpdatedName(CellName newName)
     {
         return new ExpiringColumn(newName, value, timestamp, timeToLive, localExpirationTime);
     }
@@ -90,20 +90,20 @@ public class ExpiringColumn extends Column
     }
 
     @Override
-    public int serializedSize(TypeSizes typeSizes)
+    public int serializedSize(CellNameType type, TypeSizes typeSizes)
     {
         /*
          * An expired column adds to a Column :
          *    4 bytes for the localExpirationTime
          *  + 4 bytes for the timeToLive
         */
-        return super.serializedSize(typeSizes) + typeSizes.sizeof(localExpirationTime) + typeSizes.sizeof(timeToLive);
+        return super.serializedSize(type, typeSizes) + typeSizes.sizeof(localExpirationTime) + typeSizes.sizeof(timeToLive);
     }
 
     @Override
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.toByteBuffer().duplicate());
         digest.update(value.duplicate());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -129,20 +129,17 @@ public class ExpiringColumn extends Column
     @Override
     public Column localCopy(ColumnFamilyStore cfs)
     {
-        return new ExpiringColumn(cfs.internOrCopy(name, HeapAllocator.instance), ByteBufferUtil.clone(value), timestamp, timeToLive, localExpirationTime);
+        return localCopy(cfs, HeapAllocator.instance);
     }
 
     @Override
     public Column localCopy(ColumnFamilyStore cfs, Allocator allocator)
     {
-        ByteBuffer clonedName = cfs.maybeIntern(name);
-        if (clonedName == null)
-            clonedName = allocator.clone(name);
-        return new ExpiringColumn(clonedName, allocator.clone(value), timestamp, timeToLive, localExpirationTime);
+        return new ExpiringColumn(name.copy(allocator), allocator.clone(value), timestamp, timeToLive, localExpirationTime);
     }
 
     @Override
-    public String getString(AbstractType<?> comparator)
+    public String getString(CellNameType comparator)
     {
         StringBuilder sb = new StringBuilder();
         sb.append(super.getString(comparator));

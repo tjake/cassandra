@@ -320,11 +320,11 @@ public class CassandraStorage extends LoadFunc implements StoreFuncInterface, Lo
 
         if( comparator instanceof AbstractCompositeType )
         {
-            setTupleValue(pair, 0, composeComposite((AbstractCompositeType)comparator,col.name()));
+            setTupleValue(pair, 0, composeComposite((AbstractCompositeType)comparator,col.name().toByteBuffer()));
         }
         else
         {
-            setTupleValue(pair, 0, comparator.compose(col.name()));
+            setTupleValue(pair, 0, comparator.compose(col.name().toByteBuffer()));
         }
 
         // standard

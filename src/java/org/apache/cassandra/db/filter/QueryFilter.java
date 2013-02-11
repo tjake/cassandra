@@ -185,7 +185,7 @@ public class QueryFilter
      * @param reversed true to start with the largest column (as determined by configured sort order) instead of smallest
      * @param limit maximum number of non-deleted columns to return
      */
-    public static QueryFilter getSliceFilter(DecoratedKey key, String cfName, ByteBuffer start, ByteBuffer finish, boolean reversed, int limit)
+    public static QueryFilter getSliceFilter(DecoratedKey key, String cfName, Composite start, Composite finish, boolean reversed, int limit)
     {
         return new QueryFilter(key, cfName, new SliceQueryFilter(start, finish, reversed, limit));
     }
@@ -205,17 +205,9 @@ public class QueryFilter
      * @param cfName column family to query
      * @param columns the column names to restrict the results to, sorted in comparator order
      */
-    public static QueryFilter getNamesFilter(DecoratedKey key, String cfName, SortedSet<ByteBuffer> columns)
+    public static QueryFilter getNamesFilter(DecoratedKey key, String cfName, SortedSet<CellName> columns)
     {
         return new QueryFilter(key, cfName, new NamesQueryFilter(columns));
-    }
-
-    /**
-     * convenience method for creating a name filter matching a single column
-     */
-    public static QueryFilter getNamesFilter(DecoratedKey key, String cfName, ByteBuffer column)
-    {
-        return new QueryFilter(key, cfName, new NamesQueryFilter(column));
     }
 
     @Override
