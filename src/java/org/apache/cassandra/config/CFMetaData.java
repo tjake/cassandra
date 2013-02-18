@@ -1890,6 +1890,11 @@ public final class CFMetaData
      */
     public boolean isThriftCompatible()
     {
+        // Super CF are always "thrift compatible". But since they may have defs with a componentIndex != null,
+        // we have to special case here.
+        if (isSuper())
+            return true;
+
         for (ColumnDefinition def : column_metadata.values())
         {
             if (!def.isThriftCompatible())

@@ -78,16 +78,8 @@ public class CreateIndexStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException(String.format("Cannot add secondary index to already primarily indexed column %s", columnName));
 
                 // TODO: we could lift that limitation
-                if (cd.type == ColumnDefinition.Type.PARTITION_KEY)
-                    throw new InvalidRequestException(String.format("Secondary index on partition key column %s is not yet supported", columnName));
-
-                // TODO: we could lift that limitation
-                if (cd.type == ColumnDefinition.Type.COMPACT_VALUE)
-                    throw new InvalidRequestException(String.format("Secondary index on column %s is not yet supported for compact table", columnName));
-
-                // TODO: we could lift that limitation
-                if (!cfDef.isComposite && cd.type == ColumnDefinition.Type.CLUSTERING_KEY)
-                    throw new InvalidRequestException(String.format("Secondary index on clustering column %s is not yet supported for compact table", columnName));
+                if (cfDef.isCompact && cd.type != ColumnDefinition.Type.REGULAR)
+                    throw new InvalidRequestException(String.format("Secondary index on %s column %s is not yet supported for compact table", cd.type, columnName));
 
                 if (cd.getValidator().isCollection())
                     throw new InvalidRequestException("Indexes on collections are no yet supported");

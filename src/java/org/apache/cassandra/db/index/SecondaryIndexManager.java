@@ -160,17 +160,22 @@ public class SecondaryIndexManager
 
     public boolean indexes(ByteBuffer name, Collection<SecondaryIndex> indexes)
     {
-        return indexFor(name, indexes) != null;
+        return !indexFor(name, indexes).isEmpty();
     }
 
-    public SecondaryIndex indexFor(ByteBuffer name, Collection<SecondaryIndex> indexes)
+    public List<SecondaryIndex> indexFor(ByteBuffer name, Collection<SecondaryIndex> indexes)
     {
+        List<SecondaryIndex> matching = null;
         for (SecondaryIndex index : indexes)
         {
             if (index.indexes(name))
-                return index;
+            {
+                if (matching == null)
+                    matching = new ArrayList<SecondaryIndex>();
+                matching.add(index);
+            }
         }
-        return null;
+        return matching == null ? Collections.<SecondaryIndex>emptyList() : matching;
     }
 
     public boolean indexes(Column column)
@@ -183,7 +188,7 @@ public class SecondaryIndexManager
         return indexes(name, indexesByColumn.values());
     }
 
-    public SecondaryIndex indexFor(ByteBuffer name)
+    public List<SecondaryIndex> indexFor(ByteBuffer name)
     {
         return indexFor(name, indexesByColumn.values());
     }
@@ -605,22 +610,18 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            ((PerColumnSecondaryIndex) index).insert(key.key, column);
+            for (SecondaryIndex index : indexFor(column.name()))
+                ((PerColumnSecondaryIndex) index).insert(key.key, column);
         }
 
         public void update(Column oldColumn, Column column)
         {
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            ((PerColumnSecondaryIndex) index).delete(key.key, oldColumn);
-            if (!column.isMarkedForDelete())
-                ((PerColumnSecondaryIndex) index).insert(key.key, column);
+            for (SecondaryIndex index : indexFor(column.name()))
+            {
+                ((PerColumnSecondaryIndex) index).delete(key.key, oldColumn);
+                if (column.isMarkedForDelete())
+                    ((PerColumnSecondaryIndex) index).insert(key.key, column);
+            }
         }
 
         public void remove(Column column)
@@ -628,11 +629,8 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            ((PerColumnSecondaryIndex) index).delete(key.key, column);
+            for (SecondaryIndex index : indexFor(column.name()))
+                ((PerColumnSecondaryIndex) index).delete(key.key, column);
         }
     }
 
@@ -651,37 +649,35 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            if (index instanceof  PerColumnSecondaryIndex)
+            for (SecondaryIndex index : indexFor(column.name()))
             {
-                ((PerColumnSecondaryIndex) index).insert(key.key, column);
-            }
-            else
-            {
-                if (appliedRowLevelIndexes.add(index.getClass()))
-                    ((PerRowSecondaryIndex) index).index(key.key);
+                if (index instanceof  PerColumnSecondaryIndex)
+                {
+                    ((PerColumnSecondaryIndex) index).insert(key.key, column);
+                }
+                else
+                {
+                    if (appliedRowLevelIndexes.add(index.getClass()))
+                        ((PerRowSecondaryIndex) index).index(key.key);
+                }
             }
         }
 
         public void update(Column oldColumn, Column column)
         {
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            if (index instanceof  PerColumnSecondaryIndex)
+            for (SecondaryIndex index : indexFor(column.name()))
             {
-                ((PerColumnSecondaryIndex) index).delete(key.key, oldColumn);
-                if (!column.isMarkedForDelete())
-                    ((PerColumnSecondaryIndex) index).insert(key.key, column);
-            }
-            else
-            {
-                if (appliedRowLevelIndexes.add(index.getClass()))
-                    ((PerRowSecondaryIndex) index).index(key.key);
+                if (index instanceof  PerColumnSecondaryIndex)
+                {
+                    ((PerColumnSecondaryIndex) index).delete(key.key, oldColumn);
+                    if (!column.isMarkedForDelete())
+                        ((PerColumnSecondaryIndex) index).insert(key.key, column);
+                }
+                else
+                {
+                    if (appliedRowLevelIndexes.add(index.getClass()))
+                        ((PerRowSecondaryIndex) index).index(key.key);
+                }
             }
         }
 
@@ -690,18 +686,17 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
-            if (index == null)
-                return;
-
-            if (index instanceof  PerColumnSecondaryIndex)
+            for (SecondaryIndex index : indexFor(column.name()))
             {
-                ((PerColumnSecondaryIndex) index).delete(key.key, column);
-            }
-            else
-            {
-                if (appliedRowLevelIndexes.add(index.getClass()))
-                    ((PerRowSecondaryIndex) index).index(key.key);
+                if (index instanceof  PerColumnSecondaryIndex)
+                {
+                    ((PerColumnSecondaryIndex) index).delete(key.key, column);
+                }
+                else
+                {
+                    if (appliedRowLevelIndexes.add(index.getClass()))
+                        ((PerRowSecondaryIndex) index).index(key.key);
+                }
             }
         }
     }

@@ -60,8 +60,8 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
                 return new CompositesIndexOnClusteringKey();
             case REGULAR:
                 return new CompositesIndexOnRegular();
-            //case PARTITION_KEY:
-            //    return new CompositesIndexOnPartitionKey();
+            case PARTITION_KEY:
+                return new CompositesIndexOnPartitionKey();
             //case COMPACT_VALUE:
             //    return new CompositesIndexOnCompactValue();
         }
@@ -77,9 +77,8 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
                 return CompositesIndexOnClusteringKey.buildIndexComparator(baseMetadata, cfDef);
             case REGULAR:
                 return CompositesIndexOnRegular.buildIndexComparator(baseMetadata, cfDef);
-            // TODO:
-            //case PARTITION_KEY:
-            //    return CompositesIndexOnPartitionKey.buildIndexComparator(baseMetadata, cfDef);
+            case PARTITION_KEY:
+                return CompositesIndexOnPartitionKey.buildIndexComparator(baseMetadata, cfDef);
             //case COMPACT_VALUE:
             //    return CompositesIndexOnCompactValue.buildIndexComparator(baseMetadata, cfDef);
         }
@@ -100,7 +99,7 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
     public void delete(IndexedEntry entry)
     {
         int localDeletionTime = (int) (System.currentTimeMillis() / 1000);
-        ColumnFamily cfi = ColumnFamily.create(indexCfs.metadata);
+        ColumnFamily cfi = ArrayBackedSortedColumns.factory.create(indexCfs.metadata);
         cfi.addTombstone(entry.indexEntry, (int) (System.currentTimeMillis() / 1000), entry.timestamp);
         indexCfs.apply(entry.indexValue, cfi, SecondaryIndexManager.nullUpdater);
         if (logger.isDebugEnabled())

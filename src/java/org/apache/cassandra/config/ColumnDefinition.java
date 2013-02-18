@@ -148,8 +148,6 @@ public class ColumnDefinition
 
     public ColumnDef toThrift()
     {
-        assert isThriftCompatible();
-
         ColumnDef cd = new ColumnDef();
 
         cd.setName(ByteBufferUtil.clone(name));
