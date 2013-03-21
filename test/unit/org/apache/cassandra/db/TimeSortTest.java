@@ -27,6 +27,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 import org.apache.cassandra.SchemaLoader;
+import static org.apache.cassandra.Util.cellname;
 import static org.apache.cassandra.Util.getBytes;
 import org.apache.cassandra.Util;
 
@@ -46,15 +47,15 @@ public class TimeSortTest extends SchemaLoader
         DecoratedKey key = Util.dk("key0");
 
         rm = new RowMutation("Keyspace1", key.key);
-        rm.add("StandardLong1", getBytes(100), ByteBufferUtil.bytes("a"), 100);
+        rm.add("StandardLong1", cellname(100), ByteBufferUtil.bytes("a"), 100);
         rm.apply();
         cfStore.forceBlockingFlush();
 
         rm = new RowMutation("Keyspace1", key.key);
-        rm.add("StandardLong1", getBytes(0), ByteBufferUtil.bytes("b"), 0);
+        rm.add("StandardLong1", cellname(0), ByteBufferUtil.bytes("b"), 0);
         rm.apply();
 
-        ColumnFamily cf = cfStore.getColumnFamily(key, getBytes(10), ByteBufferUtil.EMPTY_BYTE_BUFFER, false, 1000);
+        ColumnFamily cf = cfStore.getColumnFamily(key, cellname(10), Composites.EMPTY, false, 1000);
         Collection<Column> columns = cf.getSortedColumns();
         assert columns.size() == 1;
     }
@@ -70,7 +71,7 @@ public class TimeSortTest extends SchemaLoader
             RowMutation rm = new RowMutation("Keyspace1", ByteBufferUtil.bytes(Integer.toString(i)));
             for (int j = 0; j < 8; ++j)
             {
-                rm.add("StandardLong1", getBytes(j * 2), ByteBufferUtil.bytes("a"), j * 2);
+                rm.add("StandardLong1", cellname(j * 2), ByteBufferUtil.bytes("a"), j * 2);
             }
             rm.apply();
         }
@@ -85,17 +86,17 @@ public class TimeSortTest extends SchemaLoader
         RowMutation rm = new RowMutation("Keyspace1", key.key);
         for (int j = 0; j < 4; ++j)
         {
-            rm.add("StandardLong1", getBytes(j * 2 + 1), ByteBufferUtil.bytes("b"), j * 2 + 1);
+            rm.add("StandardLong1", cellname(j * 2 + 1), ByteBufferUtil.bytes("b"), j * 2 + 1);
         }
         rm.apply();
         // and some overwrites
         rm = new RowMutation("Keyspace1", key.key);
-        rm.add("StandardLong1", getBytes(0), ByteBufferUtil.bytes("c"), 100);
-        rm.add("StandardLong1", getBytes(10), ByteBufferUtil.bytes("c"), 100);
+        rm.add("StandardLong1", cellname(0), ByteBufferUtil.bytes("c"), 100);
+        rm.add("StandardLong1", cellname(10), ByteBufferUtil.bytes("c"), 100);
         rm.apply();
 
         // verify
-        ColumnFamily cf = cfStore.getColumnFamily(key, getBytes(0), ByteBufferUtil.EMPTY_BYTE_BUFFER, false, 1000);
+        ColumnFamily cf = cfStore.getColumnFamily(key, cellname(0), Composites.EMPTY, false, 1000);
         Collection<Column> columns = cf.getSortedColumns();
         assertEquals(12, columns.size());
         Iterator<Column> iter = columns.iterator();
@@ -103,14 +104,14 @@ public class TimeSortTest extends SchemaLoader
         for (int j = 0; j < 8; j++)
         {
             column = iter.next();
-            assert column.name().equals(getBytes(j));
+            assert column.name().toByteBuffer().equals(getBytes(j));
         }
-        TreeSet<ByteBuffer> columnNames = new TreeSet<ByteBuffer>(LongType.instance);
-        columnNames.add(getBytes(10));
-        columnNames.add(getBytes(0));
+        TreeSet<CellName> columnNames = new TreeSet<CellName>(cfStore.getComparator());
+        columnNames.add(cellname(10));
+        columnNames.add(cellname(0));
         cf = cfStore.getColumnFamily(QueryFilter.getNamesFilter(Util.dk("900"), "StandardLong1", columnNames));
-        assert "c".equals(ByteBufferUtil.string(cf.getColumn(getBytes(0)).value()));
-        assert "c".equals(ByteBufferUtil.string(cf.getColumn(getBytes(10)).value()));
+        assert "c".equals(ByteBufferUtil.string(cf.getColumn(cellname(0)).value()));
+        assert "c".equals(ByteBufferUtil.string(cf.getColumn(cellname(10)).value()));
     }
 
     private void validateTimeSort(Table table) throws IOException
@@ -120,7 +121,8 @@ public class TimeSortTest extends SchemaLoader
             DecoratedKey key = Util.dk(Integer.toString(i));
             for (int j = 0; j < 8; j += 3)
             {
-                ColumnFamily cf = table.getColumnFamilyStore("StandardLong1").getColumnFamily(key, getBytes(j * 2), ByteBufferUtil.EMPTY_BYTE_BUFFER, false, 1000);
+                ColumnFamilyStore cfs = table.getColumnFamilyStore("StandardLong1");
+                ColumnFamily cf = cfs.getColumnFamily(key, cellname(j * 2), Composites.EMPTY, false, 1000);
                 Collection<Column> columns = cf.getSortedColumns();
                 assert columns.size() == 8 - j;
                 int k = j;

@@ -399,7 +399,7 @@ public class SchemaLoader
         {
             ByteBuffer key = ByteBufferUtil.bytes("key" + i);
             RowMutation rowMutation = new RowMutation(keyspace, key);
-            rowMutation.add(columnFamily, ByteBufferUtil.bytes("col" + i), ByteBufferUtil.bytes("val" + i), System.currentTimeMillis());
+            rowMutation.add(columnFamily, Util.cellname("col" + i), ByteBufferUtil.bytes("val" + i), System.currentTimeMillis());
             rowMutation.applyUnsafe();
         }
     }
@@ -411,7 +411,7 @@ public class SchemaLoader
         for (int i = offset; i < offset + numberOfRows; i++)
         {
             DecoratedKey key = Util.dk("key" + i);
-            store.getColumnFamily(QueryFilter.getNamesFilter(key, columnFamily, ByteBufferUtil.bytes("col" + i)));
+            store.getColumnFamily(Util.namesQueryFilter(store, key, "col" + i));
         }
     }
 

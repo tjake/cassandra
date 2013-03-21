@@ -27,6 +27,7 @@ import java.util.*;
 import org.junit.Test;
 
 import org.apache.cassandra.AbstractSerializationsTester;
+import org.apache.cassandra.Util;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
@@ -204,7 +205,7 @@ public class SerializationsTest extends AbstractSerializationsTester
         for (int i = 0; i < 100; i++)
         {
             RowMutation rm = new RowMutation(t.getName(), ByteBufferUtil.bytes(Long.toString(System.nanoTime())));
-            rm.add("Standard1", ByteBufferUtil.bytes("cola"), ByteBufferUtil.bytes("value"), 0);
+            rm.add("Standard1", Util.cellname("cola"), ByteBufferUtil.bytes("value"), 0);
             rm.apply();
         }
         try

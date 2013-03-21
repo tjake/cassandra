@@ -44,6 +44,7 @@ import org.apache.cassandra.thrift.IndexExpression;
 import org.apache.cassandra.thrift.IndexOperator;
 import org.apache.cassandra.utils.CounterId;
 import org.apache.cassandra.utils.FBUtilities;
+import static org.apache.cassandra.Util.cellname;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -100,7 +101,7 @@ public class StreamingTransferTest extends SchemaLoader
             String col = "col" + offs[i];
             assert cfs.getColumnFamily(QueryFilter.getIdentityFilter(Util.dk(key), cfs.name)) != null;
             assert rows.get(i).key.key.equals(ByteBufferUtil.bytes(key));
-            assert rows.get(i).cf.getColumn(ByteBufferUtil.bytes(col)) != null;
+            assert rows.get(i).cf.getColumn(cellname(col)) != null;
         }
 
         // and that the max timestamp for the file was rediscovered
@@ -143,7 +144,7 @@ public class StreamingTransferTest extends SchemaLoader
                 long val = key.hashCode();
                 ColumnFamily cf = TreeMapBackedSortedColumns.factory.create(table.getName(), cfs.name);
                 cf.addColumn(column(col, "v", timestamp));
-                cf.addColumn(new Column(ByteBufferUtil.bytes("birthdate"), ByteBufferUtil.bytes(val), timestamp));
+                cf.addColumn(new Column(cellname("birthdate"), ByteBufferUtil.bytes(val), timestamp));
                 RowMutation rm = new RowMutation("Keyspace1", ByteBufferUtil.bytes(key), cf);
                 logger.debug("Applying row to transfer " + rm);
                 rm.apply();
@@ -189,10 +190,10 @@ public class StreamingTransferTest extends SchemaLoader
                 state.writeElement(CounterId.fromInt(4), 4L, 2L);
                 state.writeElement(CounterId.fromInt(6), 3L, 3L);
                 state.writeElement(CounterId.fromInt(8), 2L, 4L);
-                cf.addColumn(new CounterColumn(ByteBufferUtil.bytes(col),
+                cf.addColumn(new CounterColumn(cellname(col),
                                                state.context,
                                                timestamp));
-                cfCleaned.addColumn(new CounterColumn(ByteBufferUtil.bytes(col),
+                cfCleaned.addColumn(new CounterColumn(cellname(col),
                                                       cc.clearAllDelta(state.context),
                                                       timestamp));
 
@@ -331,7 +332,7 @@ public class StreamingTransferTest extends SchemaLoader
             {
                 ColumnFamily cf = TreeMapBackedSortedColumns.factory.create(table.getName(), cfs.name);
                 cf.addColumn(column(colName, "value", timestamp));
-                cf.addColumn(new Column(ByteBufferUtil.bytes("birthdate"), ByteBufferUtil.bytes(new Date(timestamp).toString()), timestamp));
+                cf.addColumn(new Column(cellname("birthdate"), ByteBufferUtil.bytes(new Date(timestamp).toString()), timestamp));
                 RowMutation rm = new RowMutation("Keyspace1", ByteBufferUtil.bytes(key), cf);
                 logger.debug("Applying row to transfer " + rm);
                 rm.apply();

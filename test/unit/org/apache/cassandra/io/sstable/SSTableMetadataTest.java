@@ -29,14 +29,14 @@ public class SSTableMetadataTest extends SchemaLoader
             DecoratedKey key = Util.dk(Integer.toString(i));
             RowMutation rm = new RowMutation("Keyspace1", key.key);
             for (int j = 0; j < 10; j++)
-                rm.add("Standard1", ByteBufferUtil.bytes(Integer.toString(j)),
+                rm.add("Standard1", Util.cellname(Integer.toString(j)),
                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
                        timestamp,
                        10 + j);
             rm.apply();
         }
         RowMutation rm = new RowMutation("Keyspace1", Util.dk("longttl").key);
-        rm.add("Standard1", ByteBufferUtil.bytes("col"),
+        rm.add("Standard1", Util.cellname("col"),
                ByteBufferUtil.EMPTY_BYTE_BUFFER,
                timestamp,
                10000);
@@ -52,7 +52,7 @@ public class SSTableMetadataTest extends SchemaLoader
 
         }
         rm = new RowMutation("Keyspace1", Util.dk("longttl2").key);
-        rm.add("Standard1", ByteBufferUtil.bytes("col"),
+        rm.add("Standard1", Util.cellname("col"),
                ByteBufferUtil.EMPTY_BYTE_BUFFER,
                timestamp,
                20000);
@@ -100,11 +100,11 @@ public class SSTableMetadataTest extends SchemaLoader
         DecoratedKey key = Util.dk("deletetest");
         RowMutation rm = new RowMutation("Keyspace1", key.key);
         for (int i = 0; i<5; i++)
-            rm.add("Standard2", ByteBufferUtil.bytes("deletecolumn"+i),
+            rm.add("Standard2", Util.cellname("deletecolumn"+i),
                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
                        timestamp,
                        100);
-        rm.add("Standard2", ByteBufferUtil.bytes("todelete"),
+        rm.add("Standard2", Util.cellname("todelete"),
                    ByteBufferUtil.EMPTY_BYTE_BUFFER,
                    timestamp,
                    1000);
@@ -119,7 +119,7 @@ public class SSTableMetadataTest extends SchemaLoader
             assertEquals(ttltimestamp + 1000, firstMaxDelTime, 10);
         }
         rm = new RowMutation("Keyspace1", key.key);
-        rm.delete("Standard2", ByteBufferUtil.bytes("todelete"), timestamp + 1);
+        rm.delete("Standard2", Util.cellname("todelete"), timestamp + 1);
         rm.apply();
         store.forceBlockingFlush();
         assertEquals(2,store.getSSTables().size());

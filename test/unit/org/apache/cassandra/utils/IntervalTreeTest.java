@@ -141,17 +141,17 @@ public class IntervalTreeTest extends TestCase
         IntervalTree<Integer, String, Interval<Integer, String>> it = IntervalTree.build(intervals);
 
         IVersionedSerializer<IntervalTree<Integer, String, Interval<Integer, String>>> serializer = IntervalTree.serializer(
-            new ISerializer<Integer>()
+            new IVersionedSerializer<Integer>()
             {
-                public void serialize(Integer i, DataOutput out) throws IOException { out.writeInt(i); }
-                public Integer deserialize(DataInput in) throws IOException { return in.readInt(); }
-                public long serializedSize(Integer i, TypeSizes ts) { return 4; }
+                public void serialize(Integer i, DataOutput out, int version) throws IOException { out.writeInt(i); }
+                public Integer deserialize(DataInput in, int version) throws IOException { return in.readInt(); }
+                public long serializedSize(Integer i, TypeSizes s, int version) { return 4; }
             },
-            new ISerializer<String>()
+            new IVersionedSerializer<String>()
             {
-                public void serialize(String v, DataOutput out) throws IOException { out.writeUTF(v); }
-                public String deserialize(DataInput in) throws IOException { return in.readUTF(); }
-                public long serializedSize(String v, TypeSizes ts) { return v.length(); }
+                public void serialize(String v, DataOutput out, int version) throws IOException { out.writeUTF(v); }
+                public String deserialize(DataInput in, int version) throws IOException { return in.readUTF(); }
+                public long serializedSize(String v, TypeSizes s, int version) { return v.length(); }
             },
             Interval.class.getConstructor(Object.class, Object.class, Object.class)
         );

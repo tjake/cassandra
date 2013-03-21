@@ -73,7 +73,7 @@ public class RangeTombstoneTest extends SchemaLoader
         // Queries by name
         int[] live = new int[]{ 4, 9, 11, 17, 28 };
         int[] dead = new int[]{ 12, 19, 21, 24, 27 };
-        SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+        SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
         for (int i : live)
             columns.add(b(i));
         for (int i : dead)
@@ -156,9 +156,9 @@ public class RangeTombstoneTest extends SchemaLoader
         return c != null && !c.isMarkedForDelete() && !cf.deletionInfo().isDeleted(c);
     }
 
-    private static ByteBuffer b(int i)
+    private static CellName b(int i)
     {
-        return ByteBufferUtil.bytes(i);
+        return CellNames.simpleDense(ByteBufferUtil.bytes(i));
     }
 
     private static void insertData(ColumnFamilyStore cfs, String key) throws Exception
@@ -167,7 +167,7 @@ public class RangeTombstoneTest extends SchemaLoader
 
     private static void add(RowMutation rm, int value, long timestamp)
     {
-        rm.add(CFNAME, b(value), b(value), timestamp);
+        rm.add(CFNAME, b(value), ByteBufferUtil.bytes(value), timestamp);
     }
 
     private static void delete(ColumnFamily cf, int from, int to, long timestamp)

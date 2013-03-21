@@ -43,7 +43,7 @@ public class RemoveColumnFamilyTest extends SchemaLoader
 
         // add data
         rm = new RowMutation("Keyspace1", dk.key);
-        rm.add("Standard1", ByteBufferUtil.bytes("Column1"), ByteBufferUtil.bytes("asdf"), 0);
+        rm.add("Standard1", Util.cellname("Column1"), ByteBufferUtil.bytes("asdf"), 0);
         rm.apply();
 
         // remove
@@ -53,7 +53,7 @@ public class RemoveColumnFamilyTest extends SchemaLoader
 
         ColumnFamily retrieved = store.getColumnFamily(QueryFilter.getIdentityFilter(dk, "Standard1"));
         assert retrieved.isMarkedForDelete();
-        assertNull(retrieved.getColumn(ByteBufferUtil.bytes("Column1")));
+        assertNull(retrieved.getColumn(Util.cellname("Column1")));
         assertNull(Util.cloneAndRemoveDeleted(retrieved, Integer.MAX_VALUE));
     }
 }

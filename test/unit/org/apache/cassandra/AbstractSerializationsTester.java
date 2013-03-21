@@ -21,6 +21,7 @@ package org.apache.cassandra;
 
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
+import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.net.MessagingService;
 
@@ -56,7 +57,7 @@ public class AbstractSerializationsTester extends SchemaLoader
     {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         serializer.serialize(obj, out, getVersion());
-        assert out.toByteArray().length == serializer.serializedSize(obj, getVersion());
+        assert out.toByteArray().length == serializer.serializedSize(obj, TypeSizes.NATIVE, getVersion());
     }
 
     protected static DataInputStream getInput(String name) throws IOException

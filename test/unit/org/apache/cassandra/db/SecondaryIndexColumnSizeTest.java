@@ -49,7 +49,7 @@ public class SecondaryIndexColumnSizeTest
 
         // for read
         buffer.flip();
-        Column column = new Column(ByteBufferUtil.bytes("test"), buffer, 0);
+        Column column = new Column(CellNames.simpleDense(ByteBufferUtil.bytes("test")), buffer, 0);
 
         MockRowIndex mockRowIndex = new MockRowIndex();
         MockColumnIndex mockColumnIndex = new MockColumnIndex();
@@ -139,6 +139,11 @@ public class SecondaryIndexColumnSizeTest
         public void reload()
         {
         }
+
+        public boolean indexes(CellName name)
+        {
+            return true;
+        }
     }
 
 
@@ -216,6 +221,11 @@ public class SecondaryIndexColumnSizeTest
         @Override
         public void reload()
         {
+        }
+
+        public boolean indexes(CellName name)
+        {
+            return true;
         }
     }
 }

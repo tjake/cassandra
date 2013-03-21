@@ -57,9 +57,9 @@ public class SSTableImportTest extends SchemaLoader
         OnDiskAtomIterator iter = qf.getSSTableColumnIterator(reader);
         ColumnFamily cf = cloneForAdditions(iter);
         while (iter.hasNext()) cf.addAtom(iter.next());
-        assert cf.getColumn(ByteBufferUtil.bytes("colAA")).value().equals(hexToBytes("76616c4141"));
-        assert !(cf.getColumn(ByteBufferUtil.bytes("colAA")) instanceof DeletedColumn);
-        Column expCol = cf.getColumn(ByteBufferUtil.bytes("colAC"));
+        assert cf.getColumn(Util.cellname("colAA")).value().equals(hexToBytes("76616c4141"));
+        assert !(cf.getColumn(Util.cellname("colAA")) instanceof DeletedColumn);
+        Column expCol = cf.getColumn(Util.cellname("colAC"));
         assert expCol.value().equals(hexToBytes("76616c4143"));
         assert expCol instanceof ExpiringColumn;
         assert ((ExpiringColumn)expCol).getTimeToLive() == 42 && expCol.getLocalDeletionTime() == 2000000000;
@@ -91,9 +91,9 @@ public class SSTableImportTest extends SchemaLoader
         OnDiskAtomIterator iter = qf.getSSTableColumnIterator(reader);
         ColumnFamily cf = cloneForAdditions(iter);
         while (iter.hasNext()) cf.addAtom(iter.next());
-        assert cf.getColumn(ByteBufferUtil.bytes("colAA")).value().equals(hexToBytes("76616c4141"));
-        assert !(cf.getColumn(ByteBufferUtil.bytes("colAA")) instanceof DeletedColumn);
-        Column expCol = cf.getColumn(ByteBufferUtil.bytes("colAC"));
+        assert cf.getColumn(Util.cellname("colAA")).value().equals(hexToBytes("76616c4141"));
+        assert !(cf.getColumn(Util.cellname("colAA")) instanceof DeletedColumn);
+        Column expCol = cf.getColumn(Util.cellname("colAC"));
         assert expCol.value().equals(hexToBytes("76616c4143"));
         assert expCol instanceof ExpiringColumn;
         assert ((ExpiringColumn)expCol).getTimeToLive() == 42 && expCol.getLocalDeletionTime() == 2000000000;
@@ -112,9 +112,9 @@ public class SSTableImportTest extends SchemaLoader
         ColumnFamily cf = cloneForAdditions(qf.getSSTableColumnIterator(reader));
         qf.collateOnDiskAtom(cf, Collections.singletonList(qf.getSSTableColumnIterator(reader)), Integer.MIN_VALUE);
 
-        DeletionTime delTime = cf.deletionInfo().rangeCovering(CompositeType.build(ByteBufferUtil.bytes("superA"))).iterator().next();
+        DeletionTime delTime = cf.deletionInfo().rangeCovering(cf.getComparator().builder().add(ByteBufferUtil.bytes("superA")).build()).iterator().next();
         assertEquals("supercolumn deletion time did not match the expected time", new DeletionInfo(0, 0), new DeletionInfo(delTime));
-        Column subColumn = cf.getColumn(CompositeType.build(ByteBufferUtil.bytes("superA"), ByteBufferUtil.bytes("636f6c4141")));
+        Column subColumn = cf.getColumn(Util.cellname("superA", "636f6c4141"));
         assert subColumn.value().equals(hexToBytes("76616c75654141"));
     }
 
@@ -142,9 +142,9 @@ public class SSTableImportTest extends SchemaLoader
         ColumnFamily cf = cloneForAdditions(iter);
         while (iter.hasNext())
             cf.addAtom(iter.next());
-        assert cf.getColumn(ByteBufferUtil.bytes("colAA")).value().equals(hexToBytes("76616c4141"));
-        assert !(cf.getColumn(ByteBufferUtil.bytes("colAA")) instanceof DeletedColumn);
-        Column expCol = cf.getColumn(ByteBufferUtil.bytes("colAC"));
+        assert cf.getColumn(Util.cellname("colAA")).value().equals(hexToBytes("76616c4141"));
+        assert !(cf.getColumn(Util.cellname("colAA")) instanceof DeletedColumn);
+        Column expCol = cf.getColumn(Util.cellname("colAC"));
         assert expCol.value().equals(hexToBytes("76616c4143"));
         assert expCol instanceof ExpiringColumn;
         assert ((ExpiringColumn) expCol).getTimeToLive() == 42 && expCol.getLocalDeletionTime() == 2000000000;
@@ -166,9 +166,9 @@ public class SSTableImportTest extends SchemaLoader
         assertEquals(cf.deletionInfo(), new DeletionInfo(0, 0));
         while (iter.hasNext())
             cf.addAtom(iter.next());
-        assert cf.getColumn(ByteBufferUtil.bytes("colAA")).value().equals(hexToBytes("76616c4141"));
-        assert !(cf.getColumn(ByteBufferUtil.bytes("colAA")) instanceof DeletedColumn);
-        Column expCol = cf.getColumn(ByteBufferUtil.bytes("colAC"));
+        assert cf.getColumn(Util.cellname("colAA")).value().equals(hexToBytes("76616c4141"));
+        assert !(cf.getColumn(Util.cellname("colAA")) instanceof DeletedColumn);
+        Column expCol = cf.getColumn(Util.cellname("colAC"));
         assert expCol.value().equals(hexToBytes("76616c4143"));
         assert expCol instanceof ExpiringColumn;
         assert ((ExpiringColumn) expCol).getTimeToLive() == 42 && expCol.getLocalDeletionTime() == 2000000000;
@@ -188,7 +188,7 @@ public class SSTableImportTest extends SchemaLoader
         OnDiskAtomIterator iter = qf.getSSTableColumnIterator(reader);
         ColumnFamily cf = cloneForAdditions(iter);
         while (iter.hasNext()) cf.addAtom(iter.next());
-        Column c = cf.getColumn(ByteBufferUtil.bytes("colAA"));
+        Column c = cf.getColumn(Util.cellname("colAA"));
         assert c instanceof CounterColumn: c;
         assert ((CounterColumn) c).total() == 42;
     }

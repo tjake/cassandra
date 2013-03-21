@@ -27,6 +27,7 @@ import java.nio.ByteBuffer;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
+import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.db.marshal.UTF8Type;
@@ -45,7 +46,6 @@ public class MeteredFlusherTest extends SchemaLoader
             MigrationManager.announceNewColumnFamily(metadata);
         }
 
-        ByteBuffer name = ByteBufferUtil.bytes("c");
         for (int j = 0; j < 200; j++)
         {
             for (int i = 0; i < 100; i++)
@@ -54,7 +54,7 @@ public class MeteredFlusherTest extends SchemaLoader
                 ColumnFamily cf = TreeMapBackedSortedColumns.factory.create("Keyspace1", "_CF" + i);
                 // don't cheat by allocating this outside of the loop; that defeats the purpose of deliberately using lots of memory
                 ByteBuffer value = ByteBuffer.allocate(100000);
-                cf.addColumn(new Column(name, value));
+                cf.addColumn(new Column(Util.cellname("c"), value));
                 rm.add(cf);
                 rm.applyUnsafe();
             }

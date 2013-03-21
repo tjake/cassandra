@@ -44,7 +44,7 @@ public class CollationControllerTest extends SchemaLoader
         
         // add data
         rm = new RowMutation("Keyspace1", dk.key);
-        rm.add("Standard1", ByteBufferUtil.bytes("Column1"), ByteBufferUtil.bytes("asdf"), 0);
+        rm.add("Standard1", Util.cellname("Column1"), ByteBufferUtil.bytes("asdf"), 0);
         rm.apply();
         store.forceBlockingFlush();
         
@@ -56,20 +56,20 @@ public class CollationControllerTest extends SchemaLoader
         // add another mutation because sstable maxtimestamp isn't set
         // correctly during flush if the most recent mutation is a row delete
         rm = new RowMutation("Keyspace1", Util.dk("key2").key);
-        rm.add("Standard1", ByteBufferUtil.bytes("Column1"), ByteBufferUtil.bytes("zxcv"), 20);
+        rm.add("Standard1", Util.cellname("Column1"), ByteBufferUtil.bytes("zxcv"), 20);
         rm.apply();
         
         store.forceBlockingFlush();
 
         // add yet one more mutation
         rm = new RowMutation("Keyspace1", dk.key);
-        rm.add("Standard1", ByteBufferUtil.bytes("Column1"), ByteBufferUtil.bytes("foobar"), 30);
+        rm.add("Standard1", Util.cellname("Column1"), ByteBufferUtil.bytes("foobar"), 30);
         rm.apply();
         store.forceBlockingFlush();
 
         // A NamesQueryFilter goes down one code path (through collectTimeOrderedData())
         // It should only iterate the last flushed sstable, since it probably contains the most recent value for Column1
-        QueryFilter filter = QueryFilter.getNamesFilter(dk, "Standard1", ByteBufferUtil.bytes("Column1"));
+        QueryFilter filter = Util.namesQueryFilter(store, dk, "Column1");
         CollationController controller = new CollationController(store, false, filter, Integer.MIN_VALUE);
         controller.getTopLevelColumns();
         assertEquals(1, controller.getSstablesIterated());

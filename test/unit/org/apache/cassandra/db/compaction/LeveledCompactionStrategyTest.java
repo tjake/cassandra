@@ -72,7 +72,7 @@ public class LeveledCompactionStrategyTest extends SchemaLoader
             RowMutation rm = new RowMutation(ksname, key.key);
             for (int c = 0; c < columns; c++)
             {
-                rm.add(cfname, ByteBufferUtil.bytes("column" + c), value, 0);
+                rm.add(cfname, Util.cellname("column" + c), value, 0);
             }
             rm.apply();
             store.forceBlockingFlush();
@@ -114,7 +114,7 @@ public class LeveledCompactionStrategyTest extends SchemaLoader
             RowMutation rm = new RowMutation(ksname, key.key);
             for (int c = 0; c < columns; c++)
             {
-                rm.add(cfname, ByteBufferUtil.bytes("column" + c), value, 0);
+                rm.add(cfname, Util.cellname("column" + c), value, 0);
             }
             rm.apply();
             store.forceBlockingFlush();
@@ -155,7 +155,7 @@ public class LeveledCompactionStrategyTest extends SchemaLoader
             RowMutation rm = new RowMutation(ksname, key.key);
             for (int c = 0; c < columns; c++)
             {
-                rm.add(cfname, ByteBufferUtil.bytes("column" + c), value, 0);
+                rm.add(cfname, Util.cellname("column" + c), value, 0);
             }
             rm.apply();
             store.forceBlockingFlush();
