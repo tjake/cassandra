@@ -116,13 +116,13 @@ public interface IDiskAtomFilter
             }
         }
 
-        public long serializedSize(IDiskAtomFilter filter, int version)
+        public long serializedSize(IDiskAtomFilter filter, TypeSizes typeSizes, int version)
         {
             int size = 1;
             if (filter instanceof SliceQueryFilter)
-                size += type.sliceQueryFilterSerializer().serializedSize((SliceQueryFilter)filter, version);
+                size += type.sliceQueryFilterSerializer().serializedSize((SliceQueryFilter)filter, typeSizes, version);
             else
-                size += type.namesQueryFilterSerializer().serializedSize((NamesQueryFilter)filter, version);
+                size += type.namesQueryFilterSerializer().serializedSize((NamesQueryFilter)filter, typeSizes, version);
             return size;
         }
     }

@@ -78,11 +78,11 @@ public class RangeSliceReply
             return new RangeSliceReply(rows);
         }
 
-        public long serializedSize(RangeSliceReply rsr, int version)
+        public long serializedSize(RangeSliceReply rsr, TypeSizes typeSizes, int version)
         {
-            int size = TypeSizes.NATIVE.sizeof(rsr.rows.size());
+            int size = typeSizes.sizeof(rsr.rows.size());
             for (Row row : rsr.rows)
-                size += Row.serializer.serializedSize(row, version);
+                size += Row.serializer.serializedSize(row, typeSizes, version);
             return size;
         }
     }

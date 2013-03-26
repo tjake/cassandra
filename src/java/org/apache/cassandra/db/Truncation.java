@@ -67,8 +67,8 @@ class TruncationSerializer implements IVersionedSerializer<Truncation>
         return new Truncation(keyspace, columnFamily);
     }
 
-    public long serializedSize(Truncation truncation, int version)
+    public long serializedSize(Truncation truncation, TypeSizes typeSizes, int version)
     {
-        return TypeSizes.NATIVE.sizeof(truncation.keyspace) + TypeSizes.NATIVE.sizeof(truncation.columnFamily);
+        return typeSizes.sizeof(truncation.keyspace) + typeSizes.sizeof(truncation.columnFamily);
     }
 }

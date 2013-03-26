@@ -21,6 +21,8 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
+import org.apache.cassandra.db.TypeSizes;
+
 public interface IVersionedSerializer<T>
 {
     /**
@@ -47,5 +49,5 @@ public interface IVersionedSerializer<T>
      * @param version protocol version
      * @return serialized size of object t
      */
-    public long serializedSize(T t, int version);
+    public long serializedSize(T t, TypeSizes type, int version);
 }

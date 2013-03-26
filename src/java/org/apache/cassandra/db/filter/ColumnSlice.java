@@ -135,10 +135,10 @@ public class ColumnSlice
             return new ColumnSlice(start, finish);
         }
 
-        public long serializedSize(ColumnSlice cs, int version)
+        public long serializedSize(ColumnSlice cs, TypeSizes typeSizes, int version)
         {
             ISerializer<Composite> serializer = type.serializer();
-            return serializer.serializedSize(cs.start, TypeSizes.NATIVE) + serializer.serializedSize(cs.finish, TypeSizes.NATIVE);
+            return serializer.serializedSize(cs.start, typeSizes) + serializer.serializedSize(cs.finish, typeSizes);
         }
     }
 

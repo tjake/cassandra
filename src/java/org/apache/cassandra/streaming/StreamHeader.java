@@ -80,14 +80,14 @@ public class StreamHeader
             return new StreamHeader(table, sessionId, file, pendingFiles);
         }
 
-        public long serializedSize(StreamHeader sh, int version)
+        public long serializedSize(StreamHeader sh, TypeSizes typeSizes, int version)
         {
-            long size = TypeSizes.NATIVE.sizeof(sh.table);
-            size += TypeSizes.NATIVE.sizeof(sh.sessionId);
-            size += PendingFile.serializer.serializedSize(sh.file, version);
-            size += TypeSizes.NATIVE.sizeof(sh.pendingFiles.size());
+            long size = typeSizes.sizeof(sh.table);
+            size += typeSizes.sizeof(sh.sessionId);
+            size += PendingFile.serializer.serializedSize(sh.file, typeSizes, version);
+            size += typeSizes.sizeof(sh.pendingFiles.size());
             for (PendingFile file : sh.pendingFiles)
-                size += PendingFile.serializer.serializedSize(file, version);
+                size += PendingFile.serializer.serializedSize(file, typeSizes, version);
             return size;
        }
     }

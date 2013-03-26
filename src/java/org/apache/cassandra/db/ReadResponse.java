@@ -99,14 +99,13 @@ class ReadResponseSerializer implements IVersionedSerializer<ReadResponse>
         return isDigest ? new ReadResponse(ByteBuffer.wrap(digest)) : new ReadResponse(row);
     }
 
-    public long serializedSize(ReadResponse response, int version)
+    public long serializedSize(ReadResponse response, TypeSizes typeSizes, int version)
     {
-        TypeSizes typeSizes = TypeSizes.NATIVE;
         ByteBuffer buffer = response.isDigestQuery() ? response.digest() : ByteBufferUtil.EMPTY_BYTE_BUFFER;
         int size = typeSizes.sizeof(buffer.remaining());
         size += typeSizes.sizeof(response.isDigestQuery());
         if (!response.isDigestQuery())
-            size += Row.serializer.serializedSize(response.row(), version);
+            size += Row.serializer.serializedSize(response.row(), typeSizes, version);
         return size;
     }
 }

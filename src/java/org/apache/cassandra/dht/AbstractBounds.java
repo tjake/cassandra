@@ -183,18 +183,18 @@ public abstract class AbstractBounds<T extends RingPosition> implements Serializ
             return new Bounds(left, right);
         }
 
-        public long serializedSize(AbstractBounds<?> ab, int version)
+        public long serializedSize(AbstractBounds<?> ab, TypeSizes typeSizes, int version)
         {
-            int size = TypeSizes.NATIVE.sizeof(kindInt(ab));
+            int size = typeSizes.sizeof(kindInt(ab));
             if (ab.left instanceof Token)
             {
-                size += Token.serializer.serializedSize((Token) ab.left, TypeSizes.NATIVE);
-                size += Token.serializer.serializedSize((Token) ab.right, TypeSizes.NATIVE);
+                size += Token.serializer.serializedSize((Token) ab.left, typeSizes);
+                size += Token.serializer.serializedSize((Token) ab.right, typeSizes);
             }
             else
             {
-                size += RowPosition.serializer.serializedSize((RowPosition) ab.left, TypeSizes.NATIVE);
-                size += RowPosition.serializer.serializedSize((RowPosition) ab.right, TypeSizes.NATIVE);
+                size += RowPosition.serializer.serializedSize((RowPosition) ab.left, typeSizes);
+                size += RowPosition.serializer.serializedSize((RowPosition) ab.right, typeSizes);
             }
             return size;
         }

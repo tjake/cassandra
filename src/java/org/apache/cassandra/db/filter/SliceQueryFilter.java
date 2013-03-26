@@ -287,20 +287,18 @@ public class SliceQueryFilter implements IDiskAtomFilter
             return new SliceQueryFilter(slices, reversed, count, compositesToGroup, 1);
         }
 
-        public long serializedSize(SliceQueryFilter f, int version)
+        public long serializedSize(SliceQueryFilter f, TypeSizes sizes, int version)
         {
-            TypeSizes sizes = TypeSizes.NATIVE;
-
             int size = 0;
             if (version < MessagingService.VERSION_12)
             {
-                size += type.sliceSerializer().serializedSize(new ColumnSlice(f.start(), f.finish()), version);
+                size += type.sliceSerializer().serializedSize(new ColumnSlice(f.start(), f.finish()), sizes, version);
             }
             else
             {
                 size += sizes.sizeof(f.slices.length);
                 for (ColumnSlice slice : f.slices)
-                    size += type.sliceSerializer().serializedSize(slice, version);
+                    size += type.sliceSerializer().serializedSize(slice, sizes, version);
             }
             size += sizes.sizeof(f.reversed);
             size += sizes.sizeof(f.count);

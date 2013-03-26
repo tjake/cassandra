@@ -77,18 +77,18 @@ public class CompressionInfo
             return new CompressionInfo(chunks, parameters);
         }
 
-        public long serializedSize(CompressionInfo info, int version)
+        public long serializedSize(CompressionInfo info, TypeSizes typeSizes, int version)
         {
             if (info == null)
-                return TypeSizes.NATIVE.sizeof(-1);
+                return typeSizes.sizeof(-1);
 
             // chunks
             int chunkCount = info.chunks.length;
-            long size = TypeSizes.NATIVE.sizeof(chunkCount);
+            long size = typeSizes.sizeof(chunkCount);
             for (int i = 0; i < chunkCount; i++)
-                size += CompressionMetadata.Chunk.serializer.serializedSize(info.chunks[i], version);
+                size += CompressionMetadata.Chunk.serializer.serializedSize(info.chunks[i], typeSizes, version);
             // compression params
-            size += CompressionParameters.serializer.serializedSize(info.parameters, version);
+            size += CompressionParameters.serializer.serializedSize(info.parameters, typeSizes, version);
             return size;
         }
     }

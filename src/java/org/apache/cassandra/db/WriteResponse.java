@@ -64,9 +64,8 @@ public class WriteResponse
             return new WriteResponse();
         }
 
-        public long serializedSize(WriteResponse response, int version)
+        public long serializedSize(WriteResponse response, TypeSizes sizes, int version)
         {
-            TypeSizes sizes = TypeSizes.NATIVE;
             if (version < MessagingService.VERSION_12)
                 return sizes.sizeof("") + sizes.sizeof((short) 0) + sizes.sizeof(true);
             return 0;

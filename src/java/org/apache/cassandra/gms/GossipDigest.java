@@ -94,11 +94,11 @@ class GossipDigestSerializer implements IVersionedSerializer<GossipDigest>
         return new GossipDigest(endpoint, generation, maxVersion);
     }
 
-    public long serializedSize(GossipDigest gDigest, int version)
+    public long serializedSize(GossipDigest gDigest, TypeSizes typeSizes, int version)
     {
         long size = CompactEndpointSerializationHelper.serializedSize(gDigest.endpoint);
-        size += TypeSizes.NATIVE.sizeof(gDigest.generation);
-        size += TypeSizes.NATIVE.sizeof(gDigest.maxVersion);
+        size += typeSizes.sizeof(gDigest.generation);
+        size += typeSizes.sizeof(gDigest.maxVersion);
         return size;
     }
 }

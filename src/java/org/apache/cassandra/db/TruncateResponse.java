@@ -66,11 +66,11 @@ public class TruncateResponse
             return new TruncateResponse(keyspace, columnFamily, success);
         }
 
-        public long serializedSize(TruncateResponse tr, int version)
+        public long serializedSize(TruncateResponse tr, TypeSizes typeSizes, int version)
         {
-            return TypeSizes.NATIVE.sizeof(tr.keyspace)
-                 + TypeSizes.NATIVE.sizeof(tr.columnFamily)
-                 + TypeSizes.NATIVE.sizeof(tr.success);
+            return typeSizes.sizeof(tr.keyspace)
+                 + typeSizes.sizeof(tr.columnFamily)
+                 + typeSizes.sizeof(tr.success);
         }
     }
 }

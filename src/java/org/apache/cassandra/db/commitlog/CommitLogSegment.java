@@ -39,6 +39,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.RowMutation;
+import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.io.FSWriteError;
 import org.apache.cassandra.io.util.ByteBufferOutputStream;
 import org.apache.cassandra.io.util.ChecksummedOutputStream;
@@ -222,7 +223,7 @@ public class CommitLogSegment
         checksum.reset();
 
         // checksummed length
-        int length = (int) RowMutation.serializer.serializedSize(mutation, MessagingService.current_version);
+        int length = (int) RowMutation.serializer.serializedSize(mutation, TypeSizes.NATIVE, MessagingService.current_version);
         bufferStream.writeInt(length);
         buffer.putLong(checksum.getValue());
 

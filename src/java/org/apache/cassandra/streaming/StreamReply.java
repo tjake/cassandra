@@ -83,9 +83,9 @@ public class StreamReply
             return new StreamReply(targetFile, sessionId, action);
         }
 
-        public long serializedSize(StreamReply reply, int version)
+        public long serializedSize(StreamReply reply, TypeSizes typeSizes, int version)
         {
-            return TypeSizes.NATIVE.sizeof(reply.sessionId) + TypeSizes.NATIVE.sizeof(reply.file) + TypeSizes.NATIVE.sizeof(reply.action.ordinal());
+            return typeSizes.sizeof(reply.sessionId) + typeSizes.sizeof(reply.file) + typeSizes.sizeof(reply.action.ordinal());
         }
     }
 }

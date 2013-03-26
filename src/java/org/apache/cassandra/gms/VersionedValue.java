@@ -289,9 +289,9 @@ public class VersionedValue implements Comparable<VersionedValue>
             return new VersionedValue(value, valVersion);
         }
 
-        public long serializedSize(VersionedValue value, int version)
+        public long serializedSize(VersionedValue value, TypeSizes typeSizes, int version)
         {
-            return TypeSizes.NATIVE.sizeof(outValue(value, version)) + TypeSizes.NATIVE.sizeof(value.version);
+            return typeSizes.sizeof(outValue(value, version)) + typeSizes.sizeof(value.version);
         }
     }
 }

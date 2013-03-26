@@ -72,10 +72,10 @@ public class Row
             return deserialize(in, version, ColumnSerializer.Flag.LOCAL);
         }
 
-        public long serializedSize(Row row, int version)
+        public long serializedSize(Row row, TypeSizes typeSizes, int version)
         {
             int keySize = row.key.key.remaining();
-            return TypeSizes.NATIVE.sizeof((short) keySize) + keySize + ColumnFamily.serializer.serializedSize(row.cf, TypeSizes.NATIVE, version);
+            return typeSizes.sizeof((short) keySize) + keySize + ColumnFamily.serializer.serializedSize(row.cf, typeSizes, version);
         }
     }
 }

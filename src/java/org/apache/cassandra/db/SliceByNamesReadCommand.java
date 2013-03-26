@@ -146,14 +146,13 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         return command;
     }
 
-    public long serializedSize(ReadCommand cmd, int version)
+    public long serializedSize(ReadCommand cmd, TypeSizes sizes, int version)
     {
-        return serializedSize(cmd, null, version);
+        return serializedSize(cmd, null, sizes, version);
     }
 
-    public long serializedSize(ReadCommand cmd, ByteBuffer superColumn, int version)
+    public long serializedSize(ReadCommand cmd, ByteBuffer superColumn, TypeSizes sizes, int version)
     {
-        TypeSizes sizes = TypeSizes.NATIVE;
         SliceByNamesReadCommand command = (SliceByNamesReadCommand) cmd;
         int size = sizes.sizeof(command.isDigestQuery());
         int keySize = command.key.remaining();
@@ -171,7 +170,7 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         }
 
         CFMetaData metadata = Schema.instance.getCFMetaData(cmd.table, cmd.cfName);
-        size += metadata.comparator.namesQueryFilterSerializer().serializedSize(command.filter, version);
+        size += metadata.comparator.namesQueryFilterSerializer().serializedSize(command.filter, sizes, version);
         return size;
     }
 }

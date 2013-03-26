@@ -411,10 +411,10 @@ public class CompressionMetadata
             return new Chunk(in.readLong(), in.readInt());
         }
 
-        public long serializedSize(Chunk chunk, int version)
+        public long serializedSize(Chunk chunk, TypeSizes typeSizes, int version)
         {
-            long size = TypeSizes.NATIVE.sizeof(chunk.offset);
-            size += TypeSizes.NATIVE.sizeof(chunk.length);
+            long size = typeSizes.sizeof(chunk.offset);
+            size += typeSizes.sizeof(chunk.length);
             return size;
         }
     }

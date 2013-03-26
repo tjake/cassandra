@@ -68,11 +68,11 @@ class GossipDigestSerializationHelper
         return gDigests;
     }
 
-    static int serializedSize(List<GossipDigest> digests, int version)
+    static int serializedSize(List<GossipDigest> digests, TypeSizes typeSizes, int version)
     {
-        int size = TypeSizes.NATIVE.sizeof(digests.size());
+        int size = typeSizes.sizeof(digests.size());
         for (GossipDigest digest : digests)
-            size += GossipDigest.serializer.serializedSize(digest, version);
+            size += GossipDigest.serializer.serializedSize(digest, typeSizes, version);
         return size;
     }
 }
@@ -97,12 +97,12 @@ class GossipDigestSynSerializer implements IVersionedSerializer<GossipDigestSyn>
         return new GossipDigestSyn(clusterId, partioner, gDigests);
     }
 
-    public long serializedSize(GossipDigestSyn syn, int version)
+    public long serializedSize(GossipDigestSyn syn, TypeSizes typeSizes, int version)
     {
-        long size = TypeSizes.NATIVE.sizeof(syn.clusterId);
+        long size = typeSizes.sizeof(syn.clusterId);
         if (version >= MessagingService.VERSION_12)
-            size += TypeSizes.NATIVE.sizeof(syn.partioner);
-        size += GossipDigestSerializationHelper.serializedSize(syn.gDigests, version);
+            size += typeSizes.sizeof(syn.partioner);
+        size += GossipDigestSerializationHelper.serializedSize(syn.gDigests, typeSizes, version);
         return size;
     }
 }

@@ -176,9 +176,8 @@ public class NamesQueryFilter implements IDiskAtomFilter
             return new NamesQueryFilter(columns, countCQL3Rows);
         }
 
-        public long serializedSize(NamesQueryFilter f, int version)
+        public long serializedSize(NamesQueryFilter f, TypeSizes sizes, int version)
         {
-            TypeSizes sizes = TypeSizes.NATIVE;
             int size = sizes.sizeof(f.columns.size());
             ISerializer<CellName> serializer = type.cellSerializer();
             for (CellName cName : f.columns)

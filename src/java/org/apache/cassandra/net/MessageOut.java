@@ -124,7 +124,7 @@ public class MessageOut<T>
             out.write(entry.getValue());
         }
 
-        long longSize = payload == null ? 0 : serializer.serializedSize(payload, version);
+        long longSize = payload == null ? 0 : serializer.serializedSize(payload, TypeSizes.NATIVE, version);
         assert longSize <= Integer.MAX_VALUE; // larger values are supported in sstables but not messages
         out.writeInt((int) longSize);
         if (payload != null)
@@ -144,7 +144,7 @@ public class MessageOut<T>
             size += entry.getValue().length;
         }
 
-        long longSize = payload == null ? 0 : serializer.serializedSize(payload, version);
+        long longSize = payload == null ? 0 : serializer.serializedSize(payload, TypeSizes.NATIVE, version);
         assert longSize <= Integer.MAX_VALUE; // larger values are supported in sstables but not messages
         size += TypeSizes.NATIVE.sizeof((int) longSize);
         size += longSize;

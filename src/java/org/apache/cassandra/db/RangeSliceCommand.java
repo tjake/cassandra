@@ -335,10 +335,10 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         return new RangeSliceCommand(keyspace, columnFamily, predicate, range, rowFilter, maxResults, countCQL3Rows, isPaging);
     }
 
-    public long serializedSize(RangeSliceCommand rsc, int version)
+    public long serializedSize(RangeSliceCommand rsc, TypeSizes typeSizes, int version)
     {
-        long size = TypeSizes.NATIVE.sizeof(rsc.keyspace);
-        size += TypeSizes.NATIVE.sizeof(rsc.column_family);
+        long size = typeSizes.sizeof(rsc.keyspace);
+        size += typeSizes.sizeof(rsc.column_family);
 
         CFMetaData metadata = Schema.instance.getCFMetaData(rsc.keyspace, rsc.column_family);
 
@@ -355,12 +355,12 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
 
             if (sc != null)
             {
-                size += TypeSizes.NATIVE.sizeof(sc.remaining());
+                size += typeSizes.sizeof(sc.remaining());
                 size += sc.remaining();
             }
             else
             {
-                size += TypeSizes.NATIVE.sizeof(0);
+                size += typeSizes.sizeof(0);
             }
         }
 
@@ -371,7 +371,7 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
             {
                 int predicateLength = ser.serialize(asSlicePredicate(filter)).length;
                 if (version < MessagingService.VERSION_12)
-                    size += TypeSizes.NATIVE.sizeof(predicateLength);
+                    size += typeSizes.sizeof(predicateLength);
                 size += predicateLength;
             }
             catch (TException e)
@@ -381,18 +381,18 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         }
         else
         {
-            size += metadata.comparator.diskAtomFilterSerializer().serializedSize(filter, version);
+            size += metadata.comparator.diskAtomFilterSerializer().serializedSize(filter, typeSizes, version);
         }
 
         if (version >= MessagingService.VERSION_11)
         {
             if (rsc.row_filter == null)
             {
-                size += TypeSizes.NATIVE.sizeof(0);
+                size += typeSizes.sizeof(0);
             }
             else
             {
-                size += TypeSizes.NATIVE.sizeof(rsc.row_filter.size());
+                size += typeSizes.sizeof(rsc.row_filter.size());
                 for (IndexExpression expr : rsc.row_filter)
                 {
                     if (version < MessagingService.VERSION_12)
@@ -400,7 +400,7 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
                         try
                         {
                             int filterLength = new TSerializer(new TBinaryProtocol.Factory()).serialize(expr).length;
-                            size += TypeSizes.NATIVE.sizeof(filterLength);
+                            size += typeSizes.sizeof(filterLength);
                             size += filterLength;
                         }
                         catch (TException e)
@@ -410,19 +410,19 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
                     }
                     else
                     {
-                        size += TypeSizes.NATIVE.sizeofWithShortLength(expr.column_name);
-                        size += TypeSizes.NATIVE.sizeof(expr.op.getValue());
-                        size += TypeSizes.NATIVE.sizeofWithLength(expr.value);
+                        size += typeSizes.sizeofWithShortLength(expr.column_name);
+                        size += typeSizes.sizeof(expr.op.getValue());
+                        size += typeSizes.sizeofWithLength(expr.value);
                     }
                 }
             }
         }
-        size += AbstractBounds.serializer.serializedSize(rsc.range, version);
-        size += TypeSizes.NATIVE.sizeof(rsc.maxResults);
+        size += AbstractBounds.serializer.serializedSize(rsc.range, typeSizes, version);
+        size += typeSizes.sizeof(rsc.maxResults);
         if (version >= MessagingService.VERSION_11)
         {
-            size += TypeSizes.NATIVE.sizeof(rsc.countCQL3Rows);
-            size += TypeSizes.NATIVE.sizeof(rsc.isPaging);
+            size += typeSizes.sizeof(rsc.countCQL3Rows);
+            size += typeSizes.sizeof(rsc.isPaging);
         }
         return size;
     }

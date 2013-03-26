@@ -415,11 +415,11 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
             return schema;
         }
 
-        public long serializedSize(Collection<RowMutation> schema, int version)
+        public long serializedSize(Collection<RowMutation> schema, TypeSizes typeSizes, int version)
         {
-            int size = TypeSizes.NATIVE.sizeof(schema.size());
+            int size = typeSizes.sizeof(schema.size());
             for (RowMutation rm : schema)
-                size += RowMutation.serializer.serializedSize(rm, version);
+                size += RowMutation.serializer.serializedSize(rm, typeSizes, version);
             return size;
         }
     }

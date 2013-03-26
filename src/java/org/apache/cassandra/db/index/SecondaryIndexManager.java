@@ -457,21 +457,23 @@ public class SecondaryIndexManager
 
         for (Column column : indexedColumnsInRow)
         {
-            SecondaryIndex index = indexesByColumn.get(column.name());
-            if (index == null)
-                continue;
-
-            if (index instanceof PerRowSecondaryIndex)
+            for (SecondaryIndex index : indexesByColumn.values())
             {
-                if (cleanedRowLevelIndexes == null)
-                    cleanedRowLevelIndexes = new HashSet<Class<? extends SecondaryIndex>>();
+                if (!index.indexes(column.name()))
+                    continue;
 
-                if (cleanedRowLevelIndexes.add(index.getClass()))
-                    ((PerRowSecondaryIndex)index).delete(key);
-            }
-            else
-            {
-                ((PerColumnSecondaryIndex) index).delete(key.key, column);
+                if (index instanceof PerRowSecondaryIndex)
+                {
+                    if (cleanedRowLevelIndexes == null)
+                        cleanedRowLevelIndexes = new HashSet<Class<? extends SecondaryIndex>>();
+
+                    if (cleanedRowLevelIndexes.add(index.getClass()))
+                        ((PerRowSecondaryIndex)index).delete(key);
+                }
+                else
+                {
+                    ((PerColumnSecondaryIndex) index).delete(key.key, column);
+                }
             }
         }
     }

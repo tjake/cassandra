@@ -335,16 +335,16 @@ public class CompressionParameters
             return parameters;
         }
 
-        public long serializedSize(CompressionParameters parameters, int version)
+        public long serializedSize(CompressionParameters parameters, TypeSizes typeSizes, int version)
         {
-            long size = TypeSizes.NATIVE.sizeof(parameters.sstableCompressor.getClass().getSimpleName());
-            size += TypeSizes.NATIVE.sizeof(parameters.otherOptions.size());
+            long size = typeSizes.sizeof(parameters.sstableCompressor.getClass().getSimpleName());
+            size += typeSizes.sizeof(parameters.otherOptions.size());
             for (Map.Entry<String, String> entry : parameters.otherOptions.entrySet())
             {
-                size += TypeSizes.NATIVE.sizeof(entry.getKey());
-                size += TypeSizes.NATIVE.sizeof(entry.getValue());
+                size += typeSizes.sizeof(entry.getKey());
+                size += typeSizes.sizeof(entry.getValue());
             }
-            size += TypeSizes.NATIVE.sizeof(parameters.chunkLength());
+            size += typeSizes.sizeof(parameters.chunkLength());
             return size;
         }
     }

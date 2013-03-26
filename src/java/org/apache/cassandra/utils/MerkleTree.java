@@ -103,12 +103,12 @@ public class MerkleTree implements Serializable
             return mt;
         }
 
-        public long serializedSize(MerkleTree mt, int version)
+        public long serializedSize(MerkleTree mt, TypeSizes typeSizes, int version)
         {
             return 1 // mt.hashdepth
-                 + TypeSizes.NATIVE.sizeof(mt.maxsize)
-                 + TypeSizes.NATIVE.sizeof(mt.size)
-                 + Hashable.serializer.serializedSize(mt.root, version);
+                 + typeSizes.sizeof(mt.maxsize)
+                 + typeSizes.sizeof(mt.size)
+                 + Hashable.serializer.serializedSize(mt.root, typeSizes, version);
         }
     }
 
@@ -715,15 +715,15 @@ public class MerkleTree implements Serializable
                 return new Inner(token, lchild, rchild);
             }
 
-            public long serializedSize(Inner inner, int version)
+            public long serializedSize(Inner inner, TypeSizes typeSizes, int version)
             {
                 int size = inner.hash == null
-                         ? TypeSizes.NATIVE.sizeof(-1)
-                         : TypeSizes.NATIVE.sizeof(inner.hash().length) + inner.hash().length;
+                         ? typeSizes.sizeof(-1)
+                         : typeSizes.sizeof(inner.hash().length) + inner.hash().length;
 
-                size += Token.serializer.serializedSize(inner.token, TypeSizes.NATIVE)
-                        + Hashable.serializer.serializedSize(inner.lchild, version)
-                        + Hashable.serializer.serializedSize(inner.rchild, version);
+                size += Token.serializer.serializedSize(inner.token, typeSizes)
+                        + Hashable.serializer.serializedSize(inner.lchild, typeSizes, version)
+                        + Hashable.serializer.serializedSize(inner.rchild, typeSizes, version);
                 return size;
             }
         }
@@ -797,11 +797,11 @@ public class MerkleTree implements Serializable
                 return new Leaf(hash);
             }
 
-            public long serializedSize(Leaf leaf, int version)
+            public long serializedSize(Leaf leaf, TypeSizes typeSizes, int version)
             {
                 return leaf.hash == null
-                     ? TypeSizes.NATIVE.sizeof(-1)
-                     : TypeSizes.NATIVE.sizeof(leaf.hash().length) + leaf.hash().length;
+                     ? typeSizes.sizeof(-1)
+                     : typeSizes.sizeof(leaf.hash().length) + leaf.hash().length;
             }
         }
     }
@@ -922,12 +922,12 @@ public class MerkleTree implements Serializable
                     throw new IOException("Unexpected Hashable: " + ident);
             }
 
-            public long serializedSize(Hashable h, int version)
+            public long serializedSize(Hashable h, TypeSizes typeSizes, int version)
             {
                 if (h instanceof Inner)
-                    return 1 + Inner.serializer.serializedSize((Inner) h, version);
+                    return 1 + Inner.serializer.serializedSize((Inner) h, typeSizes, version);
                 else if (h instanceof Leaf)
-                    return 1 + Leaf.serializer.serializedSize((Leaf) h, version);
+                    return 1 + Leaf.serializer.serializedSize((Leaf) h, typeSizes, version);
                 throw new AssertionError(h.getClass());
             }
         }

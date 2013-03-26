@@ -261,9 +261,9 @@ public class BootStrapper
             return in.readUTF();
         }
 
-        public long serializedSize(String s, int version)
+        public long serializedSize(String s, TypeSizes typeSizes, int version)
         {
-            return TypeSizes.NATIVE.sizeof(s);
+            return typeSizes.sizeof(s);
         }
     }
 }

@@ -232,7 +232,7 @@ public final class MessagingService implements MessagingServiceMBean
             throw new UnsupportedOperationException();
         }
 
-        public long serializedSize(Object o, int version)
+        public long serializedSize(Object o, TypeSizes typeSizes, int version)
         {
             throw new UnsupportedOperationException();
         }

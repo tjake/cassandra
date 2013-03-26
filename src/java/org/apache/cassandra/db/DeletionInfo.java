@@ -279,9 +279,9 @@ public class DeletionInfo
                 return type.serializer().deserialize(dis);
             }
 
-            public long serializedSize(Composite cp, int version)
+            public long serializedSize(Composite cp, TypeSizes typeSizes, int version)
             {
-                return type.serializer().serializedSize(cp, TypeSizes.NATIVE);
+                return type.serializer().serializedSize(cp, typeSizes);
             }
         };
 
@@ -299,9 +299,9 @@ public class DeletionInfo
                 return DeletionTime.serializer.deserialize(in);
             }
 
-            public long serializedSize(DeletionTime bb, int version)
+            public long serializedSize(DeletionTime bb, TypeSizes typeSizes, int version)
             {
-                return DeletionTime.serializer.serializedSize(bb, TypeSizes.NATIVE);
+                return DeletionTime.serializer.serializedSize(bb, typeSizes);
             }
         };
 
@@ -369,12 +369,7 @@ public class DeletionInfo
             if (version < MessagingService.VERSION_12)
                 return size;
 
-            return size + itSerializer.serializedSize(info.ranges, version);
-        }
-
-        public long serializedSize(DeletionInfo info, int version)
-        {
-            return serializedSize(info, TypeSizes.NATIVE, version);
+            return size + itSerializer.serializedSize(info.ranges, typeSizes, version);
         }
     }
 }

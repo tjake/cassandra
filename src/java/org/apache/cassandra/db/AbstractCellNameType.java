@@ -241,7 +241,7 @@ public abstract class AbstractCellNameType extends AbstractCType implements Cell
         public long serializedSize(Composite c, TypeSizes type)
         {
             ByteBuffer bb = c.toByteBuffer();
-            return 2 + bb.remaining();
+            return type.sizeof((short) bb.remaining()) + bb.remaining();
         }
     }
 }

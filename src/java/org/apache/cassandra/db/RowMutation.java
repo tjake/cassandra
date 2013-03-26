@@ -291,9 +291,8 @@ public class RowMutation implements IMutation
             return deserialize(in, version, ColumnSerializer.Flag.FROM_REMOTE);
         }
 
-        public long serializedSize(RowMutation rm, int version)
+        public long serializedSize(RowMutation rm, TypeSizes sizes, int version)
         {
-            TypeSizes sizes = TypeSizes.NATIVE;
             int size = sizes.sizeof(rm.getTable());
             int keySize = rm.key().remaining();
             size += sizes.sizeof((short) keySize) + keySize;

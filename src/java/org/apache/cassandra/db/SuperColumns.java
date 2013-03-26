@@ -122,7 +122,7 @@ public class SuperColumns
         DeletionInfo delInfo = scf.deletionInfo();
 
         // Actually Serialize
-        long size = scType(scf.getComparator()).deletionInfoSerializer().serializedSize(new DeletionInfo(delInfo.getTopLevelDeletion()), version);
+        long size = scType(scf.getComparator()).deletionInfoSerializer().serializedSize(new DeletionInfo(delInfo.getTopLevelDeletion()), typeSizes, version);
 
         CellNameType scType = scType(scf.getComparator());
         CellNameType subType = subType(scf.getComparator());
@@ -134,7 +134,7 @@ public class SuperColumns
             List<DeletionTime> delTimes = delInfo.rangeCovering(entry.getKey());
             assert delTimes.size() <= 1; // We're supposed to have either no deletion, or a full SC deletion.
             DeletionInfo scDelInfo = delTimes.isEmpty() ? DeletionInfo.LIVE : new DeletionInfo(delTimes.get(0));
-            size += subType.deletionInfoSerializer().serializedSize(scDelInfo, MessagingService.VERSION_10);
+            size += subType.deletionInfoSerializer().serializedSize(scDelInfo, typeSizes, MessagingService.VERSION_10);
 
             size += typeSizes.sizeof(entry.getValue().size());
             for (Column subColumn : entry.getValue())

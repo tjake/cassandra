@@ -87,7 +87,7 @@ public class IndexScanCommand
             return new IndexScanCommand(keyspace, columnFamily, indexClause, predicate, range);
         }
 
-        public long serializedSize(IndexScanCommand object, int version)
+        public long serializedSize(IndexScanCommand object, TypeSizes typeSizes, int version)
         {
             throw new UnsupportedOperationException();
         }

@@ -264,15 +264,15 @@ public class StreamingRepairTask implements Runnable
             return new StreamingRepairTask(id, owner, src, dst, tableName, cfName, ranges, makeReplyingCallback(owner, id));
         }
 
-        public long serializedSize(StreamingRepairTask task, int version)
+        public long serializedSize(StreamingRepairTask task, TypeSizes typeSizes, int version)
         {
-            long size = UUIDSerializer.serializer.serializedSize(task.id, version);
+            long size = UUIDSerializer.serializer.serializedSize(task.id, typeSizes, version);
             size += 3 * CompactEndpointSerializationHelper.serializedSize(task.owner);
-            size += TypeSizes.NATIVE.sizeof(task.tableName);
-            size += TypeSizes.NATIVE.sizeof(task.cfName);
-            size += TypeSizes.NATIVE.sizeof(task.ranges.size());
+            size += typeSizes.sizeof(task.tableName);
+            size += typeSizes.sizeof(task.cfName);
+            size += typeSizes.sizeof(task.ranges.size());
             for (Range<Token> range : task.ranges)
-                size += AbstractBounds.serializer.serializedSize(range, version);
+                size += AbstractBounds.serializer.serializedSize(range, typeSizes, version);
             return size;
         }
     }

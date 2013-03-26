@@ -181,7 +181,7 @@ class ReadCommandSerializer implements IVersionedSerializer<ReadCommand>
         }
     }
 
-    public long serializedSize(ReadCommand command, int version)
+    public long serializedSize(ReadCommand command, TypeSizes typeSizes, int version)
     {
         ReadCommand newCommand = command;
         ByteBuffer superColumn = null;
@@ -200,9 +200,9 @@ class ReadCommandSerializer implements IVersionedSerializer<ReadCommand>
         switch (command.commandType)
         {
             case GET_BY_NAMES:
-                return 1 + SliceByNamesReadCommand.serializer.serializedSize(newCommand, superColumn, version);
+                return 1 + SliceByNamesReadCommand.serializer.serializedSize(newCommand, superColumn, typeSizes, version);
             case GET_SLICES:
-                return 1 + SliceFromReadCommand.serializer.serializedSize(newCommand, superColumn, version);
+                return 1 + SliceFromReadCommand.serializer.serializedSize(newCommand, superColumn, typeSizes, version);
             default:
                 throw new AssertionError();
         }

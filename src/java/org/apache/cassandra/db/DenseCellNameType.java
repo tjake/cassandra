@@ -80,7 +80,11 @@ public class DenseCellNameType extends AbstractCellNameType
 
     public Composite fromByteBuffer(ByteBuffer bb)
     {
-        return bb.remaining() == 0 ? Composites.EMPTY : new DenseCellName(type.fromByteBuffer(bb));
+        if (bb.remaining() == 0)
+            return Composites.EMPTY;
+
+        Composite c = type.fromByteBuffer(bb);
+        return c.size() == size() ? new DenseCellName(c) : c;
     }
 
     protected CellName makeCellName(List<ByteBuffer> components)

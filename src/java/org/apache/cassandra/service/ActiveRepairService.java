@@ -423,10 +423,10 @@ public class ActiveRepairService
                 }
             }
 
-            public long serializedSize(Validator validator, int version)
+            public long serializedSize(Validator validator, TypeSizes typeSizes, int version)
             {
-                return TreeRequest.serializer.serializedSize(validator.request, version)
-                       + MerkleTree.serializer.serializedSize(validator.tree, version);
+                return TreeRequest.serializer.serializedSize(validator.request, typeSizes, version)
+                       + MerkleTree.serializer.serializedSize(validator.tree, typeSizes, version);
             }
         }
     }
@@ -548,13 +548,13 @@ public class ActiveRepairService
                 return new TreeRequest(sessId, endpoint, range, cfpair);
             }
 
-            public long serializedSize(TreeRequest request, int version)
+            public long serializedSize(TreeRequest request, TypeSizes typeSizes, int version)
             {
-                return TypeSizes.NATIVE.sizeof(request.sessionid)
+                return typeSizes.sizeof(request.sessionid)
                      + CompactEndpointSerializationHelper.serializedSize(request.endpoint)
-                     + TypeSizes.NATIVE.sizeof(request.cf.left)
-                     + TypeSizes.NATIVE.sizeof(request.cf.right)
-                     + AbstractBounds.serializer.serializedSize(request.range, version);
+                     + typeSizes.sizeof(request.cf.left)
+                     + typeSizes.sizeof(request.cf.right)
+                     + AbstractBounds.serializer.serializedSize(request.range, typeSizes, version);
             }
         }
     }

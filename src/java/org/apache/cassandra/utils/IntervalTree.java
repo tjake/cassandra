@@ -441,14 +441,14 @@ public class IntervalTree<C, D, I extends Interval<C, D>> implements Iterable<I>
             }
         }
 
-        public long serializedSize(IntervalTree<C, D, I> it, int version)
+        public long serializedSize(IntervalTree<C, D, I> it, TypeSizes typeSizes, int version)
         {
-            long size = TypeSizes.NATIVE.sizeof(0);
+            long size = typeSizes.sizeof(0);
             for (Interval<C, D> interval : it)
             {
-                size += pointSerializer.serializedSize(interval.min, version);
-                size += pointSerializer.serializedSize(interval.max, version);
-                size += dataSerializer.serializedSize(interval.data, version);
+                size += pointSerializer.serializedSize(interval.min, typeSizes, version);
+                size += pointSerializer.serializedSize(interval.max, typeSizes, version);
+                size += dataSerializer.serializedSize(interval.data, typeSizes, version);
             }
             return size;
         }
