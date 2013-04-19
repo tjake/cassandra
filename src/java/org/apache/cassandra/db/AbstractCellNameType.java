@@ -234,7 +234,7 @@ public abstract class AbstractCellNameType extends AbstractCType implements Cell
         {
             ByteBuffer bb = ByteBufferUtil.readWithShortLength(in);
             if (bb.remaining() == 0)
-                throw ColumnSerializer.CorruptColumnException.create(in, bb);
+                return type.fromByteBuffer(ByteBufferUtil.EMPTY_BYTE_BUFFER);
             return type.fromByteBuffer(bb);
         }
 
