@@ -29,11 +29,13 @@ import org.apache.cassandra.db.marshal.CompositeType;
 public class CompositeCType extends AbstractCType
 {
     private final List<AbstractType<?>> types;
+    private final int size;
 
     // It's up to the caller to pass a list that is effectively immutable
     CompositeCType(List<AbstractType<?>> types)
     {
         this.types = types;
+        this.size = types.size();
     }
 
     public boolean isPacked()
@@ -43,7 +45,7 @@ public class CompositeCType extends AbstractCType
 
     public int size()
     {
-        return types.size();
+        return size;
     }
 
     public AbstractType<?> subtype(int i)
