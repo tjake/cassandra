@@ -58,45 +58,46 @@ public class CqlInserter extends CQLOperation
         // Construct a query string once.
         if (cqlQuery == null)
         {
-            StringBuilder query = new StringBuilder("UPDATE ").append(wrapInQuotesIfRequired("Standard1"));
+            StringBuilder query = new StringBuilder("INSERT INTO ").append(session.use_compact_storage ? "compactstorage" : wrapInQuotesIfRequired("Standard1"));
 
             if (session.cqlVersion.startsWith("2"))
                 query.append(" USING CONSISTENCY ").append(session.getConsistencyLevel().toString());
 
-            query.append(" SET ");
-
+            query.append("(KEY");
             for (int i = 0; i < session.getColumnsPerKey(); i++)
             {
-                if (i > 0)
-                    query.append(',');
+                query.append(wrapInQuotesIfRequired(",c" + i));
+            }
+            query.append(") VALUES (?");
+            for (int i = 0; i < session.getColumnsPerKey(); i++)
+            {
 
                 if (session.timeUUIDComparator)
                 {
                     if (session.cqlVersion.startsWith("3"))
                         throw new UnsupportedOperationException("Cannot use UUIDs in column names with CQL3");
+                }
 
-                    query.append(wrapInQuotesIfRequired(UUIDGen.getTimeUUID().toString()))
-                         .append(" = ?");
-                }
-                else
-                {
-                    query.append(wrapInQuotesIfRequired("C" + i)).append(" = ?");
-                }
+                query.append(",?");
             }
 
-            query.append(" WHERE KEY=?");
+            query.append(")");
             cqlQuery = query.toString();
         }
 
+
+
         List<String> queryParms = new ArrayList<String>();
+
+        String key = String.format("%0" + session.getTotalKeysLength() + "d", index);
+        queryParms.add(getUnQuotedCqlBlob(key, session.cqlVersion.startsWith("3")));
+
         for (int i = 0; i < session.getColumnsPerKey(); i++)
         {
             // Column value
             queryParms.add(getUnQuotedCqlBlob(values.get(i % values.size()).array(), session.cqlVersion.startsWith("3")));
         }
 
-        String key = String.format("%0" + session.getTotalKeysLength() + "d", index);
-        queryParms.add(getUnQuotedCqlBlob(key, session.cqlVersion.startsWith("3")));
 
         Context context = session.latency.time();
 

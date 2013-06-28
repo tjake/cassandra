@@ -68,13 +68,13 @@ public class CqlIndexedRangeSlicer extends CQLOperation
             else
                 query.append("*");
 
-            query.append(" FROM Standard1");
+            query.append(" FROM ").append(session.use_compact_storage ? "compactstorage" : "Standard1");
 
             if (session.cqlVersion.startsWith("2"))
                 query.append(" USING CONSISTENCY ").append(session.getConsistencyLevel());
 
             query.append(" WHERE C1=").append(getUnQuotedCqlBlob(values.get(1).array(), session.cqlVersion.startsWith("3")))
-                 .append(" AND KEY > ? LIMIT ").append(session.getKeysPerCall());
+                 .append(" AND KEY ").append(session.use_compact_storage ? "=" : ">").append(" ? LIMIT ").append(session.getKeysPerCall());
 
             cqlQuery = query.toString();
         }

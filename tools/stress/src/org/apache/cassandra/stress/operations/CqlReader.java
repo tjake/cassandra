@@ -71,7 +71,7 @@ public class CqlReader extends CQLOperation
                 }
             }
 
-            query.append(" FROM ").append(wrapInQuotesIfRequired("Standard1"));
+            query.append(" FROM ").append(session.use_compact_storage ? "compactstorage" : wrapInQuotesIfRequired("Standard1"));
 
             if (session.cqlVersion.startsWith("2"))
                 query.append(" USING CONSISTENCY ").append(session.getConsistencyLevel().toString());

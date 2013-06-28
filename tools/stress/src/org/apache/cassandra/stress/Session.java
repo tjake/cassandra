@@ -126,6 +126,7 @@ public class Session implements Serializable
         availableOptions.addOption("st", SSL_STORE_TYPE,         true, "SSL: type of store");
         availableOptions.addOption("ciphers", SSL_CIPHER_SUITES, true, "SSL: comma-separated list of encryption suites to use");
         availableOptions.addOption("th",  "throttle",            true,   "Throttle the total number of operations per second to a maximum amount.");
+        availableOptions.addOption("cs", "use-compact-storage", false, "Use a CQL3 table with compact storage");
     }
 
     private int numKeys          = 1000 * 1000;
@@ -153,6 +154,7 @@ public class Session implements Serializable
     private boolean captureStatistics = true;
     public boolean use_native_protocol = false;
     private double maxOpsPerSecond = Double.MAX_VALUE;
+    public boolean use_compact_storage = false;
 
     private final String outFileName;
 
@@ -461,6 +463,12 @@ public class Session implements Serializable
             if (cmd.hasOption("tf"))
                 transportFactory = validateAndSetTransportFactory(cmd.getOptionValue("tf"));
 
+            if (cmd.hasOption("cs")) {
+                use_compact_storage = true;
+                enable_cql = true;
+                cqlVersion = "3.0.0";
+            }
+
         }
         catch (ParseException e)
         {
@@ -710,7 +718,7 @@ public class Session implements Serializable
 
             client.set_keyspace(KEYSPACE_NAME);
             client.execute_cql3_query(createCounterCFStatementForCQL3(), Compression.NONE, ConsistencyLevel.ONE);
-
+            client.execute_cql3_query(createCompactStorageCFStatementForCQL3(), Compression.NONE, ConsistencyLevel.ONE);
             if (enable_cql)
                 client.set_cql_version(cqlVersion);
             /* end */
@@ -822,5 +830,32 @@ public class Session implements Serializable
         counter3.append(");");
 
         return ByteBufferUtil.bytes(counter3.toString());
+    }
+
+    private ByteBuffer createCompactStorageCFStatementForCQL3()
+    {
+        StringBuilder sb = new StringBuilder("CREATE TABLE compactstorage (KEY blob, ");
+
+
+        for (int i = 0; i < getColumnsPerKey(); i++)
+        {
+            sb.append("c").append(i).append(" blob");
+            if (i != getColumnsPerKey() - 1)
+                sb.append(", ");
+        }
+
+
+        sb.append(", PRIMARY KEY(KEY,");
+        for (int i = 0; i < getColumnsPerKey()-1; i++)
+        {
+            sb.append("c").append(i);
+            if (i != getColumnsPerKey() - 2)
+                sb.append(", ");
+        }
+        sb.append(")) WITH COMPACT STORAGE;");
+
+        System.err.println(sb.toString());
+
+        return ByteBufferUtil.bytes(sb.toString());
     }
 }

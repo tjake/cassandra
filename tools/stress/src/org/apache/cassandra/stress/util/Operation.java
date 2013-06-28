@@ -322,9 +322,9 @@ public abstract class Operation
 
     protected String wrapInQuotesIfRequired(String string)
     {
-        return session.cqlVersion.startsWith("3")
-                ? "\"" + string + "\""
-                : string;
+        return string; //session.cqlVersion.startsWith("3")
+               // ? "\"" + string + "\""
+               // : string;
     }
 
     public interface CQLQueryExecutor
