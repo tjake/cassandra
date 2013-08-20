@@ -34,6 +34,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
+import org.apache.cassandra.db.marshal.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,10 +43,6 @@ import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.CompositeType;
-import org.apache.cassandra.db.marshal.Int32Type;
-import org.apache.cassandra.db.marshal.UUIDType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -197,7 +194,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         return CompactionManager.instance.submitUserDefined(hintStore, descriptors, (int) (System.currentTimeMillis() / 1000));
     }
 
-    private static boolean pagingFinished(ColumnFamily hintColumnFamily, ByteBuffer startColumn)
+    private static boolean pagingFinished(ColumnFamily hintColumnFamily, CellName startColumn)
     {
         // done if no hints found or the start column (same as last column processed in previous iteration) is the only one
         return hintColumnFamily == null
@@ -294,7 +291,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         DecoratedKey epkey =  StorageService.getPartitioner().decorateKey(hostIdBytes);
 
         final AtomicInteger rowsReplayed = new AtomicInteger(0);
-        ByteBuffer startColumn = ByteBufferUtil.EMPTY_BYTE_BUFFER;
+        CellName startColumn = CellName.EMPTY_CELL_NAME;
 
         int pageSize = calculatePageSize();
         logger.debug("Using pageSize of {}", pageSize);
@@ -311,7 +308,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
             QueryFilter filter = QueryFilter.getSliceFilter(epkey,
                                                             new QueryPath(SystemTable.HINTS_CF),
                                                             startColumn,
-                                                            ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                            CellName.EMPTY_CELL_NAME,
                                                             false,
                                                             pageSize);
 
@@ -349,7 +346,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
 
                 startColumn = hint.name();
 
-                ByteBuffer[] components = comparator.split(hint.name());
+                ByteBuffer[] components = comparator.split(hint.name().bb);
                 int version = Int32Type.instance.compose(components[1]);
                 DataInputStream in = new DataInputStream(ByteBufferUtil.inputStream(hint.value()));
                 RowMutation rm;
@@ -360,7 +357,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
                 catch (UnknownColumnFamilyException e)
                 {
                     logger.debug("Skipping delivery of hint for deleted columnfamily", e);
-                    deleteHint(hostIdBytes, hint.name(), hint.maxTimestamp());
+                    deleteHint(hostIdBytes, hint.name().bb, hint.maxTimestamp());
                     continue;
                 }
                 catch (IOException e)
@@ -388,7 +385,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
 
                 if (rm.isEmpty())
                 {
-                    deleteHint(hostIdBytes, hint.name(), hint.maxTimestamp());
+                    deleteHint(hostIdBytes, hint.name().bb, hint.maxTimestamp());
                     continue;
                 }
 
@@ -399,7 +396,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
                     public void run()
                     {
                         rowsReplayed.incrementAndGet();
-                        deleteHint(hostIdBytes, hint.name(), hint.maxTimestamp());
+                        deleteHint(hostIdBytes, hint.name().bb, hint.maxTimestamp());
                     }
                 };
                 WriteResponseHandler responseHandler = new WriteResponseHandler(endpoint, WriteType.UNLOGGED_BATCH, callback);
@@ -460,7 +457,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         IPartitioner p = StorageService.getPartitioner();
         RowPosition minPos = p.getMinimumToken().minKeyBound();
         Range<RowPosition> range = new Range<RowPosition>(minPos, minPos, p);
-        IDiskAtomFilter filter = new NamesQueryFilter(ImmutableSortedSet.<ByteBuffer>of());
+        IDiskAtomFilter filter = new NamesQueryFilter(ImmutableSortedSet.<CellName>of());
         List<Row> rows = hintStore.getRangeSlice(null, range, Integer.MAX_VALUE, filter, null);
         for (Row row : rows)
         {
@@ -551,8 +548,8 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         ColumnParent parent = new ColumnParent(SystemTable.HINTS_CF);
 
         // Get count # of columns...
-        SliceQueryFilter predicate = new SliceQueryFilter(ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                          ByteBufferUtil.EMPTY_BYTE_BUFFER,
+        SliceQueryFilter predicate = new SliceQueryFilter(CellName.EMPTY_CELL_NAME,
+                                                          CellName.EMPTY_CELL_NAME,
                                                           false,
                                                           columnCount);
 

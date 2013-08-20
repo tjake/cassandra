@@ -23,6 +23,7 @@ import java.util.*;
 
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.ColumnParent;
@@ -32,15 +33,15 @@ public class SliceByNamesReadCommand extends ReadCommand
 {
     public final NamesQueryFilter filter;
 
-    public SliceByNamesReadCommand(String table, ByteBuffer key, ColumnParent column_parent, Collection<ByteBuffer> columnNames)
+    public SliceByNamesReadCommand(String table, ByteBuffer key, ColumnParent column_parent, Collection<CellName> columnNames)
     {
         this(table, key, new QueryPath(column_parent), columnNames);
     }
 
-    public SliceByNamesReadCommand(String table, ByteBuffer key, QueryPath path, Collection<ByteBuffer> columnNames)
+    public SliceByNamesReadCommand(String table, ByteBuffer key, QueryPath path, Collection<CellName> columnNames)
     {
         super(table, key, path, CMD_TYPE_GET_SLICE_BY_NAMES);
-        SortedSet s = new TreeSet<ByteBuffer>(getComparator());
+        SortedSet s = new TreeSet<CellName>(getComparator());
         s.addAll(columnNames);
         this.filter = new NamesQueryFilter(s);
     }
@@ -100,7 +101,7 @@ class SliceByNamesReadCommandSerializer implements IVersionedSerializer<ReadComm
         ByteBuffer key = ByteBufferUtil.readWithShortLength(dis);
         QueryPath columnParent = QueryPath.deserialize(dis);
 
-        AbstractType<?> comparator = ColumnFamily.getComparatorFor(table, columnParent.columnFamilyName, columnParent.superColumnName);
+        AbstractType<?> comparator = ColumnFamily.getComparatorFor(table, columnParent.columnFamilyName, columnParent.superColumnName == null ? null : columnParent.superColumnName.bb);
         NamesQueryFilter filter = NamesQueryFilter.serializer.deserialize(dis, version, comparator);
         SliceByNamesReadCommand command = new SliceByNamesReadCommand(table, key, columnParent, filter);
         command.setDigestQuery(isDigest);

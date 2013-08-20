@@ -21,6 +21,7 @@ package org.apache.cassandra.db;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -29,7 +30,7 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class RangeTombstoneListTest
 {
-    private static final Comparator<ByteBuffer> cmp = IntegerType.instance;
+    private static final Comparator<CellName> cmp = IntegerType.instance;
 
     @Test
     public void sortedAdditionTest()
@@ -284,14 +285,14 @@ public class RangeTombstoneListTest
         return String.format("[%d, %d]@%d", i(rt.min), i(rt.max), rt.data.markedForDeleteAt);
     }
 
-    private static ByteBuffer b(int i)
+    private static CellName b(int i)
     {
-        return ByteBufferUtil.bytes(i);
+        return CellName.wrap(i);
     }
 
-    private static int i(ByteBuffer bb)
+    private static int i(CellName cn)
     {
-        return ByteBufferUtil.toInt(bb);
+        return ByteBufferUtil.toInt(cn.bb);
     }
 
     private static RangeTombstone rt(int start, int end, long tstamp)

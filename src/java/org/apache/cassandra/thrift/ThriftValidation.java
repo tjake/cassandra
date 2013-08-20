@@ -20,6 +20,7 @@ package org.apache.cassandra.thrift;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -242,10 +243,10 @@ public class ThriftValidation
         if (range.count < 0)
             throw new org.apache.cassandra.exceptions.InvalidRequestException("get_slice requires non-negative count");
 
-        Comparator<ByteBuffer> orderedComparator = range.isReversed() ? comparator.reverseComparator : comparator;
+        Comparator<CellName> orderedComparator = range.isReversed() ? comparator.reverseComparator : comparator;
         if (range.start.remaining() > 0
             && range.finish.remaining() > 0
-            && orderedComparator.compare(range.start, range.finish) > 0)
+            && orderedComparator.compare(CellName.wrap(range.start), CellName.wrap(range.finish)) > 0)
         {
             throw new org.apache.cassandra.exceptions.InvalidRequestException("range finish must come after start in the order of traversal");
         }
@@ -400,7 +401,7 @@ public class ThriftValidation
         if (!column.isSetTimestamp())
             throw new org.apache.cassandra.exceptions.InvalidRequestException("Column timestamp is required");
 
-        ColumnDefinition columnDef = metadata.getColumnDefinitionFromColumnName(column.name);
+        ColumnDefinition columnDef = metadata.getColumnDefinitionFromColumnName(CellName.wrap(column.name));
         try
         {
             AbstractType<?> validator = metadata.getValueValidator(columnDef);
@@ -589,13 +590,16 @@ public class ThriftValidation
         SliceRange sr = sp.slice_range;
         if (sr == null)
         {
-            SortedSet<ByteBuffer> ss = new TreeSet<ByteBuffer>(comparator);
-            ss.addAll(sp.column_names);
+            SortedSet<CellName> ss = new TreeSet<CellName>(comparator);
+            for (ByteBuffer c : sp.column_names)
+            {
+                ss.add(CellName.wrap(c));
+            }
             return new NamesQueryFilter(ss);
         }
         else
         {
-            return new SliceQueryFilter(sr.start, sr.finish, sr.reversed, sr.count);
+            return new SliceQueryFilter(CellName.wrap(sr.start), CellName.wrap(sr.finish), sr.reversed, sr.count);
         }
     }
 }

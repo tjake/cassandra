@@ -29,6 +29,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -58,18 +59,18 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
 
     public static final Serializer serializer = new Serializer();
 
-    private final Comparator<ByteBuffer> comparator;
+    private final Comparator<CellName> comparator;
 
     // Note: we don't want to use a List for the markedAts and delTimes to avoid boxing. We could
     // use a List for starts and ends, but having arrays everywhere is almost simpler.
-    private ByteBuffer[] starts;
-    private ByteBuffer[] ends;
+    private CellName[] starts;
+    private CellName[] ends;
     private long[] markedAts;
     private int[] delTimes;
 
     private int size;
 
-    private RangeTombstoneList(Comparator<ByteBuffer> comparator, ByteBuffer[] starts, ByteBuffer[] ends, long[] markedAts, int[] delTimes, int size)
+    private RangeTombstoneList(Comparator<CellName> comparator, CellName[] starts, CellName[] ends, long[] markedAts, int[] delTimes, int size)
     {
         assert starts.length == ends.length && starts.length == markedAts.length && starts.length == delTimes.length;
         this.comparator = comparator;
@@ -80,9 +81,9 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
         this.size = size;
     }
 
-    public RangeTombstoneList(Comparator<ByteBuffer> comparator, int capacity)
+    public RangeTombstoneList(Comparator<CellName> comparator, int capacity)
     {
-        this(comparator, new ByteBuffer[capacity], new ByteBuffer[capacity], new long[capacity], new int[capacity], 0);
+        this(comparator, new CellName[capacity], new CellName[capacity], new long[capacity], new int[capacity], 0);
     }
 
     public boolean isEmpty()
@@ -95,7 +96,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
         return size;
     }
 
-    public Comparator<ByteBuffer> comparator()
+    public Comparator<CellName> comparator()
     {
         return comparator;
     }
@@ -121,7 +122,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      * This method will be faster if the new tombstone sort after all the currently existing ones (this is a common use case), 
      * but it doesn't assume it.
      */
-    public void add(ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    public void add(CellName start, CellName end, long markedAt, int delTime)
     {
         if (isEmpty())
         {
@@ -211,7 +212,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      * Returns whether the given name/timestamp pair is deleted by one of the tombstone
      * of this RangeTombstoneList.
      */
-    public boolean isDeleted(ByteBuffer name, long timestamp)
+    public boolean isDeleted(CellName name, long timestamp)
     {
         int idx = searchInternal(name);
         return idx >= 0 && markedAts[idx] >= timestamp;
@@ -221,13 +222,13 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      * Returns the DeletionTime for the tombstone overlapping {@code name} (there can't be more than one),
      * or null if {@code name} is not covered by any tombstone.
      */
-    public DeletionTime search(ByteBuffer name)
+    public DeletionTime search(CellName name)
     {
         int idx = searchInternal(name);
         return idx < 0 ? null : new DeletionTime(markedAts[idx], delTimes[idx]);
     }
 
-    private int searchInternal(ByteBuffer name)
+    private int searchInternal(CellName name)
     {
         if (isEmpty())
             return -1;
@@ -258,7 +259,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
         int dataSize = TypeSizes.NATIVE.sizeof(size);
         for (int i = 0; i < size; i++)
         {
-            dataSize += starts[i].remaining() + ends[i].remaining();
+            dataSize += starts[i].bb.remaining() + ends[i].bb.remaining();
             dataSize += TypeSizes.NATIVE.sizeof(markedAts[i]);
             dataSize += TypeSizes.NATIVE.sizeof(delTimes[i]);
         }
@@ -378,7 +379,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      *   - starts[i] <= start
      *   - start < starts[i+1] or there is no i+1 element.
      */
-    private void insertFrom(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void insertFrom(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         if (i < 0)
         {
@@ -417,7 +418,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      * the one at index i, i.e that:
      *   - ends[i] <= start (or i == -1)
      */
-    private void insertAfter(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void insertAfter(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         if (i == size - 1)
         {
@@ -462,7 +463,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      * but without knowing about the 2nd condition, i.e. this only assume that:
      *   - starts[i] <= start
      */
-    private void weakInsertFrom(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void weakInsertFrom(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         /*
          * Either start is before the next element start, and we're in fact in the insertFrom()
@@ -480,7 +481,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
      *   - starts[i] <= s
      *   - e <= end[i]
      */
-    private void update(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void update(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         /*
          * If the new markedAt is lower than the one of i, we can ignore the
@@ -513,7 +514,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
     /*
      * Adds the new tombstone at index i, growing and/or moving elements to make room for it.
      */
-    private void addInternal(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void addInternal(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         assert i >= 0;
 
@@ -552,12 +553,12 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
         delTimes = grow(delTimes, size, newLength, i);
     }
 
-    private static ByteBuffer[] grow(ByteBuffer[] a, int size, int newLength, int i)
+    private static CellName[] grow(CellName[] a, int size, int newLength, int i)
     {
         if (i < 0 || i >= size)
             return Arrays.copyOf(a, newLength);
 
-        ByteBuffer[] newA = new ByteBuffer[newLength];
+        CellName[] newA = new CellName[newLength];
         System.arraycopy(a, 0, newA, 0, i);
         System.arraycopy(a, i, newA, i+1, size - i);
         return newA;
@@ -599,7 +600,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
         System.arraycopy(delTimes, i, delTimes, i+1, size - i);
     }
 
-    private void setInternal(int i, ByteBuffer start, ByteBuffer end, long markedAt, int delTime)
+    private void setInternal(int i, CellName start, CellName end, long markedAt, int delTime)
     {
         starts[i] = start;
         ends[i] = end;
@@ -622,8 +623,8 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
             out.writeInt(tombstones.size);
             for (int i = 0; i < tombstones.size; i++)
             {
-                ByteBufferUtil.writeWithShortLength(tombstones.starts[i], out);
-                ByteBufferUtil.writeWithShortLength(tombstones.ends[i], out);
+                ByteBufferUtil.writeWithShortLength(tombstones.starts[i].bb, out);
+                ByteBufferUtil.writeWithShortLength(tombstones.ends[i].bb, out);
                 out.writeInt(tombstones.delTimes[i]);
                 out.writeLong(tombstones.markedAts[i]);
             }
@@ -638,7 +639,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
             throw new UnsupportedOperationException();
         }
 
-        public RangeTombstoneList deserialize(DataInput in, int version, Comparator<ByteBuffer> comparator) throws IOException
+        public RangeTombstoneList deserialize(DataInput in, int version, Comparator<CellName> comparator) throws IOException
         {
             int size = in.readInt();
             if (size == 0)
@@ -659,7 +660,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
                  * able to in 2.0). Not a big deal though, add() is pretty fast, especially given that the
                  * start is sorted.
                  */
-                tombstones.add(start, end, markedAt, delTime);
+                tombstones.add(CellName.wrap(start), CellName.wrap(end), markedAt, delTime);
             }
             return tombstones;
         }
@@ -672,9 +673,9 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>
             long size = typeSizes.sizeof(tombstones.size);
             for (int i = 0; i < tombstones.size; i++)
             {
-                int startSize = tombstones.starts[i].remaining();
+                int startSize = tombstones.starts[i].bb.remaining();
                 size += typeSizes.sizeof((short)startSize) + startSize;
-                int endSize = tombstones.ends[i].remaining();
+                int endSize = tombstones.ends[i].bb.remaining();
                 size += typeSizes.sizeof((short)endSize) + endSize;
                 size += typeSizes.sizeof(tombstones.delTimes[i]);
                 size += typeSizes.sizeof(tombstones.markedAts[i]);

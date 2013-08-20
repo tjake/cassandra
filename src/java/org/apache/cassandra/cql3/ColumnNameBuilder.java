@@ -17,6 +17,8 @@
  */
 package org.apache.cassandra.cql3;
 
+import org.apache.cassandra.db.marshal.CellName;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -56,14 +58,14 @@ public interface ColumnNameBuilder
      * Build the column name.
      * @return the built column name
      */
-    public ByteBuffer build();
+    public CellName build();
 
     /**
      * Build the column name so that the result sorts at the end of the range
      * represented by this (uncomplete) column name.
      * @throws IllegalStateException if the builder is empty or full.
      */
-    public ByteBuffer buildAsEndOfRange();
+    public CellName buildAsEndOfRange();
 
     /**
      * Clone this builder.

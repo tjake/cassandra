@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.UUID;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.SSTable;
 import org.apache.cassandra.utils.*;
 
@@ -191,12 +192,12 @@ public class ColumnFamily extends AbstractColumnContainer implements IRowCacheEn
         addColumn(path.superColumnName, new DeletedColumn(path.columnName, localDeletionTime, timestamp));
     }
 
-    public void addTombstone(ByteBuffer name, int localDeletionTime, long timestamp)
+    public void addTombstone(CellName name, int localDeletionTime, long timestamp)
     {
         addColumn(null, new DeletedColumn(name, localDeletionTime, timestamp));
     }
 
-    public void addColumn(ByteBuffer superColumnName, Column column)
+    public void addColumn(CellName superColumnName, Column column)
     {
         IColumn c;
         if (superColumnName == null)
@@ -245,7 +246,7 @@ public class ColumnFamily extends AbstractColumnContainer implements IRowCacheEn
         // takes care of those for us.)
         for (IColumn columnExternal : cfComposite)
         {
-            ByteBuffer cName = columnExternal.name();
+            CellName cName = columnExternal.name();
             IColumn columnInternal = this.columns.getColumn(cName);
             if (columnInternal == null)
             {

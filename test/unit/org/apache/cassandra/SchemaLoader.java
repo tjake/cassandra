@@ -136,17 +136,17 @@ public class SchemaLoader
         AbstractType<?> dynamicComposite = DynamicCompositeType.getInstance(aliases);
 
         // these column definitions will will be applied to the jdbc utf and integer column familes respectively.
-        Map<ByteBuffer, ColumnDefinition> integerColumn = new HashMap<ByteBuffer, ColumnDefinition>();
-        integerColumn.put(IntegerType.instance.fromString("42"), new ColumnDefinition(
-            IntegerType.instance.fromString("42"),
+        Map<CellName, ColumnDefinition> integerColumn = new HashMap<CellName, ColumnDefinition>();
+        integerColumn.put(CellName.wrap(IntegerType.instance.fromString("42")), new ColumnDefinition(
+            CellName.wrap(IntegerType.instance.fromString("42")),
             UTF8Type.instance,
             null,
             null,
             null,
             null));
-        Map<ByteBuffer, ColumnDefinition> utf8Column = new HashMap<ByteBuffer, ColumnDefinition>();
-        utf8Column.put(UTF8Type.instance.fromString("fortytwo"), new ColumnDefinition(
-            UTF8Type.instance.fromString("fortytwo"),
+        Map<CellName, ColumnDefinition> utf8Column = new HashMap<CellName, ColumnDefinition>();
+        utf8Column.put(CellName.wrap(UTF8Type.instance.fromString("fortytwo")), new ColumnDefinition(
+            CellName.wrap(UTF8Type.instance.fromString("fortytwo")),
             IntegerType.instance,
             null,
             null,
@@ -317,14 +317,14 @@ public class SchemaLoader
                                                       PerRowSecondaryIndexTest.TestIndex.class.getName());
         return standardCFMD(ksName, cfName, withOldCfIds)
                 .keyValidator(AsciiType.instance)
-                .columnMetadata(new HashMap<ByteBuffer, ColumnDefinition>()
+                .columnMetadata(new HashMap<CellName, ColumnDefinition>()
                 {{
-                        ByteBuffer cName = ByteBuffer.wrap("indexed".getBytes(Charsets.UTF_8));
+                        CellName cName = CellName.wrap("indexed".getBytes(Charsets.UTF_8));
                         put(cName, new ColumnDefinition(cName,
                                 AsciiType.instance,
                                 IndexType.CUSTOM,
                                 indexOptions,
-                                ByteBufferUtil.bytesToHex(cName),
+                                ByteBufferUtil.bytesToHex(cName.bb),
                                 null));
                 }});
     }
@@ -366,11 +366,11 @@ public class SchemaLoader
     {
         return standardCFMD(ksName, cfName, withOldCfIds)
                .keyValidator(AsciiType.instance)
-               .columnMetadata(new HashMap<ByteBuffer, ColumnDefinition>()
+               .columnMetadata(new HashMap<CellName, ColumnDefinition>()
                    {{
-                        ByteBuffer cName = ByteBuffer.wrap("birthdate".getBytes(Charsets.UTF_8));
+                        CellName cName = CellName.wrap("birthdate");
                         IndexType keys = withIdxType ? IndexType.KEYS : null;
-                        put(cName, new ColumnDefinition(cName, LongType.instance, keys, null, withIdxType ? ByteBufferUtil.bytesToHex(cName) : null, null));
+                        put(cName, new ColumnDefinition(cName, LongType.instance, keys, null, withIdxType ? ByteBufferUtil.bytesToHex(cName.bb) : null, null));
                     }});
     }
     private static CFMetaData compositeIndexCFMD(String ksName, String cfName, final Boolean withIdxType, boolean withOldCfIds) throws ConfigurationException
@@ -382,9 +382,9 @@ public class SchemaLoader
                 ColumnFamilyType.Standard,
                 composite,
                 null)
-               .columnMetadata(new HashMap<ByteBuffer, ColumnDefinition>()
+               .columnMetadata(new HashMap<CellName, ColumnDefinition>()
                 {{
-                   ByteBuffer cName = ByteBuffer.wrap("col1".getBytes(Charsets.UTF_8));
+                   CellName cName = CellName.wrap("col1");
                    IndexType idxType = withIdxType ? IndexType.COMPOSITES : null;
                    put(cName, new ColumnDefinition(cName, UTF8Type.instance, idxType, idxOpts, withIdxType ? "col1_idx" : null, 1));
                 }});
@@ -459,7 +459,7 @@ public class SchemaLoader
             DecoratedKey key = Util.dk("key" + i);
             QueryPath path = new QueryPath(columnFamily, null, ByteBufferUtil.bytes("col" + i));
 
-            store.getColumnFamily(key, path, ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, false, 1);
+            store.getColumnFamily(key, path, CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME, false, 1);
         }
     }
 

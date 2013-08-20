@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -234,7 +235,7 @@ public class DefsTable
             for (IColumn column : row.cf.columns)
             {
                 if (column.isLive())
-                    mutation.add(new QueryPath(columnFamily, null, column.name()), column.value(), microTimestamp);
+                    mutation.add(new QueryPath(columnFamily, null, column.name().bb), column.value(), microTimestamp);
             }
 
             mutation.apply();
@@ -254,7 +255,7 @@ public class DefsTable
         }
     }
 
-    public static ByteBuffer searchComposite(String name, boolean start)
+    public static CellName searchComposite(String name, boolean start)
     {
         assert name != null;
         ByteBuffer nameBytes = UTF8Type.instance.decompose(name);
@@ -264,7 +265,7 @@ public class DefsTable
         bytes[1] = (byte)(length & 0xFF);
         ByteBufferUtil.arrayCopy(nameBytes, 0, bytes, 2, length);
         bytes[bytes.length - 1] = (byte)(start ? 0 : 1);
-        return ByteBuffer.wrap(bytes);
+        return CellName.wrap(ByteBuffer.wrap(bytes));
     }
 
     private static Row serializedColumnFamilies(DecoratedKey ksNameKey)
@@ -289,7 +290,7 @@ public class DefsTable
         Table defs = Table.open(Table.SYSTEM_KS);
         ColumnFamilyStore cfStore = defs.getColumnFamilyStore(OLD_SCHEMA_CF);
         ColumnFamily cf = cfStore.getColumnFamily(QueryFilter.getIdentityFilter(vkey, new QueryPath(OLD_SCHEMA_CF)));
-        IColumn avroschema = cf.getColumn(DEFINITION_SCHEMA_COLUMN_NAME);
+        IColumn avroschema = cf.getColumn(CellName.wrap(DEFINITION_SCHEMA_COLUMN_NAME));
 
         Collection<KSMetaData> keyspaces = Collections.emptyList();
 

@@ -28,6 +28,7 @@ import com.google.common.base.Functions;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.util.IIterableColumns;
 import org.apache.cassandra.utils.Allocator;
 import org.apache.cassandra.utils.HeapAllocator;
@@ -119,7 +120,7 @@ public abstract class AbstractColumnContainer implements IColumnContainer, IIter
         columns.addColumn(column, allocator);
     }
 
-    public IColumn getColumn(ByteBuffer name)
+    public IColumn getColumn(CellName name)
     {
         return columns.getColumn(name);
     }
@@ -134,7 +135,7 @@ public abstract class AbstractColumnContainer implements IColumnContainer, IIter
      * return set may not have implementation for tailSet, headSet and subSet.
      * See ColumnNamesSet in ArrayBackedSortedColumns for more details.
      */
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return columns.getColumnNames();
     }
@@ -149,7 +150,7 @@ public abstract class AbstractColumnContainer implements IColumnContainer, IIter
         return columns.getReverseSortedColumns();
     }
 
-    public void remove(ByteBuffer columnName)
+    public void remove(CellName columnName)
     {
         columns.removeColumn(columnName);
     }

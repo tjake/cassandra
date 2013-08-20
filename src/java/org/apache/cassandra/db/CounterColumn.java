@@ -25,6 +25,7 @@ import java.util.Set;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,28 +55,28 @@ public class CounterColumn extends Column
 
     private final long timestampOfLastDelete;
 
-    public CounterColumn(ByteBuffer name, long value, long timestamp)
+    public CounterColumn(CellName name, long value, long timestamp)
     {
         this(name, contextManager.create(value, HeapAllocator.instance), timestamp);
     }
 
-    public CounterColumn(ByteBuffer name, long value, long timestamp, long timestampOfLastDelete)
+    public CounterColumn(CellName name, long value, long timestamp, long timestampOfLastDelete)
     {
         this(name, contextManager.create(value, HeapAllocator.instance), timestamp, timestampOfLastDelete);
     }
 
-    public CounterColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public CounterColumn(CellName name, ByteBuffer value, long timestamp)
     {
         this(name, value, timestamp, Long.MIN_VALUE);
     }
 
-    public CounterColumn(ByteBuffer name, ByteBuffer value, long timestamp, long timestampOfLastDelete)
+    public CounterColumn(CellName name, ByteBuffer value, long timestamp, long timestampOfLastDelete)
     {
         super(name, value, timestamp);
         this.timestampOfLastDelete = timestampOfLastDelete;
     }
 
-    public static CounterColumn create(ByteBuffer name, ByteBuffer value, long timestamp, long timestampOfLastDelete, IColumnSerializer.Flag flag)
+    public static CounterColumn create(CellName name, ByteBuffer value, long timestamp, long timestampOfLastDelete, IColumnSerializer.Flag flag)
     {
         // #elt being negative means we have to clean delta
         short count = value.getShort(value.position());
@@ -142,7 +143,7 @@ public class CounterColumn extends Column
     @Override
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.bb.duplicate());
         // We don't take the deltas into account in a digest
         contextManager.updateDigest(digest, value);
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -223,7 +224,7 @@ public class CounterColumn extends Column
     public String getString(AbstractType<?> comparator)
     {
         StringBuilder sb = new StringBuilder();
-        sb.append(comparator.getString(name));
+        sb.append(comparator.getString(name.bb));
         sb.append(":");
         sb.append(isMarkedForDelete());
         sb.append(":");

@@ -21,6 +21,7 @@ package org.apache.cassandra.db;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -75,7 +76,7 @@ public class RangeTombstoneTest extends SchemaLoader
         // Queries by name
         int[] live = new int[]{ 4, 9, 11, 17, 28 };
         int[] dead = new int[]{ 12, 19, 21, 24, 27 };
-        SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+        SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
         for (int i : live)
             columns.add(b(i));
         for (int i : dead)
@@ -179,7 +180,7 @@ public class RangeTombstoneTest extends SchemaLoader
 
         // Get the last value of the row
         QueryPath path = new QueryPath(CFNAME);
-        cf = cfs.getColumnFamily(QueryFilter.getSliceFilter(dk(key), path, ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, true, 1));
+        cf = cfs.getColumnFamily(QueryFilter.getSliceFilter(dk(key), path, CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME, true, 1));
 
         assert !cf.isEmpty();
         int last = i(cf.getSortedColumns().iterator().next().name());
@@ -191,19 +192,19 @@ public class RangeTombstoneTest extends SchemaLoader
         return c != null && !c.isMarkedForDelete() && !cf.deletionInfo().isDeleted(c);
     }
 
-    private static ByteBuffer b(int i)
+    private static CellName b(int i)
     {
-        return ByteBufferUtil.bytes(i);
+        return CellName.wrap(i);
     }
 
-    private static int i(ByteBuffer i)
+    private static int i(CellName i)
     {
-        return ByteBufferUtil.toInt(i);
+        return ByteBufferUtil.toInt(i.bb);
     }
 
     private static void add(RowMutation rm, int value, long timestamp)
     {
-        rm.add(new QueryPath(CFNAME, null, b(value)), b(value), timestamp);
+        rm.add(new QueryPath(CFNAME, null, b(value).bb), b(value).bb, timestamp);
     }
 
     private static void delete(ColumnFamily cf, int from, int to, long timestamp)

@@ -25,6 +25,7 @@ import java.util.*;
 import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.IndexHelper;
 
 public class ColumnIndex
@@ -121,7 +122,7 @@ public class ColumnIndex
         {
             Iterator<RangeTombstone> rangeIter = cf.deletionInfo().rangeIterator();
             RangeTombstone tombstone = rangeIter.hasNext() ? rangeIter.next() : null;
-            Comparator<ByteBuffer> comparator = cf.getComparator();
+            Comparator<CellName> comparator = cf.getComparator();
 
             for (IColumn c : cf)
             {

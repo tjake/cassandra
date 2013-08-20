@@ -22,6 +22,7 @@ import java.util.Collection;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.utils.Allocator;
 import org.apache.cassandra.utils.FBUtilities;
@@ -46,7 +47,7 @@ public interface IColumn extends OnDiskAtom
     public long timestamp();
     public ByteBuffer value();
     public Collection<IColumn> getSubColumns();
-    public IColumn getSubColumn(ByteBuffer columnName);
+    public IColumn getSubColumn(CellName columnName);
     public void addColumn(IColumn column);
     public void addColumn(IColumn column, Allocator allocator);
     public IColumn diff(IColumn column);

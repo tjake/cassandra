@@ -40,18 +40,21 @@ public class FloatType extends AbstractType<Float>
         return JdbcFloat.instance.decompose(value);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        if (o1.remaining() == 0)
+        if (o1.isEmpty())
         {
-            return o2.remaining() == 0 ? 0 : -1;
+            return o2.isEmpty() ? 0 : -1;
         }
-        if (o2.remaining() == 0)
+        if (o2.isEmpty())
         {
             return 1;
         }
 
-        return compose(o1).compareTo(compose(o2));
+        Float f1 = o1.getOrSetType(this);
+        Float f2 = o2.getOrSetType(this);
+
+        return f1.compareTo(f2);
     }
 
     public String getString(ByteBuffer bytes)

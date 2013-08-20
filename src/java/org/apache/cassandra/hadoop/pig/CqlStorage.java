@@ -106,7 +106,7 @@ public class CqlStorage extends AbstractCassandraStorage
                 ByteBuffer columnValue = columns.get(ByteBufferUtil.string(cdef.name.duplicate()));
                 if (columnValue != null)
                 {
-                    IColumn column = new Column(cdef.name, columnValue);
+                    IColumn column = new Column(CellName.wrap(cdef.name), columnValue);
                     tuple.set(i, columnToTuple(column, cfDef, UTF8Type.instance));
                 }
                 else

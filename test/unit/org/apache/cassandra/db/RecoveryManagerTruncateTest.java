@@ -30,6 +30,7 @@ import org.apache.cassandra.Util;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -75,11 +76,11 @@ public class RecoveryManagerTruncateTest extends SchemaLoader
 			return null;
 		}
 		cf = cfStore.getColumnFamily(QueryFilter.getNamesFilter(
-		        Util.dk(keyName), new QueryPath(cfName), ByteBufferUtil.bytes(columnName)));
+                Util.dk(keyName), new QueryPath(cfName), CellName.wrap(columnName)));
 		if (cf == null)
 		{
 			return null;
 		}
-		return cf.getColumn(ByteBufferUtil.bytes(columnName));
+		return cf.getColumn(CellName.wrap(columnName));
 	}
 }

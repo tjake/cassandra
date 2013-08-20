@@ -41,7 +41,7 @@ public class EmptyType extends AbstractType<Void>
         return ByteBufferUtil.EMPTY_BYTE_BUFFER;
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
         return 0;
     }

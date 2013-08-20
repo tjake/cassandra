@@ -56,10 +56,10 @@ public class CompositesIndex extends AbstractSimplePerColumnSecondaryIndex
         indexComparator = (CompositeType)SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
     }
 
-    protected ByteBuffer makeIndexColumnName(ByteBuffer rowKey, IColumn column)
+    protected CellName makeIndexColumnName(ByteBuffer rowKey, IColumn column)
     {
         CompositeType baseComparator = (CompositeType)baseCfs.getComparator();
-        ByteBuffer[] components = baseComparator.split(column.name());
+        ByteBuffer[] components = baseComparator.split(column.name().bb);
         CompositeType.Builder builder = new CompositeType.Builder(indexComparator);
         builder.add(rowKey);
         for (int i = 0; i < Math.min(prefixSize, components.length); i++)
@@ -81,7 +81,7 @@ public class CompositesIndex extends AbstractSimplePerColumnSecondaryIndex
         ByteBuffer[] components = baseComparator.split(name);
         AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDef);
         return components.length > columnDef.componentIndex
-            && comp.compare(components[columnDef.componentIndex], columnDef.name) == 0;
+            && comp.compare(CellName.wrap(components[columnDef.componentIndex]), columnDef.name) == 0;
     }
 
     public SecondaryIndexSearcher createSecondaryIndexSearcher(Set<ByteBuffer> columns)

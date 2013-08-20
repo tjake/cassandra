@@ -24,6 +24,7 @@ import java.util.*;
 import org.apache.cassandra.db.ColumnFamilyType;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.db.migration.avro.CfDef;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -124,12 +125,12 @@ public class Avro
         {
             throw new RuntimeException("Could not inflate CFMetaData for " + cf, ex);
         }
-        Map<ByteBuffer, ColumnDefinition> column_metadata = new TreeMap<ByteBuffer, ColumnDefinition>(BytesType.instance);
+        Map<CellName, ColumnDefinition> column_metadata = new TreeMap<CellName, ColumnDefinition>(BytesType.instance);
         for (org.apache.cassandra.db.migration.avro.ColumnDef aColumn_metadata : cf.column_metadata)
         {
             ColumnDefinition cd = columnFromAvro(aColumn_metadata);
             if (cd.getIndexType() != null && cd.getIndexName() == null)
-                cd.setIndexName(CFMetaData.getDefaultIndexName(cf.name.toString(), comparator, cd.name));
+                cd.setIndexName(CFMetaData.getDefaultIndexName(cf.name.toString(), comparator, cd.name.bb));
             column_metadata.put(cd.name, cd);
         }
 
@@ -211,7 +212,7 @@ public class Avro
         try
         {
             AbstractType<?> validatorType = TypeParser.parse(cd.validation_class);
-            return new ColumnDefinition(ByteBufferUtil.clone(cd.name), validatorType, index_type, ColumnDefinition.getStringMap(cd.index_options), index_name, null);
+            return new ColumnDefinition(CellName.wrap(ByteBufferUtil.clone(cd.name)), validatorType, index_type, ColumnDefinition.getStringMap(cd.index_options), index_name, null);
         }
         catch (RequestValidationException e)
         {

@@ -29,11 +29,12 @@ import com.google.common.base.Function;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Allocator;
 
 public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns implements ISortedColumns
 {
-    private final ConcurrentSkipListMap<ByteBuffer, IColumn> map;
+    private final ConcurrentSkipListMap<CellName, IColumn> map;
 
     public static final ISortedColumns.Factory factory = new Factory()
     {
@@ -42,7 +43,7 @@ public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns i
             return new ThreadSafeSortedColumns(comparator);
         }
 
-        public ISortedColumns fromSorted(SortedMap<ByteBuffer, IColumn> sortedMap, boolean insertReversed)
+        public ISortedColumns fromSorted(SortedMap<CellName, IColumn> sortedMap, boolean insertReversed)
         {
             return new ThreadSafeSortedColumns(sortedMap);
         }
@@ -60,12 +61,12 @@ public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns i
 
     private ThreadSafeSortedColumns(AbstractType<?> comparator)
     {
-        this.map = new ConcurrentSkipListMap<ByteBuffer, IColumn>(comparator);
+        this.map = new ConcurrentSkipListMap<CellName, IColumn>(comparator);
     }
 
-    private ThreadSafeSortedColumns(SortedMap<ByteBuffer, IColumn> columns)
+    private ThreadSafeSortedColumns(SortedMap<CellName, IColumn> columns)
     {
-        this.map = new ConcurrentSkipListMap<ByteBuffer, IColumn>(columns);
+        this.map = new ConcurrentSkipListMap<CellName, IColumn>(columns);
     }
 
     public ISortedColumns.Factory getFactory()
@@ -94,7 +95,7 @@ public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns i
 
     private long addColumnInternal(IColumn column, Allocator allocator)
     {
-        ByteBuffer name = column.name();
+        CellName name = column.name();
         while (true)
         {
             IColumn oldColumn = map.putIfAbsent(name, column);
@@ -147,12 +148,12 @@ public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns i
         return map.replace(oldColumn.name(), oldColumn, newColumn);
     }
 
-    public IColumn getColumn(ByteBuffer name)
+    public IColumn getColumn(CellName name)
     {
         return map.get(name);
     }
 
-    public void removeColumn(ByteBuffer name)
+    public void removeColumn(CellName name)
     {
         map.remove(name);
     }
@@ -177,7 +178,7 @@ public class ThreadSafeSortedColumns extends AbstractThreadUnsafeSortedColumns i
         return map.descendingMap().values();
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return map.navigableKeySet();
     }

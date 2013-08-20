@@ -25,6 +25,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.ISSTableColumnIterator;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.utils.CloseableIterator;
@@ -220,7 +221,7 @@ public class QueryFilter
      * @param reversed true to start with the largest column (as determined by configured sort order) instead of smallest
      * @param limit maximum number of non-deleted columns to return
      */
-    public static QueryFilter getSliceFilter(DecoratedKey key, QueryPath path, ByteBuffer start, ByteBuffer finish, boolean reversed, int limit)
+    public static QueryFilter getSliceFilter(DecoratedKey key, QueryPath path, CellName start, CellName finish, boolean reversed, int limit)
     {
         return new QueryFilter(key, path, new SliceQueryFilter(start, finish, reversed, limit));
     }
@@ -240,7 +241,7 @@ public class QueryFilter
      * @param path path to the level to slice at (CF or SuperColumn)
      * @param columns the column names to restrict the results to, sorted in comparator order
      */
-    public static QueryFilter getNamesFilter(DecoratedKey key, QueryPath path, SortedSet<ByteBuffer> columns)
+    public static QueryFilter getNamesFilter(DecoratedKey key, QueryPath path, SortedSet<CellName> columns)
     {
         return new QueryFilter(key, path, new NamesQueryFilter(columns));
     }
@@ -248,7 +249,7 @@ public class QueryFilter
     /**
      * convenience method for creating a name filter matching a single column
      */
-    public static QueryFilter getNamesFilter(DecoratedKey key, QueryPath path, ByteBuffer column)
+    public static QueryFilter getNamesFilter(DecoratedKey key, QueryPath path, CellName column)
     {
         return new QueryFilter(key, path, new NamesQueryFilter(column));
     }

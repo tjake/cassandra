@@ -21,6 +21,7 @@ import java.io.File;
 import java.util.List;
 
 import com.google.common.io.Files;
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -62,7 +63,7 @@ public class SSTableLoaderTest extends SchemaLoader
                                                                              1);
         DecoratedKey key = Util.dk("key1");
         writer.newRow(key.key);
-        writer.addColumn(ByteBufferUtil.bytes("col1"), ByteBufferUtil.bytes(100), 1);
+        writer.addColumn(CellName.wrap("col1"), ByteBufferUtil.bytes(100), 1);
         writer.close();
 
         SSTableLoader loader = new SSTableLoader(dataDir, new SSTableLoader.Client()
@@ -93,6 +94,6 @@ public class SSTableLoaderTest extends SchemaLoader
         List<Row> rows = Util.getRangeSlice(Table.open("Keyspace1").getColumnFamilyStore("Standard1"));
         assertEquals(1, rows.size());
         assertEquals(key, rows.get(0).key);
-        assertEquals(ByteBufferUtil.bytes(100), rows.get(0).cf.getColumn(ByteBufferUtil.bytes("col1")).value());
+        assertEquals(ByteBufferUtil.bytes(100), rows.get(0).cf.getColumn(CellName.wrap("col1")).value());
     }
 }

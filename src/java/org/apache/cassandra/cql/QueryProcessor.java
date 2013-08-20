@@ -25,6 +25,7 @@ import java.util.concurrent.TimeoutException;
 
 import com.google.common.base.Predicates;
 import com.google.common.collect.Maps;
+import org.apache.cassandra.db.marshal.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +37,6 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.AsciiType;
-import org.apache.cassandra.db.marshal.MarshalException;
-import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.StorageProxy;
@@ -82,7 +79,7 @@ public class QueryProcessor
         // ...of a list of column names
         if (!select.isColumnRange())
         {
-            Collection<ByteBuffer> columnNames = getColumnNames(select, metadata, variables);
+            Collection<CellName> columnNames = getColumnNames(select, metadata, variables);
             validateColumnNames(columnNames);
 
             for (Term rawKey: select.getKeys())
@@ -97,8 +94,8 @@ public class QueryProcessor
         else
         {
             AbstractType<?> comparator = select.getComparator(metadata.ksName);
-            ByteBuffer start = select.getColumnStart().getByteBuffer(comparator,variables);
-            ByteBuffer finish = select.getColumnFinish().getByteBuffer(comparator,variables);
+            CellName start = CellName.wrap(select.getColumnStart().getByteBuffer(comparator,variables));
+            CellName finish = CellName.wrap(select.getColumnFinish().getByteBuffer(comparator,variables));
 
             for (Term rawKey : select.getKeys())
             {
@@ -119,17 +116,17 @@ public class QueryProcessor
         return StorageProxy.read(commands, select.getConsistencyLevel());
     }
 
-    private static SortedSet<ByteBuffer> getColumnNames(SelectStatement select, CFMetaData metadata, List<ByteBuffer> variables)
+    private static SortedSet<CellName> getColumnNames(SelectStatement select, CFMetaData metadata, List<ByteBuffer> variables)
     throws InvalidRequestException
     {
         String keyString = getKeyString(metadata);
         List<Term> selectColumnNames = select.getColumnNames();
-        SortedSet<ByteBuffer> columnNames = new TreeSet<ByteBuffer>(metadata.comparator);
+        SortedSet<CellName> columnNames = new TreeSet<CellName>(metadata.comparator);
         for (Term column : selectColumnNames)
         {
             // skip the key for the slice op; we'll add it to the resultset in extractThriftColumns
             if (!column.getText().equalsIgnoreCase(keyString))
-                columnNames.add(column.getByteBuffer(metadata.comparator,variables));
+                columnNames.add(CellName.wrap(column.getByteBuffer(metadata.comparator,variables)));
         }
         return columnNames;
     }
@@ -211,8 +208,8 @@ public class QueryProcessor
     {
         if (select.isColumnRange() || select.getColumnNames().size() == 0)
         {
-            return new SliceQueryFilter(select.getColumnStart().getByteBuffer(metadata.comparator, variables),
-                                        select.getColumnFinish().getByteBuffer(metadata.comparator, variables),
+            return new SliceQueryFilter(CellName.wrap(select.getColumnStart().getByteBuffer(metadata.comparator, variables)),
+                                        CellName.wrap(select.getColumnFinish().getByteBuffer(metadata.comparator, variables)),
                                         select.isColumnsReversed(),
                                         select.getColumnsLimit());
         }
@@ -280,27 +277,27 @@ public class QueryProcessor
             throw new InvalidRequestException(String.format("Expected key '%s' to be present in WHERE clause for '%s'", realKeyAlias, cfm.cfName));
     }
 
-    private static void validateColumnNames(Iterable<ByteBuffer> columns)
+    private static void validateColumnNames(Iterable<CellName> columns)
     throws InvalidRequestException
     {
-        for (ByteBuffer name : columns)
+        for (CellName name : columns)
         {
-            if (name.remaining() > IColumn.MAX_NAME_LENGTH)
+            if (name.bb.remaining() > IColumn.MAX_NAME_LENGTH)
                 throw new InvalidRequestException(String.format("column name is too long (%s > %s)",
-                                                                name.remaining(),
+                                                                name.bb.remaining(),
                                                                 IColumn.MAX_NAME_LENGTH));
-            if (name.remaining() == 0)
+            if (name.bb.remaining() == 0)
                 throw new InvalidRequestException("zero-length column name");
         }
     }
 
-    public static void validateColumnName(ByteBuffer column)
+    public static void validateColumnName(CellName column)
     throws InvalidRequestException
     {
         validateColumnNames(Arrays.asList(column));
     }
 
-    public static void validateColumn(CFMetaData metadata, ByteBuffer name, ByteBuffer value)
+    public static void validateColumn(CFMetaData metadata, CellName name, ByteBuffer value)
     throws InvalidRequestException
     {
         validateColumnName(name);
@@ -314,7 +311,7 @@ public class QueryProcessor
         catch (MarshalException me)
         {
             throw new InvalidRequestException(String.format("Invalid column value for column (name=%s); %s",
-                                                            ByteBufferUtil.bytesToHex(name),
+                                                            ByteBufferUtil.bytesToHex(name.bb),
                                                             me.getMessage()));
         }
     }
@@ -334,12 +331,12 @@ public class QueryProcessor
         validateSliceFilter(metadata, range.start(), range.finish(), range.reversed);
     }
 
-    private static void validateSliceFilter(CFMetaData metadata, ByteBuffer start, ByteBuffer finish, boolean reversed)
+    private static void validateSliceFilter(CFMetaData metadata, CellName start, CellName finish, boolean reversed)
     throws InvalidRequestException
     {
         AbstractType<?> comparator = metadata.getComparatorFor(null);
-        Comparator<ByteBuffer> orderedComparator = reversed ? comparator.reverseComparator: comparator;
-        if (start.remaining() > 0 && finish.remaining() > 0 && orderedComparator.compare(start, finish) > 0)
+        Comparator<CellName> orderedComparator = reversed ? comparator.reverseComparator: comparator;
+        if (start.bb.remaining() > 0 && finish.bb.remaining() > 0 && orderedComparator.compare(start, finish) > 0)
             throw new InvalidRequestException("range finish must come after start in traversal order");
     }
 
@@ -448,7 +445,7 @@ public class QueryProcessor
 
                                 ColumnDefinition cd = metadata.getColumnDefinitionFromColumnName(c.name());
                                 if (cd != null)
-                                    result.schema.value_types.put(c.name(), TypeParser.getShortName(cd.getValidator()));
+                                    result.schema.value_types.put(c.name().bb, TypeParser.getShortName(cd.getValidator()));
 
                                 thriftColumns.add(thriftify(c));
                             }
@@ -474,10 +471,10 @@ public class QueryProcessor
                             if (row.cf == null)
                                 continue;
 
-                            ByteBuffer name;
+                            CellName name;
                             try
                             {
-                                name = term.getByteBuffer(metadata.comparator, variables);
+                                name = CellName.wrap(term.getByteBuffer(metadata.comparator, variables));
                             }
                             catch (InvalidRequestException e)
                             {
@@ -486,10 +483,10 @@ public class QueryProcessor
 
                             ColumnDefinition cd = metadata.getColumnDefinitionFromColumnName(name);
                             if (cd != null)
-                                result.schema.value_types.put(name, TypeParser.getShortName(cd.getValidator()));
+                                result.schema.value_types.put(name.bb, TypeParser.getShortName(cd.getValidator()));
                             IColumn c = row.cf.getColumn(name);
                             if (c == null || c.isMarkedForDelete())
-                                thriftColumns.add(new Column().setName(name));
+                                thriftColumns.add(new Column().setName(name.bb));
                             else
                                 thriftColumns.add(thriftify(c));
                         }
@@ -824,7 +821,7 @@ public class QueryProcessor
         ByteBuffer value = (c instanceof CounterColumn)
                            ? ByteBufferUtil.bytes(CounterContext.instance().total(c.value()))
                            : c.value();
-        return new Column(c.name()).setValue(value).setTimestamp(c.timestamp());
+        return new Column(c.name().bb).setValue(value).setTimestamp(c.timestamp());
     }
 
     private static String getKeyString(CFMetaData metadata)

@@ -29,6 +29,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
 
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.ISSTableSerializer;
 import org.apache.cassandra.io.IVersionedSerializer;
@@ -59,13 +60,13 @@ public class DeletionInfo
         this(topLevel, null);
     }
 
-    public DeletionInfo(ByteBuffer start, ByteBuffer end, Comparator<ByteBuffer> comparator, long markedForDeleteAt, int localDeletionTime)
+    public DeletionInfo(CellName start, CellName end, Comparator<CellName> comparator, long markedForDeleteAt, int localDeletionTime)
     {
         this(DeletionTime.LIVE, new RangeTombstoneList(comparator, 1));
         ranges.add(start, end, markedForDeleteAt, localDeletionTime);
     }
 
-    public DeletionInfo(RangeTombstone rangeTombstone, Comparator<ByteBuffer> comparator)
+    public DeletionInfo(RangeTombstone rangeTombstone, Comparator<CellName> comparator)
     {
         this(rangeTombstone.min, rangeTombstone.max, comparator, rangeTombstone.data.markedForDeleteAt, rangeTombstone.data.localDeletionTime);
     }
@@ -113,7 +114,7 @@ public class DeletionInfo
         return isDeleted(column.name(), column.mostRecentLiveChangeAt());
     }
 
-    public boolean isDeleted(ByteBuffer name, long timestamp)
+    public boolean isDeleted(CellName name, long timestamp)
     {
         // We do rely on this test: if topLevel.markedForDeleteAt is MIN_VALUE, we should not
         // consider the column deleted even if timestamp=MIN_VALUE, otherwise this break QueryFilter.isRelevant
@@ -157,7 +158,7 @@ public class DeletionInfo
             topLevel = newInfo;
     }
 
-    public void add(RangeTombstone tombstone, Comparator<ByteBuffer> comparator)
+    public void add(RangeTombstone tombstone, Comparator<CellName> comparator)
     {
         if (ranges == null)
             ranges = new RangeTombstoneList(comparator, 1);
@@ -236,8 +237,8 @@ public class DeletionInfo
         {
             RangeTombstone i = iter.next();
             sb.append("[");
-            sb.append(at.getString(i.min)).append("-");
-            sb.append(at.getString(i.max)).append(", ");
+            sb.append(at.getString(i.min.bb)).append("-");
+            sb.append(at.getString(i.max.bb)).append(", ");
             sb.append(i.data);
             sb.append("]");
         }
@@ -285,7 +286,7 @@ public class DeletionInfo
             throw new UnsupportedOperationException();
         }
 
-        public DeletionInfo deserialize(DataInput in, int version, Comparator<ByteBuffer> comparator) throws IOException
+        public DeletionInfo deserialize(DataInput in, int version, Comparator<CellName> comparator) throws IOException
         {
             assert comparator != null;
             DeletionTime topLevel = DeletionTime.serializer.deserialize(in);

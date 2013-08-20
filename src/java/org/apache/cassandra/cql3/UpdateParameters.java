@@ -24,6 +24,7 @@ import java.util.Map;
 
 import org.apache.cassandra.cql3.statements.ColumnGroupMap;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Pair;
 
 /**
@@ -48,24 +49,24 @@ public class UpdateParameters
         this.prefetchedLists = prefetchedLists;
     }
 
-    public Column makeColumn(ByteBuffer name, ByteBuffer value)
+    public Column makeColumn(CellName name, ByteBuffer value)
     {
         return ttl > 0
              ? new ExpiringColumn(name, value, timestamp, ttl)
              : new Column(name, value, timestamp);
     }
 
-    public Column makeTombstone(ByteBuffer name)
+    public Column makeTombstone(CellName name)
     {
         return new DeletedColumn(name, localDeletionTime, timestamp);
     }
 
-    public RangeTombstone makeRangeTombstone(ByteBuffer start, ByteBuffer end)
+    public RangeTombstone makeRangeTombstone(CellName start, CellName end)
     {
         return new RangeTombstone(start, end, timestamp, localDeletionTime);
     }
 
-    public RangeTombstone makeTombstoneForOverwrite(ByteBuffer start, ByteBuffer end)
+    public RangeTombstone makeTombstoneForOverwrite(CellName start, CellName end)
     {
         return new RangeTombstone(start, end, timestamp - 1, localDeletionTime);
     }

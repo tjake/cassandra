@@ -25,10 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.IColumn;
-import org.apache.cassandra.db.marshal.CollectionType;
-import org.apache.cassandra.db.marshal.Int32Type;
-import org.apache.cassandra.db.marshal.ListType;
-import org.apache.cassandra.db.marshal.MarshalException;
+import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -308,7 +305,7 @@ public abstract class Lists
             if (idx < 0 || idx >= existingList.size())
                 throw new InvalidRequestException(String.format("List index %d out of bound, list has size %d", idx, existingList.size()));
 
-            ByteBuffer elementName = existingList.get(idx).right.name();
+            CellName elementName = existingList.get(idx).right.name();
 
             if (value == null)
             {
@@ -353,7 +350,7 @@ public abstract class Lists
             {
                 ColumnNameBuilder b = i == toAdd.size() - 1 ? columnName : columnName.copy();
                 ByteBuffer uuid = ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes());
-                ByteBuffer cellName = b.add(uuid).build();
+                CellName cellName = b.add(uuid).build();
                 cf.addColumn(params.makeColumn(cellName, toAdd.get(i)));
             }
         }
@@ -382,7 +379,7 @@ public abstract class Lists
                 ColumnNameBuilder b = i == toAdd.size() - 1 ? column : column.copy();
                 PrecisionTime pt = PrecisionTime.getNext(time);
                 ByteBuffer uuid = ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes(pt.millis, pt.nanos));
-                ByteBuffer cellName = b.add(uuid).build();
+                CellName cellName = b.add(uuid).build();
                 cf.addColumn(params.makeColumn(cellName, toAdd.get(i)));
             }
         }
@@ -453,7 +450,7 @@ public abstract class Lists
             if (idx < 0 || idx >= existingList.size())
                 throw new InvalidRequestException(String.format("List index %d out of bound, list has size %d", idx, existingList.size()));
 
-            ByteBuffer elementName = existingList.get(idx).right.name();
+            CellName elementName = existingList.get(idx).right.name();
             cf.addColumn(params.makeTombstone(elementName));
         }
     }

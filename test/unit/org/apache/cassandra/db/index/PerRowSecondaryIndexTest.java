@@ -23,6 +23,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -64,7 +65,7 @@ public class PerRowSecondaryIndexTest extends SchemaLoader
 
         ColumnFamily indexedRow = TestIndex.LAST_INDEXED_ROW;
         assertNotNull(indexedRow);
-        assertEquals(ByteBufferUtil.bytes("foo"), indexedRow.getColumn(ByteBufferUtil.bytes("indexed")).value());
+        assertEquals(ByteBufferUtil.bytes("foo"), indexedRow.getColumn(CellName.wrap("indexed")).value());
 
         // update the row and verify what was indexed
         rm = new RowMutation("PerRowSecondaryIndex", ByteBufferUtil.bytes("k1"));
@@ -73,7 +74,7 @@ public class PerRowSecondaryIndexTest extends SchemaLoader
 
         indexedRow = TestIndex.LAST_INDEXED_ROW;
         assertNotNull(indexedRow);
-        assertEquals(ByteBufferUtil.bytes("bar"), indexedRow.getColumn(ByteBufferUtil.bytes("indexed")).value());
+        assertEquals(ByteBufferUtil.bytes("bar"), indexedRow.getColumn(CellName.wrap("indexed")).value());
         assertTrue(Arrays.equals("k1".getBytes(), TestIndex.LAST_INDEXED_KEY.array()));
     }
 

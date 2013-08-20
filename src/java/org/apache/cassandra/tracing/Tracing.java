@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,27 +80,27 @@ public class Tracing
 
     private final Map<UUID, TraceState> sessions = new ConcurrentHashMap<UUID, TraceState>();
 
-    public static void addColumn(ColumnFamily cf, ByteBuffer name, InetAddress address)
+    public static void addColumn(ColumnFamily cf, CellName name, InetAddress address)
     {
         addColumn(cf, name, ByteBufferUtil.bytes(address));
     }
 
-    public static void addColumn(ColumnFamily cf, ByteBuffer name, int value)
+    public static void addColumn(ColumnFamily cf, CellName name, int value)
     {
         addColumn(cf, name, ByteBufferUtil.bytes(value));
     }
 
-    public static void addColumn(ColumnFamily cf, ByteBuffer name, long value)
+    public static void addColumn(ColumnFamily cf, CellName name, long value)
     {
         addColumn(cf, name, ByteBufferUtil.bytes(value));
     }
 
-    public static void addColumn(ColumnFamily cf, ByteBuffer name, String value)
+    public static void addColumn(ColumnFamily cf, CellName name, String value)
     {
         addColumn(cf, name, ByteBufferUtil.bytes(value));
     }
 
-    private static void addColumn(ColumnFamily cf, ByteBuffer name, ByteBuffer value)
+    private static void addColumn(ColumnFamily cf, CellName name, ByteBuffer value)
     {
         cf.addColumn(new ExpiringColumn(name, value, System.currentTimeMillis(), TTL));
     }
@@ -113,7 +114,7 @@ public class Tracing
         }
     }
 
-    public static ByteBuffer buildName(CFMetaData meta, ByteBuffer... args)
+    public static CellName buildName(CFMetaData meta, ByteBuffer... args)
     {
         ColumnNameBuilder builder = meta.getCfDef().getColumnNameBuilder();
         for (ByteBuffer arg : args)

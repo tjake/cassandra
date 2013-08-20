@@ -24,6 +24,7 @@ package org.apache.cassandra.db;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -50,12 +51,12 @@ public class ArrayBackedSortedColumnsTest
         int[] values = new int[]{ 1, 2, 2, 3 };
 
         for (int i = 0; i < values.length; ++i)
-            map.addColumn(new Column(ByteBufferUtil.bytes(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
+            map.addColumn(new Column(CellName.wrap(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
 
         Iterator<IColumn> iter = map.iterator();
-        assertEquals("1st column", 1, iter.next().name().getInt(0));
-        assertEquals("2nd column", 2, iter.next().name().getInt(0));
-        assertEquals("3rd column", 3, iter.next().name().getInt(0));
+        assertEquals("1st column", 1, iter.next().name().bb.getInt(0));
+        assertEquals("2nd column", 2, iter.next().name().bb.getInt(0));
+        assertEquals("3rd column", 3, iter.next().name().bb.getInt(0));
     }
 
     @Test
@@ -74,20 +75,20 @@ public class ArrayBackedSortedColumnsTest
         int[] values2 = new int[]{ 2, 4, 5, 6 };
 
         for (int i = 0; i < values1.length; ++i)
-            map.addColumn(new Column(ByteBufferUtil.bytes(values1[reversed ? values1.length - 1 - i : i])), HeapAllocator.instance);
+            map.addColumn(new Column(CellName.wrap(values1[reversed ? values1.length - 1 - i : i])), HeapAllocator.instance);
 
         for (int i = 0; i < values2.length; ++i)
-            map2.addColumn(new Column(ByteBufferUtil.bytes(values2[reversed ? values2.length - 1 - i : i])), HeapAllocator.instance);
+            map2.addColumn(new Column(CellName.wrap(values2[reversed ? values2.length - 1 - i : i])), HeapAllocator.instance);
 
         map2.addAll(map, HeapAllocator.instance, Functions.<IColumn>identity());
 
         Iterator<IColumn> iter = map2.iterator();
-        assertEquals("1st column", 1, iter.next().name().getInt(0));
-        assertEquals("2nd column", 2, iter.next().name().getInt(0));
-        assertEquals("3rd column", 3, iter.next().name().getInt(0));
-        assertEquals("4st column", 4, iter.next().name().getInt(0));
-        assertEquals("5st column", 5, iter.next().name().getInt(0));
-        assertEquals("6st column", 6, iter.next().name().getInt(0));
+        assertEquals("1st column", 1, iter.next().name().bb.getInt(0));
+        assertEquals("2nd column", 2, iter.next().name().bb.getInt(0));
+        assertEquals("3rd column", 3, iter.next().name().bb.getInt(0));
+        assertEquals("4st column", 4, iter.next().name().bb.getInt(0));
+        assertEquals("5st column", 5, iter.next().name().bb.getInt(0));
+        assertEquals("6st column", 6, iter.next().name().bb.getInt(0));
     }
 
     @Test
@@ -104,12 +105,12 @@ public class ArrayBackedSortedColumnsTest
 
         List<IColumn> sorted = new ArrayList<IColumn>();
         for (int v : values)
-            sorted.add(new Column(ByteBufferUtil.bytes(v)));
+            sorted.add(new Column(CellName.wrap(v)));
         List<IColumn> reverseSorted = new ArrayList<IColumn>(sorted);
         Collections.reverse(reverseSorted);
 
         for (int i = 0; i < values.length; ++i)
-            map.addColumn(new Column(ByteBufferUtil.bytes(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
+            map.addColumn(new Column(CellName.wrap(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
 
         assertSame(sorted, map.getSortedColumns());
         assertSame(reverseSorted, map.getReverseSortedColumns());
@@ -125,13 +126,13 @@ public class ArrayBackedSortedColumnsTest
     private void testGetNamesInternal(boolean reversed)
     {
         ISortedColumns map = ArrayBackedSortedColumns.factory().create(BytesType.instance, reversed);
-        List<ByteBuffer> names = new ArrayList<ByteBuffer>();
+        List<CellName> names = new ArrayList<CellName>();
         int[] values = new int[]{ 1, 2, 3, 5, 9 };
         for (int v : values)
-            names.add(ByteBufferUtil.bytes(v));
+            names.add(CellName.wrap(v));
 
         for (int i = 0; i < values.length; ++i)
-            map.addColumn(new Column(ByteBufferUtil.bytes(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
+            map.addColumn(new Column(CellName.wrap(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
 
         assertSame(names, map.getColumnNames());
     }
@@ -153,13 +154,13 @@ public class ArrayBackedSortedColumnsTest
             names.add(ByteBufferUtil.bytes(v));
 
         for (int i = 0; i < values.length; ++i)
-            map.addColumn(new Column(ByteBufferUtil.bytes(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
+            map.addColumn(new Column(CellName.wrap(values[reversed ? values.length - 1 - i : i])), HeapAllocator.instance);
 
         //assertSame(new int[]{ 3, 5, 9 }, map.iterator(ByteBufferUtil.bytes(3)));
         //assertSame(new int[]{ 5, 9 }, map.iterator(ByteBufferUtil.bytes(4)));
 
-        assertSame(new int[]{ 3, 2, 1 }, map.reverseIterator(new ColumnSlice[]{ new ColumnSlice(ByteBufferUtil.bytes(3), ByteBufferUtil.EMPTY_BYTE_BUFFER) }));
-        assertSame(new int[]{ 3, 2, 1 }, map.reverseIterator(new ColumnSlice[]{ new ColumnSlice(ByteBufferUtil.bytes(4), ByteBufferUtil.EMPTY_BYTE_BUFFER) }));
+        assertSame(new int[]{ 3, 2, 1 }, map.reverseIterator(new ColumnSlice[]{ new ColumnSlice(CellName.wrap(3), CellName.EMPTY_CELL_NAME) }));
+        assertSame(new int[]{ 3, 2, 1 }, map.reverseIterator(new ColumnSlice[]{ new ColumnSlice(CellName.wrap(4), CellName.EMPTY_CELL_NAME) }));
 
         assertSame(map.iterator(), map.iterator(ColumnSlice.ALL_COLUMNS_ARRAY));
     }
@@ -182,7 +183,7 @@ public class ArrayBackedSortedColumnsTest
         for (int name : names)
         {
             assert iter.hasNext() : "Expected " + name + " but no more result";
-            int value = ByteBufferUtil.toInt(iter.next().name());
+            int value = ByteBufferUtil.toInt(iter.next().name().bb);
             assert name == value : "Expected " + name + " but got " + value;
         }
     }

@@ -39,6 +39,11 @@ public class LongType extends AbstractType<Long>
         return JdbcLong.instance.decompose(value);
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        return compare(o1.bb,o2.bb);
+    }
+
     public int compare(ByteBuffer o1, ByteBuffer o2)
     {
         if (o1.remaining() == 0)

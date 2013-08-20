@@ -29,11 +29,12 @@ import com.google.common.base.Function;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Allocator;
 
 public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumns implements ISortedColumns
 {
-    private final TreeMap<ByteBuffer, IColumn> map;
+    private final TreeMap<CellName, IColumn> map;
 
     public static final ISortedColumns.Factory factory = new Factory()
     {
@@ -42,7 +43,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
             return new TreeMapBackedSortedColumns(comparator);
         }
 
-        public ISortedColumns fromSorted(SortedMap<ByteBuffer, IColumn> sortedMap, boolean insertReversed)
+        public ISortedColumns fromSorted(SortedMap<CellName, IColumn> sortedMap, boolean insertReversed)
         {
             return new TreeMapBackedSortedColumns(sortedMap);
         }
@@ -60,12 +61,12 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
 
     private TreeMapBackedSortedColumns(AbstractType<?> comparator)
     {
-        this.map = new TreeMap<ByteBuffer, IColumn>(comparator);
+        this.map = new TreeMap<CellName, IColumn>(comparator);
     }
 
-    private TreeMapBackedSortedColumns(SortedMap<ByteBuffer, IColumn> columns)
+    private TreeMapBackedSortedColumns(SortedMap<CellName, IColumn> columns)
     {
-        this.map = new TreeMap<ByteBuffer, IColumn>(columns);
+        this.map = new TreeMap<CellName, IColumn>(columns);
     }
 
     public ISortedColumns.Factory getFactory()
@@ -94,7 +95,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
     */
     public long addColumn(IColumn column, Allocator allocator, SecondaryIndexManager.Updater indexer)
     {
-        ByteBuffer name = column.name();
+        CellName name = column.name();
         // this is a slightly unusual way to structure this; a more natural way is shown in ThreadSafeSortedColumns,
         // but TreeMap lacks putAbsent.  Rather than split it into a "get, then put" check, we do it as follows,
         // which saves the extra "get" in the no-conflict case [for both normal and super columns],
@@ -170,12 +171,12 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
         return true;
     }
 
-    public IColumn getColumn(ByteBuffer name)
+    public IColumn getColumn(CellName name)
     {
         return map.get(name);
     }
 
-    public void removeColumn(ByteBuffer name)
+    public void removeColumn(CellName name)
     {
         map.remove(name);
     }
@@ -201,7 +202,7 @@ public class TreeMapBackedSortedColumns extends AbstractThreadUnsafeSortedColumn
         return map.descendingMap().values();
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return map.navigableKeySet();
     }

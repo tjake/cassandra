@@ -29,6 +29,11 @@ public class CounterColumnType extends AbstractCommutativeType
 
     CounterColumnType() {} // singleton
 
+    public int compare(CellName o1, CellName o2)
+    {
+        return compare(o1.bb,o2.bb);
+    }
+
     public int compare(ByteBuffer o1, ByteBuffer o2)
     {
         if (o1 == null)
@@ -45,7 +50,7 @@ public class CounterColumnType extends AbstractCommutativeType
     /**
      * create commutative column
      */
-    public Column createColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public Column createColumn(CellName name, ByteBuffer value, long timestamp)
     {
         return new CounterUpdateColumn(name, value, timestamp);
     }

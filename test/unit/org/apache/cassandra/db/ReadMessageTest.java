@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -41,9 +42,9 @@ public class ReadMessageTest extends SchemaLoader
     @Test
     public void testMakeReadMessage() throws IOException
     {
-        ArrayList<ByteBuffer> colList = new ArrayList<ByteBuffer>();
-        colList.add(ByteBufferUtil.bytes("col1"));
-        colList.add(ByteBufferUtil.bytes("col2"));
+        ArrayList<CellName> colList = new ArrayList<CellName>();
+        colList.add(CellName.wrap("col1"));
+        colList.add(CellName.wrap("col2"));
 
         ReadCommand rm, rm2;
         DecoratedKey dk = Util.dk("row1");
@@ -52,19 +53,19 @@ public class ReadMessageTest extends SchemaLoader
         rm2 = serializeAndDeserializeReadMessage(rm);
         assert rm2.toString().equals(rm.toString());
 
-        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, true, 2);
+        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME, true, 2);
         rm2 = serializeAndDeserializeReadMessage(rm);
         assert rm2.toString().equals(rm.toString());
 
-        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), ByteBufferUtil.bytes("a"), ByteBufferUtil.bytes("z"), true, 5);
+        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), CellName.wrap("a"), CellName.wrap("z"), true, 5);
         rm2 = serializeAndDeserializeReadMessage(rm);
         assertEquals(rm2.toString(), rm.toString());
 
-        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, true, 2);
+        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME, true, 2);
         rm2 = serializeAndDeserializeReadMessage(rm);
         assert rm2.toString().equals(rm.toString());
 
-        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), ByteBufferUtil.bytes("a"), ByteBufferUtil.bytes("z"), true, 5);
+        rm = new SliceFromReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), CellName.wrap("a"), CellName.wrap("z"), true, 5);
         rm2 = serializeAndDeserializeReadMessage(rm);
         assertEquals(rm2.toString(), rm.toString());
     }
@@ -92,9 +93,9 @@ public class ReadMessageTest extends SchemaLoader
         rm.add(new QueryPath("Standard1", null, ByteBufferUtil.bytes("Column1")), ByteBufferUtil.bytes("abcd"), 0);
         rm.apply();
 
-        ReadCommand command = new SliceByNamesReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), Arrays.asList(ByteBufferUtil.bytes("Column1")));
+        ReadCommand command = new SliceByNamesReadCommand("Keyspace1", dk.key, new QueryPath("Standard1"), Arrays.asList(CellName.wrap("Column1")));
         Row row = command.getRow(table);
-        IColumn col = row.cf.getColumn(ByteBufferUtil.bytes("Column1"));
+        IColumn col = row.cf.getColumn(CellName.wrap("Column1"));
         assertEquals(col.value(), ByteBuffer.wrap("abcd".getBytes()));
     }
 

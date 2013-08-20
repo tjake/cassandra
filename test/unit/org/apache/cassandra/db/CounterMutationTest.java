@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 import static org.junit.Assert.fail;
 
@@ -71,7 +72,7 @@ public class CounterMutationTest extends SchemaLoader
         // First merges old shards
         CounterColumn.mergeAndRemoveOldShards(dk, cf, Integer.MIN_VALUE, Integer.MAX_VALUE, false);
         long now = System.currentTimeMillis();
-        IColumn c = cf.getColumn(ByteBufferUtil.bytes("Column1"));
+        IColumn c = cf.getColumn(CellName.wrap("Column1"));
         assert c != null;
         assert c instanceof CounterColumn;
         assert ((CounterColumn)c).total() == 12L;
@@ -91,7 +92,7 @@ public class CounterMutationTest extends SchemaLoader
 
         // Then collect old shards
         CounterColumn.mergeAndRemoveOldShards(dk, cf, Integer.MAX_VALUE, Integer.MIN_VALUE, false);
-        c = cf.getColumn(ByteBufferUtil.bytes("Column1"));
+        c = cf.getColumn(CellName.wrap("Column1"));
         assert c != null;
         assert c instanceof CounterColumn;
         assert ((CounterColumn)c).total() == 12L;
@@ -123,15 +124,15 @@ public class CounterMutationTest extends SchemaLoader
 
         assert cf.getColumnCount() == 2;
 
-        IColumn sc1 = cf.getColumn(bytes("sc1"));
+        IColumn sc1 = cf.getColumn(CellName.wrap("sc1"));
         assert sc1 != null && sc1 instanceof SuperColumn;
         assert sc1.getSubColumns().size() == 1;
-        assert sc1.getSubColumn(bytes("Column2")) != null;
+        assert sc1.getSubColumn(CellName.wrap("Column2")) != null;
 
-        IColumn sc2 = cf.getColumn(bytes("sc2"));
+        IColumn sc2 = cf.getColumn(CellName.wrap("sc2"));
         assert sc2 != null && sc2 instanceof SuperColumn;
         assert sc2.getSubColumns().size() == 1;
-        assert sc2.getSubColumn(bytes("Column2")) != null;
+        assert sc2.getSubColumn(CellName.wrap("Column2")) != null;
     }
 
     @Test

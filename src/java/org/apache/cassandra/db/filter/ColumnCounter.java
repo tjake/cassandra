@@ -93,7 +93,7 @@ public class ColumnCounter
                 return;
             }
 
-            ByteBuffer[] current = type.split(column.name());
+            ByteBuffer[] current = type.split(column.name().bb);
             assert current.length >= toGroup;
 
             if (last != null)

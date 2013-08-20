@@ -37,6 +37,7 @@ import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -103,7 +104,7 @@ public class StreamingTransferTest extends SchemaLoader
             String col = "col" + offs[i];
             assert cfs.getColumnFamily(QueryFilter.getIdentityFilter(Util.dk(key), new QueryPath(cfs.columnFamily))) != null;
             assert rows.get(i).key.key.equals(ByteBufferUtil.bytes(key));
-            assert rows.get(i).cf.getColumn(ByteBufferUtil.bytes(col)) != null;
+            assert rows.get(i).cf.getColumn(CellName.wrap(col)) != null;
         }
 
         // and that the max timestamp for the file was rediscovered
@@ -146,8 +147,8 @@ public class StreamingTransferTest extends SchemaLoader
         rm.add(new QueryPath(cfname, null, ByteBufferUtil.bytes(6)), ByteBuffer.wrap(new byte[DatabaseDescriptor.getColumnIndexSize()]), 2);
         ColumnFamily cf = rm.addOrGet(cfname);
         // add RangeTombstones
-        cf.delete(new DeletionInfo(ByteBufferUtil.bytes(2), ByteBufferUtil.bytes(3), cf.getComparator(), 1, (int) (System.currentTimeMillis() / 1000)));
-        cf.delete(new DeletionInfo(ByteBufferUtil.bytes(5), ByteBufferUtil.bytes(7), cf.getComparator(), 1, (int) (System.currentTimeMillis() / 1000)));
+        cf.delete(new DeletionInfo(CellName.wrap(2), CellName.wrap(3), cf.getComparator(), 1, (int) (System.currentTimeMillis() / 1000)));
+        cf.delete(new DeletionInfo(CellName.wrap(5), CellName.wrap(7), cf.getComparator(), 1, (int) (System.currentTimeMillis() / 1000)));
         rm.apply();
         cfs.forceBlockingFlush();
 
@@ -176,7 +177,7 @@ public class StreamingTransferTest extends SchemaLoader
                 RowMutation rm = new RowMutation("Keyspace1", ByteBufferUtil.bytes(key));
                 ColumnFamily cf = ColumnFamily.create(table.name, cfs.columnFamily);
                 cf.addColumn(column(col, "v", timestamp));
-                cf.addColumn(new Column(ByteBufferUtil.bytes("birthdate"), ByteBufferUtil.bytes(val), timestamp));
+                cf.addColumn(new Column(CellName.wrap("birthdate"), ByteBufferUtil.bytes(val), timestamp));
                 rm.add(cf);
                 logger.debug("Applying row to transfer " + rm);
                 rm.apply();
@@ -239,10 +240,10 @@ public class StreamingTransferTest extends SchemaLoader
                 state.writeElement(CounterId.fromInt(4), 4L, 2L);
                 state.writeElement(CounterId.fromInt(6), 3L, 3L);
                 state.writeElement(CounterId.fromInt(8), 2L, 4L);
-                cf.addColumn(new CounterColumn(ByteBufferUtil.bytes(col),
+                cf.addColumn(new CounterColumn(CellName.wrap(col),
                                                state.context,
                                                timestamp));
-                cfCleaned.addColumn(new CounterColumn(ByteBufferUtil.bytes(col),
+                cfCleaned.addColumn(new CounterColumn(CellName.wrap(col),
                                                       cc.clearAllDelta(state.context),
                                                       timestamp));
 

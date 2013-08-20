@@ -84,7 +84,7 @@ public abstract class ReadCommand implements IReadCommand
 
     protected AbstractType<?> getComparator()
     {
-        return ColumnFamily.getComparatorFor(table, getColumnFamilyName(), queryPath.superColumnName);
+        return ColumnFamily.getComparatorFor(table, getColumnFamilyName(), queryPath.superColumnName == null ? null : queryPath.superColumnName.bb);
     }
 
     public String getKeyspace()

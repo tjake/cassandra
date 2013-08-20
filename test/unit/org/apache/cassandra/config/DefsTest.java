@@ -31,6 +31,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.db.marshal.TimeUUIDType;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -60,10 +61,10 @@ public class DefsTest extends SchemaLoader
     @Test
     public void testCFMetaDataApply() throws ConfigurationException
     {
-        Map<ByteBuffer, ColumnDefinition> indexes = new HashMap<ByteBuffer, ColumnDefinition>();
+        Map<CellName, ColumnDefinition> indexes = new HashMap<CellName, ColumnDefinition>();
         for (int i = 0; i < 5; i++)
         {
-            ByteBuffer name = ByteBuffer.wrap(new byte[] { (byte)i });
+            CellName name = CellName.wrap(new byte[] { (byte)i });
             indexes.put(name, new ColumnDefinition(name, BytesType.instance, IndexType.KEYS, null, Integer.toString(i), null));
         }
         CFMetaData cfm = new CFMetaData("Keyspace1",
@@ -82,12 +83,12 @@ public class DefsTest extends SchemaLoader
            .columnMetadata(indexes);
 
         // we'll be adding this one later. make sure it's not already there.
-        assert cfm.getColumn_metadata().get(ByteBuffer.wrap(new byte[] { 5 })) == null;
+        assert cfm.getColumn_metadata().get(CellName.wrap(new byte[] { 5 })) == null;
 
         CFMetaData cfNew = cfm.clone();
 
         // add one.
-        ColumnDefinition addIndexDef = new ColumnDefinition(ByteBuffer.wrap(new byte[] { 5 }),
+        ColumnDefinition addIndexDef = new ColumnDefinition(CellName.wrap(new byte[] { 5 }),
                                                             BytesType.instance,
                                                             IndexType.KEYS,
                                                             null,
@@ -96,7 +97,7 @@ public class DefsTest extends SchemaLoader
         cfNew.addColumnDefinition(addIndexDef);
 
         // remove one.
-        ColumnDefinition removeIndexDef = new ColumnDefinition(ByteBuffer.wrap(new byte[] { 0 }),
+        ColumnDefinition removeIndexDef = new ColumnDefinition(CellName.wrap(new byte[] { 0 }),
                                                                BytesType.instance,
                                                                IndexType.KEYS,
                                                                null,
@@ -107,9 +108,9 @@ public class DefsTest extends SchemaLoader
         cfm.apply(cfNew);
 
         for (int i = 1; i < indexes.size(); i++)
-            assert cfm.getColumn_metadata().get(ByteBuffer.wrap(new byte[] { 1 })) != null;
-        assert cfm.getColumn_metadata().get(ByteBuffer.wrap(new byte[] { 0 })) == null;
-        assert cfm.getColumn_metadata().get(ByteBuffer.wrap(new byte[] { 5 })) != null;
+            assert cfm.getColumn_metadata().get(CellName.wrap(new byte[] { 1 })) != null;
+        assert cfm.getColumn_metadata().get(CellName.wrap(new byte[] { 0 })) == null;
+        assert cfm.getColumn_metadata().get(CellName.wrap(new byte[] { 5 })) != null;
     }
 
     @Test
@@ -197,9 +198,9 @@ public class DefsTest extends SchemaLoader
         assert store != null;
         store.forceBlockingFlush();
 
-        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(cf), ByteBufferUtil.bytes("col0")));
-        assert cfam.getColumn(ByteBufferUtil.bytes("col0")) != null;
-        IColumn col = cfam.getColumn(ByteBufferUtil.bytes("col0"));
+        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(cf), CellName.wrap("col0")));
+        assert cfam.getColumn(CellName.wrap("col0")) != null;
+        IColumn col = cfam.getColumn(CellName.wrap("col0"));
         assert ByteBufferUtil.bytes("value0").equals(col.value());
     }
 
@@ -270,9 +271,9 @@ public class DefsTest extends SchemaLoader
         assert store != null;
         store.forceBlockingFlush();
 
-        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(newCf.cfName), ByteBufferUtil.bytes("col0")));
-        assert cfam.getColumn(ByteBufferUtil.bytes("col0")) != null;
-        IColumn col = cfam.getColumn(ByteBufferUtil.bytes("col0"));
+        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(newCf.cfName), CellName.wrap("col0")));
+        assert cfam.getColumn(CellName.wrap("col0")) != null;
+        IColumn col = cfam.getColumn(CellName.wrap("col0"));
         assert ByteBufferUtil.bytes("value0").equals(col.value());
     }
 
@@ -378,9 +379,9 @@ public class DefsTest extends SchemaLoader
         assert store != null;
         store.forceBlockingFlush();
 
-        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(newCf.cfName), ByteBufferUtil.bytes("col0")));
-        assert cfam.getColumn(ByteBufferUtil.bytes("col0")) != null;
-        IColumn col = cfam.getColumn(ByteBufferUtil.bytes("col0"));
+        ColumnFamily cfam = store.getColumnFamily(QueryFilter.getNamesFilter(dk, new QueryPath(newCf.cfName), CellName.wrap("col0")));
+        assert cfam.getColumn(CellName.wrap("col0")) != null;
+        IColumn col = cfam.getColumn(CellName.wrap("col0"));
         assert ByteBufferUtil.bytes("value0").equals(col.value());
     }
 
@@ -430,7 +431,7 @@ public class DefsTest extends SchemaLoader
 
         // updating certain fields should fail.
         CFMetaData newCfm = cf.clone();
-        newCfm.columnMetadata(new HashMap<ByteBuffer, ColumnDefinition>());
+        newCfm.columnMetadata(new HashMap<CellName, ColumnDefinition>());
         newCfm.defaultValidator(BytesType.instance);
         newCfm.minCompactionThreshold(5);
         newCfm.maxCompactionThreshold(31);

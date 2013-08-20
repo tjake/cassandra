@@ -39,6 +39,14 @@ public class Int32Type extends AbstractType<Integer>
         return JdbcInt32.instance.decompose(value);
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        Integer s1 = o1.getOrSetType(this);
+        Integer s2 = o2.getOrSetType(this);
+
+        return s1.compareTo(s2);
+    }
+
     public int compare(ByteBuffer o1, ByteBuffer o2)
     {
         if (o1.remaining() == 0)

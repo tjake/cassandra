@@ -26,6 +26,7 @@ import java.util.Map.Entry;
 
 import org.apache.cassandra.db.ColumnSerializer;
 import org.apache.cassandra.db.IColumn;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.IColumnSerializer;
 
 /**
@@ -33,16 +34,16 @@ import org.apache.cassandra.io.IColumnSerializer;
  * We use this because passing a SortedMap to the ConcurrentSkipListMap constructor is the only way
  * to invoke its private buildFromSorted method and avoid worst-case behavior of CSLM.put.
  */
-public class ColumnSortedMap implements SortedMap<ByteBuffer, IColumn>
+public class ColumnSortedMap implements SortedMap<CellName, IColumn>
 {
     private final ColumnSerializer serializer;
     private final DataInput dis;
-    private final Comparator<ByteBuffer> comparator;
+    private final Comparator<CellName> comparator;
     private final int length;
     private final IColumnSerializer.Flag flag;
     private final int expireBefore;
 
-    public ColumnSortedMap(Comparator<ByteBuffer> comparator, ColumnSerializer serializer, DataInput dis, int length, IColumnSerializer.Flag flag, int expireBefore)
+    public ColumnSortedMap(Comparator<CellName> comparator, ColumnSerializer serializer, DataInput dis, int length, IColumnSerializer.Flag flag, int expireBefore)
     {
         this.comparator = comparator;
         this.serializer = serializer;
@@ -77,7 +78,7 @@ public class ColumnSortedMap implements SortedMap<ByteBuffer, IColumn>
         throw new UnsupportedOperationException();
     }
 
-    public IColumn put(ByteBuffer key, IColumn value)
+    public IColumn put(CellName key, IColumn value)
     {
         throw new UnsupportedOperationException();
     }
@@ -87,7 +88,7 @@ public class ColumnSortedMap implements SortedMap<ByteBuffer, IColumn>
         throw new UnsupportedOperationException();
     }
 
-    public void putAll(Map<? extends ByteBuffer, ? extends IColumn> m)
+    public void putAll(Map<? extends CellName, ? extends IColumn> m)
     {
         throw new UnsupportedOperationException();
     }
@@ -97,37 +98,37 @@ public class ColumnSortedMap implements SortedMap<ByteBuffer, IColumn>
 
     }
 
-    public Comparator<? super ByteBuffer> comparator()
+    public Comparator<? super CellName> comparator()
     {
         return comparator;
     }
 
-    public SortedMap<ByteBuffer, IColumn> subMap(ByteBuffer fromKey, ByteBuffer toKey)
+    public SortedMap<CellName, IColumn> subMap(CellName fromKey, CellName toKey)
     {
         throw new UnsupportedOperationException();
     }
 
-    public SortedMap<ByteBuffer, IColumn> headMap(ByteBuffer toKey)
+    public SortedMap<CellName, IColumn> headMap(CellName toKey)
     {
         throw new UnsupportedOperationException();
     }
 
-    public SortedMap<ByteBuffer, IColumn> tailMap(ByteBuffer fromKey)
+    public SortedMap<CellName, IColumn> tailMap(CellName fromKey)
     {
         throw new UnsupportedOperationException();
     }
 
-    public ByteBuffer firstKey()
+    public CellName firstKey()
     {
         throw new UnsupportedOperationException();
     }
 
-    public ByteBuffer lastKey()
+    public CellName lastKey()
     {
         throw new UnsupportedOperationException();
     }
 
-    public Set<ByteBuffer> keySet()
+    public Set<CellName> keySet()
     {
         throw new UnsupportedOperationException();
     }
@@ -137,13 +138,13 @@ public class ColumnSortedMap implements SortedMap<ByteBuffer, IColumn>
         throw new UnsupportedOperationException();
     }
 
-    public Set<Map.Entry<ByteBuffer, IColumn>> entrySet()
+    public Set<Map.Entry<CellName, IColumn>> entrySet()
     {
         return new ColumnSet(serializer, dis, length, flag, expireBefore);
     }
 }
 
-class ColumnSet implements Set<Map.Entry<ByteBuffer, IColumn>>
+class ColumnSet implements Set<Map.Entry<CellName, IColumn>>
 {
     private final ColumnSerializer serializer;
     private final DataInput dis;
@@ -175,7 +176,7 @@ class ColumnSet implements Set<Map.Entry<ByteBuffer, IColumn>>
         throw new UnsupportedOperationException();
     }
 
-    public Iterator<Entry<ByteBuffer, IColumn>> iterator()
+    public Iterator<Entry<CellName, IColumn>> iterator()
     {
         return new ColumnIterator(serializer, dis, length, flag, expireBefore);
     }
@@ -190,7 +191,7 @@ class ColumnSet implements Set<Map.Entry<ByteBuffer, IColumn>>
         throw new UnsupportedOperationException();
     }
 
-    public boolean add(Entry<ByteBuffer, IColumn> e)
+    public boolean add(Entry<CellName, IColumn> e)
     {
         throw new UnsupportedOperationException();
     }
@@ -205,7 +206,7 @@ class ColumnSet implements Set<Map.Entry<ByteBuffer, IColumn>>
         throw new UnsupportedOperationException();
     }
 
-    public boolean addAll(Collection<? extends Entry<ByteBuffer, IColumn>> c)
+    public boolean addAll(Collection<? extends Entry<CellName, IColumn>> c)
     {
         throw new UnsupportedOperationException();
     }
@@ -225,7 +226,7 @@ class ColumnSet implements Set<Map.Entry<ByteBuffer, IColumn>>
     }
 }
 
-class ColumnIterator implements Iterator<Map.Entry<ByteBuffer, IColumn>>
+class ColumnIterator implements Iterator<Map.Entry<CellName, IColumn>>
 {
     private final ColumnSerializer serializer;
     private final DataInput dis;
@@ -261,7 +262,7 @@ class ColumnIterator implements Iterator<Map.Entry<ByteBuffer, IColumn>>
         return count < length;
     }
 
-    public Entry<ByteBuffer, IColumn> next()
+    public Entry<CellName, IColumn> next()
     {
         if (!hasNext())
         {
@@ -269,7 +270,7 @@ class ColumnIterator implements Iterator<Map.Entry<ByteBuffer, IColumn>>
         }
 
         final IColumn column = deserializeNext();
-        return new Entry<ByteBuffer, IColumn>()
+        return new Entry<CellName, IColumn>()
         {
             public IColumn setValue(IColumn value)
             {
@@ -281,7 +282,7 @@ class ColumnIterator implements Iterator<Map.Entry<ByteBuffer, IColumn>>
                 return column;
             }
 
-            public ByteBuffer getKey()
+            public CellName getKey()
             {
                 return column.name();
             }

@@ -425,7 +425,7 @@ public class Table
                     ColumnFamily cf2 = cf.cloneMeShallow();
                     for (IColumn column : cf)
                     {
-                        if (cfs.indexManager.indexes(column.name(), indexes))
+                        if (cfs.indexManager.indexes(column.name().bb, indexes))
                             cf2.addColumn(column);
                     }
                     cfs.indexManager.indexRow(key.key, cf2);

@@ -22,6 +22,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.FSReadError;
 import org.apache.cassandra.io.IColumnSerializer;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -37,8 +38,8 @@ public class ColumnSerializer implements IColumnSerializer
 
     public void serialize(IColumn column, DataOutput dos) throws IOException
     {
-        assert column.name().remaining() > 0;
-        ByteBufferUtil.writeWithShortLength(column.name(), dos);
+        assert column.name().bb.remaining() > 0;
+        ByteBufferUtil.writeWithShortLength(column.name().bb, dos);
         try
         {
             dos.writeByte(column.serializationFlags());
@@ -82,10 +83,10 @@ public class ColumnSerializer implements IColumnSerializer
             throw CorruptColumnException.create(dis, name);
 
         int b = dis.readUnsignedByte();
-        return deserializeColumnBody(dis, name, b, flag, expireBefore);
+        return deserializeColumnBody(dis, CellName.wrap(name), b, flag, expireBefore);
     }
 
-    Column deserializeColumnBody(DataInput dis, ByteBuffer name, int mask, IColumnSerializer.Flag flag, int expireBefore) throws IOException
+    Column deserializeColumnBody(DataInput dis, CellName name, int mask, IColumnSerializer.Flag flag, int expireBefore) throws IOException
     {
         if ((mask & COUNTER_MASK) != 0)
         {

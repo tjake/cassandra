@@ -22,6 +22,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,12 +42,12 @@ public class SliceFromReadCommand extends ReadCommand
 
     public final SliceQueryFilter filter;
 
-    public SliceFromReadCommand(String table, ByteBuffer key, ColumnParent column_parent, ByteBuffer start, ByteBuffer finish, boolean reversed, int count)
+    public SliceFromReadCommand(String table, ByteBuffer key, ColumnParent column_parent, CellName start, CellName finish, boolean reversed, int count)
     {
         this(table, key, new QueryPath(column_parent), start, finish, reversed, count);
     }
 
-    public SliceFromReadCommand(String table, ByteBuffer key, QueryPath path, ByteBuffer start, ByteBuffer finish, boolean reversed, int count)
+    public SliceFromReadCommand(String table, ByteBuffer key, QueryPath path, CellName start, CellName finish, boolean reversed, int count)
     {
         this(table, key, path, new SliceQueryFilter(start, finish, reversed, count));
     }

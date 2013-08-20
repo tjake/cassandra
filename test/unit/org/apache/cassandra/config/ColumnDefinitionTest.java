@@ -21,6 +21,7 @@ package org.apache.cassandra.config;
  */
 
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.db.marshal.BytesType;
@@ -33,14 +34,14 @@ public class ColumnDefinitionTest
     @Test
     public void testSerializeDeserialize() throws Exception
     {
-        ColumnDefinition cd0 = new ColumnDefinition(ByteBufferUtil.bytes("TestColumnDefinitionName0"),
+        ColumnDefinition cd0 = new ColumnDefinition(CellName.wrap("TestColumnDefinitionName0"),
                                                     BytesType.instance,
                                                     IndexType.KEYS,
                                                     null,
                                                     "random index name 0",
                                                     null);
 
-        ColumnDefinition cd1 = new ColumnDefinition(ByteBufferUtil.bytes("TestColumnDefinition1"),
+        ColumnDefinition cd1 = new ColumnDefinition(CellName.wrap("TestColumnDefinition1"),
                                                     LongType.instance,
                                                     null,
                                                     null,

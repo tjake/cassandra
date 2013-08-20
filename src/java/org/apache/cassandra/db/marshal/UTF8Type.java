@@ -38,9 +38,12 @@ public class UTF8Type extends AbstractType<String>
         return JdbcUTF8.instance.decompose(value);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        return BytesType.bytesCompare(o1, o2);
+        String s1 = o1.getOrSetType(this);
+        String s2 = o2.getOrSetType(this);
+
+        return s1.compareTo(s2);
     }
 
     public String getString(ByteBuffer bytes)

@@ -18,6 +18,7 @@
 
 package org.apache.cassandra.db;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -57,7 +58,7 @@ public class LongTableTest extends SchemaLoader
                 {
                     for (int j = 0; j < i; j++)
                     {
-                        cf = cfStore.getColumnFamily(QueryFilter.getNamesFilter(Util.dk("key" + i), new QueryPath("Standard1"), ByteBufferUtil.bytes("c" + j)));
+                        cf = cfStore.getColumnFamily(QueryFilter.getNamesFilter(Util.dk("key" + i), new QueryPath("Standard1"), CellName.wrap("c" + j)));
                         TableTest.assertColumns(cf, "c" + j);
                     }
                 }

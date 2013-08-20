@@ -37,14 +37,14 @@ import static org.apache.cassandra.io.sstable.IndexHelper.IndexInfo;
  * should always handle those values even if they normally do not
  * represent a valid ByteBuffer for the type being compared.
  */
-public abstract class AbstractType<T> implements Comparator<ByteBuffer>
+public abstract class AbstractType<T> implements Comparator<CellName>
 {
     public final Comparator<IndexInfo> indexComparator;
     public final Comparator<IndexInfo> indexReverseComparator;
     public final Comparator<IColumn> columnComparator;
     public final Comparator<IColumn> columnReverseComparator;
     public final Comparator<OnDiskAtom> onDiskAtomComparator;
-    public final Comparator<ByteBuffer> reverseComparator;
+    public final Comparator<CellName> reverseComparator;
 
     protected AbstractType()
     {
@@ -111,15 +111,15 @@ public abstract class AbstractType<T> implements Comparator<ByteBuffer>
                 }
             }
         };
-        reverseComparator = new Comparator<ByteBuffer>()
+        reverseComparator = new Comparator<CellName>()
         {
-            public int compare(ByteBuffer o1, ByteBuffer o2)
+            public int compare(CellName o1, CellName o2)
             {
-                if (o1.remaining() == 0)
+                if (o1.bb.remaining() == 0)
                 {
-                    return o2.remaining() == 0 ? 0 : -1;
+                    return o2.bb.remaining() == 0 ? 0 : -1;
                 }
-                if (o2.remaining() == 0)
+                if (o2.bb.remaining() == 0)
                 {
                     return 1;
                 }
@@ -155,7 +155,7 @@ public abstract class AbstractType<T> implements Comparator<ByteBuffer>
     }
 
     /** @deprecated use reverseComparator field instead */
-    public Comparator<ByteBuffer> getReverseComparator()
+    public Comparator<CellName> getReverseComparator()
     {
         return reverseComparator;
     }
@@ -224,7 +224,7 @@ public abstract class AbstractType<T> implements Comparator<ByteBuffer>
      *
      * Unless you're doing something very similar to CollectionsType, you shouldn't override this.
      */
-    public int compareCollectionMembers(ByteBuffer v1, ByteBuffer v2, ByteBuffer collectionName)
+    public int compareCollectionMembers(CellName v1, CellName v2, ByteBuffer collectionName)
     {
         return compare(v1, v2);
     }

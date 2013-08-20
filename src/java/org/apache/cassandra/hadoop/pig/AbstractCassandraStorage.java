@@ -119,9 +119,9 @@ public abstract class AbstractCassandraStorage extends LoadFunc implements Store
 
         // name
         if(comparator instanceof AbstractCompositeType)
-            setTupleValue(pair, 0, composeComposite((AbstractCompositeType)comparator,col.name()));
+            setTupleValue(pair, 0, composeComposite((AbstractCompositeType)comparator,col.name().bb));
         else
-            setTupleValue(pair, 0, comparator.compose(col.name()));
+            setTupleValue(pair, 0, comparator.compose(col.name().bb));
 
         // value
         if (col instanceof Column)

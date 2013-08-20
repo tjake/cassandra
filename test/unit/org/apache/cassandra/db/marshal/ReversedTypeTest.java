@@ -30,11 +30,11 @@ public class ReversedTypeTest
     {
         ReversedType<Long> t = ReversedType.getInstance(LongType.instance);
 
-        assert t.compare(bytes(2L), bytes(4L)) > 0;
-        assert t.compare(bytes(4L), bytes(2L)) < 0;
+        assert t.compare(CellName.wrap(2L), CellName.wrap(4L)) > 0;
+        assert t.compare(CellName.wrap(4L), CellName.wrap(2L)) < 0;
 
         // the empty byte buffer is always the smaller
-        assert t.compare(EMPTY_BYTE_BUFFER, bytes(2L)) < 0;
-        assert t.compare(bytes(2L), EMPTY_BYTE_BUFFER) > 0;
+        assert t.compare(CellName.EMPTY_CELL_NAME, CellName.wrap(2L)) < 0;
+        assert t.compare(CellName.wrap(2L), CellName.EMPTY_CELL_NAME) > 0;
     }
 }

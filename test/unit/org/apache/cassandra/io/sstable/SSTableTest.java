@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.db.*;
@@ -41,7 +42,7 @@ public class SSTableTest extends SchemaLoader
         ByteBuffer cbytes = ByteBuffer.wrap(new byte[1024]);
         new Random().nextBytes(cbytes.array());
         ColumnFamily cf = ColumnFamily.create("Keyspace1", "Standard1");
-        cf.addColumn(null, new Column(cbytes, cbytes));
+        cf.addColumn(null, new Column(CellName.wrap(cbytes), cbytes));
 
         SortedMap<DecoratedKey, ColumnFamily> map = new TreeMap<DecoratedKey, ColumnFamily>();
         map.put(Util.dk(key), cf);
@@ -75,7 +76,7 @@ public class SSTableTest extends SchemaLoader
         {
             ColumnFamily cf = ColumnFamily.create("Keyspace1", "Standard2");
             ByteBuffer bytes = ByteBufferUtil.bytes(("Avinash Lakshman is a good man: " + i));
-            cf.addColumn(null, new Column(bytes, bytes));
+            cf.addColumn(null, new Column(CellName.wrap(bytes), bytes));
             map.put(Util.dk(Integer.toString(i)), cf);
             bytesMap.put(ByteBufferUtil.bytes(Integer.toString(i)), Util.serializeForSSTable(cf));
         }

@@ -30,6 +30,7 @@ import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.io.IColumnSerializer;
 import org.apache.cassandra.io.util.ColumnSortedMap;
@@ -59,18 +60,18 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
         return new OnDiskAtom.Serializer(serializer(comparator));
     }
 
-    private final ByteBuffer name;
+    private final CellName name;
 
-    public SuperColumn(ByteBuffer name, AbstractType<?> comparator)
+    public SuperColumn(CellName name, AbstractType<?> comparator)
     {
         this(name, AtomicSortedColumns.factory().create(comparator, false));
     }
 
-    SuperColumn(ByteBuffer name, ISortedColumns columns)
+    SuperColumn(CellName name, ISortedColumns columns)
     {
         super(columns);
         assert name != null;
-        assert name.remaining() <= IColumn.MAX_NAME_LENGTH;
+        assert name.bb.remaining() <= IColumn.MAX_NAME_LENGTH;
         this.name = name;
     }
 
@@ -88,7 +89,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
         return sc;
     }
 
-    public ByteBuffer name()
+    public CellName name()
     {
         return name;
     }
@@ -98,7 +99,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
         return getSortedColumns();
     }
 
-    public IColumn getSubColumn(ByteBuffer columnName)
+    public IColumn getSubColumn(CellName columnName)
     {
         IColumn column = columns.getColumn(columnName);
         assert column == null || column instanceof Column;
@@ -133,7 +134,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
          * 4 bytes for the subcolumns size
          * size(constantSize) of subcolumns.
          */
-        int nameSize = name.remaining();
+        int nameSize = name.bb.remaining();
         int subColumnsSize = 0;
         for (IColumn subColumn : getSubColumns())
             subColumnsSize += subColumn.serializedSize(typeSizes);
@@ -265,7 +266,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
     public void updateDigest(MessageDigest digest)
     {
         assert name != null;
-        digest.update(name.duplicate());
+        digest.update(name.bb.duplicate());
         DataOutputBuffer buffer = new DataOutputBuffer();
         try
         {
@@ -286,7 +287,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
     {
         StringBuilder sb = new StringBuilder();
         sb.append("SuperColumn(");
-        sb.append(comparator.getString(name));
+        sb.append(comparator.getString(name.bb));
 
         if (isMarkedForDelete()) {
             sb.append(" -delete at ").append(getMarkedForDeleteAt()).append("-");
@@ -313,7 +314,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
     {
         // we don't try to intern supercolumn names, because if we're using Cassandra correctly it's almost
         // certainly just going to pollute our interning map with unique, dynamic values
-        SuperColumn sc = new SuperColumn(allocator.clone(name), this.getComparator());
+        SuperColumn sc = new SuperColumn(CellName.wrap(allocator.clone(name.bb)), this.getComparator());
         sc.delete(this);
 
         for(IColumn c : columns)
@@ -341,7 +342,7 @@ public class SuperColumn extends AbstractColumnContainer implements IColumn
 
     public void validateFields(CFMetaData metadata) throws MarshalException
     {
-        metadata.comparator.validate(name());
+        metadata.comparator.validate(name().bb);
         for (IColumn column : getSubColumns())
         {
             column.validateFields(metadata);
@@ -391,7 +392,7 @@ class SuperColumnSerializer implements IColumnSerializer
     public void serialize(IColumn column, DataOutput dos) throws IOException
     {
         SuperColumn superColumn = (SuperColumn)column;
-        ByteBufferUtil.writeWithShortLength(superColumn.name(), dos);
+        ByteBufferUtil.writeWithShortLength(superColumn.name().bb, dos);
         DeletionInfo.serializer().serialize(superColumn.deletionInfo(), dos, MessagingService.VERSION_10);
         Collection<IColumn> columns = superColumn.getSubColumns();
         dos.writeInt(columns.size());
@@ -413,7 +414,7 @@ class SuperColumnSerializer implements IColumnSerializer
 
     public IColumn deserialize(DataInput dis, IColumnSerializer.Flag flag, int expireBefore) throws IOException
     {
-        ByteBuffer name = ByteBufferUtil.readWithShortLength(dis);
+        CellName name = CellName.wrap(ByteBufferUtil.readWithShortLength(dis));
         DeletionInfo delInfo = DeletionInfo.serializer().deserialize(dis, MessagingService.VERSION_10, comparator);
 
         /* read the number of columns */

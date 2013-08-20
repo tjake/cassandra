@@ -20,6 +20,7 @@ package org.apache.cassandra.dht;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 
 public class LocalToken extends Token<ByteBuffer>
 {
@@ -41,7 +42,7 @@ public class LocalToken extends Token<ByteBuffer>
 
     public int compareTo(Token<ByteBuffer> o)
     {
-        return comparator.compare(token, o.token);
+        return comparator.compare(CellName.wrap(token), CellName.wrap(o.token));
     }
 
     @Override

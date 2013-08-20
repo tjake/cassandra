@@ -20,6 +20,7 @@ package org.apache.cassandra.io.sstable;
 
 import java.io.File;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.IPartitioner;
 import org.junit.Test;
 
@@ -55,9 +56,9 @@ public class SSTableSimpleWriterTest extends SchemaLoader
         for (; k < 10; ++k)
         {
             writer.newRow(bytes("Key" + k));
-            writer.addColumn(bytes(1), bytes("v"), 0);
-            writer.addColumn(bytes(2), bytes("v"), 0);
-            writer.addColumn(bytes(3), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(1), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(2), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(3), bytes("v"), 0);
         }
 
 
@@ -68,7 +69,7 @@ public class SSTableSimpleWriterTest extends SchemaLoader
             writer.newRow(bytes("Key" + k));
             for (int j = 0; j < NBCOL; ++j)
             {
-                writer.addColumn(bytes(i + INC * j), bytes("v"), 1);
+                writer.addColumn(CellName.wrap(i + INC * j), bytes("v"), 1);
             }
         }
         k++;
@@ -77,9 +78,9 @@ public class SSTableSimpleWriterTest extends SchemaLoader
         for (; k < 20; ++k)
         {
             writer.newRow(bytes("Key" + k));
-            writer.addColumn(bytes(1), bytes("v"), 0);
-            writer.addColumn(bytes(2), bytes("v"), 0);
-            writer.addColumn(bytes(3), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(1), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(2), bytes("v"), 0);
+            writer.addColumn(CellName.wrap(3), bytes("v"), 0);
         }
 
         writer.close();
@@ -94,7 +95,7 @@ public class SSTableSimpleWriterTest extends SchemaLoader
         int i = 0;
         for (IColumn c : cf)
         {
-            assert toInt(c.name()) == i : "Column name should be " + i + ", got " + toInt(c.name());
+            assert toInt(c.name().bb) == i : "Column name should be " + i + ", got " + toInt(c.name().bb);
             assert c.value().equals(bytes("v"));
             assert c.timestamp() == 1;
             ++i;

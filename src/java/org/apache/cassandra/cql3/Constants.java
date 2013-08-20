@@ -306,7 +306,7 @@ public abstract class Constants
 
         public void execute(ByteBuffer rowKey, ColumnFamily cf, ColumnNameBuilder prefix, UpdateParameters params) throws InvalidRequestException
         {
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            CellName cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
             ByteBuffer value = t.bindAndGet(params.variables);
             cf.addColumn(value == null ? params.makeTombstone(cname) : params.makeColumn(cname, value));
         }
@@ -325,8 +325,8 @@ public abstract class Constants
             if (bytes == null)
                 throw new InvalidRequestException("Invalid null value for counter increment");
             long increment = ByteBufferUtil.toLong(bytes);
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
-            cf.addCounter(new QueryPath(cf.metadata().cfName, null, cname), increment);
+            CellName cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            cf.addCounter(new QueryPath(cf.metadata().cfName, null, cname.bb), increment);
         }
     }
 
@@ -347,8 +347,8 @@ public abstract class Constants
             if (increment == Long.MIN_VALUE)
                 throw new InvalidRequestException("The negation of " + increment + " overflows supported counter precision (signed 8 bytes integer)");
 
-            ByteBuffer cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
-            cf.addCounter(new QueryPath(cf.metadata().cfName, null, cname), -increment);
+            CellName cname = columnName == null ? prefix.build() : prefix.add(columnName.key).build();
+            cf.addCounter(new QueryPath(cf.metadata().cfName, null, cname.bb), -increment);
         }
     }
 

@@ -40,6 +40,11 @@ public class BytesType extends AbstractType<ByteBuffer>
         return JdbcBytes.instance.decompose(value);
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        return BytesType.bytesCompare(o1.bb, o2.bb);
+    }
+
     public int compare(ByteBuffer o1, ByteBuffer o2)
     {
         return BytesType.bytesCompare(o1, o2);

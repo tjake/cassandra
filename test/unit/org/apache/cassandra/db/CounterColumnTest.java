@@ -27,6 +27,7 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -60,7 +61,7 @@ public class CounterColumnTest extends SchemaLoader
     public void testCreate() throws UnknownHostException
     {
         long delta = 3L;
-        CounterUpdateColumn cuc = new CounterUpdateColumn(ByteBufferUtil.bytes("x"), delta, 1L);
+        CounterUpdateColumn cuc = new CounterUpdateColumn(CellName.wrap("x"), delta, 1L);
         CounterColumn column = cuc.localCopy(Table.open("Keyspace5").getColumnFamilyStore("Counter1"));
 
         assert delta == column.total();
@@ -81,33 +82,33 @@ public class CounterColumnTest extends SchemaLoader
         ByteBuffer context;
 
         // tombstone + tombstone
-        left  = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 1L);
-        right = new DeletedColumn(ByteBufferUtil.bytes("x"), 2, 2L);
+        left  = new DeletedColumn(CellName.wrap("x"), 1, 1L);
+        right = new DeletedColumn(CellName.wrap("x"), 2, 2L);
 
         assert left.reconcile(right).getMarkedForDeleteAt() == right.getMarkedForDeleteAt();
         assert right.reconcile(left).getMarkedForDeleteAt() == right.getMarkedForDeleteAt();
 
         // tombstone > live
-        left  = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 2L);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 1L);
+        left  = new DeletedColumn(CellName.wrap("x"), 1, 2L);
+        right = new CounterColumn(CellName.wrap("x"), 0L, 1L);
 
         assert left.reconcile(right) == left;
 
         // tombstone < live last delete
-        left  = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 1L);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 4L, 2L);
+        left  = new DeletedColumn(CellName.wrap("x"), 1, 1L);
+        right = new CounterColumn(CellName.wrap("x"), 0L, 4L, 2L);
 
         assert left.reconcile(right) == right;
 
         // tombstone == live last delete
-        left  = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 2L);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 4L, 2L);
+        left  = new DeletedColumn(CellName.wrap("x"), 1, 2L);
+        right = new CounterColumn(CellName.wrap("x"), 0L, 4L, 2L);
 
         assert left.reconcile(right) == right;
 
         // tombstone > live last delete
-        left  = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 4L);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 9L, 1L);
+        left  = new DeletedColumn(CellName.wrap("x"), 1, 4L);
+        right = new CounterColumn(CellName.wrap("x"), 0L, 9L, 1L);
 
         reconciled = left.reconcile(right);
         assert reconciled.name() == right.name();
@@ -116,26 +117,26 @@ public class CounterColumnTest extends SchemaLoader
         assert ((CounterColumn)reconciled).timestampOfLastDelete() == left.getMarkedForDeleteAt();
 
         // live < tombstone
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 1L);
-        right = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 2L);
+        left  = new CounterColumn(CellName.wrap("x"), 0L, 1L);
+        right = new DeletedColumn(CellName.wrap("x"), 1, 2L);
 
         assert left.reconcile(right) == right;
 
         // live last delete > tombstone
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 4L, 2L);
-        right = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 1L);
+        left  = new CounterColumn(CellName.wrap("x"), 0L, 4L, 2L);
+        right = new DeletedColumn(CellName.wrap("x"), 1, 1L);
 
         assert left.reconcile(right) == left;
 
         // live last delete == tombstone
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 4L, 2L);
-        right = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 2L);
+        left  = new CounterColumn(CellName.wrap("x"), 0L, 4L, 2L);
+        right = new DeletedColumn(CellName.wrap("x"), 1, 2L);
 
         assert left.reconcile(right) == left;
 
         // live last delete < tombstone
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), 0L, 9L, 1L);
-        right = new DeletedColumn(ByteBufferUtil.bytes("x"), 1, 4L);
+        left  = new CounterColumn(CellName.wrap("x"), 0L, 9L, 1L);
+        right = new DeletedColumn(CellName.wrap("x"), 1, 4L);
 
         reconciled = left.reconcile(right);
         assert reconciled.name() == left.name();
@@ -144,20 +145,20 @@ public class CounterColumnTest extends SchemaLoader
         assert ((CounterColumn)reconciled).timestampOfLastDelete() == right.getMarkedForDeleteAt();
 
         // live < live last delete
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 1L, Long.MIN_VALUE);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, 3L);
+        left  = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 1L, Long.MIN_VALUE);
+        right = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, 3L);
 
         assert left.reconcile(right) == right;
 
         // live last delete > live
-        left  = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 6L, 5L);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, 3L);
+        left  = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 6L, 5L);
+        right = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, 3L);
 
         assert left.reconcile(right) == left;
 
         // live + live
-        left = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, Long.MIN_VALUE);
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 1L, Long.MIN_VALUE);
+        left = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 1L, 1L, false), 4L, Long.MIN_VALUE);
+        right = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(1), 2L, 3L, false), 1L, Long.MIN_VALUE);
 
         reconciled = left.reconcile(right);
         assert reconciled.name().equals(left.name());
@@ -165,7 +166,7 @@ public class CounterColumnTest extends SchemaLoader
         assert reconciled.timestamp() == 4L;
 
         left = reconciled;
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(2), 1L, 5L, false), 2L, Long.MIN_VALUE);
+        right = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(2), 1L, 5L, false), 2L, Long.MIN_VALUE);
 
         reconciled = left.reconcile(right);
         assert reconciled.name().equals(left.name());
@@ -173,7 +174,7 @@ public class CounterColumnTest extends SchemaLoader
         assert reconciled.timestamp() == 4L;
 
         left = reconciled;
-        right = new CounterColumn(ByteBufferUtil.bytes("x"), cc.create(CounterId.fromInt(2), 2L, 2L, false), 6L, Long.MIN_VALUE);
+        right = new CounterColumn(CellName.wrap("x"), cc.create(CounterId.fromInt(2), 2L, 2L, false), 6L, Long.MIN_VALUE);
 
         reconciled = left.reconcile(right);
         assert reconciled.name().equals(left.name());
@@ -206,15 +207,15 @@ public class CounterColumnTest extends SchemaLoader
         CounterColumn rightCol;
 
         // timestamp
-        leftCol = new CounterColumn(ByteBufferUtil.bytes("x"), 0, 1L);
-        rightCol = new CounterColumn(ByteBufferUtil.bytes("x"), 0, 2L);
+        leftCol = new CounterColumn(CellName.wrap("x"), 0, 1L);
+        rightCol = new CounterColumn(CellName.wrap("x"), 0, 2L);
 
         assert rightCol == leftCol.diff(rightCol);
         assert null     == rightCol.diff(leftCol);
 
         // timestampOfLastDelete
-        leftCol = new CounterColumn(ByteBufferUtil.bytes("x"), 0, 1L, 1L);
-        rightCol = new CounterColumn(ByteBufferUtil.bytes("x"), 0, 1L, 2L);
+        leftCol = new CounterColumn(CellName.wrap("x"), 0, 1L, 1L);
+        rightCol = new CounterColumn(CellName.wrap("x"), 0, 1L, 2L);
 
         assert rightCol == leftCol.diff(rightCol);
         assert null     == rightCol.diff(leftCol);
@@ -226,8 +227,8 @@ public class CounterColumnTest extends SchemaLoader
         left.writeElement(CounterId.fromInt(9), 1L, 0L);
         right = new ContextState(ByteBufferUtil.clone(left.context), 2);
 
-        leftCol  = new CounterColumn(ByteBufferUtil.bytes("x"), left.context,  1L);
-        rightCol = new CounterColumn(ByteBufferUtil.bytes("x"), right.context, 1L);
+        leftCol  = new CounterColumn(CellName.wrap("x"), left.context,  1L);
+        rightCol = new CounterColumn(CellName.wrap("x"), right.context, 1L);
         assert leftCol.diff(rightCol) == null;
 
         // greater than: left has superset of nodes (counts equal)
@@ -242,8 +243,8 @@ public class CounterColumnTest extends SchemaLoader
         right.writeElement(CounterId.fromInt(6), 2L, 0L);
         right.writeElement(CounterId.fromInt(9), 1L, 0L);
 
-        leftCol  = new CounterColumn(ByteBufferUtil.bytes("x"), left.context,  1L);
-        rightCol = new CounterColumn(ByteBufferUtil.bytes("x"), right.context, 1L);
+        leftCol  = new CounterColumn(CellName.wrap("x"), left.context,  1L);
+        rightCol = new CounterColumn(CellName.wrap("x"), right.context, 1L);
         assert leftCol.diff(rightCol) == null;
 
         // less than: right has subset of nodes (counts equal)
@@ -260,8 +261,8 @@ public class CounterColumnTest extends SchemaLoader
         right.writeElement(CounterId.fromInt(6), 1L, 0L);
         right.writeElement(CounterId.fromInt(9), 1L, 0L);
 
-        leftCol  = new CounterColumn(ByteBufferUtil.bytes("x"), left.context,  1L);
-        rightCol = new CounterColumn(ByteBufferUtil.bytes("x"), right.context, 1L);
+        leftCol  = new CounterColumn(CellName.wrap("x"), left.context,  1L);
+        rightCol = new CounterColumn(CellName.wrap("x"), right.context, 1L);
         assert rightCol == leftCol.diff(rightCol);
         assert leftCol  == rightCol.diff(leftCol);
     }
@@ -276,7 +277,7 @@ public class CounterColumnTest extends SchemaLoader
         state.writeElement(CounterId.fromInt(3), 4L, 4L);
         state.writeElement(CounterId.fromInt(4), 4L, 4L, true);
 
-        CounterColumn original = new CounterColumn(ByteBufferUtil.bytes("x"), state.context, 1L);
+        CounterColumn original = new CounterColumn(CellName.wrap("x"), state.context, 1L);
         DataOutputBuffer bufOut = new DataOutputBuffer();
         Column.serializer().serialize(original, bufOut);
         byte[] serialized = bufOut.getData();
@@ -307,8 +308,8 @@ public class CounterColumnTest extends SchemaLoader
         state.writeElement(CounterId.fromInt(3), 4L, 4L);
         state.writeElement(CounterId.fromInt(4), 4L, 4L, true);
 
-        CounterColumn original = new CounterColumn(ByteBufferUtil.bytes("x"), state.context, 1L);
-        CounterColumn cleared = new CounterColumn(ByteBufferUtil.bytes("x"), cc.clearAllDelta(state.context), 1L);
+        CounterColumn original = new CounterColumn(CellName.wrap("x"), state.context, 1L);
+        CounterColumn cleared = new CounterColumn(CellName.wrap("x"), cc.clearAllDelta(state.context), 1L);
 
         original.updateDigest(digest1);
         cleared.updateDigest(digest2);

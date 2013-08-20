@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.io.util.FileUtils;
@@ -105,9 +106,9 @@ public class IndexHelper
      *
      * @return int index
      */
-    public static int indexFor(ByteBuffer name, List<IndexInfo> indexList, AbstractType<?> comparator, boolean reversed, int lastIndex)
+    public static int indexFor(CellName name, List<IndexInfo> indexList, AbstractType<?> comparator, boolean reversed, int lastIndex)
     {
-        if (name.remaining() == 0 && reversed)
+        if (name.bb.remaining() == 0 && reversed)
             return indexList.size() - 1;
 
         if (lastIndex >= indexList.size())
@@ -153,11 +154,11 @@ public class IndexHelper
     public static class IndexInfo
     {
         public final long width;
-        public final ByteBuffer lastName;
-        public final ByteBuffer firstName;
+        public final CellName lastName;
+        public final CellName firstName;
         public final long offset;
 
-        public IndexInfo(ByteBuffer firstName, ByteBuffer lastName, long offset, long width)
+        public IndexInfo(CellName firstName, CellName lastName, long offset, long width)
         {
             this.firstName = firstName;
             this.lastName = lastName;
@@ -167,16 +168,16 @@ public class IndexHelper
 
         public void serialize(DataOutput dos) throws IOException
         {
-            ByteBufferUtil.writeWithShortLength(firstName, dos);
-            ByteBufferUtil.writeWithShortLength(lastName, dos);
+            ByteBufferUtil.writeWithShortLength(firstName.bb, dos);
+            ByteBufferUtil.writeWithShortLength(lastName.bb, dos);
             dos.writeLong(offset);
             dos.writeLong(width);
         }
 
         public int serializedSize(TypeSizes typeSizes)
         {
-            int firstNameSize = firstName.remaining();
-            int lastNameSize = lastName.remaining();
+            int firstNameSize = firstName.bb.remaining();
+            int lastNameSize = lastName.bb.remaining();
             return typeSizes.sizeof((short) firstNameSize) + firstNameSize +
                    typeSizes.sizeof((short) lastNameSize) + lastNameSize +
                    typeSizes.sizeof(offset) + typeSizes.sizeof(width);
@@ -184,7 +185,7 @@ public class IndexHelper
 
         public static IndexInfo deserialize(DataInput dis) throws IOException
         {
-            return new IndexInfo(ByteBufferUtil.readWithShortLength(dis), ByteBufferUtil.readWithShortLength(dis), dis.readLong(), dis.readLong());
+            return new IndexInfo(CellName.wrap(ByteBufferUtil.readWithShortLength(dis)), CellName.wrap(ByteBufferUtil.readWithShortLength(dis)), dis.readLong(), dis.readLong());
         }
 
         public long memorySize()
@@ -195,7 +196,7 @@ public class IndexHelper
                                             ObjectSizes.getReferenceSize() +
                                             TypeSizes.NATIVE.sizeof(offset) +
                                             TypeSizes.NATIVE.sizeof(width))
-                   + ObjectSizes.getSize(firstName) + ObjectSizes.getSize(lastName);
+                   + firstName.memorySize() + lastName.memorySize();
         }
     }
 }

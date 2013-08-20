@@ -59,33 +59,33 @@ public class DecimalTypeTest
         ByteBuffer lowBB = DecimalType.instance.decompose(low);
         ByteBuffer low2BB = DecimalType.instance.decompose(low);
         ByteBuffer highBB = DecimalType.instance.decompose(high);
-        assertEquals(-1, DecimalType.instance.compare(lowBB, highBB));
+        assertEquals(-1, DecimalType.instance.compare(CellName.wrap(lowBB), CellName.wrap(highBB)));
 
         lowBB = DecimalType.instance.decompose(low);
         highBB = DecimalType.instance.decompose(high);
-        assertEquals(1, DecimalType.instance.compare(highBB, lowBB));
+        assertEquals(1, DecimalType.instance.compare(CellName.wrap(highBB), CellName.wrap(lowBB)));
 
         lowBB = DecimalType.instance.decompose(low);
-        assertEquals(0, DecimalType.instance.compare(low2BB, lowBB));
+        assertEquals(0, DecimalType.instance.compare(CellName.wrap(low2BB), CellName.wrap(lowBB)));
 
         lowBB = DecimalType.instance.decompose(low);
-        assertEquals(-1, DecimalType.instance.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER, lowBB));
+        assertEquals(-1, DecimalType.instance.compare(CellName.EMPTY_CELL_NAME, CellName.wrap(lowBB)));
 
         lowBB = DecimalType.instance.decompose(low);
-        assertEquals(1, DecimalType.instance.compare(lowBB,ByteBufferUtil.EMPTY_BYTE_BUFFER));
+        assertEquals(1, DecimalType.instance.compare(CellName.wrap(lowBB),CellName.EMPTY_CELL_NAME));
 
-        assertEquals(0, DecimalType.instance.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER,ByteBufferUtil.EMPTY_BYTE_BUFFER));
+        assertEquals(0, DecimalType.instance.compare(CellName.EMPTY_CELL_NAME,CellName.EMPTY_CELL_NAME));
     }
 
     @Test
     public void test3Sort()
     {
-        ByteBuffer zeroBB = DecimalType.instance.decompose(zero);
-        ByteBuffer minusBB = DecimalType.instance.decompose(minus);
-        ByteBuffer lowBB = DecimalType.instance.decompose(low);
-        ByteBuffer highBB = DecimalType.instance.decompose(high);
+        CellName zeroBB = CellName.wrap(DecimalType.instance.decompose(zero));
+        CellName minusBB = CellName.wrap(DecimalType.instance.decompose(minus));
+        CellName lowBB = CellName.wrap(DecimalType.instance.decompose(low));
+        CellName highBB = CellName.wrap(DecimalType.instance.decompose(high));
 
-        ByteBuffer[] array = {highBB,minusBB,lowBB,lowBB,zeroBB,minusBB};
+        CellName[] array = {highBB,minusBB,lowBB,lowBB,zeroBB,minusBB};
 
         // Sort the array of ByteBuffer using a DecimalType comparator
         Arrays.sort(array, DecimalType.instance);
@@ -93,8 +93,8 @@ public class DecimalTypeTest
         // Check that the array is in order
         for (int i = 1; i < array.length; i++)
         {
-            BigDecimal i0 = DecimalType.instance.compose(array[i - 1]);
-            BigDecimal i1 = DecimalType.instance.compose(array[i]);
+            BigDecimal i0 = DecimalType.instance.compose(array[i - 1].bb);
+            BigDecimal i1 = DecimalType.instance.compose(array[i].bb);
             assertTrue("#" + i, i0.compareTo(i1) <= 0);
         }
     }

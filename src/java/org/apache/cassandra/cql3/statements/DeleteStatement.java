@@ -75,14 +75,14 @@ public class DeleteStatement extends ModificationStatement
         if (!toRemove.isEmpty() && isRange)
             throw new InvalidRequestException(String.format("Missing mandatory PRIMARY KEY part %s since %s specified", firstEmpty, toRemove.get(0).columnName));
 
-        Set<ByteBuffer> toRead = null;
+        Set<CellName> toRead = null;
         for (Operation op : toRemove)
         {
             if (op.requiresRead())
             {
                 if (toRead == null)
-                    toRead = new TreeSet<ByteBuffer>(UTF8Type.instance);
-                toRead.add(op.columnName.key);
+                    toRead = new TreeSet<CellName>(UTF8Type.instance);
+                toRead.add(CellName.wrap(op.columnName.key));
             }
         }
 
@@ -114,8 +114,8 @@ public class DeleteStatement extends ModificationStatement
             if (isRange)
             {
                 assert toRemove.isEmpty();
-                ByteBuffer start = builder.build();
-                ByteBuffer end = builder.buildAsEndOfRange();
+                CellName start = builder.build();
+                CellName end = builder.buildAsEndOfRange();
                 cf.addAtom(params.makeRangeTombstone(start, end));
             }
             else
@@ -123,7 +123,7 @@ public class DeleteStatement extends ModificationStatement
                 // Delete specific columns
                 if (cfDef.isCompact)
                 {
-                    ByteBuffer columnName = builder.build();
+                    CellName columnName = builder.build();
                     cf.addColumn(params.makeTombstone(columnName));
                 }
                 else

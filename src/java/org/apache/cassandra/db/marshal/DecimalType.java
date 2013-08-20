@@ -30,18 +30,21 @@ public class DecimalType extends AbstractType<BigDecimal>
 
     DecimalType() {} // singleton
 
-    public int compare(ByteBuffer bb0, ByteBuffer bb1)
+    public int compare(CellName o1, CellName o2)
     {
-        if (bb0.remaining() == 0)
+        if (o1.isEmpty())
         {
-            return bb1.remaining() == 0 ? 0 : -1;
+            return o2.isEmpty() ? 0 : -1;
         }
-        if (bb1.remaining() == 0)
+        if (o2.isEmpty())
         {
             return 1;
         }
 
-        return compose(bb0).compareTo(compose(bb1));
+        BigDecimal d1 = o1.getOrSetType(this);
+        BigDecimal d2 = o2.getOrSetType(this);
+
+        return d1.compareTo(d2);
     }
 
     public BigDecimal compose(ByteBuffer bytes)

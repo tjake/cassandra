@@ -48,18 +48,21 @@ public class DateType extends AbstractType<Date>
         return JdbcDate.instance.decompose(value);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        if (o1.remaining() == 0)
+        if (o1.isEmpty())
         {
-            return o2.remaining() == 0 ? 0 : -1;
+           return o2.isEmpty() ? 0 : -1;
         }
-        if (o2.remaining() == 0)
+        if (o2.isEmpty())
         {
             return 1;
         }
 
-        return ByteBufferUtil.compareUnsigned(o1, o2);
+        Date d1 = o1.getOrSetType(this);
+        Date d2 = o2.getOrSetType(this);
+
+        return d1.compareTo(d2);
     }
 
     public String getString(ByteBuffer bytes)

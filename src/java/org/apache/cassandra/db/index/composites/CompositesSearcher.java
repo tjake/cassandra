@@ -28,6 +28,7 @@ import org.apache.cassandra.db.index.PerColumnSecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Range;
@@ -118,12 +119,12 @@ public class CompositesSearcher extends SecondaryIndexSearcher
             // For names filter, we have no choice but to query from the beginning of the key. This can be highly inefficient however.
             if (filter.originalFilter() instanceof SliceQueryFilter)
             {
-                ByteBuffer[] components = baseComparator.split(((SliceQueryFilter)filter.originalFilter()).start());
+                ByteBuffer[] components = baseComparator.split(((SliceQueryFilter)filter.originalFilter()).start().bb);
                 for (int i = 0; i < Math.min(prefixSize, components.length); ++i)
                     builder.add(components[i]);
             }
         }
-        final ByteBuffer startPrefix = startKey.remaining() == 0 ? ByteBufferUtil.EMPTY_BYTE_BUFFER : builder.build();
+        final CellName startPrefix = startKey.remaining() == 0 ? CellName.EMPTY_CELL_NAME : builder.build();
 
         if (endKey.remaining() > 0)
         {
@@ -131,12 +132,12 @@ public class CompositesSearcher extends SecondaryIndexSearcher
             // For names filter, we have no choice but to query until the end of the key. This can be highly inefficient however.
             if (filter.originalFilter() instanceof SliceQueryFilter)
             {
-                ByteBuffer[] components = baseComparator.split(((SliceQueryFilter)filter.originalFilter()).finish());
+                ByteBuffer[] components = baseComparator.split(((SliceQueryFilter)filter.originalFilter()).finish().bb);
                 for (int i = 0; i < Math.min(prefixSize, components.length); ++i)
                     builder.add(components[i]);
             }
         }
-        final ByteBuffer endPrefix = endKey.remaining() == 0 ? ByteBufferUtil.EMPTY_BYTE_BUFFER : builder.buildAsEndOfRange();
+        final CellName endPrefix = endKey.remaining() == 0 ? CellName.EMPTY_CELL_NAME : builder.buildAsEndOfRange();
 
         // We will need to filter clustering keys based on the user filter. If
         // it is a names filter, we are really interested on the clustering
@@ -148,8 +149,8 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         }
         else
         {
-            ByteBuffer first = ((NamesQueryFilter)filter.originalFilter()).columns.iterator().next();
-            ByteBuffer[] components = baseComparator.split(first);
+            CellName first = ((NamesQueryFilter)filter.originalFilter()).columns.iterator().next();
+            ByteBuffer[] components = baseComparator.split(first.bb);
             builder = baseComparator.builder();
             // All all except the last component, since it's the column name
             for (int i = 0; i < components.length - 1; i++)
@@ -159,7 +160,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
 
         return new ColumnFamilyStore.AbstractScanIterator()
         {
-            private ByteBuffer lastSeenPrefix = startPrefix;
+            private CellName lastSeenPrefix = startPrefix;
             private Deque<IColumn> indexColumns;
             private final QueryPath path = new QueryPath(baseCfs.columnFamily);
             private int columnsRead = Integer.MAX_VALUE;
@@ -215,7 +216,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
 
                         if (logger.isTraceEnabled())
                             logger.trace("Scanning index {} starting with {}",
-                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), indexComparator.getString(startPrefix));
+                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), indexComparator.getString(startPrefix.bb));
 
                         QueryFilter indexFilter = QueryFilter.getSliceFilter(indexKey,
                                                                              new QueryPath(index.getIndexCfs().getColumnFamilyName()),
@@ -237,7 +238,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                         {
                             // skip the row we already saw w/ the last page of results
                             indexColumns.poll();
-                            logger.trace("Skipping {}", indexComparator.getString(firstColumn.name()));
+                            logger.trace("Skipping {}", indexComparator.getString(firstColumn.name().bb));
                         }
                         else if (range instanceof Range && !indexColumns.isEmpty() && firstColumn.name().equals(startPrefix))
                         {
@@ -257,7 +258,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                             continue;
                         }
 
-                        ByteBuffer[] components = indexComparator.split(lastSeenPrefix);
+                        ByteBuffer[] components = indexComparator.split(lastSeenPrefix.bb);
                         DecoratedKey dk = baseCfs.partitioner.decorateKey(components[0]);
 
                         // Are we done for this row?
@@ -289,7 +290,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                             continue;
                         }
 
-                        logger.trace("Adding index hit to current row for {}", indexComparator.getString(lastSeenPrefix));
+                        logger.trace("Adding index hit to current row for {}", indexComparator.getString(lastSeenPrefix.bb));
                         // For sparse composites, we're good querying the whole logical row
                         // Obviously if this index is used for other usage, that might be inefficient
                         CompositeType.Builder builder = baseComparator.builder();
@@ -297,7 +298,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                             builder.add(components[i + 1]);
 
                         // Does this "row" match the user original filter
-                        ByteBuffer start = builder.copy().build();
+                        CellName start = builder.copy().build();
                         if (!originalFilter.includes(baseComparator, start))
                             continue;
 
@@ -305,7 +306,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                         ColumnFamily newData = baseCfs.getColumnFamily(new QueryFilter(dk, path, dataFilter));
                         if (newData != null)
                         {
-                            ByteBuffer baseColumnName = builder.copy().add(primary.column_name).build();
+                            CellName baseColumnName = builder.copy().add(primary.column_name).build();
                             ByteBuffer indexedValue = indexKey.key;
 
                             if (isIndexValueStale(newData, baseColumnName, indexedValue))

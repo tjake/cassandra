@@ -27,6 +27,7 @@ import java.util.SortedSet;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.SSTableReader;
@@ -41,10 +42,10 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
     private final SSTableReader sstable;
     private FileDataInput fileToClose;
     private Iterator<OnDiskAtom> iter;
-    public final SortedSet<ByteBuffer> columns;
+    public final SortedSet<CellName> columns;
     public final DecoratedKey key;
 
-    public SSTableNamesIterator(SSTableReader sstable, DecoratedKey key, SortedSet<ByteBuffer> columns)
+    public SSTableNamesIterator(SSTableReader sstable, DecoratedKey key, SortedSet<CellName> columns)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -71,7 +72,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         }
     }
 
-    public SSTableNamesIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<ByteBuffer> columns, RowIndexEntry indexEntry)
+    public SSTableNamesIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<CellName> columns, RowIndexEntry indexEntry)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -175,7 +176,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         iter = result.iterator();
     }
 
-    private void readSimpleColumns(FileDataInput file, SortedSet<ByteBuffer> columnNames, List<OnDiskAtom> result) throws IOException
+    private void readSimpleColumns(FileDataInput file, SortedSet<CellName> columnNames, List<OnDiskAtom> result) throws IOException
     {
         OnDiskAtom.Serializer atomSerializer = cf.getOnDiskSerializer();
         int count = file.readInt();
@@ -201,7 +202,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
 
     private void readIndexedColumns(CFMetaData metadata,
                                     FileDataInput file,
-                                    SortedSet<ByteBuffer> columnNames,
+                                    SortedSet<CellName> columnNames,
                                     List<IndexHelper.IndexInfo> indexList,
                                     long basePosition,
                                     List<OnDiskAtom> result)
@@ -211,7 +212,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator implement
         AbstractType<?> comparator = metadata.comparator;
         List<IndexHelper.IndexInfo> ranges = new ArrayList<IndexHelper.IndexInfo>();
         int lastIndexIdx = -1;
-        for (ByteBuffer name : columns)
+        for (CellName name : columns)
         {
             int index = IndexHelper.indexFor(name, indexList, comparator, false, lastIndexIdx);
             if (index < 0 || index == indexList.size())

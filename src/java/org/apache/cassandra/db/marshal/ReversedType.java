@@ -57,18 +57,8 @@ public class ReversedType<T> extends AbstractType<T>
         this.baseType = baseType;
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        // An empty byte buffer is always smaller
-        if (o1.remaining() == 0)
-        {
-            return o2.remaining() == 0 ? 0 : -1;
-        }
-        if (o2.remaining() == 0)
-        {
-            return 1;
-        }
-
         return baseType.compare(o2, o1);
     }
 

@@ -28,6 +28,7 @@ import java.util.concurrent.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -393,12 +394,12 @@ public class MigrationManager implements IEndpointStateChangeSubscriber
         DecoratedKey dkey = StorageService.getPartitioner().decorateKey(LAST_MIGRATION_KEY);
         Table defs = Table.open(Table.SYSTEM_KS);
         ColumnFamilyStore cfStore = defs.getColumnFamilyStore(DefsTable.OLD_SCHEMA_CF);
-        QueryFilter filter = QueryFilter.getNamesFilter(dkey, new QueryPath(DefsTable.OLD_SCHEMA_CF), LAST_MIGRATION_KEY);
+        QueryFilter filter = QueryFilter.getNamesFilter(dkey, new QueryPath(DefsTable.OLD_SCHEMA_CF), CellName.wrap(LAST_MIGRATION_KEY));
         ColumnFamily cf = cfStore.getColumnFamily(filter);
         if (cf == null || cf.getColumnNames().size() == 0)
             return null;
         else
-            return UUIDGen.getUUID(cf.getColumn(LAST_MIGRATION_KEY).value());
+            return UUIDGen.getUUID(cf.getColumn(CellName.wrap(LAST_MIGRATION_KEY)).value());
     }
 
     public static class MigrationsSerializer implements IVersionedSerializer<Collection<RowMutation>>

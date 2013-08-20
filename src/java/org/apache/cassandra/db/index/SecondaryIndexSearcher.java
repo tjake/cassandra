@@ -22,6 +22,7 @@ import java.util.*;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.thrift.IndexExpression;
 
@@ -45,13 +46,13 @@ public abstract class SecondaryIndexSearcher
      */
     public abstract boolean isIndexing(List<IndexExpression> clause);
     
-    protected boolean isIndexValueStale(ColumnFamily liveData, ByteBuffer indexedColumnName, ByteBuffer indexedValue)
+    protected boolean isIndexValueStale(ColumnFamily liveData, CellName indexedColumnName, ByteBuffer indexedValue)
     {
         IColumn liveColumn = liveData.getColumn(indexedColumnName);
         if (liveColumn == null || liveColumn.isMarkedForDelete())
             return true;
         
         ByteBuffer liveValue = liveColumn.value();
-        return 0 != liveData.metadata().getValueValidator(indexedColumnName).compare(indexedValue, liveValue);
+        return 0 != liveData.metadata().getValueValidator(indexedColumnName.bb).compare(CellName.wrap(indexedValue), CellName.wrap(liveValue));
     }
 }

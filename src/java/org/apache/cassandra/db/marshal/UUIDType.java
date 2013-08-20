@@ -48,6 +48,12 @@ public class UUIDType extends AbstractType<UUID>
     {
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        //No magic here
+        return compare(o1.bb,o2.bb);
+    }
+
     public int compare(ByteBuffer b1, ByteBuffer b2)
     {
 

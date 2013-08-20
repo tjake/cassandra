@@ -176,8 +176,8 @@ public class SSTableExport
             assert column instanceof RangeTombstone;
             RangeTombstone rt = (RangeTombstone)column;
             ArrayList<Object> serializedColumn = new ArrayList<Object>();
-            serializedColumn.add(comparator.getString(rt.min));
-            serializedColumn.add(comparator.getString(rt.max));
+            serializedColumn.add(comparator.getString(rt.min.bb));
+            serializedColumn.add(comparator.getString(rt.max.bb));
             serializedColumn.add(rt.data.markedForDeleteAt);
             serializedColumn.add("t");
             serializedColumn.add(rt.data.localDeletionTime);
@@ -198,7 +198,7 @@ public class SSTableExport
     {
         ArrayList<Object> serializedColumn = new ArrayList<Object>();
 
-        ByteBuffer name = ByteBufferUtil.clone(column.name());
+        ByteBuffer name = ByteBufferUtil.clone(column.name().bb);
         ByteBuffer value = ByteBufferUtil.clone(column.value());
 
         serializedColumn.add(comparator.getString(name));
@@ -208,7 +208,7 @@ public class SSTableExport
         }
         else
         {
-            AbstractType<?> validator = cfMetaData.getValueValidator(cfMetaData.getColumnDefinitionFromColumnName(name));
+            AbstractType<?> validator = cfMetaData.getValueValidator(cfMetaData.getColumnDefinitionFromColumnName(column.name()));
             serializedColumn.add(validator.getString(value));
         }
         serializedColumn.add(column.timestamp());
@@ -262,7 +262,7 @@ public class SSTableExport
                 SuperColumn scol = (SuperColumn)row.next();
                 assert scol instanceof IColumn;
                 IColumn column = (IColumn)scol;
-                writeKey(out, comparator.getString(column.name()));
+                writeKey(out, comparator.getString(column.name().bb));
                 out.print("{");
                 writeMeta(out, scol);
                 writeKey(out, "subColumns");

@@ -30,6 +30,7 @@ import javax.management.*;
 
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Futures;
+import org.apache.cassandra.db.marshal.CellName;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,7 +95,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     public final SecondaryIndexManager indexManager;
 
     private static final int INTERN_CUTOFF = 256;
-    public final ConcurrentMap<ByteBuffer, ByteBuffer> internedNames = new NonBlockingHashMap<ByteBuffer, ByteBuffer>();
+    public final ConcurrentMap<CellName, CellName> internedNames = new NonBlockingHashMap<CellName, CellName>();
 
     /* These are locally held copies to be changed from the config during runtime */
     private volatile DefaultInteger minCompactionThreshold;
@@ -1109,7 +1110,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return metric.writeLatency.recentLatencyHistogram.getBuckets(true);
     }
 
-    public ColumnFamily getColumnFamily(DecoratedKey key, QueryPath path, ByteBuffer start, ByteBuffer finish, boolean reversed, int limit)
+    public ColumnFamily getColumnFamily(DecoratedKey key, QueryPath path, CellName start, CellName finish, boolean reversed, int limit)
     {
         return getColumnFamily(QueryFilter.getSliceFilter(key, path, start, finish, reversed, limit));
     }
@@ -1406,14 +1407,14 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
       * @param range Either a Bounds, which includes start key, or a Range, which does not.
       * @param columnFilter description of the columns we're interested in for each row
      */
-    public AbstractScanIterator getSequentialIterator(ByteBuffer superColumn, final AbstractBounds<RowPosition> range, IDiskAtomFilter columnFilter)
+    public AbstractScanIterator getSequentialIterator(CellName superColumn, final AbstractBounds<RowPosition> range, IDiskAtomFilter columnFilter)
     {
         assert !(range instanceof Range) || !((Range)range).isWrapAround() || range.right.isMinimum() : range;
 
         final RowPosition startWith = range.left;
         final RowPosition stopAt = range.right;
 
-        QueryFilter filter = new QueryFilter(null, new QueryPath(columnFamily, superColumn, null), columnFilter);
+        QueryFilter filter = new QueryFilter(null, new QueryPath(columnFamily, superColumn == null ? null : superColumn.bb, null), columnFilter);
 
         final ViewFragment view = markReferenced(range);
         Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), range.getString(metadata.getKeyValidator()));
@@ -1465,12 +1466,12 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
-    public List<Row> getRangeSlice(ByteBuffer superColumn, final AbstractBounds<RowPosition> range, int maxResults, IDiskAtomFilter columnFilter, List<IndexExpression> rowFilter)
+    public List<Row> getRangeSlice(CellName superColumn, final AbstractBounds<RowPosition> range, int maxResults, IDiskAtomFilter columnFilter, List<IndexExpression> rowFilter)
     {
         return getRangeSlice(superColumn, range, maxResults, columnFilter, rowFilter, false, false);
     }
 
-    public List<Row> getRangeSlice(ByteBuffer superColumn, final AbstractBounds<RowPosition> range, int maxResults, IDiskAtomFilter columnFilter, List<IndexExpression> rowFilter, boolean countCQL3Rows, boolean isPaging)
+    public List<Row> getRangeSlice(CellName superColumn, final AbstractBounds<RowPosition> range, int maxResults, IDiskAtomFilter columnFilter, List<IndexExpression> rowFilter, boolean countCQL3Rows, boolean isPaging)
     {
         return filter(getSequentialIterator(superColumn, range, columnFilter), ExtendedFilter.create(this, columnFilter, rowFilter, maxResults, countCQL3Rows, isPaging));
     }
@@ -1933,28 +1934,28 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return partitioner instanceof LocalPartitioner;
     }
 
-    private ByteBuffer intern(ByteBuffer name)
+    private CellName intern(CellName name)
     {
-        ByteBuffer internedName = internedNames.get(name);
+        CellName internedName = internedNames.get(name);
         if (internedName == null)
         {
-            internedName = ByteBufferUtil.clone(name);
-            ByteBuffer concurrentName = internedNames.putIfAbsent(internedName, internedName);
+            internedName = CellName.wrap(ByteBufferUtil.clone(name.bb));
+            CellName concurrentName = internedNames.putIfAbsent(internedName, internedName);
             if (concurrentName != null)
                 internedName = concurrentName;
         }
         return internedName;
     }
 
-    public ByteBuffer internOrCopy(ByteBuffer name, Allocator allocator)
+    public CellName internOrCopy(CellName name, Allocator allocator)
     {
         if (internedNames.size() >= INTERN_CUTOFF)
-            return allocator.clone(name);
+            return CellName.wrap(allocator.clone(name.bb));
 
         return intern(name);
     }
 
-    public ByteBuffer maybeIntern(ByteBuffer name)
+    public CellName maybeIntern(CellName name)
     {
         if (internedNames.size() >= INTERN_CUTOFF)
             return null;

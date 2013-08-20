@@ -30,6 +30,7 @@ import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.util.DiskAwareRunnable;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.github.jamm.MemoryMeter;
@@ -370,7 +371,7 @@ public class Memtable
 
         return new SimpleAbstractColumnIterator()
         {
-            private Iterator<ByteBuffer> iter = filter.columns.iterator();
+            private Iterator<CellName> iter = filter.columns.iterator();
 
             public ColumnFamily getColumnFamily()
             {
@@ -386,7 +387,7 @@ public class Memtable
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer current = iter.next();
+                    CellName current = iter.next();
                     IColumn column = cf.getColumn(current);
                     if (column != null)
                         // clone supercolumns so caller can freely removeDeleted or otherwise mutate it

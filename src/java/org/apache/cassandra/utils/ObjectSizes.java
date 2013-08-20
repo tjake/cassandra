@@ -97,6 +97,7 @@ public class ObjectSizes
         return getArraySize(bytes.length, 1);
     }
 
+
     /**
      * Memory a byte buffer consumes
      * @param buffer ByteBuffer to calculate in memory size

@@ -23,6 +23,7 @@ import java.security.MessageDigest;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.io.IColumnSerializer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -47,12 +48,12 @@ public class ExpiringColumn extends Column
     private final int localExpirationTime;
     private final int timeToLive;
 
-    public ExpiringColumn(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive)
+    public ExpiringColumn(CellName name, ByteBuffer value, long timestamp, int timeToLive)
     {
       this(name, value, timestamp, timeToLive, (int) (System.currentTimeMillis() / 1000) + timeToLive);
     }
 
-    public ExpiringColumn(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime)
+    public ExpiringColumn(CellName name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime)
     {
         super(name, value, timestamp);
         assert timeToLive > 0 : timeToLive;
@@ -62,7 +63,7 @@ public class ExpiringColumn extends Column
     }
 
     /** @return Either a DeletedColumn, or an ExpiringColumn. */
-    public static Column create(ByteBuffer name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime, int expireBefore, IColumnSerializer.Flag flag)
+    public static Column create(CellName name, ByteBuffer value, long timestamp, int timeToLive, int localExpirationTime, int expireBefore, IColumnSerializer.Flag flag)
     {
         if (localExpirationTime >= expireBefore || flag == IColumnSerializer.Flag.PRESERVE_SIZE)
             return new ExpiringColumn(name, value, timestamp, timeToLive, localExpirationTime);
@@ -95,7 +96,7 @@ public class ExpiringColumn extends Column
     @Override
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.bb.duplicate());
         digest.update(value.duplicate());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -127,9 +128,9 @@ public class ExpiringColumn extends Column
     @Override
     public IColumn localCopy(ColumnFamilyStore cfs, Allocator allocator)
     {
-        ByteBuffer clonedName = cfs.maybeIntern(name);
+        CellName clonedName = cfs.maybeIntern(name);
         if (clonedName == null)
-            clonedName = allocator.clone(name);
+            clonedName = CellName.wrap(allocator.clone(name.bb));
         return new ExpiringColumn(clonedName, allocator.clone(value), timestamp, timeToLive, localExpirationTime);
     }
 

@@ -28,6 +28,7 @@ import org.apache.cassandra.db.index.PerColumnSecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.thrift.IndexExpression;
@@ -102,12 +103,12 @@ public class KeysSearcher extends SecondaryIndexSearcher
          * possible key having a given token. A fix would be to actually store the token along the key in the
          * indexed row.
          */
-        final ByteBuffer startKey = range.left instanceof DecoratedKey ? ((DecoratedKey)range.left).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
-        final ByteBuffer endKey = range.right instanceof DecoratedKey ? ((DecoratedKey)range.right).key : ByteBufferUtil.EMPTY_BYTE_BUFFER;
+        final CellName startKey = range.left instanceof DecoratedKey ? CellName.wrap(((DecoratedKey)range.left).key) : CellName.EMPTY_CELL_NAME;
+        final CellName endKey = range.right instanceof DecoratedKey ? CellName.wrap(((DecoratedKey)range.right).key) : CellName.EMPTY_CELL_NAME;
 
         return new ColumnFamilyStore.AbstractScanIterator()
         {
-            private ByteBuffer lastSeenKey = startKey;
+            private CellName lastSeenKey = startKey;
             private Iterator<IColumn> indexColumns;
             private final QueryPath path = new QueryPath(baseCfs.columnFamily);
             private int columnsRead = Integer.MAX_VALUE;
@@ -129,7 +130,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
 
                         if (logger.isTraceEnabled() && (index instanceof AbstractSimplePerColumnSecondaryIndex))
                             logger.trace("Scanning index {} starting with {}",
-                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), index.getBaseCfs().metadata.getKeyValidator().getString(startKey));
+                                         ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), index.getBaseCfs().metadata.getKeyValidator().getString(startKey.bb));
 
                         QueryFilter indexFilter = QueryFilter.getSliceFilter(indexKey,
                                                                              new QueryPath(index.getIndexCfs().getColumnFamilyName()),
@@ -155,7 +156,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
                         {
                             // skip the row we already saw w/ the last page of results
                             indexColumns.next();
-                            logger.trace("Skipping {}", baseCfs.metadata.getKeyValidator().getString(firstColumn.name()));
+                            logger.trace("Skipping {}", baseCfs.metadata.getKeyValidator().getString(firstColumn.name().bb));
                         }
                         else if (range instanceof Range && indexColumns.hasNext() && firstColumn.name().equals(startKey))
                         {
@@ -175,7 +176,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
                             continue;
                         }
 
-                        DecoratedKey dk = baseCfs.partitioner.decorateKey(lastSeenKey);
+                        DecoratedKey dk = baseCfs.partitioner.decorateKey(lastSeenKey.bb);
                         if (!range.right.isMinimum(baseCfs.partitioner) && range.right.compareTo(dk) < 0)
                         {
                             logger.trace("Reached end of assigned scan range");
@@ -203,10 +204,10 @@ public class KeysSearcher extends SecondaryIndexSearcher
                                 data.addAll(cf, HeapAllocator.instance);
                         }
                         
-                        if (isIndexValueStale(data, primary.column_name, indexKey.key))
+                        if (isIndexValueStale(data, CellName.wrap(primary.column_name), indexKey.key))
                         {
                             // delete the index entry w/ its own timestamp
-                            IColumn dummyColumn = new Column(primary.column_name, indexKey.key, column.timestamp());
+                            IColumn dummyColumn = new Column(CellName.wrap(primary.column_name), indexKey.key, column.timestamp());
                             ((PerColumnSecondaryIndex)index).delete(dk.key, dummyColumn);
                             continue;
                         }

@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 
+import org.apache.cassandra.db.marshal.*;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,10 +35,6 @@ import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.index.keys.KeysIndex;
 import org.apache.cassandra.db.index.composites.CompositesIndex;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.marshal.CompositeType;
-import org.apache.cassandra.db.marshal.LocalByPartionerType;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.io.sstable.ReducingKeyIterator;
 import org.apache.cassandra.io.sstable.SSTableReader;
@@ -114,13 +111,13 @@ public abstract class SecondaryIndex
     public void setIndexBuilt()
     {
         for (ColumnDefinition columnDef : columnDefs)
-            SystemTable.setIndexBuilt(baseCfs.table.name, getNameForSystemTable(columnDef.name));
+            SystemTable.setIndexBuilt(baseCfs.table.name, getNameForSystemTable(columnDef.name.bb));
     }
 
     public void setIndexRemoved()
     {
         for (ColumnDefinition columnDef : columnDefs)
-            SystemTable.setIndexRemoved(baseCfs.table.name, getNameForSystemTable(columnDef.name));
+            SystemTable.setIndexRemoved(baseCfs.table.name, getNameForSystemTable(columnDef.name.bb));
     }
 
     /**
@@ -215,7 +212,7 @@ public abstract class SecondaryIndex
         boolean allAreBuilt = true;
         for (ColumnDefinition cdef : columnDefs)
         {
-            if (!SystemTable.isIndexBuilt(baseCfs.table.name, getNameForSystemTable(cdef.name)))
+            if (!SystemTable.isIndexBuilt(baseCfs.table.name, getNameForSystemTable(cdef.name.bb)))
             {
                 allAreBuilt = false;
                 break;
@@ -290,7 +287,7 @@ public abstract class SecondaryIndex
     public DecoratedKey getIndexKeyFor(ByteBuffer value)
     {
         // FIXME: this imply one column definition per index
-        ByteBuffer name = columnDefs.iterator().next().name;
+        CellName name = columnDefs.iterator().next().name;
         return new DecoratedKey(new LocalToken(baseCfs.metadata.getColumnDefinition(name).getValidator(), value), value);
     }
 
@@ -304,7 +301,7 @@ public abstract class SecondaryIndex
     {
         for (ColumnDefinition columnDef : columnDefs)
         {
-            if (baseCfs.getComparator().compare(columnDef.name, name) == 0)
+            if (baseCfs.getComparator().compare(columnDef.name, CellName.wrap(name)) == 0)
                 return true;
         }
         return false;

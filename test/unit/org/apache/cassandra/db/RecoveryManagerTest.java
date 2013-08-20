@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.cassandra.Util;
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -83,7 +84,7 @@ public class RecoveryManagerTest extends SchemaLoader
         {
             rm = new RowMutation("Keyspace1", dk.key);
             cf = ColumnFamily.create("Keyspace1", "Counter1");
-            cf.addColumn(new CounterColumn(ByteBufferUtil.bytes("col"), 1L, 1L));
+            cf.addColumn(new CounterColumn(CellName.wrap("col"), 1L, 1L));
             rm.add(cf);
             rm.apply();
         }
@@ -96,7 +97,7 @@ public class RecoveryManagerTest extends SchemaLoader
         cf = Util.getColumnFamily(table1, dk, "Counter1");
 
         assert cf.getColumnCount() == 1;
-        IColumn c = cf.getColumn(ByteBufferUtil.bytes("col"));
+        IColumn c = cf.getColumn(CellName.wrap("col"));
 
         assert c != null;
         assert ((CounterColumn)c).total() == 10L;

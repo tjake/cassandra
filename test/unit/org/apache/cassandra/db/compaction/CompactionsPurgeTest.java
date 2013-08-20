@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutionException;
 
 import junit.framework.Assert;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -91,7 +92,7 @@ public class CompactionsPurgeTest extends SchemaLoader
         cfs.invalidateCachedRow(key);
         ColumnFamily cf = cfs.getColumnFamily(QueryFilter.getIdentityFilter(key, new QueryPath(cfName)));
         assertColumns(cf, "5");
-        assert cf.getColumn(ByteBufferUtil.bytes(String.valueOf(5))) != null;
+        assert cf.getColumn(CellName.wrap(String.valueOf(5))) != null;
     }
 
     @Test
@@ -184,7 +185,7 @@ public class CompactionsPurgeTest extends SchemaLoader
         // we should have both the c1 and c2 tombstones still, since the c2 timestamp is older than the c1 tombstone
         // so it would be invalid to assume we can throw out the c1 entry.
         ColumnFamily cf = cfs.getColumnFamily(QueryFilter.getIdentityFilter(key3, new QueryPath(cfName)));
-        Assert.assertFalse(cf.getColumn(ByteBufferUtil.bytes("c2")).isLive());
+        Assert.assertFalse(cf.getColumn(CellName.wrap("c2")).isLive());
         Assert.assertEquals(2, cf.getColumnCount());
     }
 
@@ -360,7 +361,7 @@ public class CompactionsPurgeTest extends SchemaLoader
 
         // Check that the second insert did went in
         ColumnFamily cf = cfs.getColumnFamily(QueryFilter.getIdentityFilter(key, new QueryPath(cfName)));
-        SuperColumn sc = (SuperColumn)cf.getColumn(scName);
+        SuperColumn sc = (SuperColumn)cf.getColumn(CellName.wrap(scName));
         assert sc != null;
         assertEquals(10, sc.getColumnCount());
     }

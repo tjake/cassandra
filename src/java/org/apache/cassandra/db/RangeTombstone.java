@@ -26,6 +26,7 @@ import java.util.*;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.io.ISSTableSerializer;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -33,21 +34,21 @@ import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Interval;
 
-public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implements OnDiskAtom
+public class RangeTombstone extends Interval<CellName, DeletionTime> implements OnDiskAtom
 {
     public static final Serializer serializer = new Serializer();
 
-    public RangeTombstone(ByteBuffer start, ByteBuffer stop, long markedForDeleteAt, int localDeletionTime)
+    public RangeTombstone(CellName start, CellName stop, long markedForDeleteAt, int localDeletionTime)
     {
         this(start, stop, new DeletionTime(markedForDeleteAt, localDeletionTime));
     }
 
-    public RangeTombstone(ByteBuffer start, ByteBuffer stop, DeletionTime delTime)
+    public RangeTombstone(CellName start, CellName stop, DeletionTime delTime)
     {
         super(start, stop, delTime);
     }
 
-    public ByteBuffer name()
+    public CellName name()
     {
         return min;
     }
@@ -75,23 +76,23 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
     public long serializedSizeForSSTable()
     {
         TypeSizes typeSizes = TypeSizes.NATIVE;
-        return typeSizes.sizeof((short)min.remaining()) + min.remaining()
+        return typeSizes.sizeof((short)min.bb.remaining()) + min.bb.remaining()
              + 1 // serialization flag
-             + typeSizes.sizeof((short)max.remaining()) + max.remaining()
+             + typeSizes.sizeof((short)max.bb.remaining()) + max.bb.remaining()
              + DeletionTime.serializer.serializedSize(data, typeSizes);
     }
 
     public void validateFields(CFMetaData metadata) throws MarshalException
     {
         AbstractType<?> nameValidator = metadata.cfType == ColumnFamilyType.Super ? metadata.subcolumnComparator : metadata.comparator;
-        nameValidator.validate(min);
-        nameValidator.validate(max);
+        nameValidator.validate(min.bb);
+        nameValidator.validate(max.bb);
     }
 
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(min.duplicate());
-        digest.update(max.duplicate());
+        digest.update(min.bb.duplicate());
+        digest.update(max.bb.duplicate());
         DataOutputBuffer buffer = new DataOutputBuffer();
         try
         {
@@ -108,7 +109,7 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
      * This tombstone supersedes another one if it is more recent and cover a
      * bigger range than rt.
      */
-    public boolean supersedes(RangeTombstone rt, Comparator<ByteBuffer> comparator)
+    public boolean supersedes(RangeTombstone rt, Comparator<CellName> comparator)
     {
         if (rt.data.markedForDeleteAt > data.markedForDeleteAt)
             return false;
@@ -118,7 +119,7 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
 
     public static class Tracker
     {
-        private final Comparator<ByteBuffer> comparator;
+        private final Comparator<CellName> comparator;
         private final Deque<RangeTombstone> ranges = new ArrayDeque<RangeTombstone>();
         private final SortedSet<RangeTombstone> maxOrderingSet = new TreeSet<RangeTombstone>(new Comparator<RangeTombstone>()
         {
@@ -129,7 +130,7 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
         });
         private int atomCount;
 
-        public Tracker(Comparator<ByteBuffer> comparator)
+        public Tracker(Comparator<CellName> comparator)
         {
             this.comparator = comparator;
         }
@@ -254,9 +255,9 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
     {
         public void serializeForSSTable(RangeTombstone t, DataOutput dos) throws IOException
         {
-            ByteBufferUtil.writeWithShortLength(t.min, dos);
+            ByteBufferUtil.writeWithShortLength(t.min.bb, dos);
             dos.writeByte(ColumnSerializer.RANGE_TOMBSTONE_MASK);
-            ByteBufferUtil.writeWithShortLength(t.max, dos);
+            ByteBufferUtil.writeWithShortLength(t.max.bb, dos);
             DeletionTime.serializer.serialize(t.data, dos);
         }
 
@@ -278,7 +279,7 @@ public class RangeTombstone extends Interval<ByteBuffer, DeletionTime> implement
                 throw ColumnSerializer.CorruptColumnException.create(dis, max);
 
             DeletionTime dt = DeletionTime.serializer.deserialize(dis);
-            return new RangeTombstone(min, max, dt);
+            return new RangeTombstone(CellName.wrap(min), CellName.wrap(max), dt);
         }
     }
 }

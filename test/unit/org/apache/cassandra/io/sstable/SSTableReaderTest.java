@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.*;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -270,7 +271,7 @@ public class SSTableReaderTest extends SchemaLoader
                 firstKey = key;
             if (lastKey == null)
                 lastKey = key;
-            if (store.metadata.getKeyValidator().compare(lastKey.key, key.key) < 0)
+            if (store.metadata.getKeyValidator().compare(CellName.wrap(lastKey.key), CellName.wrap(key.key)) < 0)
                 lastKey = key;
             RowMutation rm = new RowMutation(ks, key.key);
             rm.add(new QueryPath(cf, null, ByteBufferUtil.bytes("col")),

@@ -57,6 +57,11 @@ public class LocalByPartionerType<T extends Token> extends AbstractType<ByteBuff
         throw new NotImplementedException();
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        return compare(o1.bb,o2.bb);
+    }
+
     public int compare(ByteBuffer o1, ByteBuffer o2)
     {
         // o1 and o2 can be empty so we need to use RowPosition, not DecoratedKey

@@ -26,6 +26,7 @@ import java.util.concurrent.Future;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
@@ -183,12 +184,12 @@ public class LongCompactionsTest extends SchemaLoader
             }
             cfs.forceBlockingFlush();
             CompactionsTest.assertMaxTimestamp(cfs, maxTimestampExpected);
-            assertEquals(inserted.toString(), inserted.size(), Util.getRangeSlice(cfs, superColumn).size());
+            assertEquals(inserted.toString(), inserted.size(), Util.getRangeSlice(cfs, CellName.wrap(superColumn)).size());
         }
 
         forceCompactions(cfs);
 
-        assertEquals(inserted.size(), Util.getRangeSlice(cfs, superColumn).size());
+        assertEquals(inserted.size(), Util.getRangeSlice(cfs, CellName.wrap(superColumn)).size());
 
         // make sure max timestamp of compacted sstables is recorded properly after compaction.
         CompactionsTest.assertMaxTimestamp(cfs, maxTimestampExpected);

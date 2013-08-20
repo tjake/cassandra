@@ -329,7 +329,7 @@ public class DynamicCompositeType extends AbstractCompositeType
             this.cmp = cmp;
         }
 
-        public int compare(ByteBuffer v1, ByteBuffer v2)
+        public int compare(CellName v1, CellName v2)
         {
             return cmp;
         }

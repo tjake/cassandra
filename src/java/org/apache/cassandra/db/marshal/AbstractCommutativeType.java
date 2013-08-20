@@ -42,5 +42,5 @@ public abstract class AbstractCommutativeType extends AbstractType<Long>
     /**
      * create commutative column
      */
-    public abstract Column createColumn(ByteBuffer name, ByteBuffer value, long timestamp);
+    public abstract Column createColumn(CellName name, ByteBuffer value, long timestamp);
 }

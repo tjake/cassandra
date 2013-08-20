@@ -20,6 +20,7 @@ package org.apache.cassandra.thrift;
  *
  */
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -71,7 +72,7 @@ public class ThriftValidationTest extends SchemaLoader
         assert !gotException : "got unexpected ConfigurationException";
 
         // add a column with name = "id"
-        newMetadata.addColumnDefinition(new ColumnDefinition(ByteBufferUtil.bytes("id"), UTF8Type.instance, null, null, null, null));
+        newMetadata.addColumnDefinition(new ColumnDefinition(CellName.wrap("id"), UTF8Type.instance, null, null, null, null));
 
         gotException = false;
 

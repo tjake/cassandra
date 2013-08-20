@@ -173,7 +173,7 @@ public class SecondaryIndexManager
 
     public boolean indexes(IColumn column)
     {
-        return indexes(column.name());
+        return indexes(column.name().bb);
     }
 
     public boolean indexes(ByteBuffer name)
@@ -239,7 +239,7 @@ public class SecondaryIndexManager
     public synchronized Future<?> addIndexedColumn(ColumnDefinition cdef)
     {
 
-        if (indexesByColumn.containsKey(cdef.name))
+        if (indexesByColumn.containsKey(cdef.name.bb))
             return null;
 
         assert cdef.getIndexType() != null;
@@ -282,11 +282,11 @@ public class SecondaryIndexManager
         // so we don't have to lock everything while we do the build. it's up to
         // the operator to wait
         // until the index is actually built before using in queries.
-        indexesByColumn.put(cdef.name, index);
+        indexesByColumn.put(cdef.name.bb, index);
 
         // if we're just linking in the index to indexedColumns on an
         // already-built index post-restart, we're done
-        if (index.isIndexBuilt(cdef.name))
+        if (index.isIndexBuilt(cdef.name.bb))
             return null;
 
         return index.buildIndexAsync();
@@ -435,7 +435,7 @@ public class SecondaryIndexManager
             {
                 for (IColumn column : cf)
                 {
-                    if (index.indexes(column.name()))
+                    if (index.indexes(column.name().bb))
                         ((PerColumnSecondaryIndex) index).insert(key, column);
                 }
             }
@@ -455,7 +455,7 @@ public class SecondaryIndexManager
 
         for (IColumn column : indexedColumnsInRow)
         {
-            SecondaryIndex index = indexesByColumn.get(column.name());
+            SecondaryIndex index = indexesByColumn.get(column.name().bb);
             if (index == null)
                 continue;
 
@@ -606,7 +606,7 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
+            SecondaryIndex index = indexFor(column.name().bb);
             if (index == null)
                 return;
 
@@ -619,7 +619,7 @@ public class SecondaryIndexManager
             if (oldColumn.equals(column))
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
+            SecondaryIndex index = indexFor(column.name().bb);
             if (index == null)
                 return;
 
@@ -638,7 +638,7 @@ public class SecondaryIndexManager
             if (column.isMarkedForDelete())
                 return;
 
-            SecondaryIndex index = indexFor(column.name());
+            SecondaryIndex index = indexFor(column.name().bb);
             if (index == null)
                 return;
 

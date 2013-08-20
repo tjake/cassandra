@@ -24,6 +24,7 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -45,7 +46,7 @@ public class MeteredFlusherTest extends SchemaLoader
             MigrationManager.announceNewColumnFamily(metadata);
         }
 
-        ByteBuffer name = ByteBufferUtil.bytes("c");
+        CellName name = CellName.wrap("c");
         for (int j = 0; j < 200; j++)
         {
             for (int i = 0; i < 100; i++)

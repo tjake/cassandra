@@ -27,6 +27,7 @@ import edu.stanford.ppl.concurrent.SnapTreeMap;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Allocator;
 
 
@@ -58,7 +59,7 @@ public class AtomicSortedColumns implements ISortedColumns
             return new AtomicSortedColumns(comparator);
         }
 
-        public ISortedColumns fromSorted(SortedMap<ByteBuffer, IColumn> sortedMap, boolean insertReversed)
+        public ISortedColumns fromSorted(SortedMap<CellName, IColumn> sortedMap, boolean insertReversed)
         {
             return new AtomicSortedColumns(sortedMap);
         }
@@ -74,7 +75,7 @@ public class AtomicSortedColumns implements ISortedColumns
         this(new Holder(comparator));
     }
 
-    private AtomicSortedColumns(SortedMap<ByteBuffer, IColumn> columns)
+    private AtomicSortedColumns(SortedMap<CellName, IColumn> columns)
     {
         this(new Holder(columns));
     }
@@ -229,7 +230,7 @@ public class AtomicSortedColumns implements ISortedColumns
         return replaced;
     }
 
-    public void removeColumn(ByteBuffer name)
+    public void removeColumn(CellName name)
     {
         Holder current, modified;
         do
@@ -252,12 +253,12 @@ public class AtomicSortedColumns implements ISortedColumns
         while (!ref.compareAndSet(current, modified));
     }
 
-    public IColumn getColumn(ByteBuffer name)
+    public IColumn getColumn(CellName name)
     {
         return ref.get().map.get(name);
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         return ref.get().map.keySet();
     }
@@ -313,20 +314,20 @@ public class AtomicSortedColumns implements ISortedColumns
         // so we can safely alias one DeletionInfo.live() reference and avoid some allocations.
         private static final DeletionInfo LIVE = DeletionInfo.live();
 
-        final SnapTreeMap<ByteBuffer, IColumn> map;
+        final SnapTreeMap<CellName, IColumn> map;
         final DeletionInfo deletionInfo;
 
         Holder(AbstractType<?> comparator)
         {
-            this(new SnapTreeMap<ByteBuffer, IColumn>(comparator), LIVE);
+            this(new SnapTreeMap<CellName, IColumn>(comparator), LIVE);
         }
 
-        Holder(SortedMap<ByteBuffer, IColumn> columns)
+        Holder(SortedMap<CellName, IColumn> columns)
         {
-            this(new SnapTreeMap<ByteBuffer, IColumn>(columns), LIVE);
+            this(new SnapTreeMap<CellName, IColumn>(columns), LIVE);
         }
 
-        Holder(SnapTreeMap<ByteBuffer, IColumn> map, DeletionInfo deletionInfo)
+        Holder(SnapTreeMap<CellName, IColumn> map, DeletionInfo deletionInfo)
         {
             this.map = map;
             this.deletionInfo = deletionInfo;
@@ -342,7 +343,7 @@ public class AtomicSortedColumns implements ISortedColumns
             return new Holder(map, info);
         }
 
-        Holder with(SnapTreeMap<ByteBuffer, IColumn> newMap)
+        Holder with(SnapTreeMap<CellName, IColumn> newMap)
         {
             return new Holder(newMap, deletionInfo);
         }
@@ -351,12 +352,12 @@ public class AtomicSortedColumns implements ISortedColumns
         // afterwards.
         Holder clear()
         {
-            return new Holder(new SnapTreeMap<ByteBuffer, IColumn>(map.comparator()), LIVE);
+            return new Holder(new SnapTreeMap<CellName, IColumn>(map.comparator()), LIVE);
         }
 
         long addColumn(IColumn column, Allocator allocator, SecondaryIndexManager.Updater indexer)
         {
-            ByteBuffer name = column.name();
+            CellName name = column.name();
             while (true)
             {
                 IColumn oldColumn = map.putIfAbsent(name, column);
@@ -398,7 +399,7 @@ public class AtomicSortedColumns implements ISortedColumns
             Iterator<IColumn> toRetain = columns.iterator();
             IColumn current = iter.hasNext() ? iter.next() : null;
             IColumn retain = toRetain.hasNext() ? toRetain.next() : null;
-            Comparator<? super ByteBuffer> comparator = map.comparator();
+            Comparator<? super CellName> comparator = map.comparator();
             while (current != null && retain != null)
             {
                 int c = comparator.compare(current.name(), retain.name());

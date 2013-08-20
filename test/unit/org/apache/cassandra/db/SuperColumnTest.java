@@ -17,6 +17,7 @@
 */
 package org.apache.cassandra.db;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import static junit.framework.Assert.assertNotNull;
@@ -34,10 +35,10 @@ public class SuperColumnTest
 
     @Test
     public void testMissingSubcolumn() {
-    	SuperColumn sc = new SuperColumn(ByteBufferUtil.bytes("sc1"), LongType.instance);
-    	sc.addColumn(new Column(getBytes(1), ByteBufferUtil.bytes("value"), 1));
-    	assertNotNull(sc.getSubColumn(getBytes(1)));
-    	assertNull(sc.getSubColumn(getBytes(2)));
+    	SuperColumn sc = new SuperColumn(CellName.wrap("sc1"), LongType.instance);
+    	sc.addColumn(new Column(CellName.wrap(1), ByteBufferUtil.bytes("value"), 1));
+    	assertNotNull(sc.getSubColumn(CellName.wrap(1)));
+    	assertNull(sc.getSubColumn(CellName.wrap(2)));
     }
 
     @Test
@@ -45,30 +46,30 @@ public class SuperColumnTest
     {
         ContextState state;
 
-    	SuperColumn sc = new SuperColumn(ByteBufferUtil.bytes("sc1"), LongType.instance);
+    	SuperColumn sc = new SuperColumn(CellName.wrap("sc1"), LongType.instance);
 
         state = ContextState.allocate(4, 1);
         state.writeElement(CounterId.fromInt(1), 7L, 0L);
         state.writeElement(CounterId.fromInt(2), 5L, 7L);
         state.writeElement(CounterId.fromInt(4), 2L, 9L);
         state.writeElement(CounterId.getLocalId(), 3L, 3L, true);
-        sc.addColumn(new CounterColumn(getBytes(1), state.context, 3L, 0L));
+        sc.addColumn(new CounterColumn(CellName.wrap(1), state.context, 3L, 0L));
 
         state = ContextState.allocate(4, 1);
         state.writeElement(CounterId.fromInt(2), 3L, 4L);
         state.writeElement(CounterId.fromInt(4), 4L, 1L);
         state.writeElement(CounterId.fromInt(8), 9L, 0L);
         state.writeElement(CounterId.getLocalId(), 9L, 5L, true);
-        sc.addColumn(new CounterColumn(getBytes(1), state.context, 10L, 0L));
+        sc.addColumn(new CounterColumn(CellName.wrap(1), state.context, 10L, 0L));
 
         state = ContextState.allocate(3, 0);
         state.writeElement(CounterId.fromInt(2), 1L, 0L);
         state.writeElement(CounterId.fromInt(3), 6L, 0L);
         state.writeElement(CounterId.fromInt(7), 3L, 0L);
-        sc.addColumn(new CounterColumn(getBytes(2), state.context, 9L, 0L));
+        sc.addColumn(new CounterColumn(CellName.wrap(2), state.context, 9L, 0L));
 
-    	assertNotNull(sc.getSubColumn(getBytes(1)));
-    	assertNull(sc.getSubColumn(getBytes(3)));
+    	assertNotNull(sc.getSubColumn(CellName.wrap(1)));
+    	assertNull(sc.getSubColumn(CellName.wrap(3)));
 
         // column: 1
         ContextState c1 = ContextState.allocate(5, 1);
@@ -78,7 +79,7 @@ public class SuperColumnTest
         c1.writeElement(CounterId.fromInt(8), 9L, 0L);
         c1.writeElement(CounterId.getLocalId(), 12L, 8L, true);
         assert 0 == ByteBufferUtil.compareSubArrays(
-            ((CounterColumn)sc.getSubColumn(getBytes(1))).value(),
+            ((CounterColumn)sc.getSubColumn(CellName.wrap(1))).value(),
             0,
             c1.context,
             0,
@@ -90,14 +91,14 @@ public class SuperColumnTest
         c2.writeElement(CounterId.fromInt(3), 6L, 0L);
         c2.writeElement(CounterId.fromInt(7), 3L, 0L);
         assert 0 == ByteBufferUtil.compareSubArrays(
-            ((CounterColumn)sc.getSubColumn(getBytes(2))).value(),
+            ((CounterColumn)sc.getSubColumn(CellName.wrap(2))).value(),
             0,
             c2.context,
             0,
             c2.context.remaining());
 
-    	assertNotNull(sc.getSubColumn(getBytes(1)));
-    	assertNotNull(sc.getSubColumn(getBytes(2)));
-    	assertNull(sc.getSubColumn(getBytes(3)));
+    	assertNotNull(sc.getSubColumn(CellName.wrap(1)));
+    	assertNotNull(sc.getSubColumn(CellName.wrap(2)));
+    	assertNull(sc.getSubColumn(CellName.wrap(3)));
     }
 }

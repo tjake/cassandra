@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.db.marshal.MarshalException;
@@ -134,9 +135,18 @@ public abstract class Maps
     {
         public final Map<ByteBuffer, ByteBuffer> map;
 
-        public Value(Map<ByteBuffer, ByteBuffer> map)
+        private Value(Map<ByteBuffer, ByteBuffer> map, boolean erasure)
         {
             this.map = map;
+        }
+
+        public Value(Map<CellName, ByteBuffer> map)
+        {
+            this.map = new LinkedHashMap<ByteBuffer, ByteBuffer>();
+            for (Map.Entry<CellName,ByteBuffer> entry : map.entrySet())
+            {
+                this.map.put(entry.getKey().bb, entry.getValue());
+            }
         }
 
         public static Value fromSerialized(ByteBuffer value, MapType type) throws InvalidRequestException
@@ -149,7 +159,7 @@ public abstract class Maps
                 Map<ByteBuffer, ByteBuffer> map = new LinkedHashMap<ByteBuffer, ByteBuffer>(m.size());
                 for (Map.Entry<?, ?> entry : m.entrySet())
                     map.put(type.keys.decompose(entry.getKey()), type.values.decompose(entry.getValue()));
-                return new Value(map);
+                return new Value(map,true);
             }
             catch (MarshalException e)
             {
@@ -172,10 +182,10 @@ public abstract class Maps
     // See Lists.DelayedValue
     public static class DelayedValue extends Term.NonTerminal
     {
-        private final Comparator<ByteBuffer> comparator;
+        private final Comparator<CellName> comparator;
         private final Map<Term, Term> elements;
 
-        public DelayedValue(Comparator<ByteBuffer> comparator, Map<Term, Term> elements)
+        public DelayedValue(Comparator<CellName> comparator, Map<Term, Term> elements)
         {
             this.comparator = comparator;
             this.elements = elements;
@@ -193,7 +203,7 @@ public abstract class Maps
 
         public Value bind(List<ByteBuffer> values) throws InvalidRequestException
         {
-            Map<ByteBuffer, ByteBuffer> buffers = new TreeMap<ByteBuffer, ByteBuffer>(comparator);
+            Map<CellName, ByteBuffer> buffers = new TreeMap<CellName, ByteBuffer>(comparator);
             for (Map.Entry<Term, Term> entry : elements.entrySet())
             {
                 // We don't support values > 64K because the serialization format encode the length as an unsigned short.
@@ -213,7 +223,7 @@ public abstract class Maps
                                                                     FBUtilities.MAX_UNSIGNED_SHORT,
                                                                     valueBytes.remaining()));
 
-                buffers.put(keyBytes, valueBytes);
+                buffers.put(CellName.wrap(keyBytes), valueBytes);
             }
             return new Value(buffers);
         }
@@ -274,7 +284,7 @@ public abstract class Maps
             if (key == null)
                 throw new InvalidRequestException("Invalid null map key");
 
-            ByteBuffer cellName = prefix.add(columnName.key).add(key).build();
+            CellName cellName = prefix.add(columnName.key).add(key).build();
 
             if (value == null)
             {
@@ -315,7 +325,7 @@ public abstract class Maps
             Map<ByteBuffer, ByteBuffer> toAdd = ((Maps.Value)value).map;
             for (Map.Entry<ByteBuffer, ByteBuffer> entry : toAdd.entrySet())
             {
-                ByteBuffer cellName = columnName.copy().add(entry.getKey()).build();
+                CellName cellName = columnName.copy().add(entry.getKey()).build();
                 cf.addColumn(params.makeColumn(cellName, entry.getValue()));
             }
         }
@@ -335,7 +345,7 @@ public abstract class Maps
                 throw new InvalidRequestException("Invalid null map key");
             assert key instanceof Constants.Value;
 
-            ByteBuffer cellName = prefix.add(columnName.key).add(((Constants.Value)key).bytes).build();
+            CellName cellName = prefix.add(columnName.key).add(((Constants.Value)key).bytes).build();
             cf.addColumn(params.makeTombstone(cellName));
         }
     }

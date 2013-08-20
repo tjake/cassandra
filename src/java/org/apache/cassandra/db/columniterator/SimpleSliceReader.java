@@ -28,6 +28,7 @@ import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.db.OnDiskAtom;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.IndexHelper;
@@ -42,7 +43,7 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
     private final SSTableReader sstable;
     private final FileDataInput file;
     private final boolean needsClosing;
-    private final ByteBuffer finishColumn;
+    private final CellName finishColumn;
     private final AbstractType<?> comparator;
     private final ColumnFamily emptyColumnFamily;
     private final int columns;
@@ -50,7 +51,7 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
     private FileMark mark;
     private final OnDiskAtom.Serializer atomSerializer;
 
-    public SimpleSliceReader(SSTableReader sstable, RowIndexEntry indexEntry, FileDataInput input, ByteBuffer finishColumn)
+    public SimpleSliceReader(SSTableReader sstable, RowIndexEntry indexEntry, FileDataInput input, CellName finishColumn)
     {
         Tracing.trace("Seeking to partition beginning in data file");
         this.sstable = sstable;
@@ -109,7 +110,7 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
         {
             throw new CorruptSSTableException(e, file.getPath());
         }
-        if (finishColumn.remaining() > 0 && comparator.compare(column.name(), finishColumn) > 0)
+        if (finishColumn.bb.remaining() > 0 && comparator.compare(column.name(), finishColumn) > 0)
             return endOfData();
 
         mark = file.mark();

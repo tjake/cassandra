@@ -26,6 +26,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.db.IMutation;
@@ -138,7 +139,7 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
         return timeToLive;
     }
 
-    protected Map<ByteBuffer, ColumnGroupMap> readRows(List<ByteBuffer> keys, ColumnNameBuilder builder, Set<ByteBuffer> toRead, CompositeType composite, boolean local, ConsistencyLevel cl)
+    protected Map<ByteBuffer, ColumnGroupMap> readRows(List<ByteBuffer> keys, ColumnNameBuilder builder, Set<CellName> toRead, CompositeType composite, boolean local, ConsistencyLevel cl)
     throws RequestExecutionException, RequestValidationException
     {
         try
@@ -152,10 +153,10 @@ public abstract class ModificationStatement extends CFStatement implements CQLSt
 
         ColumnSlice[] slices = new ColumnSlice[toRead.size()];
         int i = 0;
-        for (ByteBuffer name : toRead)
+        for (CellName name : toRead)
         {
-            ByteBuffer start = builder.copy().add(name).build();
-            ByteBuffer finish = builder.copy().add(name).buildAsEndOfRange();
+            CellName start = builder.copy().add(name.bb).build();
+            CellName finish = builder.copy().add(name.bb).buildAsEndOfRange();
             slices[i++] = new ColumnSlice(start, finish);
         }
 

@@ -28,6 +28,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.context.CounterContext;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.utils.CounterId;
 import org.apache.cassandra.utils.Pair;
@@ -100,7 +101,7 @@ public abstract class AbstractSSTableSimpleWriter
      * Start a new super column with name {@code name}.
      * @param name the name for the super column
      */
-    public void newSuperColumn(ByteBuffer name)
+    public void newSuperColumn(CellName name)
     {
         if (!columnFamily.isSuper())
             throw new IllegalStateException("Cannot add a super column to a standard column family");
@@ -124,7 +125,7 @@ public abstract class AbstractSSTableSimpleWriter
      * @param value the column value
      * @param timestamp the column timestamp
      */
-    public void addColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public void addColumn(CellName name, ByteBuffer value, long timestamp)
     {
         addColumn(new Column(name, value, timestamp));
     }
@@ -139,7 +140,7 @@ public abstract class AbstractSSTableSimpleWriter
      * expiring the column, and as a consequence should be synchronized with the cassandra servers time. If {@code timestamp} represents
      * the insertion time in microseconds (which is not required), this should be {@code (timestamp / 1000) + (ttl * 1000)}.
      */
-    public void addExpiringColumn(ByteBuffer name, ByteBuffer value, long timestamp, int ttl, long expirationTimestampMS)
+    public void addExpiringColumn(CellName name, ByteBuffer value, long timestamp, int ttl, long expirationTimestampMS)
     {
         addColumn(new ExpiringColumn(name, value, timestamp, ttl, (int)(expirationTimestampMS / 1000)));
     }
@@ -149,7 +150,7 @@ public abstract class AbstractSSTableSimpleWriter
      * @param name the column name
      * @param value the value of the counter
      */
-    public void addCounterColumn(ByteBuffer name, long value)
+    public void addCounterColumn(CellName name, long value)
     {
         addColumn(new CounterColumn(name, CounterContext.instance().create(counterid, 1L, value, false), System.currentTimeMillis()));
     }

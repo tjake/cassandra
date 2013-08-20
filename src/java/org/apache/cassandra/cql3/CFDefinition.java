@@ -26,10 +26,7 @@ import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.ColumnToCollectionType;
-import org.apache.cassandra.db.marshal.CompositeType;
-import org.apache.cassandra.db.marshal.UTF8Type;
+import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 /**
@@ -122,9 +119,9 @@ public class CFDefinition implements Iterable<CFDefinition.Name>
                     this.columns.put(id, new Name(cfm.ksName, cfm.cfName, id, Name.Kind.COLUMN_ALIAS, i, composite.types.get(i)));
                 }
 
-                for (Map.Entry<ByteBuffer, ColumnDefinition> def : cfm.getColumn_metadata().entrySet())
+                for (Map.Entry<CellName, ColumnDefinition> def : cfm.getColumn_metadata().entrySet())
                 {
-                    ColumnIdentifier id = new ColumnIdentifier(def.getKey(), cfm.getColumnDefinitionComparator(def.getValue()));
+                    ColumnIdentifier id = new ColumnIdentifier(def.getKey().bb, cfm.getColumnDefinitionComparator(def.getValue()));
                     this.metadata.put(id, new Name(cfm.ksName, cfm.cfName, id, Name.Kind.COLUMN_METADATA, def.getValue().getValidator()));
                 }
             }
@@ -161,9 +158,9 @@ public class CFDefinition implements Iterable<CFDefinition.Name>
                 this.value = null;
                 assert cfm.getValueAlias() == null;
                 assert cfm.getColumnAliases() == null || cfm.getColumnAliases().isEmpty();
-                for (Map.Entry<ByteBuffer, ColumnDefinition> def : cfm.getColumn_metadata().entrySet())
+                for (Map.Entry<CellName, ColumnDefinition> def : cfm.getColumn_metadata().entrySet())
                 {
-                    ColumnIdentifier id = new ColumnIdentifier(def.getKey(), cfm.getColumnDefinitionComparator(def.getValue()));
+                    ColumnIdentifier id = new ColumnIdentifier(def.getKey().bb, cfm.getColumnDefinitionComparator(def.getValue()));
                     this.metadata.put(id, new Name(cfm.ksName, cfm.cfName, id, Name.Kind.COLUMN_METADATA, def.getValue().getValidator()));
                 }
             }
@@ -364,12 +361,12 @@ public class CFDefinition implements Iterable<CFDefinition.Name>
             return columnName == null ? 1 : 0;
         }
 
-        public ByteBuffer build()
+        public CellName build()
         {
-            return columnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : columnName;
+            return columnName == null ? CellName.EMPTY_CELL_NAME : CellName.wrap(columnName);
         }
 
-        public ByteBuffer buildAsEndOfRange()
+        public CellName buildAsEndOfRange()
         {
             return build();
         }

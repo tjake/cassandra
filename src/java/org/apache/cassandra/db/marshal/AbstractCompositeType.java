@@ -60,32 +60,31 @@ public abstract class AbstractCompositeType extends AbstractType<ByteBuffer>
         return getBytes(bb, length);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        if (o1 == null)
-            return o2 == null ? 0 : -1;
+        if (o1.bb == null)
+            return o2.bb == null ? 0 : -1;
 
-        ByteBuffer bb1 = o1.duplicate();
-        ByteBuffer bb2 = o2.duplicate();
+        List<CellName> c1 = o1.getOrSetCompositeCells(this);
+        List<CellName> c2 = o2.getOrSetCompositeCells(this);
+
         int i = 0;
-
         ByteBuffer previous = null;
 
-        while (bb1.remaining() > 0 && bb2.remaining() > 0)
-        {
-            AbstractType<?> comparator = getComparator(i, bb1, bb2);
+        for (; i < c1.size() && i < c2.size(); i++) {
+            CellName inner1 = c1.get(i);
+            CellName inner2 = c2.get(i);
 
-            ByteBuffer value1 = getWithShortLength(bb1);
-            ByteBuffer value2 = getWithShortLength(bb2);
+            AbstractType<?> comparator = inner1.getComparator();
 
-            int cmp = comparator.compareCollectionMembers(value1, value2, previous);
+            int cmp = comparator.compareCollectionMembers(inner1, inner2, previous);
             if (cmp != 0)
                 return cmp;
 
-            previous = value1;
+            previous = inner1.bb;
 
-            byte b1 = bb1.get();
-            byte b2 = bb2.get();
+            byte b1 = inner1.qbit;
+            byte b2 = inner2.qbit;
             if (b1 < 0)
             {
                 if (b2 >= 0)
@@ -102,15 +101,16 @@ public abstract class AbstractCompositeType extends AbstractType<ByteBuffer>
                 if (b2 != 0)
                     return -b2;
             }
-            ++i;
+
         }
 
-        if (bb1.remaining() == 0)
-            return bb2.remaining() == 0 ? 0 : -1;
+        if (c1.size() == i)
+            return c2.size() == i ? 0 : -1;
 
-        // bb1.remaining() > 0 && bb2.remaining() == 0
         return 1;
     }
+
+
 
     /**
      * Split a composite column names into it's components.
@@ -156,6 +156,24 @@ public abstract class AbstractCompositeType extends AbstractType<ByteBuffer>
             list.add( new CompositeComponent(comparator,value) );
 
             byte b = bb.get(); // Ignore; not relevant here
+            ++i;
+        }
+        return list;
+    }
+
+    public List<CellName> deconstructCells( ByteBuffer bytes )
+    {
+        List<CellName> list = new ArrayList<CellName>();
+
+        ByteBuffer bb = bytes.duplicate();
+        int i = 0;
+
+        while (bb.remaining() > 0)
+        {
+            AbstractType comparator = getComparator(i, bb);
+            ByteBuffer value = getWithShortLength(bb);
+            byte b = bb.get();
+            list.add(CellName.wrap(value,comparator,b));
             ++i;
         }
         return list;

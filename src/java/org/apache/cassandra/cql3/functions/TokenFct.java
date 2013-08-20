@@ -64,6 +64,6 @@ public class TokenFct extends AbstractFunction
         ColumnNameBuilder builder = cfDef.getKeyNameBuilder();
         for (ByteBuffer bb : parameters)
             builder.add(bb);
-        return partitioner.getTokenFactory().toByteArray(partitioner.getToken(builder.build()));
+        return partitioner.getTokenFactory().toByteArray(partitioner.getToken(builder.build().bb));
     }
 }

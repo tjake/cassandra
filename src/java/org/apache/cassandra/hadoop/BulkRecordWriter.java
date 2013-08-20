@@ -26,6 +26,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -173,31 +174,31 @@ implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
         {
             if (cfType == CFType.SUPER)
             {
-                writer.newSuperColumn(mut.getColumn_or_supercolumn().getSuper_column().name);
+                writer.newSuperColumn(CellName.wrap(mut.getColumn_or_supercolumn().getSuper_column().name));
                 if (colType == ColType.COUNTER)
                     for (CounterColumn column : mut.getColumn_or_supercolumn().getCounter_super_column().columns)
-                        writer.addCounterColumn(column.name, column.value);
+                        writer.addCounterColumn(CellName.wrap(column.name), column.value);
                 else
                 {
                     for (Column column : mut.getColumn_or_supercolumn().getSuper_column().columns)
                     {
                         if(column.ttl == 0)
-                            writer.addColumn(column.name, column.value, column.timestamp);
+                            writer.addColumn(CellName.wrap(column.name), column.value, column.timestamp);
                         else
-                            writer.addExpiringColumn(column.name, column.value, column.timestamp, column.ttl, System.currentTimeMillis() + ((long)column.ttl * 1000));
+                            writer.addExpiringColumn(CellName.wrap(column.name), column.value, column.timestamp, column.ttl, System.currentTimeMillis() + ((long)column.ttl * 1000));
                     }
                 }
             }
             else
             {
                 if (colType == ColType.COUNTER)
-                    writer.addCounterColumn(mut.getColumn_or_supercolumn().counter_column.name, mut.getColumn_or_supercolumn().counter_column.value);
+                    writer.addCounterColumn(CellName.wrap(mut.getColumn_or_supercolumn().counter_column.name), mut.getColumn_or_supercolumn().counter_column.value);
                 else
                 {
                     if(mut.getColumn_or_supercolumn().column.ttl == 0)
-                        writer.addColumn(mut.getColumn_or_supercolumn().column.name, mut.getColumn_or_supercolumn().column.value, mut.getColumn_or_supercolumn().column.timestamp);
+                        writer.addColumn(CellName.wrap(mut.getColumn_or_supercolumn().column.name), mut.getColumn_or_supercolumn().column.value, mut.getColumn_or_supercolumn().column.timestamp);
                     else
-                        writer.addExpiringColumn(mut.getColumn_or_supercolumn().column.name, mut.getColumn_or_supercolumn().column.value, mut.getColumn_or_supercolumn().column.timestamp, mut.getColumn_or_supercolumn().column.ttl, System.currentTimeMillis() + ((long)(mut.getColumn_or_supercolumn().column.ttl) * 1000));
+                        writer.addExpiringColumn(CellName.wrap(mut.getColumn_or_supercolumn().column.name), mut.getColumn_or_supercolumn().column.value, mut.getColumn_or_supercolumn().column.timestamp, mut.getColumn_or_supercolumn().column.ttl, System.currentTimeMillis() + ((long)(mut.getColumn_or_supercolumn().column.ttl) * 1000));
                 }
             }
             progress.progress();

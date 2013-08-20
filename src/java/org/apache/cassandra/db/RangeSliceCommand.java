@@ -49,6 +49,7 @@ import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.io.IVersionedSerializer;
@@ -184,12 +185,18 @@ class RangeSliceCommandSerializer implements IVersionedSerializer<RangeSliceComm
         SlicePredicate sp = new SlicePredicate();
         if (predicate instanceof NamesQueryFilter)
         {
-            sp.setColumn_names(new ArrayList<ByteBuffer>(((NamesQueryFilter)predicate).columns));
+            List<ByteBuffer> colNames = new ArrayList<ByteBuffer>(((NamesQueryFilter)predicate).columns.size());
+            for (CellName cn : ((NamesQueryFilter)predicate).columns)
+            {
+                colNames.add(cn.bb);
+            }
+
+            sp.setColumn_names(colNames);
         }
         else
         {
             SliceQueryFilter sqf = (SliceQueryFilter)predicate;
-            sp.setSlice_range(new SliceRange(sqf.start(), sqf.finish(), sqf.reversed, sqf.count));
+            sp.setSlice_range(new SliceRange(sqf.start().bb, sqf.finish().bb, sqf.reversed, sqf.count));
         }
         return sp;
     }

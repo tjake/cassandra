@@ -38,7 +38,7 @@ import static org.apache.cassandra.utils.FBUtilities.json;
 
 public class ColumnDefinition
 {
-    public final ByteBuffer name;
+    public final CellName name;
     private AbstractType<?> validator;
     private IndexType index_type;
     private Map<String,String> index_options;
@@ -51,7 +51,7 @@ public class ColumnDefinition
      */
     public final Integer componentIndex;
 
-    public ColumnDefinition(ByteBuffer name, AbstractType<?> validator, IndexType index_type, Map<String, String> index_options, String index_name, Integer componentIndex)
+    public ColumnDefinition(CellName name, AbstractType<?> validator, IndexType index_type, Map<String, String> index_options, String index_name, Integer componentIndex)
     {
         assert name != null && validator != null;
         this.name = name;
@@ -104,7 +104,7 @@ public class ColumnDefinition
     {
         ColumnDef cd = new ColumnDef();
 
-        cd.setName(ByteBufferUtil.clone(name));
+        cd.setName(ByteBufferUtil.clone(name.bb));
         cd.setValidation_class(validator.toString());
 
         cd.setIndex_type(index_type == null
@@ -118,7 +118,7 @@ public class ColumnDefinition
 
     public static ColumnDefinition fromThrift(ColumnDef thriftColumnDef) throws SyntaxException, ConfigurationException
     {
-        return new ColumnDefinition(ByteBufferUtil.clone(thriftColumnDef.name),
+        return new ColumnDefinition(CellName.wrap(ByteBufferUtil.clone(thriftColumnDef.name)),
                                     TypeParser.parse(thriftColumnDef.validation_class),
                                     thriftColumnDef.index_type,
                                     thriftColumnDef.index_options,
@@ -126,14 +126,14 @@ public class ColumnDefinition
                                     null);
     }
 
-    public static Map<ByteBuffer, ColumnDefinition> fromThrift(List<ColumnDef> thriftDefs) throws SyntaxException, ConfigurationException
+    public static Map<CellName, ColumnDefinition> fromThrift(List<ColumnDef> thriftDefs) throws SyntaxException, ConfigurationException
     {
         if (thriftDefs == null)
-            return new HashMap<ByteBuffer,ColumnDefinition>();
+            return new HashMap<CellName,ColumnDefinition>();
 
-        Map<ByteBuffer, ColumnDefinition> cds = new TreeMap<ByteBuffer, ColumnDefinition>();
+        Map<CellName, ColumnDefinition> cds = new TreeMap<CellName, ColumnDefinition>();
         for (ColumnDef thriftColumnDef : thriftDefs)
-            cds.put(ByteBufferUtil.clone(thriftColumnDef.name), fromThrift(thriftColumnDef));
+            cds.put(CellName.wrap(ByteBufferUtil.clone(thriftColumnDef.name)), fromThrift(thriftColumnDef));
 
         return cds;
     }
@@ -150,12 +150,12 @@ public class ColumnDefinition
         ColumnFamily cf = rm.addOrGet(CFMetaData.SchemaColumnsCf);
         int ldt = (int) (System.currentTimeMillis() / 1000);
 
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), ""));
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "validator"));
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_type"));
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_options"));
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_name"));
-        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "component_index"));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), ""));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "validator"));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_type"));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_options"));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_name"));
+        cf.addColumn(DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "component_index"));
     }
 
     public void toSchema(RowMutation rm, String cfName, AbstractType<?> comparator, long timestamp)
@@ -163,16 +163,16 @@ public class ColumnDefinition
         ColumnFamily cf = rm.addOrGet(CFMetaData.SchemaColumnsCf);
         int ldt = (int) (System.currentTimeMillis() / 1000);
 
-        cf.addColumn(Column.create("", timestamp, cfName, comparator.getString(name), ""));
-        cf.addColumn(Column.create(validator.toString(), timestamp, cfName, comparator.getString(name), "validator"));
-        cf.addColumn(index_type == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_type")
-                                        : Column.create(index_type.toString(), timestamp, cfName, comparator.getString(name), "index_type"));
-        cf.addColumn(index_options == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_options")
-                                           : Column.create(json(index_options), timestamp, cfName, comparator.getString(name), "index_options"));
-        cf.addColumn(index_name == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "index_name")
-                                        : Column.create(index_name, timestamp, cfName, comparator.getString(name), "index_name"));
-        cf.addColumn(componentIndex == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name), "component_index")
-                                            : Column.create(componentIndex, timestamp, cfName, comparator.getString(name), "component_index"));
+        cf.addColumn(Column.create("", timestamp, cfName, comparator.getString(name.bb), ""));
+        cf.addColumn(Column.create(validator.toString(), timestamp, cfName, comparator.getString(name.bb), "validator"));
+        cf.addColumn(index_type == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_type")
+                                        : Column.create(index_type.toString(), timestamp, cfName, comparator.getString(name.bb), "index_type"));
+        cf.addColumn(index_options == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_options")
+                                           : Column.create(json(index_options), timestamp, cfName, comparator.getString(name.bb), "index_options"));
+        cf.addColumn(index_name == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "index_name")
+                                        : Column.create(index_name, timestamp, cfName, comparator.getString(name.bb), "index_name"));
+        cf.addColumn(componentIndex == null ? DeletedColumn.create(ldt, timestamp, cfName, comparator.getString(name.bb), "component_index")
+                                            : Column.create(componentIndex, timestamp, cfName, comparator.getString(name.bb), "component_index"));
     }
 
     public void apply(ColumnDefinition def, AbstractType<?> comparator)  throws ConfigurationException
@@ -181,7 +181,7 @@ public class ColumnDefinition
         {
             // If an index is set (and not drop by this update), the validator shouldn't be change to a non-compatible one
             if (!def.getValidator().isCompatibleWith(getValidator()))
-                throw new ConfigurationException(String.format("Cannot modify validator to a non-compatible one for column %s since an index is set", comparator.getString(name)));
+                throw new ConfigurationException(String.format("Cannot modify validator to a non-compatible one for column %s since an index is set", comparator.getString(name.bb)));
 
             assert getIndexName() != null;
             if (!getIndexName().equals(def.getIndexName()))
@@ -190,7 +190,7 @@ public class ColumnDefinition
 
         if ((componentIndex != null && !componentIndex.equals(def.componentIndex))
          || (componentIndex == null && def.componentIndex != null))
-            throw new ConfigurationException(String.format("Cannot modify component index for column %s", comparator.getString(name)));
+            throw new ConfigurationException(String.format("Cannot modify component index for column %s", comparator.getString(name.bb)));
 
         setValidator(def.getValidator());
         setIndexType(def.getIndexType(), def.getIndexOptions());
@@ -227,7 +227,7 @@ public class ColumnDefinition
                 if (result.has("component_index"))
                     componentIndex = result.getInt("component_index");
 
-                cds.add(new ColumnDefinition(cfm.getColumnDefinitionComparator(componentIndex).fromString(result.getString("column_name")),
+                cds.add(new ColumnDefinition(CellName.wrap(cfm.getColumnDefinitionComparator(componentIndex).fromString(result.getString("column_name"))),
                                              TypeParser.parse(result.getString("validator")),
                                              index_type,
                                              index_options,
@@ -260,7 +260,7 @@ public class ColumnDefinition
     public String toString()
     {
         return "ColumnDefinition{" +
-               "name=" + ByteBufferUtil.bytesToHex(name) +
+               "name=" + ByteBufferUtil.bytesToHex(name.bb) +
                ", validator=" + validator +
                ", index_type=" + index_type +
                ", index_name='" + index_name + '\'' +

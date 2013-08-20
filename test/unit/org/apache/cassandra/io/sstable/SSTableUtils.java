@@ -29,6 +29,7 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 import org.apache.cassandra.Util;
@@ -167,7 +168,7 @@ public class SSTableUtils
             for (String key : keys)
             {
                 ColumnFamily cf = ColumnFamily.create(ksname, cfname);
-                cf.addColumn(new Column(ByteBufferUtil.bytes(key), ByteBufferUtil.bytes(key), 0));
+                cf.addColumn(new Column(CellName.wrap(key), ByteBufferUtil.bytes(key), 0));
                 map.put(key, cf);
             }
             return write(map);

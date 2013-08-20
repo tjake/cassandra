@@ -28,6 +28,7 @@ import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.UnauthorizedException;
 import org.apache.cassandra.thrift.ThriftClientState;
@@ -106,7 +107,7 @@ public class DeleteStatement extends AbstractModification
             for (Term column : columns)
             {
                 ByteBuffer columnName = column.getByteBuffer(comparator, variables);
-                validateColumnName(columnName);
+                validateColumnName(CellName.wrap(columnName));
                 rm.delete(new QueryPath(columnFamily, null, columnName), (timestamp == null) ? getTimestamp(clientState) : timestamp);
             }
         }

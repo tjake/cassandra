@@ -40,9 +40,9 @@ public class AsciiType extends AbstractType<String>
         }
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        return BytesType.bytesCompare(o1, o2);
+        return BytesType.bytesCompare(o1.bb, o2.bb);
     }
 
     public String compose(ByteBuffer bytes)

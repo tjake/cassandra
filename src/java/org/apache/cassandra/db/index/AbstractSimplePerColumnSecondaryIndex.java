@@ -72,7 +72,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     protected abstract void init(ColumnDefinition columnDef);
 
-    protected abstract ByteBuffer makeIndexColumnName(ByteBuffer rowKey, IColumn column);
+    protected abstract CellName makeIndexColumnName(ByteBuffer rowKey, IColumn column);
 
     protected abstract AbstractType getExpressionComparator();
 
@@ -82,7 +82,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
                              baseCfs.columnFamily,
                              getExpressionComparator().getString(expr.column_name),
                              expr.op,
-                             baseCfs.metadata.getColumn_metadata().get(expr.column_name).getValidator().getString(expr.value));
+                             baseCfs.metadata.getColumn_metadata().get(CellName.wrap(expr.column_name)).getValidator().getString(expr.value));
     }
 
 
@@ -94,8 +94,8 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         DecoratedKey valueKey = getIndexKeyFor(column.value());
         int localDeletionTime = (int) (System.currentTimeMillis() / 1000);
         ColumnFamily cfi = ColumnFamily.create(indexCfs.metadata);
-        ByteBuffer name = makeIndexColumnName(rowKey, column);
-        assert name.remaining() > 0 && name.remaining() <= IColumn.MAX_NAME_LENGTH : name.remaining();
+        CellName name = makeIndexColumnName(rowKey, column);
+        assert name.bb.remaining() > 0 && name.bb.remaining() <= IColumn.MAX_NAME_LENGTH : name.bb.remaining();
         cfi.addTombstone(name, localDeletionTime, column.timestamp());
         indexCfs.apply(valueKey, cfi, SecondaryIndexManager.nullUpdater);
         if (logger.isDebugEnabled())
@@ -106,8 +106,8 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
     {
         DecoratedKey valueKey = getIndexKeyFor(column.value());
         ColumnFamily cfi = ColumnFamily.create(indexCfs.metadata);
-        ByteBuffer name = makeIndexColumnName(rowKey, column);
-        assert name.remaining() > 0 && name.remaining() <= IColumn.MAX_NAME_LENGTH : name.remaining();
+        CellName name = makeIndexColumnName(rowKey, column);
+        assert name.bb.remaining() > 0 && name.bb.remaining() <= IColumn.MAX_NAME_LENGTH : name.bb.remaining();
         if (column instanceof ExpiringColumn)
         {
             ExpiringColumn ec = (ExpiringColumn)column;

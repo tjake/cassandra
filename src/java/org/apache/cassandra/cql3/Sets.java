@@ -30,10 +30,7 @@ import java.util.TreeSet;
 import com.google.common.base.Joiner;
 
 import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.marshal.CollectionType;
-import org.apache.cassandra.db.marshal.MarshalException;
-import org.apache.cassandra.db.marshal.MapType;
-import org.apache.cassandra.db.marshal.SetType;
+import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -66,7 +63,7 @@ public abstract class Sets
             // We've parsed empty maps as a set literal to break the ambiguity so
             // handle that case now
             if (receiver.type instanceof MapType && elements.isEmpty())
-                return new Maps.Value(Collections.<ByteBuffer, ByteBuffer>emptyMap());
+                return new Maps.Value(Collections.<CellName, ByteBuffer>emptyMap());
 
 
             ColumnSpecification valueSpec = Sets.valueSpecOf(receiver);
@@ -132,9 +129,18 @@ public abstract class Sets
     {
         public final Set<ByteBuffer> elements;
 
-        public Value(Set<ByteBuffer> elements)
+        private Value(Set<ByteBuffer> elements, boolean erasure)
         {
             this.elements = elements;
+        }
+
+        public Value(Set<CellName> elements)
+        {
+            this.elements = new LinkedHashSet<ByteBuffer>();
+
+            for (CellName c : elements) {
+                this.elements.add(c.bb);
+            }
         }
 
         public static Value fromSerialized(ByteBuffer value, SetType type) throws InvalidRequestException
@@ -147,7 +153,7 @@ public abstract class Sets
                 Set<ByteBuffer> elements = new LinkedHashSet<ByteBuffer>(s.size());
                 for (Object element : s)
                     elements.add(type.elements.decompose(element));
-                return new Value(elements);
+                return new Value(elements,true);
             }
             catch (MarshalException e)
             {
@@ -164,10 +170,10 @@ public abstract class Sets
     // See Lists.DelayedValue
     public static class DelayedValue extends Term.NonTerminal
     {
-        private final Comparator<ByteBuffer> comparator;
+        private final Comparator<CellName> comparator;
         private final Set<Term> elements;
 
-        public DelayedValue(Comparator<ByteBuffer> comparator, Set<Term> elements)
+        public DelayedValue(Comparator<CellName> comparator, Set<Term> elements)
         {
             this.comparator = comparator;
             this.elements = elements;
@@ -185,7 +191,7 @@ public abstract class Sets
 
         public Value bind(List<ByteBuffer> values) throws InvalidRequestException
         {
-            Set<ByteBuffer> buffers = new TreeSet<ByteBuffer>(comparator);
+            Set<CellName> buffers = new TreeSet<CellName>(comparator);
             for (Term t : elements)
             {
                 ByteBuffer bytes = t.bindAndGet(values);
@@ -199,7 +205,7 @@ public abstract class Sets
                                                                     FBUtilities.MAX_UNSIGNED_SHORT,
                                                                     bytes.remaining()));
 
-                buffers.add(bytes);
+                buffers.add(CellName.wrap(bytes));
             }
             return new Value(buffers);
         }
@@ -259,7 +265,7 @@ public abstract class Sets
             Set<ByteBuffer> toAdd = ((Sets.Value)value).elements;
             for (ByteBuffer bb : toAdd)
             {
-                ByteBuffer cellName = columnName.copy().add(bb).build();
+                CellName cellName = columnName.copy().add(bb).build();
                 cf.addColumn(params.makeColumn(cellName, ByteBufferUtil.EMPTY_BYTE_BUFFER));
             }
         }
@@ -286,7 +292,7 @@ public abstract class Sets
             ColumnNameBuilder column = prefix.add(columnName.key);
             for (ByteBuffer bb : toDiscard)
             {
-                ByteBuffer cellName = column.copy().add(bb).build();
+                CellName cellName = column.copy().add(bb).build();
                 cf.addColumn(params.makeTombstone(cellName));
             }
         }

@@ -39,18 +39,21 @@ public class DoubleType extends AbstractType<Double>
         return JdbcDouble.instance.decompose(value);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        if (o1.remaining() == 0)
+        if (o1.isEmpty())
         {
-            return o2.remaining() == 0 ? 0 : -1;
+            return o2.isEmpty() ? 0 : -1;
         }
-        if (o2.remaining() == 0)
+        if (o2.isEmpty())
         {
             return 1;
         }
 
-        return compose(o1).compareTo(compose(o2));
+        Double d1 = o1.getOrSetType(this);
+        Double d2 = o1.getOrSetType(this);
+
+        return d1.compareTo(d2);
     }
 
     public String getString(ByteBuffer bytes)

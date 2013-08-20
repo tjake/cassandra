@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.io.IColumnSerializer;
 import org.apache.cassandra.io.ISSTableSerializer;
@@ -30,7 +31,7 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 public interface OnDiskAtom
 {
-    public ByteBuffer name();
+    public CellName name();
 
     /**
      * For a standard column, this is the same as timestamp().
@@ -89,7 +90,7 @@ public interface OnDiskAtom
                 if ((b & ColumnSerializer.RANGE_TOMBSTONE_MASK) != 0)
                     return RangeTombstone.serializer.deserializeBody(dis, name, version);
                 else
-                    return ((ColumnSerializer)columnSerializer).deserializeColumnBody(dis, name, b, flag, expireBefore);
+                    return ((ColumnSerializer)columnSerializer).deserializeColumnBody(dis, CellName.wrap(name), b, flag, expireBefore);
             }
         }
     }

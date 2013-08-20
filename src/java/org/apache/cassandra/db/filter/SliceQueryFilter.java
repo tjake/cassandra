@@ -23,6 +23,7 @@ import java.util.*;
 
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Lists;
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,12 +54,12 @@ public class SliceQueryFilter implements IDiskAtomFilter
     // Not serialized, just a ack for range slices to find the number of live column counted, even when we group
     private ColumnCounter columnCounter;
 
-    public SliceQueryFilter(ByteBuffer start, ByteBuffer finish, boolean reversed, int count)
+    public SliceQueryFilter(CellName start, CellName finish, boolean reversed, int count)
     {
         this(new ColumnSlice[] { new ColumnSlice(start, finish) }, reversed, count);
     }
 
-    public SliceQueryFilter(ByteBuffer start, ByteBuffer finish, boolean reversed, int count, int compositesToGroup)
+    public SliceQueryFilter(CellName start, CellName finish, boolean reversed, int count, int compositesToGroup)
     {
         this(new ColumnSlice[] { new ColumnSlice(start, finish) }, reversed, count, compositesToGroup, 1);
     }
@@ -121,7 +122,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
         {
             subcolumns = superColumn.getSubColumns().iterator();
         }
-        final Comparator<ByteBuffer> comparator = reversed ? superColumn.getComparator().reverseComparator : superColumn.getComparator();
+        final Comparator<CellName> comparator = reversed ? superColumn.getComparator().reverseComparator : superColumn.getComparator();
         Iterator<IColumn> results = new AbstractIterator<IColumn>()
         {
             protected IColumn computeNext()
@@ -133,7 +134,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
                     if (comparator.compare(subcolumn.name(), start()) < 0)
                         continue;
                     // exit loop when columns are out of the range.
-                    if (finish().remaining() > 0 && comparator.compare(subcolumn.name(), finish()) > 0)
+                    if (finish().bb.remaining() > 0 && comparator.compare(subcolumn.name(), finish()) > 0)
                         break;
                     return subcolumn;
                 }
@@ -197,7 +198,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
     {
         ColumnCounter counter = getColumnCounter(cf);
 
-        Collection<ByteBuffer> toRemove = null;
+        Collection<CellName> toRemove = null;
         boolean trimRemaining = false;
 
         Collection<IColumn> columns = reversed
@@ -215,7 +216,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
             counter.count(column, cf);
             if (counter.live() > trimTo)
             {
-                toRemove = new HashSet<ByteBuffer>();
+                toRemove = new HashSet<CellName>();
                 toRemove.add(column.name());
                 trimRemaining = true;
             }
@@ -223,22 +224,22 @@ public class SliceQueryFilter implements IDiskAtomFilter
 
         if (toRemove != null)
         {
-            for (ByteBuffer columnName : toRemove)
+            for (CellName columnName : toRemove)
                 cf.remove(columnName);
         }
     }
 
-    public ByteBuffer start()
+    public CellName start()
     {
         return this.slices[0].start;
     }
 
-    public ByteBuffer finish()
+    public CellName finish()
     {
         return this.slices[slices.length - 1].finish;
     }
 
-    public void setStart(ByteBuffer start)
+    public void setStart(CellName start)
     {
         assert slices.length == 1;
         this.slices[0] = new ColumnSlice(start, this.slices[0].finish);
@@ -265,7 +266,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
         count = newLimit;
     }
 
-    public boolean includes(Comparator<ByteBuffer> cmp, ByteBuffer name)
+    public boolean includes(Comparator<CellName> cmp, CellName name)
     {
         for (ColumnSlice slice : slices)
             if (slice.includes(cmp, name))

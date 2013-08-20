@@ -35,6 +35,7 @@ import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.marshal.AsciiType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.io.compress.*;
 import org.apache.cassandra.service.StorageService;
@@ -129,7 +130,7 @@ public class CFMetaDataTest extends SchemaLoader
         // are only used by CQL (so far) so we don't expose them through thrift
         // There is a CFM with componentIndex defined in Keyspace2 which is used by 
         // ColumnFamilyStoreTest to verify index repair (CASSANDRA-2897)
-        for (Map.Entry<ByteBuffer, ColumnDefinition> cMeta: cfm.column_metadata.entrySet())
+        for (Map.Entry<CellName, ColumnDefinition> cMeta: cfm.column_metadata.entrySet())
         {
             // Non-null componentIndex are only used by CQL (so far) so we don't expose
             // them through thrift

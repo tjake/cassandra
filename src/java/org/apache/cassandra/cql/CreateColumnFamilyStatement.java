@@ -28,6 +28,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamilyType;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -122,15 +123,15 @@ public class CreateColumnFamilyStatement
     }
 
     // Column definitions
-    private Map<ByteBuffer, ColumnDefinition> getColumns(AbstractType<?> comparator) throws InvalidRequestException
+    private Map<CellName, ColumnDefinition> getColumns(AbstractType<?> comparator) throws InvalidRequestException
     {
-        Map<ByteBuffer, ColumnDefinition> columnDefs = new HashMap<ByteBuffer, ColumnDefinition>();
+        Map<CellName, ColumnDefinition> columnDefs = new HashMap<CellName, ColumnDefinition>();
 
         for (Map.Entry<Term, String> col : columns.entrySet())
         {
             try
             {
-                ByteBuffer columnName = comparator.fromStringCQL2(col.getKey().getText());
+                CellName columnName = CellName.wrap(comparator.fromStringCQL2(col.getKey().getText()));
                 String validatorClassName = CFPropDefs.comparators.containsKey(col.getValue())
                                           ? CFPropDefs.comparators.get(col.getValue())
                                           : col.getValue();

@@ -40,6 +40,7 @@ import org.apache.cassandra.db.compaction.CompactionTask;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.Gossiper;
@@ -78,22 +79,22 @@ public class Util
 
     public static Column column(String name, String value, long timestamp)
     {
-        return new Column(ByteBufferUtil.bytes(name), ByteBufferUtil.bytes(value), timestamp);
+        return new Column(CellName.wrap(name), ByteBufferUtil.bytes(value), timestamp);
     }
 
     public static Column expiringColumn(String name, String value, long timestamp, int ttl)
     {
-        return new ExpiringColumn(ByteBufferUtil.bytes(name), ByteBufferUtil.bytes(value), timestamp, ttl);
+        return new ExpiringColumn(CellName.wrap(name), ByteBufferUtil.bytes(value), timestamp, ttl);
     }
 
     public static Column counterColumn(String name, long value, long timestamp)
     {
-        return new CounterUpdateColumn(ByteBufferUtil.bytes(name), value, timestamp);
+        return new CounterUpdateColumn(CellName.wrap(name), value, timestamp);
     }
 
     public static SuperColumn superColumn(ColumnFamily cf, String name, Column... columns)
     {
-        SuperColumn sc = new SuperColumn(ByteBufferUtil.bytes(name), cf.metadata().comparator);
+        SuperColumn sc = new SuperColumn(CellName.wrap(name), cf.metadata().comparator);
         for (Column c : columns)
             sc.addColumn(c);
         return sc;
@@ -147,7 +148,7 @@ public class Util
         return getRangeSlice(cfs, null);
     }
 
-    public static List<Row> getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn) throws IOException, ExecutionException, InterruptedException
+    public static List<Row> getRangeSlice(ColumnFamilyStore cfs, CellName superColumn) throws IOException, ExecutionException, InterruptedException
     {
         Token min = StorageService.getPartitioner().getMinimumToken();
         return cfs.getRangeSlice(superColumn,

@@ -79,9 +79,9 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
     }
 
     // Column definitions
-    private Map<ByteBuffer, ColumnDefinition> getColumns() throws InvalidRequestException
+    private Map<CellName, ColumnDefinition> getColumns() throws InvalidRequestException
     {
-        Map<ByteBuffer, ColumnDefinition> columnDefs = new HashMap<ByteBuffer, ColumnDefinition>();
+        Map<CellName, ColumnDefinition> columnDefs = new HashMap<CellName, ColumnDefinition>();
         Integer componentIndex = null;
         if (comparator instanceof CompositeType)
         {
@@ -93,7 +93,7 @@ public class CreateColumnFamilyStatement extends SchemaAlteringStatement
 
         for (Map.Entry<ColumnIdentifier, AbstractType> col : columns.entrySet())
         {
-            columnDefs.put(col.getKey().key, new ColumnDefinition(col.getKey().key, col.getValue(), null, null, null, componentIndex));
+            columnDefs.put(CellName.wrap(col.getKey().key), new ColumnDefinition(CellName.wrap(col.getKey().key), col.getValue(), null, null, null, componentIndex));
         }
 
         return columnDefs;

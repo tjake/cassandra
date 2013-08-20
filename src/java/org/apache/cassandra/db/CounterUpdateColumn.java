@@ -20,6 +20,7 @@ package org.apache.cassandra.db;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.db.context.CounterContext;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Allocator;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.HeapAllocator;
@@ -33,12 +34,12 @@ import org.apache.cassandra.utils.HeapAllocator;
  */
 public class CounterUpdateColumn extends Column
 {
-    public CounterUpdateColumn(ByteBuffer name, long value, long timestamp)
+    public CounterUpdateColumn(CellName name, long value, long timestamp)
     {
         this(name, ByteBufferUtil.bytes(value), timestamp);
     }
 
-    public CounterUpdateColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public CounterUpdateColumn(CellName name, ByteBuffer value, long timestamp)
     {
         super(name, value, timestamp);
     }

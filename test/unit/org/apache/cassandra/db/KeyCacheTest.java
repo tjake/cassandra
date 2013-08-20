@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -131,15 +132,15 @@ public class KeyCacheTest extends SchemaLoader
         // reads to cache key position
         cfs.getColumnFamily(QueryFilter.getSliceFilter(key1,
                                                        new QueryPath(new ColumnParent(COLUMN_FAMILY1)),
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                       CellName.EMPTY_CELL_NAME,
+                                                       CellName.EMPTY_CELL_NAME,
                                                        false,
                                                        10));
 
         cfs.getColumnFamily(QueryFilter.getSliceFilter(key2,
                                                        new QueryPath(new ColumnParent(COLUMN_FAMILY1)),
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                       CellName.EMPTY_CELL_NAME,
+                                                       CellName.EMPTY_CELL_NAME,
                                                        false,
                                                        10));
 
@@ -153,15 +154,15 @@ public class KeyCacheTest extends SchemaLoader
         // re-read same keys to verify that key cache didn't grow further
         cfs.getColumnFamily(QueryFilter.getSliceFilter(key1,
                                                        new QueryPath(new ColumnParent(COLUMN_FAMILY1)),
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                       CellName.EMPTY_CELL_NAME,
+                                                       CellName.EMPTY_CELL_NAME,
                                                        false,
                                                        10));
 
         cfs.getColumnFamily(QueryFilter.getSliceFilter(key2,
                                                        new QueryPath(new ColumnParent(COLUMN_FAMILY1)),
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                       ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                       CellName.EMPTY_CELL_NAME,
+                                                       CellName.EMPTY_CELL_NAME,
                                                        false,
                                                        10));
 

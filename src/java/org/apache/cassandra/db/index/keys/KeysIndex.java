@@ -25,6 +25,7 @@ import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.index.AbstractSimplePerColumnSecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.exceptions.ConfigurationException;
 
 /**
@@ -38,9 +39,9 @@ public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
         // Nothing specific
     }
 
-    protected ByteBuffer makeIndexColumnName(ByteBuffer rowKey, IColumn column)
+    protected CellName makeIndexColumnName(ByteBuffer rowKey, IColumn column)
     {
-        return rowKey;
+        return CellName.wrap(rowKey);
     }
 
     public SecondaryIndexSearcher createSecondaryIndexSearcher(Set<ByteBuffer> columns)

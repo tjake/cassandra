@@ -33,6 +33,7 @@ import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.IndexHelper;
@@ -212,7 +213,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
         /*
          * Return the smallest key selected by the current ColumnSlice.
          */
-        protected ByteBuffer currentStart()
+        protected CellName currentStart()
         {
             return reversed ? slices[currentSliceIdx].finish : slices[currentSliceIdx].start;
         }
@@ -220,7 +221,7 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
         /*
          * Return the biggest key selected by the current ColumnSlice.
          */
-        protected ByteBuffer currentFinish()
+        protected CellName currentFinish()
         {
             return reversed ? slices[currentSliceIdx].start : slices[currentSliceIdx].finish;
         }
@@ -234,22 +235,22 @@ class IndexedSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskA
             return isBeforeSliceStart(column.name());
         }
 
-        protected boolean isBeforeSliceStart(ByteBuffer name)
+        protected boolean isBeforeSliceStart(CellName name)
         {
-            ByteBuffer start = currentStart();
-            return start.remaining() != 0 && comparator.compare(name, start) < 0;
+            CellName start = currentStart();
+            return start.bb.remaining() != 0 && comparator.compare(name, start) < 0;
         }
 
         protected boolean isColumnBeforeSliceFinish(OnDiskAtom column)
         {
-            ByteBuffer finish = currentFinish();
-            return finish.remaining() == 0 || comparator.compare(column.name(), finish) <= 0;
+            CellName finish = currentFinish();
+            return finish.bb.remaining() == 0 || comparator.compare(column.name(), finish) <= 0;
         }
 
-        protected boolean isAfterSliceFinish(ByteBuffer name)
+        protected boolean isAfterSliceFinish(CellName name)
         {
-            ByteBuffer finish = currentFinish();
-            return finish.remaining() != 0 && comparator.compare(name, finish) > 0;
+            CellName finish = currentFinish();
+            return finish.bb.remaining() != 0 && comparator.compare(name, finish) > 0;
         }
     }
 

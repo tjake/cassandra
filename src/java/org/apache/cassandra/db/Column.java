@@ -54,36 +54,36 @@ public class Column implements IColumn
         return onDiskSerializer;
     }
 
-    protected final ByteBuffer name;
+    protected final CellName name;
     protected final ByteBuffer value;
     protected final long timestamp;
 
-    Column(ByteBuffer name)
+    Column(CellName name)
     {
         this(name, ByteBufferUtil.EMPTY_BYTE_BUFFER);
     }
 
-    public Column(ByteBuffer name, ByteBuffer value)
+    public Column(CellName name, ByteBuffer value)
     {
         this(name, value, 0);
     }
 
-    public Column(ByteBuffer name, ByteBuffer value, long timestamp)
+    public Column(CellName name, ByteBuffer value, long timestamp)
     {
         assert name != null;
         assert value != null;
-        assert name.remaining() <= IColumn.MAX_NAME_LENGTH;
+        assert name.bb.remaining() <= IColumn.MAX_NAME_LENGTH;
         this.name = name;
         this.value = value;
         this.timestamp = timestamp;
     }
 
-    public ByteBuffer name()
+    public CellName name()
     {
         return name;
     }
 
-    public Column getSubColumn(ByteBuffer columnName)
+    public Column getSubColumn(CellName columnName)
     {
         throw new UnsupportedOperationException("This operation is unsupported on simple columns.");
     }
@@ -135,7 +135,7 @@ public class Column implements IColumn
 
     public int dataSize()
     {
-        return name().remaining() + value.remaining() + TypeSizes.NATIVE.sizeof(timestamp);
+        return name().bb.remaining() + value.remaining() + TypeSizes.NATIVE.sizeof(timestamp);
     }
 
     public int serializedSize(TypeSizes typeSizes)
@@ -148,7 +148,7 @@ public class Column implements IColumn
          * + 4 bytes which basically indicates the size of the byte array
          * + entire byte array.
         */
-        int nameSize = name.remaining();
+        int nameSize = name.bb.remaining();
         int valueSize = value.remaining();
         return typeSizes.sizeof((short) nameSize) + nameSize + 1 + typeSizes.sizeof(timestamp) + typeSizes.sizeof(valueSize) + valueSize;
     }
@@ -184,7 +184,7 @@ public class Column implements IColumn
 
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.bb.duplicate());
         digest.update(value.duplicate());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
@@ -264,7 +264,7 @@ public class Column implements IColumn
     public String getString(AbstractType<?> comparator)
     {
         StringBuilder sb = new StringBuilder();
-        sb.append(comparator.getString(name));
+        sb.append(comparator.getString(name.bb));
         sb.append(":");
         sb.append(isMarkedForDelete());
         sb.append(":");
@@ -282,7 +282,7 @@ public class Column implements IColumn
     protected void validateName(CFMetaData metadata) throws MarshalException
     {
         AbstractType<?> nameValidator = metadata.cfType == ColumnFamilyType.Super ? metadata.subcolumnComparator : metadata.comparator;
-        nameValidator.validate(name());
+        nameValidator.validate(name().bb);
     }
 
     public void validateFields(CFMetaData metadata) throws MarshalException
@@ -294,8 +294,8 @@ public class Column implements IColumn
         // (Note that COMPACT composites are handled by validateName, above.)
         ByteBuffer internalName;
         internalName = (cfdef.isComposite && !cfdef.isCompact)
-                     ? ((CompositeType) metadata.comparator).extractLastComponent(name)
-                     : name;
+                     ? ((CompositeType) metadata.comparator).extractLastComponent(name.bb)
+                     : name.bb;
 
         AbstractType<?> valueValidator = metadata.getValueValidator(internalName);
         if (valueValidator != null)
@@ -337,12 +337,12 @@ public class Column implements IColumn
         return new Column(decomposeName(names), InetAddressType.instance.decompose(value), timestamp);
     }
 
-    static ByteBuffer decomposeName(String... names)
+    static CellName decomposeName(String... names)
     {
         assert names.length > 0;
 
         if (names.length == 1)
-            return UTF8Type.instance.decompose(names[0]);
+            return CellName.wrap(UTF8Type.instance.decompose(names[0]));
 
         // not super performant.  at this time, only infrequently called schema code uses this.
         List<AbstractType<?>> types = new ArrayList<AbstractType<?>>(names.length);

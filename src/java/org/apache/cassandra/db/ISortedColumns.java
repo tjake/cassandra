@@ -28,6 +28,7 @@ import com.google.common.base.Function;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.util.IIterableColumns;
 import org.apache.cassandra.utils.Allocator;
 
@@ -94,7 +95,7 @@ public interface ISortedColumns extends IIterableColumns
     /**
      * Remove if present a column by name.
      */
-    public void removeColumn(ByteBuffer name);
+    public void removeColumn(CellName name);
 
     /**
      * Clear this column map, removing all columns.
@@ -105,14 +106,14 @@ public interface ISortedColumns extends IIterableColumns
      * Get a column given its name, returning null if the column is not
      * present.
      */
-    public IColumn getColumn(ByteBuffer name);
+    public IColumn getColumn(CellName name);
 
     /**
      * Returns a set with the names of columns in this column map.
      * The resulting set is sorted and the order is the one of the columns in
      * this column map.
      */
-    public SortedSet<ByteBuffer> getColumnNames();
+    public SortedSet<CellName> getColumnNames();
 
     /**
      * Returns the columns of this column map as a collection.
@@ -173,6 +174,6 @@ public interface ISortedColumns extends IIterableColumns
          * columns in the provided sorted map.
          * See {@code create} for the description of {@code insertReversed}
          */
-        public ISortedColumns fromSorted(SortedMap<ByteBuffer, IColumn> sm, boolean insertReversed);
+        public ISortedColumns fromSorted(SortedMap<CellName, IColumn> sm, boolean insertReversed);
     }
 }

@@ -57,12 +57,12 @@ public class ColumnToCollectionType extends AbstractType<ByteBuffer>
         this.defined = ImmutableMap.copyOf(defined);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
         throw new UnsupportedOperationException("ColumnToCollectionType should only be used in composite types, never alone");
     }
 
-    public int compareCollectionMembers(ByteBuffer o1, ByteBuffer o2, ByteBuffer collectionName)
+    public int compareCollectionMembers(CellName o1, CellName o2, ByteBuffer collectionName)
     {
         CollectionType t = defined.get(collectionName);
         if (t == null)

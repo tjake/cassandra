@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Collections;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
@@ -103,7 +104,7 @@ public class SSTableExportTest extends SchemaLoader
         int nowInSec = (int)(System.currentTimeMillis() / 1000) + 42; //live for 42 seconds
         // Add rowA
         cfamily.addColumn(new QueryPath("Standard1", null, ByteBufferUtil.bytes("colA")), ByteBufferUtil.bytes("valA"), System.currentTimeMillis());
-        cfamily.addColumn(null, new ExpiringColumn(ByteBufferUtil.bytes("colExp"), ByteBufferUtil.bytes("valExp"), System.currentTimeMillis(), 42, nowInSec));
+        cfamily.addColumn(null, new ExpiringColumn(CellName.wrap("colExp"), ByteBufferUtil.bytes("valExp"), System.currentTimeMillis(), 42, nowInSec));
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 
@@ -158,7 +159,7 @@ public class SSTableExportTest extends SchemaLoader
         // Add rowA
         cfamily.addColumn(new QueryPath("Super4", ByteBufferUtil.bytes("superA"), ByteBufferUtil.bytes("colA")), ByteBufferUtil.bytes("valA"), System.currentTimeMillis());
         // set deletion info on the super col
-        ((SuperColumn) cfamily.getColumn(ByteBufferUtil.bytes("superA"))).setDeletionInfo(new DeletionInfo(0, 0));
+        ((SuperColumn) cfamily.getColumn(CellName.wrap("superA"))).setDeletionInfo(new DeletionInfo(0, 0));
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 
@@ -226,13 +227,13 @@ public class SSTableExportTest extends SchemaLoader
         new SSTableImport().importJson(tempJson.getPath(), "Keyspace1", "Standard1", tempSS2.getPath());
 
         reader = SSTableReader.open(Descriptor.fromFilename(tempSS2.getPath()));
-        QueryFilter qf = QueryFilter.getNamesFilter(Util.dk("rowA"), new QueryPath("Standard1", null, null), ByteBufferUtil.bytes("name"));
+        QueryFilter qf = QueryFilter.getNamesFilter(Util.dk("rowA"), new QueryPath("Standard1", null, null), CellName.wrap("name"));
         ColumnFamily cf = qf.getSSTableColumnIterator(reader).getColumnFamily();
         qf.collateOnDiskAtom(cf, Collections.singletonList(qf.getSSTableColumnIterator(reader)), Integer.MIN_VALUE);
         assertTrue(cf != null);
-        assertTrue(cf.getColumn(ByteBufferUtil.bytes("name")).value().equals(hexToBytes("76616c")));
+        assertTrue(cf.getColumn(CellName.wrap("name")).value().equals(hexToBytes("76616c")));
 
-        qf = QueryFilter.getNamesFilter(Util.dk("rowExclude"), new QueryPath("Standard1", null, null), ByteBufferUtil.bytes("name"));
+        qf = QueryFilter.getNamesFilter(Util.dk("rowExclude"), new QueryPath("Standard1", null, null), CellName.wrap("name"));
         cf = qf.getSSTableColumnIterator(reader).getColumnFamily();
         assert cf == null;
     }
@@ -245,7 +246,7 @@ public class SSTableExportTest extends SchemaLoader
         SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2);
 
         // Add rowA
-        cfamily.addColumn(null, new CounterColumn(ByteBufferUtil.bytes("colA"), 42, System.currentTimeMillis()));
+        cfamily.addColumn(null, new CounterColumn(CellName.wrap("colA"), 42, System.currentTimeMillis()));
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 
@@ -276,7 +277,7 @@ public class SSTableExportTest extends SchemaLoader
         SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2);
 
         // Add rowA
-        cfamily.addColumn(null, new Column(ByteBufferUtil.bytes("data"), UTF8Type.instance.fromString("{\"foo\":\"bar\"}")));
+        cfamily.addColumn(null, new Column(CellName.wrap("data"), UTF8Type.instance.fromString("{\"foo\":\"bar\"}")));
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 

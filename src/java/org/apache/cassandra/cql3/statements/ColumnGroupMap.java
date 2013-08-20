@@ -120,7 +120,7 @@ public class ColumnGroupMap
             if (c.isMarkedForDelete())
                 return;
 
-            ByteBuffer[] current = composite.split(c.name());
+            ByteBuffer[] current = composite.split(c.name().bb);
 
             if (currentGroup == null)
             {

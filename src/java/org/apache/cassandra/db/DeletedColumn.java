@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.utils.Allocator;
@@ -30,12 +31,12 @@ import org.apache.cassandra.utils.HeapAllocator;
 
 public class DeletedColumn extends Column
 {
-    public DeletedColumn(ByteBuffer name, int localDeletionTime, long timestamp)
+    public DeletedColumn(CellName name, int localDeletionTime, long timestamp)
     {
         this(name, ByteBufferUtil.bytes(localDeletionTime), timestamp);
     }
 
-    public DeletedColumn(ByteBuffer name, ByteBuffer value, long timestamp)
+    public DeletedColumn(CellName name, ByteBuffer value, long timestamp)
     {
         super(name, value, timestamp);
     }
@@ -57,7 +58,7 @@ public class DeletedColumn extends Column
     @Override
     public void updateDigest(MessageDigest digest)
     {
-        digest.update(name.duplicate());
+        digest.update(name.bb.duplicate());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
         try

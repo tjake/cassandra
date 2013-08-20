@@ -271,7 +271,7 @@ public final class CFMetaData
     private volatile Caching caching = DEFAULT_CACHING_STRATEGY;
     private volatile boolean populateIoCacheOnFlush = DEFAULT_POPULATE_IO_CACHE_ON_FLUSH;
 
-    volatile Map<ByteBuffer, ColumnDefinition> column_metadata = new HashMap<ByteBuffer,ColumnDefinition>();
+    volatile Map<CellName, ColumnDefinition> column_metadata = new HashMap<CellName,ColumnDefinition>();
     public volatile Class<? extends AbstractCompactionStrategy> compactionStrategyClass = DEFAULT_COMPACTION_STRATEGY_CLASS;
     public volatile Map<String, String> compactionStrategyOptions = new HashMap<String, String>();
 
@@ -294,7 +294,7 @@ public final class CFMetaData
     public CFMetaData keyAliases(List<ByteBuffer> prop) {keyAliases = prop; updateCfDef(); return this;}
     public CFMetaData columnAliases(List<ByteBuffer> prop) {columnAliases = prop; updateCfDef(); return this;}
     public CFMetaData valueAlias(ByteBuffer prop) {valueAlias = prop; updateCfDef(); return this;}
-    public CFMetaData columnMetadata(Map<ByteBuffer,ColumnDefinition> prop) {column_metadata = prop; updateCfDef(); return this;}
+    public CFMetaData columnMetadata(Map<CellName,ColumnDefinition> prop) {column_metadata = prop; updateCfDef(); return this;}
     public CFMetaData compactionStrategyClass(Class<? extends AbstractCompactionStrategy> prop) {compactionStrategyClass = prop; return this;}
     public CFMetaData compactionStrategyOptions(Map<String, String> prop) {compactionStrategyOptions = prop; return this;}
     public CFMetaData compressionParameters(CompressionParameters prop) {compressionParameters = prop; return this;}
@@ -426,7 +426,7 @@ public final class CFMetaData
 
     static CFMetaData copyOpts(CFMetaData newCFMD, CFMetaData oldCFMD)
     {
-        Map<ByteBuffer, ColumnDefinition> clonedColumns = new HashMap<ByteBuffer, ColumnDefinition>();
+        Map<CellName, ColumnDefinition> clonedColumns = new HashMap<CellName, ColumnDefinition>();
         for (ColumnDefinition cd : oldCFMD.column_metadata.values())
         {
             ColumnDefinition cloned = cd.clone();
@@ -464,7 +464,7 @@ public final class CFMetaData
     public String indexColumnFamilyName(ColumnDefinition info)
     {
         // TODO simplify this when info.index_name is guaranteed to be set
-        return cfName + Directories.SECONDARY_INDEX_NAME_SEPARATOR + (info.getIndexName() == null ? ByteBufferUtil.bytesToHex(info.name) : info.getIndexName());
+        return cfName + Directories.SECONDARY_INDEX_NAME_SEPARATOR + (info.getIndexName() == null ? ByteBufferUtil.bytesToHex(info.name.bb) : info.getIndexName());
     }
 
     public String getComment()
@@ -558,7 +558,7 @@ public final class CFMetaData
         return compressionParameters;
     }
 
-    public Map<ByteBuffer, ColumnDefinition> getColumn_metadata()
+    public Map<CellName, ColumnDefinition> getColumn_metadata()
     {
         return Collections.unmodifiableMap(column_metadata);
     }
@@ -654,6 +654,11 @@ public final class CFMetaData
     }
 
     public AbstractType<?> getValueValidator(ByteBuffer column)
+    {
+        return getValueValidator(getColumnDefinition(column));
+    }
+
+    public AbstractType<?> getValueValidator(CellName column)
     {
         return getValueValidator(getColumnDefinition(column));
     }
@@ -815,7 +820,7 @@ public final class CFMetaData
         caching = cfm.caching;
         populateIoCacheOnFlush = cfm.populateIoCacheOnFlush;
 
-        MapDifference<ByteBuffer, ColumnDefinition> columnDiff = Maps.difference(column_metadata, cfm.column_metadata);
+        MapDifference<CellName, ColumnDefinition> columnDiff = Maps.difference(column_metadata, cfm.column_metadata);
         // columns that are no longer needed
         for (ColumnDefinition cd : columnDiff.entriesOnlyOnLeft().values())
             column_metadata.remove(cd.name);
@@ -823,7 +828,7 @@ public final class CFMetaData
         for (ColumnDefinition cd : columnDiff.entriesOnlyOnRight().values())
             column_metadata.put(cd.name, cd);
         // old columns with updated attributes
-        for (ByteBuffer name : columnDiff.entriesDiffering().keySet())
+        for (CellName name : columnDiff.entriesDiffering().keySet())
         {
             ColumnDefinition oldDef = column_metadata.get(name);
             ColumnDefinition def = cfm.column_metadata.get(name);
@@ -979,23 +984,28 @@ public final class CFMetaData
      * component of the full column name. If you have a full column name, use
      * getColumnDefinitionFromColumnName instead.
      */
-    public ColumnDefinition getColumnDefinition(ByteBuffer name)
+    public ColumnDefinition getColumnDefinition(CellName name)
     {
             return column_metadata.get(name);
+    }
+
+    public ColumnDefinition getColumnDefinition(ByteBuffer name)
+    {
+        return column_metadata.get(CellName.wrap(name));
     }
 
     /**
      * Returns a ColumnDefinition given a full (internal) column name.
      */
-    public ColumnDefinition getColumnDefinitionFromColumnName(ByteBuffer columnName)
+    public ColumnDefinition getColumnDefinitionFromColumnName(CellName columnName)
     {
         if (cfType == ColumnFamilyType.Standard && comparator instanceof CompositeType)
         {
             CompositeType composite = (CompositeType)comparator;
-            ByteBuffer[] components = composite.split(columnName);
+            ByteBuffer[] components = composite.split(columnName.bb);
             for (ColumnDefinition def : column_metadata.values())
             {
-                ByteBuffer toCompare = def.componentIndex == null ? columnName : components[def.componentIndex];
+                ByteBuffer toCompare = def.componentIndex == null ? columnName.bb : components[def.componentIndex];
                 if (def.name.equals(toCompare))
                     return def;
             }
@@ -1028,7 +1038,7 @@ public final class CFMetaData
         {
             CFMetaData cfm = Schema.instance.getCFMetaData(cfId);
 
-            for (Map.Entry<ByteBuffer, ColumnDefinition> entry : column_metadata.entrySet())
+            for (Map.Entry<CellName, ColumnDefinition> entry : column_metadata.entrySet())
             {
                 ColumnDefinition newDef = entry.getValue();
 
@@ -1052,7 +1062,7 @@ public final class CFMetaData
         {
             if (column.getIndexType() != null && column.getIndexName() == null)
             {
-                String baseName = getDefaultIndexName(cfName, getColumnDefinitionComparator(column), column.name);
+                String baseName = getDefaultIndexName(cfName, getColumnDefinitionComparator(column), column.name.bb);
                 String indexName = baseName;
                 int i = 0;
                 while (existingNames.contains(indexName))
@@ -1125,13 +1135,13 @@ public final class CFMetaData
         {
             for (ColumnDefinition def : column_metadata.values())
                 if (!(def.getValidator() instanceof CounterColumnType))
-                    throw new ConfigurationException("Cannot add a non counter column (" + getColumnDefinitionComparator(def).getString(def.name) + ") in a counter column family");
+                    throw new ConfigurationException("Cannot add a non counter column (" + getColumnDefinitionComparator(def).getString(def.name.bb) + ") in a counter column family");
         }
         else
         {
             for (ColumnDefinition def : column_metadata.values())
                 if (def.getValidator() instanceof CounterColumnType)
-                    throw new ConfigurationException("Cannot add a counter column (" + getColumnDefinitionComparator(def).getString(def.name) + ") in a non counter column family");
+                    throw new ConfigurationException("Cannot add a counter column (" + getColumnDefinitionComparator(def).getString(def.name.bb) + ") in a non counter column family");
         }
 
         // check if any of the columns has name equal to the cf.key_alias
@@ -1163,12 +1173,12 @@ public final class CFMetaData
 
             try
             {
-                comparator.validate(c.name);
+                comparator.validate(c.name.bb);
             }
             catch (MarshalException e)
             {
                 throw new ConfigurationException(String.format("Column name %s is not valid for comparator %s",
-                                                               ByteBufferUtil.bytesToHex(c.name), comparator));
+                                                               ByteBufferUtil.bytesToHex(c.name.bb), comparator));
             }
 
             if (c.getIndexType() == null)
@@ -1260,7 +1270,7 @@ public final class CFMetaData
 
         newState.toSchemaNoColumns(rm, modificationTimestamp);
 
-        MapDifference<ByteBuffer, ColumnDefinition> columnDiff = Maps.difference(column_metadata, newState.column_metadata);
+        MapDifference<CellName, ColumnDefinition> columnDiff = Maps.difference(column_metadata, newState.column_metadata);
 
         // columns that are no longer needed
         for (ColumnDefinition cd : columnDiff.entriesOnlyOnLeft().values())
@@ -1271,7 +1281,7 @@ public final class CFMetaData
             cd.toSchema(rm, cfName, getColumnDefinitionComparator(cd), modificationTimestamp);
 
         // old columns with updated attributes
-        for (ByteBuffer name : columnDiff.entriesDiffering().keySet())
+        for (CellName name : columnDiff.entriesDiffering().keySet())
         {
             ColumnDefinition cd = newState.getColumnDefinition(name);
             cd.toSchema(rm, cfName, getColumnDefinitionComparator(cd), modificationTimestamp);

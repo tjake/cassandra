@@ -104,7 +104,7 @@ public class NameSortTest extends SchemaLoader
             Collection<IColumn> columns = cf.getSortedColumns();
             for (IColumn column : columns)
             {
-                String name = ByteBufferUtil.string(column.name());
+                String name = ByteBufferUtil.string(column.name().bb);
                 int j = Integer.valueOf(name.substring(name.length() - 1));
                 byte[] bytes = j % 2 == 0 ? "a".getBytes() : "b".getBytes();
                 assertEquals(new String(bytes), ByteBufferUtil.string(column.value()));
@@ -116,12 +116,12 @@ public class NameSortTest extends SchemaLoader
             assert superColumns.size() == 8 : cf;
             for (IColumn superColumn : superColumns)
             {
-                int j = Integer.valueOf(ByteBufferUtil.string(superColumn.name()).split("-")[1]);
+                int j = Integer.valueOf(ByteBufferUtil.string(superColumn.name().bb).split("-")[1]);
                 Collection<IColumn> subColumns = superColumn.getSubColumns();
                 assert subColumns.size() == 4;
                 for (IColumn subColumn : subColumns)
                 {
-                    long k = subColumn.name().getLong(subColumn.name().position());
+                    long k = subColumn.name().bb.getLong(subColumn.name().bb.position());
                     byte[] bytes = (j + k) % 2 == 0 ? "a".getBytes() : "b".getBytes();
                     assertEquals(new String(bytes), ByteBufferUtil.string(subColumn.value()));
                 }

@@ -114,7 +114,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 Integer componentIndex = cfDef.isComposite
                                        ? ((CompositeType)meta.comparator).types.size() - (cfDef.hasCollections ? 2 : 1)
                                        : null;
-                cfm.addColumnDefinition(new ColumnDefinition(columnName.key,
+                cfm.addColumnDefinition(new ColumnDefinition(CellName.wrap(columnName.key),
                                                              type,
                                                              null,
                                                              null,
@@ -175,7 +175,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         ColumnDefinition toDelete = null;
                         for (ColumnDefinition columnDef : cfm.getColumn_metadata().values())
                         {
-                            if (columnDef.name.equals(columnName.key))
+                            if (columnDef.name.bb.equals(columnName.key))
                                 toDelete = columnDef;
                         }
                         assert toDelete != null;

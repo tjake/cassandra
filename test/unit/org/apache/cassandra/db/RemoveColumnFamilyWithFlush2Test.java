@@ -21,6 +21,7 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import static junit.framework.Assert.assertNull;
@@ -54,7 +55,7 @@ public class RemoveColumnFamilyWithFlush2Test extends SchemaLoader
 
         ColumnFamily retrieved = store.getColumnFamily(QueryFilter.getIdentityFilter(dk, new QueryPath("Standard1", null, ByteBufferUtil.bytes("Column1"))));
         assert retrieved.isMarkedForDelete();
-        assertNull(retrieved.getColumn(ByteBufferUtil.bytes("Column1")));
+        assertNull(retrieved.getColumn(CellName.wrap("Column1")));
         assertNull(Util.cloneAndRemoveDeleted(retrieved, Integer.MAX_VALUE));
     }
 }

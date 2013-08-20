@@ -305,7 +305,7 @@ public class CompositeType extends AbstractCompositeType
             return composite.types.size() - components.size();
         }
 
-        public ByteBuffer build()
+        public CellName build()
         {
             DataOutputBuffer out = new DataOutputBuffer(serializedSize);
             for (int i = 0; i < components.size(); i++)
@@ -320,17 +320,17 @@ public class CompositeType extends AbstractCompositeType
                 }
                 out.write(endOfComponents[i]);
             }
-            return ByteBuffer.wrap(out.getData(), 0, out.getLength());
+            return CellName.wrap(ByteBuffer.wrap(out.getData(), 0, out.getLength()));
         }
 
-        public ByteBuffer buildAsEndOfRange()
+        public CellName buildAsEndOfRange()
         {
             if (components.isEmpty())
-                return ByteBufferUtil.EMPTY_BYTE_BUFFER;
+                return CellName.EMPTY_CELL_NAME;
 
-            ByteBuffer bb = build();
-            bb.put(bb.remaining() - 1, (byte)1);
-            return bb;
+            CellName cn = build();
+            cn.bb.put(cn.bb.remaining() - 1, (byte)1);
+            return cn;
         }
 
         public Builder copy()

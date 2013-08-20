@@ -61,7 +61,7 @@ public class CompositeTypeTest extends SchemaLoader
     @Test
     public void testEndOfComponent()
     {
-        ByteBuffer[] cnames = {
+        CellName[] cnames = {
             createCompositeKey("test1", uuids[0], -1, false),
             createCompositeKey("test1", uuids[1], 24, false),
             createCompositeKey("test1", uuids[1], 42, false),
@@ -70,8 +70,8 @@ public class CompositeTypeTest extends SchemaLoader
             createCompositeKey("test1", uuids[2], 42, false),
         };
 
-        ByteBuffer start = createCompositeKey("test1", uuids[1], -1, false);
-        ByteBuffer stop = createCompositeKey("test1", uuids[1], -1, true);
+        CellName start = createCompositeKey("test1", uuids[1], -1, false);
+        CellName stop = createCompositeKey("test1", uuids[1], -1, true);
 
         for (int i = 0; i < 1; ++i)
         {
@@ -94,53 +94,53 @@ public class CompositeTypeTest extends SchemaLoader
     public void testGetString()
     {
         String test1Hex = ByteBufferUtil.bytesToHex(ByteBufferUtil.bytes("test1"));
-        ByteBuffer key = createCompositeKey("test1", uuids[1], 42, false);
-        assert comparator.getString(key).equals(test1Hex + ":" + uuids[1] + ":42");
+        CellName key = createCompositeKey("test1", uuids[1], 42, false);
+        assert comparator.getString(key.bb).equals(test1Hex + ":" + uuids[1] + ":42");
 
         key = createCompositeKey("test1", uuids[1], -1, true);
-        assert comparator.getString(key).equals(test1Hex + ":" + uuids[1] + ":!");
+        assert comparator.getString(key.bb).equals(test1Hex + ":" + uuids[1] + ":!");
     }
 
     @Test
     public void testFromString()
     {
         String test1Hex = ByteBufferUtil.bytesToHex(ByteBufferUtil.bytes("test1"));
-        ByteBuffer key = createCompositeKey("test1", uuids[1], 42, false);
-        assert key.equals(comparator.fromString(test1Hex + ":" + uuids[1] + ":42"));
+        CellName key = createCompositeKey("test1", uuids[1], 42, false);
+        assert key.bb.equals(comparator.fromString(test1Hex + ":" + uuids[1] + ":42"));
 
         key = createCompositeKey("test1", uuids[1], -1, true);
-        assert key.equals(comparator.fromString(test1Hex + ":" + uuids[1] + ":!"));
+        assert key.bb.equals(comparator.fromString(test1Hex + ":" + uuids[1] + ":!"));
     }
 
     @Test
     public void testValidate()
     {
-        ByteBuffer key = createCompositeKey("test1", uuids[1], 42, false);
-        comparator.validate(key);
+        CellName key = createCompositeKey("test1", uuids[1], 42, false);
+        comparator.validate(key.bb);
 
         key = createCompositeKey("test1", null, -1, false);
-        comparator.validate(key);
+        comparator.validate(key.bb);
 
         key = createCompositeKey("test1", uuids[2], -1, true);
-        comparator.validate(key);
+        comparator.validate(key.bb);
 
-        key.get(); // make sure we're not aligned anymore
+        key.bb.get(); // make sure we're not aligned anymore
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e) {}
 
-        key = ByteBuffer.allocate(3 + "test1".length() + 3 + 14);
-        key.putShort((short) "test1".length());
-        key.put(ByteBufferUtil.bytes("test1"));
-        key.put((byte) 0);
-        key.putShort((short) 14);
-        key.rewind();
+        key = CellName.wrap(ByteBuffer.allocate(3 + "test1".length() + 3 + 14));
+        key.bb.putShort((short) "test1".length());
+        key.bb.put(ByteBufferUtil.bytes("test1"));
+        key.bb.put((byte) 0);
+        key.bb.putShort((short) 14);
+        key.bb.rewind();
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e)
@@ -151,7 +151,7 @@ public class CompositeTypeTest extends SchemaLoader
         key = createCompositeKey("test1", UUID.randomUUID(), 42, false);
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e)
@@ -166,11 +166,11 @@ public class CompositeTypeTest extends SchemaLoader
         Table table = Table.open("Keyspace1");
         ColumnFamilyStore cfs = table.getColumnFamilyStore(cfName);
 
-        ByteBuffer cname1 = createCompositeKey("test1", null, -1, false);
-        ByteBuffer cname2 = createCompositeKey("test1", uuids[0], 24, false);
-        ByteBuffer cname3 = createCompositeKey("test1", uuids[0], 42, false);
-        ByteBuffer cname4 = createCompositeKey("test2", uuids[0], -1, false);
-        ByteBuffer cname5 = createCompositeKey("test2", uuids[1], 42, false);
+        CellName cname1 = createCompositeKey("test1", null, -1, false);
+        CellName cname2 = createCompositeKey("test1", uuids[0], 24, false);
+        CellName cname3 = createCompositeKey("test1", uuids[0], 42, false);
+        CellName cname4 = createCompositeKey("test2", uuids[0], -1, false);
+        CellName cname5 = createCompositeKey("test2", uuids[1], 42, false);
 
         ByteBuffer key = ByteBufferUtil.bytes("k");
         RowMutation rm = new RowMutation("Keyspace1", key);
@@ -248,19 +248,19 @@ public class CompositeTypeTest extends SchemaLoader
             for (String part : input)
                 builder.add(UTF8Type.instance.fromString(part));
 
-            ByteBuffer value = comp.fromString(comp.getString(builder.build()));
+            ByteBuffer value = comp.fromString(comp.getString(builder.build().bb));
             ByteBuffer[] splitted = comp.split(value);
             for (int i = 0; i < splitted.length; i++)
                 assertEquals(input[i], UTF8Type.instance.getString(splitted[i]));
         }
     }
 
-    private void addColumn(RowMutation rm, ByteBuffer cname)
+    private void addColumn(RowMutation rm, CellName cname)
     {
-        rm.add(new QueryPath(cfName, null , cname), ByteBufferUtil.EMPTY_BYTE_BUFFER, 0);
+        rm.add(new QueryPath(cfName, null , cname.bb), ByteBufferUtil.EMPTY_BYTE_BUFFER, 0);
     }
 
-    private ByteBuffer createCompositeKey(String s, UUID uuid, int i, boolean lastIsOne)
+    private CellName createCompositeKey(String s, UUID uuid, int i, boolean lastIsOne)
     {
         ByteBuffer bytes = ByteBufferUtil.bytes(s);
         int totalSize = 0;
@@ -300,6 +300,6 @@ public class CompositeTypeTest extends SchemaLoader
             }
         }
         bb.rewind();
-        return bb;
+        return CellName.wrap(bb);
     }
 }

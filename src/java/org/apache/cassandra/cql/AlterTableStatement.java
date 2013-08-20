@@ -18,6 +18,7 @@
 package org.apache.cassandra.cql;
 
 import org.apache.cassandra.config.*;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.io.compress.CompressionParameters;
@@ -68,8 +69,8 @@ public class AlterTableStatement
         CFMetaData meta = Schema.instance.getCFMetaData(keyspace, columnFamily);
         CFMetaData cfm = meta.clone();
 
-        ByteBuffer columnName = this.oType == OperationType.OPTS ? null
-                                                                 : meta.comparator.fromStringCQL2(this.columnName);
+        CellName columnName = this.oType == OperationType.OPTS ? null
+                                                                 : CellName.wrap(meta.comparator.fromStringCQL2(this.columnName));
 
         switch (oType)
         {

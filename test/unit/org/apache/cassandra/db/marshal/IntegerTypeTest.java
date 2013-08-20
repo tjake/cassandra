@@ -77,7 +77,7 @@ public class IntegerTypeTest
     @Test(expected = NullPointerException.class)
     public void testNullBoth()
     {
-        comparator.compare(null, null);
+        comparator.compare((ByteBuffer)null, (ByteBuffer)null);
     }
 
     @Test
@@ -125,51 +125,51 @@ public class IntegerTypeTest
     @Test
     public void testCommonPrefix()
     {
-        ByteBuffer[] data = {
-                ByteBuffer.wrap(new byte[]{1, 0, 0, 1}),
-                ByteBuffer.wrap(new byte[]{1, 0, 0, 1, 0}),
-                ByteBuffer.wrap(new byte[]{1, 0, 0, 1}),
-                ByteBuffer.wrap(new byte[]{1, 0, 0, 1, 0}),
-                ByteBuffer.wrap(new byte[]{-1, 0, 0, 1}),
-                ByteBuffer.wrap(new byte[]{-1, 0, 0, 1, 0}),
-                ByteBuffer.wrap(new byte[]{-1, 0, 0, 1}),
-                ByteBuffer.wrap(new byte[]{-1, 0, 0, 1, 0})
+        CellName[] data = {
+                CellName.wrap(new byte[]{1, 0, 0, 1}),
+                CellName.wrap(new byte[]{1, 0, 0, 1, 0}),
+                CellName.wrap(new byte[]{1, 0, 0, 1}),
+                CellName.wrap(new byte[]{1, 0, 0, 1, 0}),
+                CellName.wrap(new byte[]{-1, 0, 0, 1}),
+                CellName.wrap(new byte[]{-1, 0, 0, 1, 0}),
+                CellName.wrap(new byte[]{-1, 0, 0, 1}),
+                CellName.wrap(new byte[]{-1, 0, 0, 1, 0})
         };
 
         Arrays.sort(data, comparator);
-        assertArrayEquals(new byte[]{-1, 0, 0, 1, 0}, data[0].array());
-        assertArrayEquals(new byte[]{-1, 0, 0, 1, 0},data[1].array());
-        assertArrayEquals(new byte[]{-1, 0, 0, 1},data[2].array());
-        assertArrayEquals(new byte[]{-1, 0, 0, 1},data[3].array());
-        assertArrayEquals(new byte[]{1, 0, 0, 1},data[4].array());
-        assertArrayEquals(new byte[]{1, 0, 0, 1},data[5].array());
-        assertArrayEquals(new byte[]{1, 0, 0, 1, 0},data[6].array());
-        assertArrayEquals(new byte[]{1, 0, 0, 1, 0},data[7].array());
+        assertArrayEquals(new byte[]{-1, 0, 0, 1, 0}, data[0].bb.array());
+        assertArrayEquals(new byte[]{-1, 0, 0, 1, 0},data[1].bb.array());
+        assertArrayEquals(new byte[]{-1, 0, 0, 1},data[2].bb.array());
+        assertArrayEquals(new byte[]{-1, 0, 0, 1},data[3].bb.array());
+        assertArrayEquals(new byte[]{1, 0, 0, 1},data[4].bb.array());
+        assertArrayEquals(new byte[]{1, 0, 0, 1},data[5].bb.array());
+        assertArrayEquals(new byte[]{1, 0, 0, 1, 0},data[6].bb.array());
+        assertArrayEquals(new byte[]{1, 0, 0, 1, 0},data[7].bb.array());
     }
 
     @Test
     public void testSorting()
     {
-        ByteBuffer[] data = {
-                ByteBuffer.wrap(new byte[]{ 1, 0, 0, 0}),
-                ByteBuffer.wrap(new byte[]{-2, 0, 0}),
-                ByteBuffer.wrap(new byte[]{ 3, 0}),
-                ByteBuffer.wrap(new byte[]{-4}),
-                ByteBuffer.wrap(new byte[]{ 4}),
-                ByteBuffer.wrap(new byte[]{-3, 0}),
-                ByteBuffer.wrap(new byte[]{ 2, 0, 0}),
-                ByteBuffer.wrap(new byte[]{-1, 0, 0, 0})
+        CellName[] data = {
+                CellName.wrap(new byte[]{ 1, 0, 0, 0}),
+                CellName.wrap(new byte[]{-2, 0, 0}),
+                CellName.wrap(new byte[]{ 3, 0}),
+                CellName.wrap(new byte[]{-4}),
+                CellName.wrap(new byte[]{ 4}),
+                CellName.wrap(new byte[]{-3, 0}),
+                CellName.wrap(new byte[]{ 2, 0, 0}),
+                CellName.wrap(new byte[]{-1, 0, 0, 0})
         };
 
         Arrays.sort(data, comparator);
-        assertArrayEquals("-1", new byte[] {-1, 0, 0, 0}, data[0].array());
-        assertArrayEquals("-2", new byte[] {-2, 0, 0}, data[1].array());
-        assertArrayEquals("-3", new byte[] {-3, 0}, data[2].array());
-        assertArrayEquals("-4", new byte[] {-4}, data[3].array());
-        assertArrayEquals(" 4", new byte[] { 4}, data[4].array());
-        assertArrayEquals(" 3", new byte[] { 3, 0}, data[5].array());
-        assertArrayEquals(" 2", new byte[] { 2, 0, 0}, data[6].array());
-        assertArrayEquals(" 1", new byte[] { 1, 0, 0, 0}, data[7].array());
+        assertArrayEquals("-1", new byte[] {-1, 0, 0, 0}, data[0].bb.array());
+        assertArrayEquals("-2", new byte[] {-2, 0, 0}, data[1].bb.array());
+        assertArrayEquals("-3", new byte[] {-3, 0}, data[2].bb.array());
+        assertArrayEquals("-4", new byte[] {-4}, data[3].bb.array());
+        assertArrayEquals(" 4", new byte[] { 4}, data[4].bb.array());
+        assertArrayEquals(" 3", new byte[] { 3, 0}, data[5].bb.array());
+        assertArrayEquals(" 2", new byte[] { 2, 0, 0}, data[6].bb.array());
+        assertArrayEquals(" 1", new byte[] { 1, 0, 0, 0}, data[7].bb.array());
     }
 
     @Test
@@ -177,19 +177,19 @@ public class IntegerTypeTest
     {
         Random rng = new Random(-9078270684023566599L);
 
-        ByteBuffer[] data = new ByteBuffer[10000];
+        CellName[] data = new CellName[10000];
         for (int i = 0; i < data.length; i++)
         {
-            data[i] = ByteBuffer.allocate(rng.nextInt(32) + 1);
-            rng.nextBytes(data[i].array());
+            data[i] = CellName.wrap(ByteBuffer.allocate(rng.nextInt(32) + 1));
+            rng.nextBytes(data[i].bb.array());
         }
 
         Arrays.sort(data, comparator);
 
         for (int i = 1; i < data.length; i++)
         {
-            BigInteger i0 = new BigInteger(data[i - 1].array());
-            BigInteger i1 = new BigInteger(data[i].array());
+            BigInteger i0 = new BigInteger(data[i - 1].bb.array());
+            BigInteger i1 = new BigInteger(data[i].bb.array());
             assertTrue("#" + i, i0.compareTo(i1) <= 0);
         }
     }

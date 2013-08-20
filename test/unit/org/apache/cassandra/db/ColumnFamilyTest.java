@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.apache.cassandra.SchemaLoader;
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import org.apache.cassandra.io.sstable.ColumnStats;
@@ -86,7 +87,7 @@ public class ColumnFamilyTest extends SchemaLoader
         cf = ColumnFamily.serializer.deserialize(new DataInputStream(bufIn), version);
         for (String cName : map.navigableKeySet())
         {
-            ByteBuffer val = cf.getColumn(ByteBufferUtil.bytes(cName)).value();
+            ByteBuffer val = cf.getColumn(CellName.wrap(cName)).value();
             assert new String(val.array(),val.position(),val.remaining()).equals(map.get(cName));
         }
         assert cf.getColumnNames().size() == map.size();
@@ -114,7 +115,7 @@ public class ColumnFamilyTest extends SchemaLoader
         cf.addColumn(column("col1", "val2", 2)); // same timestamp, new value
         cf.addColumn(column("col1", "val3", 1)); // older timestamp -- should be ignored
 
-        assert ByteBufferUtil.bytes("val2").equals(cf.getColumn(ByteBufferUtil.bytes("col1")).value());
+        assert ByteBufferUtil.bytes("val2").equals(cf.getColumn(CellName.wrap("col1")).value());
     }
 
     @Test
@@ -138,27 +139,27 @@ public class ColumnFamilyTest extends SchemaLoader
 
         assert 3 == cf_result.getColumnCount() : "Count is " + cf_new.getColumnCount();
         //addcolumns will only add if timestamp >= old timestamp
-        assert val.equals(cf_result.getColumn(ByteBufferUtil.bytes("col2")).value());
+        assert val.equals(cf_result.getColumn(CellName.wrap("col2")).value());
 
         // check that tombstone wins timestamp ties
-        cf_result.addTombstone(ByteBufferUtil.bytes("col1"), 0, 3);
-        assert cf_result.getColumn(ByteBufferUtil.bytes("col1")).isMarkedForDelete();
+        cf_result.addTombstone(CellName.wrap("col1"), 0, 3);
+        assert cf_result.getColumn(CellName.wrap("col1")).isMarkedForDelete();
         cf_result.addColumn(QueryPath.column(ByteBufferUtil.bytes("col1")), val2, 3);
-        assert cf_result.getColumn(ByteBufferUtil.bytes("col1")).isMarkedForDelete();
+        assert cf_result.getColumn(CellName.wrap("col1")).isMarkedForDelete();
 
         // check that column value wins timestamp ties in absence of tombstone
         cf_result.addColumn(QueryPath.column(ByteBufferUtil.bytes("col3")), val, 2);
-        assert cf_result.getColumn(ByteBufferUtil.bytes("col3")).value().equals(val2);
+        assert cf_result.getColumn(CellName.wrap("col3")).value().equals(val2);
         cf_result.addColumn(QueryPath.column(ByteBufferUtil.bytes("col3")), ByteBufferUtil.bytes("z"), 2);
-        assert cf_result.getColumn(ByteBufferUtil.bytes("col3")).value().equals(ByteBufferUtil.bytes("z"));
+        assert cf_result.getColumn(CellName.wrap("col3")).value().equals(ByteBufferUtil.bytes("z"));
     }
 
     private void testSuperColumnResolution(ISortedColumns.Factory factory)
     {
         ColumnFamilyStore cfs = Table.open("Keyspace1").getColumnFamilyStore("Super1");
         ColumnFamily cf = ColumnFamily.create(cfs.metadata, factory);
-        ByteBuffer superColumnName = ByteBufferUtil.bytes("sc");
-        ByteBuffer subColumnName = ByteBufferUtil.bytes(1L);
+        CellName superColumnName = CellName.wrap("sc");
+        CellName subColumnName = CellName.wrap(1L);
 
         Column first = new Column(subColumnName, ByteBufferUtil.bytes("one"), 1L);
         Column second = new Column(subColumnName, ByteBufferUtil.bytes("two"), 2L);

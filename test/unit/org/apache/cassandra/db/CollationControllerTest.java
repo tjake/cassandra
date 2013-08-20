@@ -27,6 +27,7 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.junit.Test;
 
@@ -71,7 +72,7 @@ public class CollationControllerTest extends SchemaLoader
 
         // A NamesQueryFilter goes down one code path (through collectTimeOrderedData())
         // It should only iterate the last flushed sstable, since it probably contains the most recent value for Column1
-        QueryFilter filter = QueryFilter.getNamesFilter(dk, path, ByteBufferUtil.bytes("Column1"));
+        QueryFilter filter = QueryFilter.getNamesFilter(dk, path, CellName.wrap("Column1"));
         CollationController controller = new CollationController(store, false, filter, Integer.MIN_VALUE);
         controller.getTopLevelColumns();
         assertEquals(1, controller.getSstablesIterated());

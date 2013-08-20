@@ -20,6 +20,7 @@ package org.apache.cassandra.service;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +44,7 @@ public class RangeSliceVerbHandler implements IVerbHandler<RangeSliceCommand>
         if (cfs.indexManager.hasIndexFor(command.row_filter))
             return cfs.search(command.row_filter, command.range, command.maxResults, command.predicate, command.countCQL3Rows);
         else
-            return cfs.getRangeSlice(command.super_column, command.range, command.maxResults, command.predicate, command.row_filter, command.countCQL3Rows, command.isPaging);
+            return cfs.getRangeSlice(CellName.wrap(command.super_column), command.range, command.maxResults, command.predicate, command.row_filter, command.countCQL3Rows, command.isPaging);
     }
 
     public void doVerb(MessageIn<RangeSliceCommand> message, String id)

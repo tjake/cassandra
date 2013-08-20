@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,7 +75,7 @@ public abstract class ExtendedFilter
         this.isPaging = isPaging;
         if (countCQL3Rows)
             originalFilter.updateColumnsLimit(maxResults);
-        if (isPaging && (!(originalFilter instanceof SliceQueryFilter) || ((SliceQueryFilter)originalFilter).finish().remaining() != 0))
+        if (isPaging && (!(originalFilter instanceof SliceQueryFilter) || ((SliceQueryFilter)originalFilter).finish().bb.remaining() != 0))
             throw new IllegalArgumentException("Cross-row paging is only supported for SliceQueryFilter having an empty finish column");
     }
 
@@ -96,7 +97,7 @@ public abstract class ExtendedFilter
     {
         // As soon as we'd done our first call, we want to reset the start column if we're paging
         if (isPaging)
-            ((SliceQueryFilter)initialFilter()).setStart(ByteBufferUtil.EMPTY_BYTE_BUFFER);
+            ((SliceQueryFilter)initialFilter()).setStart(CellName.EMPTY_CELL_NAME);
 
         if (!countCQL3Rows)
             return;
@@ -183,8 +184,8 @@ public abstract class ExtendedFilter
                 if (cfs.getMaxRowSize() < DatabaseDescriptor.getColumnIndexSize())
                 {
                     logger.trace("Expanding slice filter to entire row to cover additional expressions");
-                    return new SliceQueryFilter(ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                    return new SliceQueryFilter(CellName.EMPTY_CELL_NAME,
+                                                CellName.EMPTY_CELL_NAME,
                                                 ((SliceQueryFilter) originalFilter).reversed,
                                                 Integer.MAX_VALUE);
                 }
@@ -195,10 +196,10 @@ public abstract class ExtendedFilter
                 assert originalFilter instanceof NamesQueryFilter;
                 if (!clause.isEmpty())
                 {
-                    SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+                    SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
                     for (IndexExpression expr : clause)
                     {
-                        columns.add(expr.column_name);
+                        columns.add(CellName.wrap(expr.column_name));
                     }
                     columns.addAll(((NamesQueryFilter) originalFilter).columns);
                     return ((NamesQueryFilter)originalFilter).withUpdatedColumns(columns);
@@ -237,7 +238,7 @@ public abstract class ExtendedFilter
 
             for (IndexExpression expr : clause)
             {
-                if (data.getColumn(expr.column_name) == null)
+                if (data.getColumn(CellName.wrap(expr.column_name)) == null)
                 {
                     logger.debug("adding extraFilter to cover additional expressions");
                     return true;
@@ -253,11 +254,12 @@ public abstract class ExtendedFilter
 
             // Note: for counters we must be careful to not add a column that was already there (to avoid overcount). That is
             // why we do the dance of avoiding to query any column we already have (it's also more efficient anyway)
-            SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfs.getComparator());
+            SortedSet<CellName> columns = new TreeSet<CellName>(cfs.getComparator());
             for (IndexExpression expr : clause)
             {
-                if (data.getColumn(expr.column_name) == null)
-                    columns.add(expr.column_name);
+                CellName cName = CellName.wrap(expr.column_name);
+                if (data.getColumn(cName) == null)
+                    columns.add(cName);
             }
             assert !columns.isEmpty();
             return new NamesQueryFilter(columns);
@@ -280,11 +282,11 @@ public abstract class ExtendedFilter
             for (IndexExpression expression : clause)
             {
                 // check column data vs expression
-                ByteBuffer colName = builder == null ? expression.column_name : builder.copy().add(expression.column_name).build();
+                CellName colName = builder == null ? CellName.wrap(expression.column_name) : builder.copy().add(expression.column_name).build();
                 IColumn column = data.getColumn(colName);
                 if (column == null)
                     return false;
-                int v = data.metadata().getValueValidator(expression.column_name).compare(column.value(), expression.value);
+                int v = data.metadata().getValueValidator(expression.column_name).compare(CellName.wrap(column.value()), CellName.wrap(expression.value));
                 if (!satisfies(v, expression.op))
                     return false;
             }

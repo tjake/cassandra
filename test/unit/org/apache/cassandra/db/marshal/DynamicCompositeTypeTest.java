@@ -58,7 +58,7 @@ public class DynamicCompositeTypeTest extends SchemaLoader
     @Test
     public void testEndOfComponent()
     {
-        ByteBuffer[] cnames = {
+        CellName[] cnames = {
             createDynamicCompositeKey("test1", uuids[0], -1, false),
             createDynamicCompositeKey("test1", uuids[1], 24, false),
             createDynamicCompositeKey("test1", uuids[1], 42, false),
@@ -67,8 +67,8 @@ public class DynamicCompositeTypeTest extends SchemaLoader
             createDynamicCompositeKey("test1", uuids[2], 42, false),
         };
 
-        ByteBuffer start = createDynamicCompositeKey("test1", uuids[1], -1, false);
-        ByteBuffer stop = createDynamicCompositeKey("test1", uuids[1], -1, true);
+        CellName start = createDynamicCompositeKey("test1", uuids[1], -1, false);
+        CellName stop = createDynamicCompositeKey("test1", uuids[1], -1, true);
 
         for (int i = 0; i < 1; ++i)
         {
@@ -91,18 +91,18 @@ public class DynamicCompositeTypeTest extends SchemaLoader
     public void testGetString()
     {
         String test1Hex = ByteBufferUtil.bytesToHex(ByteBufferUtil.bytes("test1"));
-        ByteBuffer key = createDynamicCompositeKey("test1", uuids[1], 42, false);
-        assert comparator.getString(key).equals("b@" + test1Hex + ":t@" + uuids[1] + ":IntegerType@42");
+        CellName key = createDynamicCompositeKey("test1", uuids[1], 42, false);
+        assert comparator.getString(key.bb).equals("b@" + test1Hex + ":t@" + uuids[1] + ":IntegerType@42");
 
         key = createDynamicCompositeKey("test1", uuids[1], -1, true);
-        assert comparator.getString(key).equals("b@" + test1Hex + ":t@" + uuids[1] + ":!");
+        assert comparator.getString(key.bb).equals("b@" + test1Hex + ":t@" + uuids[1] + ":!");
     }
 
     @Test
     public void testFromString()
     {
         String test1Hex = ByteBufferUtil.bytesToHex(ByteBufferUtil.bytes("test1"));
-        ByteBuffer key = createDynamicCompositeKey("test1", uuids[1], 42, false);
+        CellName key = createDynamicCompositeKey("test1", uuids[1], 42, false);
         assert key.equals(comparator.fromString("b@" + test1Hex + ":t@" + uuids[1] + ":IntegerType@42"));
 
         key = createDynamicCompositeKey("test1", uuids[1], -1, true);
@@ -112,34 +112,34 @@ public class DynamicCompositeTypeTest extends SchemaLoader
     @Test
     public void testValidate()
     {
-        ByteBuffer key = createDynamicCompositeKey("test1", uuids[1], 42, false);
-        comparator.validate(key);
+        CellName key = createDynamicCompositeKey("test1", uuids[1], 42, false);
+        comparator.validate(key.bb);
 
         key = createDynamicCompositeKey("test1", null, -1, false);
-        comparator.validate(key);
+        comparator.validate(key.bb);
 
         key = createDynamicCompositeKey("test1", uuids[2], -1, true);
-        comparator.validate(key);
+        comparator.validate(key.bb);
 
-        key.get(); // make sure we're not aligned anymore
+        key.bb.get(); // make sure we're not aligned anymore
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e) {}
 
-        key = ByteBuffer.allocate(5 + "test1".length() + 5 + 14);
-        key.putShort((short) (0x8000 | 'b'));
-        key.putShort((short) "test1".length());
-        key.put(ByteBufferUtil.bytes("test1"));
-        key.put((byte) 0);
-        key.putShort((short) (0x8000 | 't'));
-        key.putShort((short) 14);
-        key.rewind();
+        key = CellName.wrap(ByteBuffer.allocate(5 + "test1".length() + 5 + 14));
+        key.bb.putShort((short) (0x8000 | 'b'));
+        key.bb.putShort((short) "test1".length());
+        key.bb.put(ByteBufferUtil.bytes("test1"));
+        key.bb.put((byte) 0);
+        key.bb.putShort((short) (0x8000 | 't'));
+        key.bb.putShort((short) 14);
+        key.bb.rewind();
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e)
@@ -150,7 +150,7 @@ public class DynamicCompositeTypeTest extends SchemaLoader
         key = createDynamicCompositeKey("test1", UUID.randomUUID(), 42, false);
         try
         {
-            comparator.validate(key);
+            comparator.validate(key.bb);
             fail("Should not validate");
         }
         catch (MarshalException e)
@@ -165,11 +165,11 @@ public class DynamicCompositeTypeTest extends SchemaLoader
         Table table = Table.open("Keyspace1");
         ColumnFamilyStore cfs = table.getColumnFamilyStore(cfName);
 
-        ByteBuffer cname1 = createDynamicCompositeKey("test1", null, -1, false);
-        ByteBuffer cname2 = createDynamicCompositeKey("test1", uuids[0], 24, false);
-        ByteBuffer cname3 = createDynamicCompositeKey("test1", uuids[0], 42, false);
-        ByteBuffer cname4 = createDynamicCompositeKey("test2", uuids[0], -1, false);
-        ByteBuffer cname5 = createDynamicCompositeKey("test2", uuids[1], 42, false);
+        CellName cname1 = createDynamicCompositeKey("test1", null, -1, false);
+        CellName cname2 = createDynamicCompositeKey("test1", uuids[0], 24, false);
+        CellName cname3 = createDynamicCompositeKey("test1", uuids[0], 42, false);
+        CellName cname4 = createDynamicCompositeKey("test2", uuids[0], -1, false);
+        CellName cname5 = createDynamicCompositeKey("test2", uuids[1], 42, false);
 
         ByteBuffer key = ByteBufferUtil.bytes("k");
         RowMutation rm = new RowMutation("Keyspace1", key);
@@ -194,19 +194,19 @@ public class DynamicCompositeTypeTest extends SchemaLoader
     @Test
     public void testUncomparableColumns()
     {
-        ByteBuffer bytes = ByteBuffer.allocate(2 + 2 + 4 + 1);
-        bytes.putShort((short)(0x8000 | 'b'));
-        bytes.putShort((short) 4);
-        bytes.put(new byte[4]);
-        bytes.put((byte) 0);
-        bytes.rewind();
+        CellName bytes = CellName.wrap(ByteBuffer.allocate(2 + 2 + 4 + 1));
+        bytes.bb.putShort((short)(0x8000 | 'b'));
+        bytes.bb.putShort((short) 4);
+        bytes.bb.put(new byte[4]);
+        bytes.bb.put((byte) 0);
+        bytes.bb.rewind();
 
-        ByteBuffer uuid = ByteBuffer.allocate(2 + 2 + 16 + 1);
-        uuid.putShort((short)(0x8000 | 't'));
-        uuid.putShort((short) 16);
-        uuid.put(UUIDGen.decompose(uuids[0]));
-        uuid.put((byte) 0);
-        uuid.rewind();
+        CellName uuid = CellName.wrap(ByteBuffer.allocate(2 + 2 + 16 + 1));
+        uuid.bb.putShort((short)(0x8000 | 't'));
+        uuid.bb.putShort((short) 16);
+        uuid.bb.put(UUIDGen.decompose(uuids[0]));
+        uuid.bb.put((byte) 0);
+        uuid.bb.rewind();
 
         try
         {
@@ -229,12 +229,12 @@ public class DynamicCompositeTypeTest extends SchemaLoader
         assert !TypeParser.parse("DynamicCompositeType(a => BytesType)").isCompatibleWith(TypeParser.parse("DynamicCompositeType(a => BytesType, b => AsciiType)"));
     }
 
-    private void addColumn(RowMutation rm, ByteBuffer cname)
+    private void addColumn(RowMutation rm, CellName cname)
     {
-        rm.add(new QueryPath(cfName, null , cname), ByteBufferUtil.EMPTY_BYTE_BUFFER, 0);
+        rm.add(new QueryPath(cfName, null , cname.bb), ByteBufferUtil.EMPTY_BYTE_BUFFER, 0);
     }
 
-    private ByteBuffer createDynamicCompositeKey(String s, UUID uuid, int i, boolean lastIsOne)
+    private CellName createDynamicCompositeKey(String s, UUID uuid, int i, boolean lastIsOne)
     {
         ByteBuffer bytes = ByteBufferUtil.bytes(s);
         int totalSize = 0;
@@ -278,6 +278,6 @@ public class DynamicCompositeTypeTest extends SchemaLoader
             }
         }
         bb.rewind();
-        return bb;
+        return CellName.wrap(bb);
     }
 }

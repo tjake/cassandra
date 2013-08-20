@@ -22,6 +22,7 @@ import java.util.*;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import org.antlr.runtime.*;
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,16 +81,16 @@ public class QueryProcessor
         }
     }
 
-    public static void validateColumnNames(Iterable<ByteBuffer> columns)
+    public static void validateColumnNames(Iterable<CellName> columns)
     throws InvalidRequestException
     {
-        for (ByteBuffer name : columns)
+        for (CellName name : columns)
         {
-            if (name.remaining() > IColumn.MAX_NAME_LENGTH)
+            if (name.bb.remaining() > IColumn.MAX_NAME_LENGTH)
                 throw new InvalidRequestException(String.format("column name is too long (%s > %s)",
-                                                                name.remaining(),
+                                                                name.bb.remaining(),
                                                                 IColumn.MAX_NAME_LENGTH));
-            if (name.remaining() == 0)
+            if (name.bb.remaining() == 0)
                 throw new InvalidRequestException("zero-length column name");
         }
     }

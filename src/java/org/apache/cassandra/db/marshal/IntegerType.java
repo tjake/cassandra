@@ -66,6 +66,23 @@ public final class IntegerType extends AbstractType<BigInteger>
         return JdbcInteger.instance.decompose(value);
     }
 
+    public int compare(CellName o1, CellName o2)
+    {
+        if (o1.isEmpty())
+        {
+            return o2.isEmpty() ? 0 : -1;
+        }
+        if (o2.isEmpty())
+        {
+            return 1;
+        }
+
+        BigInteger b1 = o1.getOrSetType(this);
+        BigInteger b2 = o2.getOrSetType(this);
+
+        return b1.compareTo(b2);
+    }
+
     public int compare(ByteBuffer lhs, ByteBuffer rhs)
     {
         int lhsLen = lhs.remaining();

@@ -203,20 +203,22 @@ public class UUIDTypeTest
     public void testTimestampComparison()
     {
         Random rng = new Random();
-        ByteBuffer[] uuids = new ByteBuffer[100];
+        CellName[] uuids = new CellName[100];
         for (int i = 0; i < uuids.length; i++)
         {
-            uuids[i] = ByteBuffer.allocate(16);
-            rng.nextBytes(uuids[i].array());
+            ByteBuffer u = ByteBuffer.allocate(16);
+            rng.nextBytes(u.array());
             // set version to 1
-            uuids[i].array()[6] &= 0x0F;
-            uuids[i].array()[6] |= 0x10;
+            u.array()[6] &= 0x0F;
+            u.array()[6] |= 0x10;
+
+            uuids[i] = CellName.wrap(u);
         }
         Arrays.sort(uuids, uuidType);
         for (int i = 1; i < uuids.length; i++)
         {
-            long i0 = UUIDGen.getUUID(uuids[i - 1]).timestamp();
-            long i1 = UUIDGen.getUUID(uuids[i]).timestamp();
+            long i0 = UUIDGen.getUUID(uuids[i - 1].bb).timestamp();
+            long i1 = UUIDGen.getUUID(uuids[i].bb).timestamp();
             assert i0 <= i1;
         }
     }

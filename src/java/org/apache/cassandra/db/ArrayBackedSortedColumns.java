@@ -27,6 +27,7 @@ import com.google.common.collect.Lists;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.utils.Allocator;
 
 /**
@@ -49,7 +50,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
             return new ArrayBackedSortedColumns(comparator, insertReversed);
         }
 
-        public ISortedColumns fromSorted(SortedMap<ByteBuffer, IColumn> sortedMap, boolean insertReversed)
+        public ISortedColumns fromSorted(SortedMap<CellName, IColumn> sortedMap, boolean insertReversed)
         {
             return new ArrayBackedSortedColumns(sortedMap.values(), (AbstractType<?>)sortedMap.comparator(), insertReversed);
         }
@@ -95,12 +96,12 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
         return reversed;
     }
 
-    private Comparator<ByteBuffer> internalComparator()
+    private Comparator<CellName> internalComparator()
     {
         return reversed ? comparator.reverseComparator : comparator;
     }
 
-    public IColumn getColumn(ByteBuffer name)
+    public IColumn getColumn(CellName name)
     {
         int pos = binarySearch(name);
         return pos >= 0 ? columns.get(pos) : null;
@@ -171,7 +172,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
         }
     }
 
-    private int binarySearch(ByteBuffer name)
+    private int binarySearch(CellName name)
     {
         return binarySearch(columns, internalComparator(), name, 0);
     }
@@ -182,7 +183,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
      * (We don't use Collections.binarySearch() directly because it would require us to create
      * a fake IColumn (as well as an IColumn comparator) to do the search, which is ugly.
      */
-    private static int binarySearch(List<IColumn> columns, Comparator<ByteBuffer> comparator, ByteBuffer name, int start)
+    private static int binarySearch(List<IColumn> columns, Comparator<CellName> comparator, CellName name, int start)
     {
         int low = start;
         int mid = columns.size();
@@ -284,7 +285,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
         return reversed ? new ForwardSortedCollection() : new ReverseSortedCollection();
     }
 
-    public void removeColumn(ByteBuffer name)
+    public void removeColumn(CellName name)
     {
         int pos = binarySearch(name);
         if (pos >= 0)
@@ -302,7 +303,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
         columns.clear();
     }
 
-    public SortedSet<ByteBuffer> getColumnNames()
+    public SortedSet<CellName> getColumnNames()
     {
         // we could memoize the created set but it's unlikely we'll call this method a lot on the same object anyway
         return new ColumnNamesSet();
@@ -327,7 +328,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
     {
         private final List<IColumn> list;
         private final ColumnSlice[] slices;
-        private final Comparator<ByteBuffer> comparator;
+        private final Comparator<CellName> comparator;
 
         private int idx = 0;
         private int previousSliceEnd = 0;
@@ -349,12 +350,12 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
 
                 ColumnSlice slice = slices[idx++];
                 // The first idx to include
-                int startIdx = slice.start.remaining() == 0 ? 0 : binarySearch(list, comparator, slice.start, previousSliceEnd);
+                int startIdx = slice.start.bb.remaining() == 0 ? 0 : binarySearch(list, comparator, slice.start, previousSliceEnd);
                 if (startIdx < 0)
                     startIdx = -startIdx - 1;
 
                 // The first idx to exclude
-                int finishIdx = slice.finish.remaining() == 0 ? list.size() - 1 : binarySearch(list, comparator, slice.finish, previousSliceEnd);
+                int finishIdx = slice.finish.bb.remaining() == 0 ? list.size() - 1 : binarySearch(list, comparator, slice.finish, previousSliceEnd);
                 if (finishIdx >= 0)
                     finishIdx++;
                 else
@@ -420,24 +421,24 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
         }
     }
 
-    private class ColumnNamesSet extends AbstractSet<ByteBuffer> implements SortedSet<ByteBuffer>
+    private class ColumnNamesSet extends AbstractSet<CellName> implements SortedSet<CellName>
     {
         public int size()
         {
             return columns.size();
         }
 
-        public Iterator<ByteBuffer> iterator()
+        public Iterator<CellName> iterator()
         {
             final Iterator<IColumn> outerIterator = ArrayBackedSortedColumns.this.iterator(); // handles reversed
-            return new Iterator<ByteBuffer>()
+            return new Iterator<CellName>()
             {
                 public boolean hasNext()
                 {
                     return outerIterator.hasNext();
                 }
 
-                public ByteBuffer next()
+                public CellName next()
                 {
                     return outerIterator.next().name();
                 }
@@ -449,12 +450,12 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
             };
         }
 
-        public Comparator<ByteBuffer> comparator()
+        public Comparator<CellName> comparator()
         {
             return getComparator();
         }
 
-        public ByteBuffer first()
+        public CellName first()
         {
             final ArrayBackedSortedColumns outerList = ArrayBackedSortedColumns.this;
             if (outerList.isEmpty())
@@ -462,7 +463,7 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
             return outerList.columns.get(outerList.reversed ? size() - 1 : 0).name();
         }
 
-        public ByteBuffer last()
+        public CellName last()
         {
             final ArrayBackedSortedColumns outerList = ArrayBackedSortedColumns.this;
             if (outerList.isEmpty())
@@ -477,19 +478,19 @@ public class ArrayBackedSortedColumns extends AbstractThreadUnsafeSortedColumns 
          * ensure those property. Since we do not use those function so far, we prefer returning UnsupportedOperationException
          * for now and revisit this when and if the need arise.
          */
-        public SortedSet<ByteBuffer> headSet(ByteBuffer fromElement)
+        public SortedSet<CellName> headSet(CellName fromElement)
         {
             throw new UnsupportedOperationException();
         }
 
         // see headSet
-        public SortedSet<ByteBuffer> tailSet(ByteBuffer toElement)
+        public SortedSet<CellName> tailSet(CellName toElement)
         {
             throw new UnsupportedOperationException();
         }
 
         // see headSet
-        public SortedSet<ByteBuffer> subSet(ByteBuffer fromElement, ByteBuffer toElement)
+        public SortedSet<CellName> subSet(CellName fromElement, CellName toElement)
         {
             throw new UnsupportedOperationException();
         }

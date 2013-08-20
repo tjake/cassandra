@@ -113,14 +113,14 @@ public class UpdateStatement extends ModificationStatement
         buildColumnNames(cfDef, processedKeys, builder, variables, true);
 
         // Lists SET operation incurs a read.
-        Set<ByteBuffer> toRead = null;
+        Set<CellName> toRead = null;
         for (Operation op : processedColumns)
         {
             if (op.requiresRead())
             {
                 if (toRead == null)
-                    toRead = new TreeSet<ByteBuffer>(UTF8Type.instance);
-                toRead.add(op.columnName.key);
+                    toRead = new TreeSet<CellName>(UTF8Type.instance);
+                toRead.add(CellName.wrap(op.columnName.key));
             }
         }
 
@@ -183,7 +183,7 @@ public class UpdateStatement extends ModificationStatement
                     ByteBuffer val = t.bindAndGet(variables);
                     if (val == null)
                         throw new InvalidRequestException(String.format("Invalid null value for partition key part %s", name));
-                    keys.add(keyBuilder.copy().add(val).build());
+                    keys.add(keyBuilder.copy().add(val).build().bb);
                 }
             }
             else
@@ -226,7 +226,7 @@ public class UpdateStatement extends ModificationStatement
         // 'DELETE FROM t WHERE k = 1' does remove the row entirely)
         if (cfDef.isComposite && !cfDef.isCompact)
         {
-            ByteBuffer name = builder.copy().add(ByteBufferUtil.EMPTY_BYTE_BUFFER).build();
+            CellName name = builder.copy().add(ByteBufferUtil.EMPTY_BYTE_BUFFER).build();
             cf.addColumn(params.makeColumn(name, ByteBufferUtil.EMPTY_BYTE_BUFFER));
         }
 

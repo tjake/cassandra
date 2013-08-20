@@ -29,6 +29,7 @@ import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.UnauthorizedException;
 import org.apache.cassandra.thrift.ThriftClientState;
@@ -186,7 +187,7 @@ public class UpdateStatement extends AbstractModification
 
         for (Map.Entry<Term, Operation> column : getColumns().entrySet())
         {
-            ByteBuffer colName = column.getKey().getByteBuffer(comparator, variables);
+            CellName colName = CellName.wrap(column.getKey().getByteBuffer(comparator, variables));
             Operation op = column.getValue();
 
             if (op.isUnary())
@@ -194,10 +195,11 @@ public class UpdateStatement extends AbstractModification
                 if (hasCounterColumn)
                     throw new InvalidRequestException("Mix of commutative and non-commutative operations is not allowed.");
 
-                ByteBuffer colValue = op.a.getByteBuffer(getValueValidator(keyspace, colName),variables);
+                ByteBuffer colValue = op.a.getByteBuffer(getValueValidator(keyspace, colName.bb),variables);
+
 
                 validateColumn(metadata, colName, colValue);
-                rm.add(new QueryPath(columnFamily, null, colName),
+                rm.add(new QueryPath(columnFamily, null, colName.bb),
                        colValue,
                        (timestamp == null) ? getTimestamp(clientState) : timestamp,
                        getTimeToLive());
@@ -221,7 +223,7 @@ public class UpdateStatement extends AbstractModification
                                                       op.b.getText()));
                 }
 
-                rm.addCounter(new QueryPath(columnFamily, null, colName), value);
+                rm.addCounter(new QueryPath(columnFamily, null, colName.bb), value);
             }
         }
 

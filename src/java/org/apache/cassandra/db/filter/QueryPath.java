@@ -21,6 +21,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.db.TypeSizes;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.thrift.ColumnParent;
 import org.apache.cassandra.thrift.ColumnPath;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -28,14 +29,14 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 public class QueryPath
 {
     public final String columnFamilyName;
-    public final ByteBuffer superColumnName;
-    public final ByteBuffer columnName;
+    public final CellName superColumnName;
+    public final CellName columnName;
 
     public QueryPath(String columnFamilyName, ByteBuffer superColumnName, ByteBuffer columnName)
     {
         this.columnFamilyName = columnFamilyName;
-        this.superColumnName = superColumnName;
-        this.columnName = columnName;
+        this.superColumnName = superColumnName == null ? null : CellName.wrap(superColumnName);
+        this.columnName = columnName == null ? null : CellName.wrap(columnName);
     }
 
     public QueryPath(ColumnParent columnParent)
@@ -76,11 +77,11 @@ public class QueryPath
     public void serialize(DataOutput dos) throws IOException
     {
         assert !"".equals(columnFamilyName);
-        assert superColumnName == null || superColumnName.remaining() > 0;
-        assert columnName == null || columnName.remaining() > 0;
+        assert superColumnName == null || superColumnName.bb.remaining() > 0;
+        assert columnName == null || columnName.bb.remaining() > 0;
         dos.writeUTF(columnFamilyName == null ? "" : columnFamilyName);
-        ByteBufferUtil.writeWithShortLength(superColumnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : superColumnName, dos);
-        ByteBufferUtil.writeWithShortLength(columnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : columnName, dos);
+        ByteBufferUtil.writeWithShortLength(superColumnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : superColumnName.bb, dos);
+        ByteBufferUtil.writeWithShortLength(columnName == null ? ByteBufferUtil.EMPTY_BYTE_BUFFER : columnName.bb, dos);
     }
 
     public static QueryPath deserialize(DataInput din) throws IOException
@@ -108,7 +109,7 @@ public class QueryPath
         }
         else
         {
-            int scNameSize = superColumnName.remaining();
+            int scNameSize = superColumnName.bb.remaining();
             size += typeSizes.sizeof((short) scNameSize);
             size += scNameSize;
         }
@@ -119,7 +120,7 @@ public class QueryPath
         }
         else
         {
-            int cNameSize = columnName.remaining();
+            int cNameSize = columnName.bb.remaining();
             size += typeSizes.sizeof((short) cNameSize);
             size += cNameSize;
         }

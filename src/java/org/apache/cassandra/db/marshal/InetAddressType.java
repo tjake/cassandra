@@ -41,9 +41,9 @@ public class InetAddressType extends AbstractType<InetAddress>
         return JdbcInetAddress.instance.decompose(value);
     }
 
-    public int compare(ByteBuffer o1, ByteBuffer o2)
+    public int compare(CellName o1, CellName o2)
     {
-        return ByteBufferUtil.compareUnsigned(o1, o2);
+        return ByteBufferUtil.compareUnsigned(o1.bb, o2.bb);
     }
 
     public String getString(ByteBuffer bytes)

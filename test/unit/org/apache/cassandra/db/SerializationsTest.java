@@ -23,6 +23,7 @@ import org.apache.cassandra.Util;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
@@ -53,11 +54,10 @@ public class SerializationsTest extends AbstractSerializationsTester
 
     private void testRangeSliceCommandWrite() throws IOException
     {
-        ByteBuffer startCol = ByteBufferUtil.bytes("Start");
-        ByteBuffer stopCol = ByteBufferUtil.bytes("Stop");
-        ByteBuffer emptyCol = ByteBufferUtil.bytes("");
+        CellName startCol = CellName.wrap("Start");
+        CellName stopCol = CellName.wrap("Stop");
         NamesQueryFilter namesPred = new NamesQueryFilter(Statics.NamedCols);
-        SliceQueryFilter emptyRangePred = new SliceQueryFilter(emptyCol, emptyCol, false, 100);
+        SliceQueryFilter emptyRangePred = new SliceQueryFilter(CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME, false, 100);
         SliceQueryFilter nonEmptyRangePred = new SliceQueryFilter(startCol, stopCol, true, 100);
         IPartitioner part = StorageService.getPartitioner();
         AbstractBounds<RowPosition> bounds = new Range<Token>(part.getRandomToken(), part.getRandomToken()).toRowBounds();
@@ -340,30 +340,30 @@ public class SerializationsTest extends AbstractSerializationsTester
     {
         private static final String KS = "Keyspace1";
         private static final ByteBuffer Key = ByteBufferUtil.bytes("Key01");
-        private static final SortedSet<ByteBuffer> NamedCols = new TreeSet<ByteBuffer>(BytesType.instance)
+        private static final SortedSet<CellName> NamedCols = new TreeSet<CellName>(BytesType.instance)
         {{
-            add(ByteBufferUtil.bytes("AAA"));
-            add(ByteBufferUtil.bytes("BBB"));
-            add(ByteBufferUtil.bytes("CCC"));
+            add(CellName.wrap("AAA"));
+            add(CellName.wrap("BBB"));
+            add(CellName.wrap("CCC"));
         }};
         private static final ByteBuffer SC = ByteBufferUtil.bytes("SCName");
         private static final QueryPath StandardPath = new QueryPath("Standard1");
         private static final QueryPath SuperPath = new QueryPath("Super1", SC);
-        private static final ByteBuffer Start = ByteBufferUtil.bytes("Start");
-        private static final ByteBuffer Stop = ByteBufferUtil.bytes("Stop");
+        private static final CellName Start = CellName.wrap("Start");
+        private static final CellName Stop = CellName.wrap("Stop");
 
         private static final ColumnFamily StandardCf = ColumnFamily.create(Statics.KS, "Standard1");
         private static final ColumnFamily SuperCf = ColumnFamily.create(Statics.KS, "Super1");
 
-        private static final SuperColumn SuperCol = new SuperColumn(Statics.SC, Schema.instance.getComparator(Statics.KS, "Super1"))
+        private static final SuperColumn SuperCol = new SuperColumn(CellName.wrap(Statics.SC), Schema.instance.getComparator(Statics.KS, "Super1"))
         {{
-            addColumn(new Column(bb("aaaa")));
-            addColumn(new Column(bb("bbbb"), bb("bbbbb-value")));
-            addColumn(new Column(bb("cccc"), bb("ccccc-value"), 1000L));
-            addColumn(new DeletedColumn(bb("dddd"), 500, 1000));
-            addColumn(new DeletedColumn(bb("eeee"), bb("eeee-value"), 1001));
-            addColumn(new ExpiringColumn(bb("ffff"), bb("ffff-value"), 2000, 1000));
-            addColumn(new ExpiringColumn(bb("gggg"), bb("gggg-value"), 2001, 1000, 2002));
+            addColumn(new Column(CellName.wrap("aaaa")));
+            addColumn(new Column(CellName.wrap("bbbb"), bb("bbbbb-value")));
+            addColumn(new Column(CellName.wrap("cccc"), bb("ccccc-value"), 1000L));
+            addColumn(new DeletedColumn(CellName.wrap("dddd"), 500, 1000));
+            addColumn(new DeletedColumn(CellName.wrap("eeee"), bb("eeee-value"), 1001));
+            addColumn(new ExpiringColumn(CellName.wrap("ffff"), bb("ffff-value"), 2000, 1000));
+            addColumn(new ExpiringColumn(CellName.wrap("gggg"), bb("gggg-value"), 2001, 1000, 2002));
         }};
 
         private static final Row StandardRow = new Row(Util.dk("key0"), Statics.StandardCf);
@@ -371,13 +371,13 @@ public class SerializationsTest extends AbstractSerializationsTester
         private static final Row NullRow = new Row(Util.dk("key2"), null);
 
         static {
-            StandardCf.addColumn(new Column(bb("aaaa")));
-            StandardCf.addColumn(new Column(bb("bbbb"), bb("bbbbb-value")));
-            StandardCf.addColumn(new Column(bb("cccc"), bb("ccccc-value"), 1000L));
-            StandardCf.addColumn(new DeletedColumn(bb("dddd"), 500, 1000));
-            StandardCf.addColumn(new DeletedColumn(bb("eeee"), bb("eeee-value"), 1001));
-            StandardCf.addColumn(new ExpiringColumn(bb("ffff"), bb("ffff-value"), 2000, 1000));
-            StandardCf.addColumn(new ExpiringColumn(bb("gggg"), bb("gggg-value"), 2001, 1000, 2002));
+            StandardCf.addColumn(new Column(CellName.wrap("aaaa")));
+            StandardCf.addColumn(new Column(CellName.wrap("bbbb"), bb("bbbbb-value")));
+            StandardCf.addColumn(new Column(CellName.wrap("cccc"), bb("ccccc-value"), 1000L));
+            StandardCf.addColumn(new DeletedColumn(CellName.wrap("dddd"), 500, 1000));
+            StandardCf.addColumn(new DeletedColumn(CellName.wrap("eeee"), bb("eeee-value"), 1001));
+            StandardCf.addColumn(new ExpiringColumn(CellName.wrap("ffff"), bb("ffff-value"), 2000, 1000));
+            StandardCf.addColumn(new ExpiringColumn(CellName.wrap("gggg"), bb("gggg-value"), 2001, 1000, 2002));
 
             SuperCf.addColumn(Statics.SuperCol);
         }

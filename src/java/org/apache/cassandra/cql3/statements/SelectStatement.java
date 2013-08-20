@@ -301,11 +301,11 @@ public class SelectStatement implements CQLStatement
         }
         else
         {
-            ByteBuffer startKeyBytes = getKeyBound(Bound.START, variables);
-            ByteBuffer finishKeyBytes = getKeyBound(Bound.END, variables);
+            CellName startKeyBytes = getKeyBound(Bound.START, variables);
+            CellName finishKeyBytes = getKeyBound(Bound.END, variables);
 
-            RowPosition startKey = RowPosition.forKey(startKeyBytes, p);
-            RowPosition finishKey = RowPosition.forKey(finishKeyBytes, p);
+            RowPosition startKey = RowPosition.forKey(startKeyBytes.bb, p);
+            RowPosition finishKey = RowPosition.forKey(finishKeyBytes.bb, p);
             if (startKey.compareTo(finishKey) > 0 && !finishKey.isMinimum(p))
                 return null;
 
@@ -335,8 +335,8 @@ public class SelectStatement implements CQLStatement
             // But we must preserve backward compatibility too (for mixed version cluster that is).
             int multiplier = cfDef.isCompact ? 1 : (cfDef.metadata.size() + 1);
             int toGroup = cfDef.isCompact ? -1 : cfDef.columns.size();
-            List<ByteBuffer> startBounds = getRequestedBound(Bound.START, variables);
-            List<ByteBuffer> endBounds = getRequestedBound(Bound.END, variables);
+            List<CellName> startBounds = getRequestedBound(Bound.START, variables);
+            List<CellName> endBounds = getRequestedBound(Bound.END, variables);
             assert startBounds.size() == endBounds.size();
 
             // The case where startBounds == 1 is common enough that it's worth optimizing
@@ -352,7 +352,7 @@ public class SelectStatement implements CQLStatement
             {
                 // The IN query might not have listed the values in comparator order, so we need to re-sort
                 // the bounds lists to make sure the slices works correctly
-                Comparator<ByteBuffer> cmp = isReversed ? cfDef.cfm.comparator.reverseComparator : cfDef.cfm.comparator;
+                Comparator<CellName> cmp = isReversed ? cfDef.cfm.comparator.reverseComparator : cfDef.cfm.comparator;
                 Collections.sort(startBounds, cmp);
                 Collections.sort(endBounds, cmp);
 
@@ -377,7 +377,7 @@ public class SelectStatement implements CQLStatement
         }
         else
         {
-            SortedSet<ByteBuffer> columnNames = getRequestedColumns(variables);
+            SortedSet<CellName> columnNames = getRequestedColumns(variables);
             if (columnNames == null) // in case of IN () for the last column of the key
                 return null;
             QueryProcessor.validateColumnNames(columnNames);
@@ -409,7 +409,7 @@ public class SelectStatement implements CQLStatement
                     ByteBuffer val = t.bindAndGet(variables);
                     if (val == null)
                         throw new InvalidRequestException(String.format("Invalid null value for partition key part %s", name));
-                    keys.add(builder.copy().add(val).build());
+                    keys.add(builder.copy().add(val).build().bb);
                 }
             }
             else
@@ -425,7 +425,7 @@ public class SelectStatement implements CQLStatement
         return keys;
     }
 
-    private ByteBuffer getKeyBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
+    private CellName getKeyBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
     {
         // We deal with IN queries for keys in other places, so we know buildBound will return only one result
         return buildBound(b, cfDef.keys.values(), keyRestrictions, false, cfDef.getKeyNameBuilder(), variables).get(0);
@@ -479,7 +479,7 @@ public class SelectStatement implements CQLStatement
         return false;
     }
 
-    private SortedSet<ByteBuffer> getRequestedColumns(List<ByteBuffer> variables) throws InvalidRequestException
+    private SortedSet<CellName> getRequestedColumns(List<ByteBuffer> variables) throws InvalidRequestException
     {
         assert !isColumnRange();
 
@@ -496,7 +496,7 @@ public class SelectStatement implements CQLStatement
                 // for each value of the IN, creates all the columns corresponding to the selection.
                 if (r.eqValues.isEmpty())
                     return null;
-                SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfDef.cfm.comparator);
+                SortedSet<CellName> columns = new TreeSet<CellName>(cfDef.cfm.comparator);
                 Iterator<Term> iter = r.eqValues.iterator();
                 while (iter.hasNext())
                 {
@@ -525,11 +525,13 @@ public class SelectStatement implements CQLStatement
         return addSelectedColumns(builder);
     }
 
-    private SortedSet<ByteBuffer> addSelectedColumns(ColumnNameBuilder builder)
+    private SortedSet<CellName> addSelectedColumns(ColumnNameBuilder builder)
     {
         if (cfDef.isCompact)
         {
-            return FBUtilities.singleton(builder.build());
+            SortedSet<CellName> res = new TreeSet<CellName>();
+            res.add(builder.build());
+            return res;
         }
         else
         {
@@ -537,7 +539,7 @@ public class SelectStatement implements CQLStatement
             // non-know set of columns, so we shouldn't get there
             assert !selectACollection();
 
-            SortedSet<ByteBuffer> columns = new TreeSet<ByteBuffer>(cfDef.cfm.comparator);
+            SortedSet<CellName> columns = new TreeSet<CellName>(cfDef.cfm.comparator);
 
             // We need to query the selected column as well as the marker
             // column (for the case where the row exists but has no columns outside the PK)
@@ -559,7 +561,7 @@ public class SelectStatement implements CQLStatement
                 {
                     ColumnIdentifier name = iter.next();
                     ColumnNameBuilder b = iter.hasNext() ? builder.copy() : builder;
-                    ByteBuffer cname = b.add(name.key).build();
+                    CellName cname = b.add(name.key).build();
                     columns.add(cname);
                 }
             }
@@ -581,7 +583,7 @@ public class SelectStatement implements CQLStatement
         return false;
     }
 
-    private static List<ByteBuffer> buildBound(Bound bound,
+    private static List<CellName> buildBound(Bound bound,
                                                Collection<CFDefinition.Name> names,
                                                Restriction[] restrictions,
                                                boolean isReversed,
@@ -616,7 +618,7 @@ public class SelectStatement implements CQLStatement
                 {
                     // IN query, we only support it on the clustering column
                     assert name.position == names.size() - 1;
-                    List<ByteBuffer> l = new ArrayList<ByteBuffer>(r.eqValues.size());
+                    List<CellName> l = new ArrayList<CellName>(r.eqValues.size());
                     for (Term t : r.eqValues)
                     {
                         ByteBuffer val = t.bindAndGet(variables);
@@ -653,7 +655,7 @@ public class SelectStatement implements CQLStatement
         return Collections.singletonList((bound == Bound.END && builder.remainingCount() > 0) ? builder.buildAsEndOfRange() : builder.build());
     }
 
-    private List<ByteBuffer> getRequestedBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
+    private List<CellName> getRequestedBound(Bound b, List<ByteBuffer> variables) throws InvalidRequestException
     {
         assert isColumnRange();
         return buildBound(b, cfDef.columns.values(), columnRestrictions, isReversed, cfDef.getColumnNameBuilder(), variables);
@@ -711,7 +713,7 @@ public class SelectStatement implements CQLStatement
         for (int i = 0; i < columnRestrictions.length - 1; i++)
             builder.add(columnRestrictions[i].eqValues.get(0).bindAndGet(variables));
 
-        final List<ByteBuffer> requested = new ArrayList<ByteBuffer>(last.eqValues.size());
+        final List<CellName> requested = new ArrayList<CellName>(last.eqValues.size());
         Iterator<Term> iter = last.eqValues.iterator();
         while (iter.hasNext())
         {
@@ -726,7 +728,7 @@ public class SelectStatement implements CQLStatement
             {
                 return new AbstractIterator<IColumn>()
                 {
-                    Iterator<ByteBuffer> iter = requested.iterator();
+                    Iterator<CellName> iter = requested.iterator();
                     public IColumn computeNext()
                     {
                         if (!iter.hasNext())
@@ -769,7 +771,7 @@ public class SelectStatement implements CQLStatement
                     ByteBuffer[] components = null;
                     if (cfDef.isComposite)
                     {
-                        components = ((CompositeType)cfDef.cfm.comparator).split(c.name());
+                        components = ((CompositeType)cfDef.cfm.comparator).split(c.name().bb);
                     }
                     else if (sliceRestriction != null)
                     {
@@ -792,7 +794,7 @@ public class SelectStatement implements CQLStatement
                             case COLUMN_ALIAS:
                                 ByteBuffer val = cfDef.isComposite
                                                ? (name.position < components.length ? components[name.position] : null)
-                                               : c.name();
+                                               : c.name().bb;
                                 result.add(val);
                                 break;
                             case VALUE_ALIAS:
@@ -837,7 +839,7 @@ public class SelectStatement implements CQLStatement
                     if (name.kind == CFDefinition.Name.Kind.KEY_ALIAS)
                         result.add(keyComponents[name.position]);
                     else
-                        result.add(row.cf.getColumn(name.name.key));
+                        result.add(row.cf.getColumn(CellName.wrap(name.name.key)));
                 }
             }
         }
@@ -1148,7 +1150,7 @@ public class SelectStatement implements CQLStatement
                 {
                     if (cfdef.getIndexType() != null)
                     {
-                        indexedNames.add(cfdef.name);
+                        indexedNames.add(cfdef.name.bb);
                     }
                 }
 
@@ -1497,7 +1499,7 @@ public class SelectStatement implements CQLStatement
 
         public int compare(List<ByteBuffer> a, List<ByteBuffer> b)
         {
-            return comparator.compare(a.get(index), b.get(index));
+            return comparator.compare(CellName.wrap(a.get(index)), CellName.wrap(b.get(index)));
         }
     }
 
@@ -1522,8 +1524,8 @@ public class SelectStatement implements CQLStatement
                 AbstractType<?> type = orderTypes.get(i);
                 int columnPos = positions[i];
 
-                ByteBuffer aValue = a.get(columnPos);
-                ByteBuffer bValue = b.get(columnPos);
+                CellName aValue = CellName.wrap(a.get(columnPos));
+                CellName bValue = CellName.wrap(b.get(columnPos));
 
                 int comparison = type.compare(aValue, bValue);
 

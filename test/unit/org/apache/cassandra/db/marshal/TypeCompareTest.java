@@ -36,13 +36,13 @@ public class TypeCompareTest
     public void testAscii()
     {
         AsciiType comparator = new AsciiType();
-        assert comparator.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.bytes("asdf")) < 0;
-        assert comparator.compare(ByteBufferUtil.bytes("asdf"), ByteBufferUtil.EMPTY_BYTE_BUFFER) > 0;
-        assert comparator.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER) == 0;
-        assert comparator.compare(ByteBufferUtil.bytes("z"), ByteBufferUtil.bytes("a")) > 0;
-        assert comparator.compare(ByteBufferUtil.bytes("a"), ByteBufferUtil.bytes("z")) < 0;
-        assert comparator.compare(ByteBufferUtil.bytes("asdf"), ByteBufferUtil.bytes("asdf")) == 0;
-        assert comparator.compare(ByteBufferUtil.bytes("asdz"), ByteBufferUtil.bytes("asdf")) > 0;
+        assert comparator.compare(CellName.EMPTY_CELL_NAME, CellName.wrap("asdf")) < 0;
+        assert comparator.compare(CellName.wrap("asdf"), CellName.EMPTY_CELL_NAME) > 0;
+        assert comparator.compare(CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME) == 0;
+        assert comparator.compare(CellName.wrap("z"), CellName.wrap("a")) > 0;
+        assert comparator.compare(CellName.wrap("a"), CellName.wrap("z")) < 0;
+        assert comparator.compare(CellName.wrap("asdf"), CellName.wrap("asdf")) == 0;
+        assert comparator.compare(CellName.wrap("asdz"), CellName.wrap("asdf")) > 0;
     }
 
     @Test
@@ -62,23 +62,23 @@ public class TypeCompareTest
     public void testUTF8()
     {
         UTF8Type comparator = new UTF8Type();
-        assert comparator.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.bytes("asdf")) < 0;
-        assert comparator.compare(ByteBufferUtil.bytes("asdf"), ByteBufferUtil.EMPTY_BYTE_BUFFER) > 0;
-        assert comparator.compare(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER) == 0;
-        assert comparator.compare(ByteBufferUtil.bytes("z"), ByteBufferUtil.bytes("a")) > 0;
-        assert comparator.compare(ByteBufferUtil.bytes("z"), ByteBufferUtil.bytes("z")) == 0;
-        assert comparator.compare(ByteBufferUtil.bytes("a"), ByteBufferUtil.bytes("z")) < 0;
+        assert comparator.compare(CellName.EMPTY_CELL_NAME, CellName.wrap("asdf")) < 0;
+        assert comparator.compare(CellName.wrap("asdf"), CellName.EMPTY_CELL_NAME) > 0;
+        assert comparator.compare(CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME) == 0;
+        assert comparator.compare(CellName.wrap("z"), CellName.wrap("a")) > 0;
+        assert comparator.compare(CellName.wrap("z"), CellName.wrap("z")) == 0;
+        assert comparator.compare(CellName.wrap("a"), CellName.wrap("z")) < 0;
     }
 
     @Test
     public void testLong()
     {
         Random rng = new Random();
-        ByteBuffer[] data = new ByteBuffer[1000];
+        CellName[] data = new CellName[1000];
         for (int i = 0; i < data.length; i++)
         {
-            data[i] = ByteBuffer.allocate(8);
-            rng.nextBytes(data[i].array());
+            data[i] = CellName.wrap(ByteBuffer.allocate(8));
+            rng.nextBytes(data[i].bb.array());
         }
 
         Arrays.sort(data, LongType.instance);
@@ -86,8 +86,8 @@ public class TypeCompareTest
         for (int i = 1; i < data.length; i++)
         {
 
-            long l0 = data[i - 1].getLong(data[i - 1].position());
-            long l1 = data[i].getLong(data[i].position());
+            long l0 = data[i - 1].bb.getLong(data[i - 1].bb.position());
+            long l1 = data[i].bb.getLong(data[i].bb.position());
             assert l0 <= l1;
         }
     }
@@ -96,11 +96,11 @@ public class TypeCompareTest
     public void testInt()
     {
         Random rng = new Random();
-        ByteBuffer[] data = new ByteBuffer[1000];
+        CellName[] data = new CellName[1000];
         for (int i = 0; i < data.length; i++)
         {
-            data[i] = ByteBuffer.allocate(4);
-            rng.nextBytes(data[i].array());
+            data[i] = CellName.wrap(ByteBuffer.allocate(4));
+            rng.nextBytes(data[i].bb.array());
         }
 
         Arrays.sort(data, Int32Type.instance);
@@ -108,8 +108,8 @@ public class TypeCompareTest
         for (int i = 1; i < data.length; i++)
         {
 
-            int l0 = data[i - 1].getInt(data[i - 1].position());
-            int l1 = data[i].getInt(data[i].position());
+            int l0 = data[i - 1].bb.getInt(data[i - 1].bb.position());
+            int l1 = data[i].bb.getInt(data[i].bb.position());
             assert l0 <= l1;
         }
     }

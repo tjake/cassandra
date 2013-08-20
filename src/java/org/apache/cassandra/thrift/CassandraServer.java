@@ -30,6 +30,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.apache.cassandra.db.marshal.CellName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -132,7 +133,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            Column thrift_column = new Column(column.name()).setValue(column.value()).setTimestamp(column.timestamp());
+            Column thrift_column = new Column(column.name().bb).setValue(column.value()).setTimestamp(column.timestamp());
             if (column instanceof ExpiringColumn)
             {
                 thrift_column.setTtl(((ExpiringColumn) column).getTimeToLive());
@@ -158,7 +159,7 @@ public class CassandraServer implements Cassandra.Iface
                 continue;
             }
             assert column instanceof org.apache.cassandra.db.CounterColumn;
-            CounterColumn thrift_column = new CounterColumn(column.name(), CounterContext.instance().total(column.value()));
+            CounterColumn thrift_column = new CounterColumn(column.name().bb, CounterContext.instance().total(column.value()));
             thriftColumns.add(thrift_column);
         }
 
@@ -176,12 +177,12 @@ public class CassandraServer implements Cassandra.Iface
             }
             if (column instanceof org.apache.cassandra.db.CounterColumn)
             {
-                CounterColumn thrift_column = new CounterColumn(column.name(), CounterContext.instance().total(column.value()));
+                CounterColumn thrift_column = new CounterColumn(column.name().bb, CounterContext.instance().total(column.value()));
                 thriftColumns.add(new ColumnOrSuperColumn().setCounter_column(thrift_column));
             }
             else
             {
-                Column thrift_column = new Column(column.name()).setValue(column.value()).setTimestamp(column.timestamp());
+                Column thrift_column = new Column(column.name().bb).setValue(column.value()).setTimestamp(column.timestamp());
                 if (column instanceof ExpiringColumn)
                 {
                     thrift_column.setTtl(((ExpiringColumn) column).getTimeToLive());
@@ -216,7 +217,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            SuperColumn superColumn = new SuperColumn(column.name(), subcolumns);
+            SuperColumn superColumn = new SuperColumn(column.name().bb, subcolumns);
             thriftSuperColumns.add(new ColumnOrSuperColumn().setSuper_column(superColumn));
         }
 
@@ -236,7 +237,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            CounterSuperColumn superColumn = new CounterSuperColumn(column.name(), subcolumns);
+            CounterSuperColumn superColumn = new CounterSuperColumn(column.name().bb, subcolumns);
             thriftSuperColumns.add(new ColumnOrSuperColumn().setCounter_super_column(superColumn));
         }
 
@@ -371,7 +372,12 @@ public class CassandraServer implements Cassandra.Iface
             for (ByteBuffer key: keys)
             {
                 ThriftValidation.validateKey(metadata, key);
-                commands.add(new SliceByNamesReadCommand(keyspace, key, column_parent, predicate.column_names));
+                List<CellName> cellNames = new ArrayList<CellName>(predicate.column_names.size());
+                for (ByteBuffer c : predicate.column_names)
+                {
+                    cellNames.add(CellName.wrap(c));
+                }
+                commands.add(new SliceByNamesReadCommand(keyspace, key, column_parent, cellNames));
             }
         }
         else
@@ -380,7 +386,7 @@ public class CassandraServer implements Cassandra.Iface
             for (ByteBuffer key: keys)
             {
                 ThriftValidation.validateKey(metadata, key);
-                commands.add(new SliceFromReadCommand(keyspace, key, column_parent, range.start, range.finish, range.reversed, range.count));
+                commands.add(new SliceFromReadCommand(keyspace, key, column_parent, CellName.wrap(range.start), CellName.wrap(range.finish), range.reversed, range.count));
             }
         }
 
@@ -400,7 +406,7 @@ public class CassandraServer implements Cassandra.Iface
         consistencyLevel.validateForRead(keyspace);
 
         QueryPath path = new QueryPath(column_path.column_family, column_path.column == null ? null : column_path.super_column);
-        List<ByteBuffer> nameAsList = Arrays.asList(column_path.column == null ? column_path.super_column : column_path.column);
+        List<CellName> nameAsList = Arrays.asList(column_path.column == null ? CellName.wrap(column_path.super_column) : CellName.wrap(column_path.column));
         ThriftValidation.validateKey(metadata, key);
         ReadCommand command = new SliceByNamesReadCommand(keyspace, key, path, nameAsList);
 

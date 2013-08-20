@@ -27,6 +27,7 @@ import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -34,13 +35,13 @@ public class ColumnSlice
 {
     public static final Serializer serializer = new Serializer();
 
-    public static final ColumnSlice ALL_COLUMNS = new ColumnSlice(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER);
+    public static final ColumnSlice ALL_COLUMNS = new ColumnSlice(CellName.EMPTY_CELL_NAME, CellName.EMPTY_CELL_NAME);
     public static final ColumnSlice[] ALL_COLUMNS_ARRAY = new ColumnSlice[]{ ALL_COLUMNS };
 
-    public final ByteBuffer start;
-    public final ByteBuffer finish;
+    public final CellName start;
+    public final CellName finish;
 
-    public ColumnSlice(ByteBuffer start, ByteBuffer finish)
+    public ColumnSlice(CellName start, CellName finish)
     {
         assert start != null && finish != null;
         this.start = start;
@@ -49,11 +50,11 @@ public class ColumnSlice
 
     public boolean isAlwaysEmpty(AbstractType<?> comparator, boolean reversed)
     {
-        Comparator<ByteBuffer> orderedComparator = reversed ? comparator.reverseComparator : comparator;
-        return (start.remaining() > 0 && finish.remaining() > 0 && orderedComparator.compare(start, finish) > 0);
+        Comparator<CellName> orderedComparator = reversed ? comparator.reverseComparator : comparator;
+        return (start.bb.remaining() > 0 && finish.bb.remaining() > 0 && orderedComparator.compare(start, finish) > 0);
     }
 
-    public boolean includes(Comparator<ByteBuffer> cmp, ByteBuffer name)
+    public boolean includes(Comparator<CellName> cmp, CellName name)
     {
         return cmp.compare(start, name) <= 0 && (finish.equals(ByteBufferUtil.EMPTY_BYTE_BUFFER) || cmp.compare(finish, name) >= 0);
     }
@@ -77,30 +78,30 @@ public class ColumnSlice
     @Override
     public String toString()
     {
-        return "[" + ByteBufferUtil.bytesToHex(start) + ", " + ByteBufferUtil.bytesToHex(finish) + "]";
+        return "[" + ByteBufferUtil.bytesToHex(start.bb) + ", " + ByteBufferUtil.bytesToHex(finish.bb) + "]";
     }
 
     public static class Serializer implements IVersionedSerializer<ColumnSlice>
     {
         public void serialize(ColumnSlice cs, DataOutput dos, int version) throws IOException
         {
-            ByteBufferUtil.writeWithShortLength(cs.start, dos);
-            ByteBufferUtil.writeWithShortLength(cs.finish, dos);
+            ByteBufferUtil.writeWithShortLength(cs.start.bb, dos);
+            ByteBufferUtil.writeWithShortLength(cs.finish.bb, dos);
         }
 
         public ColumnSlice deserialize(DataInput dis, int version) throws IOException
         {
             ByteBuffer start = ByteBufferUtil.readWithShortLength(dis);
             ByteBuffer finish = ByteBufferUtil.readWithShortLength(dis);
-            return new ColumnSlice(start, finish);
+            return new ColumnSlice(CellName.wrap(start), CellName.wrap(finish));
         }
 
         public long serializedSize(ColumnSlice cs, int version)
         {
             TypeSizes sizes = TypeSizes.NATIVE;
 
-            int startSize = cs.start.remaining();
-            int finishSize = cs.finish.remaining();
+            int startSize = cs.start.bb.remaining();
+            int finishSize = cs.finish.bb.remaining();
 
             int size = 0;
             size += sizes.sizeof((short) startSize) + startSize;
@@ -111,13 +112,13 @@ public class ColumnSlice
 
     public static class NavigableMapIterator extends AbstractIterator<IColumn>
     {
-        private final NavigableMap<ByteBuffer, IColumn> map;
+        private final NavigableMap<CellName, IColumn> map;
         private final ColumnSlice[] slices;
 
         private int idx = 0;
         private Iterator<IColumn> currentSlice;
 
-        public NavigableMapIterator(NavigableMap<ByteBuffer, IColumn> map, ColumnSlice[] slices)
+        public NavigableMapIterator(NavigableMap<CellName, IColumn> map, ColumnSlice[] slices)
         {
             this.map = map;
             this.slices = slices;
@@ -133,14 +134,14 @@ public class ColumnSlice
                 ColumnSlice slice = slices[idx++];
                 // Note: we specialize the case of start == "" and finish = "" because it is slightly more efficient, but also they have a specific
                 // meaning (namely, they always extend to the beginning/end of the range).
-                if (slice.start.remaining() == 0)
+                if (slice.start.bb.remaining() == 0)
                 {
-                    if (slice.finish.remaining() == 0)
+                    if (slice.finish.bb.remaining() == 0)
                         currentSlice = map.values().iterator();
                     else
                         currentSlice = map.headMap(slice.finish, true).values().iterator();
                 }
-                else if (slice.finish.remaining() == 0)
+                else if (slice.finish.bb.remaining() == 0)
                 {
                     currentSlice = map.tailMap(slice.start, true).values().iterator();
                 }

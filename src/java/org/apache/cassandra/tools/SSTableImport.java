@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.Option;
@@ -95,7 +96,7 @@ public class SSTableImport
 
     private static class JsonColumn<T>
     {
-        private ByteBuffer name;
+        private CellName name;
         private ByteBuffer value;
         private long timestamp;
 
@@ -156,7 +157,7 @@ public class SSTableImport
                 }
 
                 value = isDeleted() ? ByteBufferUtil.hexToBytes((String) fields.get(1))
-                                    : stringAsType((String) fields.get(1), meta.getValueValidator(name.duplicate()));
+                                    : stringAsType((String) fields.get(1), meta.getValueValidator(name.bb.duplicate())).bb;
             }
         }
 
@@ -182,7 +183,7 @@ public class SSTableImport
 
         public ByteBuffer getName()
         {
-            return name.duplicate();
+            return name.bb.duplicate();
         }
 
         public ByteBuffer getValue()
@@ -219,7 +220,7 @@ public class SSTableImport
      * @param superName name of the super column if any
      * @param cfamily the column family to add columns to
      */
-    private void addColumnsToCF(List<?> row, ByteBuffer superName, ColumnFamily cfamily)
+    private void addColumnsToCF(List<?> row, CellName superName, ColumnFamily cfamily)
     {
         CFMetaData cfm = cfamily.metadata();
         assert cfm != null;
@@ -227,15 +228,15 @@ public class SSTableImport
         for (Object c : row)
         {
             JsonColumn col = new JsonColumn<List>((List) c, cfm, (superName != null));
-            QueryPath path = new QueryPath(cfm.cfName, superName, col.getName());
+            QueryPath path = new QueryPath(cfm.cfName, superName.bb, col.getName());
 
             if (col.isExpiring())
             {
-                cfamily.addColumn(null, new ExpiringColumn(col.getName(), col.getValue(), col.timestamp, col.ttl, col.localExpirationTime));
+                cfamily.addColumn(null, new ExpiringColumn(CellName.wrap(col.getName()), col.getValue(), col.timestamp, col.ttl, col.localExpirationTime));
             }
             else if (col.isCounter())
             {
-                cfamily.addColumn(null, new CounterColumn(col.getName(), col.getValue(), col.timestamp, col.timestampOfLastDelete));
+                cfamily.addColumn(null, new CounterColumn(CellName.wrap(col.getName()), col.getValue(), col.timestamp, col.timestampOfLastDelete));
             }
             else if (col.isDeleted())
             {
@@ -243,7 +244,7 @@ public class SSTableImport
             }
             else if (col.isRangeTombstone())
             {
-                cfamily.addAtom(new RangeTombstone(col.getName(), col.getValue(), col.timestamp, col.localExpirationTime));
+                cfamily.addAtom(new RangeTombstone(CellName.wrap(col.getName()), CellName.wrap(col.getValue()), col.timestamp, col.localExpirationTime));
             }
             else
             {
@@ -284,7 +285,7 @@ public class SSTableImport
         {
             Map<?, ?> data = (Map<?, ?>) entry.getValue();
 
-            ByteBuffer superName = stringAsType((String) entry.getKey(), comparator);
+            CellName superName = stringAsType((String) entry.getKey(), comparator);
 
             addColumnsToCF((List<?>) data.get("subColumns"), superName, cfamily);
 
@@ -560,11 +561,11 @@ public class SSTableImport
      * @param type type to use for conversion
      * @return byte buffer representation of the given string
      */
-    private static ByteBuffer stringAsType(String content, AbstractType<?> type)
+    private static CellName stringAsType(String content, AbstractType<?> type)
     {
         try
         {
-            return (type == BytesType.instance) ? hexToBytes(content) : type.fromString(content);
+            return CellName.wrap((type == BytesType.instance) ? hexToBytes(content) : type.fromString(content));
         }
         catch (MarshalException e)
         {

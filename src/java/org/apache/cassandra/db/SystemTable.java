@@ -148,9 +148,9 @@ public class SystemTable
         if (oldStatusCfs.getSSTables().size() > 0)
         {
             logger.info("Old system data found in {}.{}; migrating to new format in {}.{}", Table.SYSTEM_KS, OLD_STATUS_CF, Table.SYSTEM_KS, LOCAL_CF);
-            SortedSet<ByteBuffer> cols = new TreeSet<ByteBuffer>(BytesType.instance);
-            cols.add(ByteBufferUtil.bytes("ClusterName"));
-            cols.add(ByteBufferUtil.bytes("Token"));
+            SortedSet<CellName> cols = new TreeSet<CellName>(BytesType.instance);
+            cols.add(CellName.wrap("ClusterName"));
+            cols.add(CellName.wrap("Token"));
             QueryFilter filter = QueryFilter.getNamesFilter(decorate(ByteBufferUtil.bytes("L")), new QueryPath(OLD_STATUS_CF), cols);
             ColumnFamily oldCf = oldStatusCfs.getColumnFamily(filter);
             Iterator<IColumn> oldColumns = oldCf.columns.iterator();
@@ -493,13 +493,13 @@ public class SystemTable
         if (oldStatusCfs.getSSTables().size() > 0)
         {
             logger.debug("Detected system data in {}.{}, checking saved cluster name", Table.SYSTEM_KS, OLD_STATUS_CF);
-            SortedSet<ByteBuffer> cols = new TreeSet<ByteBuffer>(BytesType.instance);
-            cols.add(ByteBufferUtil.bytes("ClusterName"));
+            SortedSet<CellName> cols = new TreeSet<CellName>(BytesType.instance);
+            cols.add(CellName.wrap("ClusterName"));
             QueryFilter filter = QueryFilter.getNamesFilter(decorate(ByteBufferUtil.bytes("L")), new QueryPath(OLD_STATUS_CF), cols);
             ColumnFamily oldCf = oldStatusCfs.getColumnFamily(filter);
             try
             {
-                savedClusterName = ByteBufferUtil.string(oldCf.getColumn(ByteBufferUtil.bytes("ClusterName")).value());
+                savedClusterName = ByteBufferUtil.string(oldCf.getColumn(CellName.wrap("ClusterName")).value());
             }
             catch (CharacterCodingException e)
             {
@@ -612,14 +612,14 @@ public class SystemTable
         ColumnFamilyStore cfs = Table.open(Table.SYSTEM_KS).getColumnFamilyStore(INDEX_CF);
         QueryFilter filter = QueryFilter.getNamesFilter(decorate(ByteBufferUtil.bytes(table)),
                                                         new QueryPath(INDEX_CF),
-                                                        ByteBufferUtil.bytes(indexName));
+                                                        CellName.wrap(ByteBufferUtil.bytes(indexName)));
         return ColumnFamilyStore.removeDeleted(cfs.getColumnFamily(filter), Integer.MAX_VALUE) != null;
     }
 
     public static void setIndexBuilt(String table, String indexName)
     {
         ColumnFamily cf = ColumnFamily.create(Table.SYSTEM_KS, INDEX_CF);
-        cf.addColumn(new Column(ByteBufferUtil.bytes(indexName), ByteBufferUtil.EMPTY_BYTE_BUFFER, FBUtilities.timestampMicros()));
+        cf.addColumn(new Column(CellName.wrap(ByteBufferUtil.bytes(indexName)), ByteBufferUtil.EMPTY_BYTE_BUFFER, FBUtilities.timestampMicros()));
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, ByteBufferUtil.bytes(table));
         rm.add(cf);
         rm.apply();
@@ -671,13 +671,13 @@ public class SystemTable
         // Get the last CounterId (since CounterId are timeuuid is thus ordered from the older to the newer one)
         QueryFilter filter = QueryFilter.getSliceFilter(decorate(ALL_LOCAL_NODE_ID_KEY),
                                                         new QueryPath(COUNTER_ID_CF),
-                                                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
-                                                        ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                        CellName.EMPTY_CELL_NAME,
+                                                        CellName.EMPTY_CELL_NAME,
                                                         true,
                                                         1);
         ColumnFamily cf = table.getColumnFamilyStore(COUNTER_ID_CF).getColumnFamily(filter);
         if (cf != null && cf.getColumnCount() != 0)
-            return CounterId.wrap(cf.iterator().next().name());
+            return CounterId.wrap(cf.iterator().next().name().bb);
         else
             return null;
     }
@@ -696,7 +696,7 @@ public class SystemTable
         ByteBuffer ip = ByteBuffer.wrap(FBUtilities.getBroadcastAddress().getAddress());
 
         ColumnFamily cf = ColumnFamily.create(Table.SYSTEM_KS, COUNTER_ID_CF);
-        cf.addColumn(new Column(newCounterId.bytes(), ip, now));
+        cf.addColumn(new Column(CellName.wrap(newCounterId.bytes()), ip, now));
         RowMutation rm = new RowMutation(Table.SYSTEM_KS, ALL_LOCAL_NODE_ID_KEY);
         rm.add(cf);
         rm.apply();
@@ -719,7 +719,7 @@ public class SystemTable
 
             // this will ignore the last column on purpose since it is the
             // current local node id
-            previous = CounterId.wrap(c.name());
+            previous = CounterId.wrap(c.name().bb);
         }
         return l;
     }

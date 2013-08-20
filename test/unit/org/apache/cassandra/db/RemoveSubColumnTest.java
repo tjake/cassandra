@@ -21,6 +21,7 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.db.marshal.CellName;
 import org.junit.Test;
 
 import static junit.framework.Assert.assertNull;
@@ -54,7 +55,7 @@ public class RemoveSubColumnTest extends SchemaLoader
         rm.apply();
 
         ColumnFamily retrieved = store.getColumnFamily(QueryFilter.getIdentityFilter(dk, new QueryPath("Super1", ByteBufferUtil.bytes("SC1"))));
-        assert retrieved.getColumn(ByteBufferUtil.bytes("SC1")).getSubColumn(getBytes(1L)).isMarkedForDelete();
+        assert retrieved.getColumn(CellName.wrap("SC1")).getSubColumn(CellName.wrap(1L)).isMarkedForDelete();
         assertNull(Util.cloneAndRemoveDeleted(retrieved, Integer.MAX_VALUE));
     }
 
@@ -88,7 +89,7 @@ public class RemoveSubColumnTest extends SchemaLoader
         rm.apply();
 
         ColumnFamily retrieved = store.getColumnFamily(QueryFilter.getIdentityFilter(dk, new QueryPath("Super1", ByteBufferUtil.bytes("SC1"))), gcbefore);
-        assert retrieved.getColumn(ByteBufferUtil.bytes("SC1")).getSubColumn(getBytes(1)).isMarkedForDelete();
+        assert retrieved.getColumn(CellName.wrap("SC1")).getSubColumn(CellName.wrap(1)).isMarkedForDelete();
         assertNull(Util.cloneAndRemoveDeleted(retrieved, Integer.MAX_VALUE));
     }
 }
