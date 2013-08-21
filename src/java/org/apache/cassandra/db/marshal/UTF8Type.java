@@ -40,10 +40,7 @@ public class UTF8Type extends AbstractType<String>
 
     public int compare(CellName o1, CellName o2)
     {
-        String s1 = o1.getOrSetType(this);
-        String s2 = o2.getOrSetType(this);
-
-        return s1.compareTo(s2);
+        return BytesType.bytesCompare(o1.bb, o2.bb);
     }
 
     public String getString(ByteBuffer bytes)
