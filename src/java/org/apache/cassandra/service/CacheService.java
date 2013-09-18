@@ -62,7 +62,8 @@ public class CacheService implements CacheServiceMBean
     public static enum CacheType
     {
         KEY_CACHE("KeyCache"),
-        ROW_CACHE("RowCache");
+        ROW_CACHE("RowCache"),
+        CHUNK_CACHE("ChunkCache");
 
         private final String name;
 
@@ -81,6 +82,7 @@ public class CacheService implements CacheServiceMBean
 
     public final AutoSavingCache<KeyCacheKey, RowIndexEntry> keyCache;
     public final AutoSavingCache<RowCacheKey, IRowCacheEntry> rowCache;
+    public final InstrumentingCache<ChunkCacheKey, ChunkCacheEntry> chunkCache;
 
     private CacheService()
     {
@@ -97,6 +99,7 @@ public class CacheService implements CacheServiceMBean
 
         keyCache = initKeyCache();
         rowCache = initRowCache();
+        chunkCache = initChunkCache();
     }
 
     /**
@@ -147,6 +150,23 @@ public class CacheService implements CacheServiceMBean
         rowCache.scheduleSaving(DatabaseDescriptor.getRowCacheSavePeriod(), rowCacheKeysToSave);
 
         return rowCache;
+    }
+
+    /**
+     * @return initialized chunk cache
+     */
+    private InstrumentingCache<ChunkCacheKey,ChunkCacheEntry> initChunkCache()
+    {
+        logger.info("Initializing chunk cache with capacity of {} MBs", DatabaseDescriptor.getChunkCacheSizeInMB());
+
+        long chunkCacheInMemoryCapacity = DatabaseDescriptor.getChunkCacheSizeInMB() * 1024 * 1024;
+
+        // cache object
+        ICache<ChunkCacheKey, ChunkCacheEntry> rc = new SerializingCacheProvider().createChunkCache(chunkCacheInMemoryCapacity);
+        InstrumentingCache<ChunkCacheKey, ChunkCacheEntry> chunkCache = new InstrumentingCache<ChunkCacheKey, ChunkCacheEntry>(CacheType.CHUNK_CACHE.name, rc);
+
+
+        return chunkCache;
     }
 
     public long getKeyCacheHits()
@@ -217,6 +237,11 @@ public class CacheService implements CacheServiceMBean
         rowCache.clear();
     }
 
+    public void invalidateChunkCache()
+    {
+        chunkCache.clear();
+    }
+
     public long getRowCacheCapacityInBytes()
     {
         return rowCache.getMetrics().capacity.value();
@@ -233,6 +258,19 @@ public class CacheService implements CacheServiceMBean
             throw new RuntimeException("capacity should not be negative.");
 
         rowCache.setCapacity(capacity * 1024 * 1024);
+    }
+
+    public void setChunkCacheCapacityInMB(long capacity)
+    {
+        if (capacity < 0)
+            throw new RuntimeException("capacity should not be negative.");
+
+        chunkCache.setCapacity(capacity * 1024 * 1024);
+    }
+
+    public long getChunkCacheCapacityInMB()
+    {
+        return chunkCache.getMetrics().capacity.value() / 1024 / 1024;
     }
 
     public long getKeyCacheCapacityInBytes()

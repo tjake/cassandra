@@ -23,11 +23,15 @@ import java.util.zip.Adler32;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
+import org.apache.cassandra.cache.ChunkCacheEntry;
+import org.apache.cassandra.cache.ChunkCacheKey;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.io.FSReadError;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.util.CompressedPoolingSegmentedFile;
 import org.apache.cassandra.io.util.PoolingSegmentedFile;
 import org.apache.cassandra.io.util.RandomAccessReader;
+import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.FBUtilities;
 
 /**
@@ -98,6 +102,56 @@ public class CompressedRandomAccessReader extends RandomAccessReader
 
     private void decompressChunk(CompressionMetadata.Chunk chunk) throws IOException
     {
+        boolean isHot = false;
+
+        if (CacheService.instance.chunkCache.getCapacity() > 0)
+        {
+            ChunkCacheKey cacheKey = new ChunkCacheKey(getPath(),chunk);
+            ChunkCacheEntry cachedEntry = CacheService.instance.chunkCache.get(cacheKey);
+
+            if (cachedEntry != null)
+            {
+                if (cachedEntry.uncompressedChunk.length > 0)
+                {
+                    isHot = true;
+                    validBufferBytes = cachedEntry.uncompressedChunk.length;
+                    System.arraycopy(cachedEntry.uncompressedChunk,0,buffer,0,validBufferBytes);
+                }
+                else
+                {
+                    //We don't yet have a cache hit, but check if this chunk was requested over and over
+                    //If it was then cache it.
+                    if (cachedEntry.isHot()) {
+                        isHot = true;
+                        decompressOnDiskChunk(chunk);
+                        cachedEntry = new ChunkCacheEntry(buffer, validBufferBytes);
+                    }
+                    else
+                    {
+                        cachedEntry.touch();
+                    }
+
+                    CacheService.instance.chunkCache.put(cacheKey, cachedEntry);
+                }
+            }
+            else
+            {
+                //Start tracking this chunk
+                cachedEntry = new ChunkCacheEntry();
+                cachedEntry.touch();
+                CacheService.instance.chunkCache.put(cacheKey, cachedEntry);
+            }
+        }
+
+        if (!isHot)
+            decompressOnDiskChunk(chunk);
+
+        // buffer offset is always aligned
+        bufferOffset = current & ~(buffer.length - 1);
+    }
+
+    private void decompressOnDiskChunk(CompressionMetadata.Chunk chunk) throws IOException
+    {
         if (channel.position() != chunk.offset)
             channel.position(chunk.offset);
 
@@ -140,9 +194,6 @@ public class CompressedRandomAccessReader extends RandomAccessReader
             // reset checksum object back to the original (blank) state
             checksum.reset();
         }
-
-        // buffer offset is always aligned
-        bufferOffset = current & ~(buffer.length - 1);
     }
 
     private int checksum(CompressionMetadata.Chunk chunk) throws IOException

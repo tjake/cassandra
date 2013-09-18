@@ -37,9 +37,16 @@ public interface CacheServiceMBean
      */
     public void invalidateRowCache();
 
+    /**
+     * invalidate the chunk cache
+     */
+    public void invalidateChunkCache();
+
     public void setRowCacheCapacityInMB(long capacity);
 
     public void setKeyCacheCapacityInMB(long capacity);
+
+    public void setChunkCacheCapacityInMB(long capacity);
 
     /**
      * save row and key caches
@@ -105,6 +112,13 @@ public interface CacheServiceMBean
      */
     @Deprecated
     public long getKeyCacheCapacityInMB();
+
+    /**
+     * @see org.apache.cassandra.metrics.CacheMetrics#capacity
+     */
+    @Deprecated
+    public long getChunkCacheCapacityInMB();
+
     /**
      * @see org.apache.cassandra.metrics.CacheMetrics#capacity
      */

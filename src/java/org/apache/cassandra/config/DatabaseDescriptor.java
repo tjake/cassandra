@@ -1178,6 +1178,11 @@ public class DatabaseDescriptor
         return conf.row_cache_size_in_mb;
     }
 
+    public static long getChunkCacheSizeInMB()
+    {
+        return conf.chunk_cache_size_in_mb;
+    }
+
     public static int getRowCacheSavePeriod()
     {
         return conf.row_cache_save_period;

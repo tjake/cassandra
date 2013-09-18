@@ -161,6 +161,7 @@ public class Config
     public int key_cache_keys_to_save = Integer.MAX_VALUE;
 
     public long row_cache_size_in_mb = 0;
+    public long chunk_cache_size_in_mb = 0;
     public volatile int row_cache_save_period = 0;
     public int row_cache_keys_to_save = Integer.MAX_VALUE;
     public String memory_allocator = NativeAllocator.class.getSimpleName();
