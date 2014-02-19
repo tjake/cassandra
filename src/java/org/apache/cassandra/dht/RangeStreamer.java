@@ -22,9 +22,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
+import com.google.common.collect.*;
 import org.apache.cassandra.streaming.IStreamCallback;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang.StringUtils;
@@ -47,7 +45,8 @@ import org.apache.cassandra.streaming.StreamIn;
 public class RangeStreamer
 {
     private static final Logger logger = LoggerFactory.getLogger(RangeStreamer.class);
-
+    private static final boolean strictConsistency = Boolean.valueOf(System.getProperty("consistent.bootstrap","false"));
+    private final Collection<Token> tokens;
     private final TokenMetadata metadata;
     private final InetAddress address;
     private final OperationType opType;
@@ -104,9 +103,18 @@ public class RangeStreamer
         }
     }
 
+    public RangeStreamer(TokenMetadata metadata, Collection<Token> tokens, InetAddress address, OperationType opType)
+    {
+        this.metadata = metadata;
+        this.tokens = tokens;
+        this.address = address;
+        this.opType = opType;
+    }
+
     public RangeStreamer(TokenMetadata metadata, InetAddress address, OperationType opType)
     {
         this.metadata = metadata;
+        this.tokens = null;
         this.address = address;
         this.opType = opType;
     }
@@ -118,7 +126,7 @@ public class RangeStreamer
 
     public void addRanges(String table, Collection<Range<Token>> ranges)
     {
-        Multimap<Range<Token>, InetAddress> rangesForTable = getAllRangesWithSourcesFor(table, ranges);
+        Multimap<Range<Token>, InetAddress> rangesForTable = strictConsistency && opType == OperationType.BOOTSTRAP ? getAllRangesWithStrictSourcesFor(table, ranges) : getAllRangesWithSourcesFor(table, ranges);
 
         if (logger.isDebugEnabled())
         {
@@ -155,6 +163,78 @@ public class RangeStreamer
                 {
                     List<InetAddress> preferred = DatabaseDescriptor.getEndpointSnitch().getSortedListByProximity(address, rangeAddresses.get(range));
                     rangeSources.putAll(desiredRange, preferred);
+                    break;
+                }
+            }
+
+            if (!rangeSources.keySet().contains(desiredRange))
+                throw new IllegalStateException("No sources found for " + desiredRange);
+        }
+
+        return rangeSources;
+    }
+
+    /**
+     * Get a map of all ranges and the source that will be cleaned up once this bootsrapped node is added for the given ranges.
+     * For each range, the list should only contain a single source. This allows us to consistently migrate data without violating
+     * consistency.
+     */
+    private Multimap<Range<Token>, InetAddress> getAllRangesWithStrictSourcesFor(String table, Collection<Range<Token>> desiredRanges)
+    {
+
+        assert tokens != null;
+        AbstractReplicationStrategy strat = Table.open(table).getReplicationStrategy();
+
+        //Active ranges and per node
+        TokenMetadata metadataClone = metadata.cloneOnlyTokenMap();
+        Multimap<InetAddress, Range<Token>> addressRanges = strat.getAddressRanges(metadataClone);
+        Multimap<Range<Token>, InetAddress> rangeAddresses = HashMultimap.create();
+
+        //Pending bootstrap ranges per node
+        metadataClone.updateNormalTokens(tokens, address);
+        Multimap<InetAddress, Range<Token>> bootstrapAddressesRanges = strat.getAddressRanges(metadataClone);
+
+        //Post bootstrap ranges per node
+        Multimap<Range<Token>, InetAddress> postAddressRanges = strat.getRangeAddresses(metadataClone.cloneAfterAllSettled());
+
+        //Add the address that will moved to the new node
+        //This doesn't need to be a multimap but makes the called api simple.
+        //We assert there is only a single entry below.
+        Multimap<Range<Token>, InetAddress> rangeSources = ArrayListMultimap.create();
+
+        for (Map.Entry<InetAddress, Collection<Range<Token>>> entry : addressRanges.asMap().entrySet())
+        {
+            //Bootstrapping node can't be a source
+            if (entry.getKey().equals(address))
+                continue;
+
+            Collection<Range<Token>> bootstrapEntry = bootstrapAddressesRanges.get(entry.getKey());
+            Set<Range<Token>> moving = Sets.difference(Sets.newHashSet(entry.getValue()), Sets.newHashSet(bootstrapEntry));
+
+            //For each moving range find the node that contained the range at the start but was removed from
+            //the replica list after bootstrapping is finished. This is our preferred replica.
+            for (Range<Token> range : moving )
+            {
+                for (Map.Entry<Range<Token>, Collection<InetAddress>> postRangeEntry : postAddressRanges.asMap().entrySet())
+                {
+                    if (range.contains(postRangeEntry.getKey()) && !postRangeEntry.getValue().contains(entry.getKey())) {
+                        rangeAddresses.put(range, entry.getKey());
+                    }
+                }
+            }
+        }
+
+
+        for (Range<Token> desiredRange : desiredRanges)
+        {
+            for (Range<Token> range : rangeAddresses.keySet())
+            {
+                if (range.contains(desiredRange))
+                {
+                    Collection<InetAddress> preferred = rangeAddresses.get(range);
+                    assert preferred.size() == 1;
+                    rangeSources.putAll(desiredRange, preferred);
+
                     break;
                 }
             }
