@@ -47,7 +47,7 @@ import org.apache.cassandra.streaming.StreamIn;
 public class RangeStreamer
 {
     private static final Logger logger = LoggerFactory.getLogger(RangeStreamer.class);
-    private static final boolean strictConsistency = Boolean.valueOf(System.getProperty("consistent.rangemovement","true"));
+    public static final boolean strictConsistency = Boolean.valueOf(System.getProperty("consistent.rangemovement","true"));
     private final Collection<Token> tokens;
     private final TokenMetadata metadata;
     private final InetAddress address;

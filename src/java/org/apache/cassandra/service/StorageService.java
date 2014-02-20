@@ -3070,6 +3070,8 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             // clone to avoid concurrent modification in calculateNaturalEndpoints
             TokenMetadata tokenMetaClone = tokenMetadata.cloneOnlyTokenMap();
 
+
+
             for (String table : tables)
             {
                 for (Token newToken : newTokens)
@@ -3079,8 +3081,9 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
                     // getting collection of the currently used ranges by this keyspace
                     Collection<Range<Token>> currentRanges = getRangesForEndpoint(table, localAddress);
+
                     // collection of ranges which this node will serve after move to the new token
-                    Collection<Range<Token>> updatedRanges = strategy.getPendingAddressRanges(tokenMetadata, newToken, localAddress);
+                    Collection<Range<Token>> updatedRanges = strategy.getPendingAddressRanges(tokenMetaClone, newToken, localAddress);
 
                     // ring ranges and endpoints associated with them
                     // this used to determine what nodes should we ping about range data
@@ -3100,10 +3103,41 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
                         {
                             if (range.contains(toFetch))
                             {
-                                List<InetAddress> endpoints = snitch.getSortedListByProximity(localAddress, rangeAddresses.get(range));
+                                List<InetAddress> endpoints = null;
+
+                                if (RangeStreamer.strictConsistency)
+                                {
+                                    Set<InetAddress> oldEndpoints = Sets.newHashSet(rangeAddresses.get(range));
+                                    Set<InetAddress> newEndpoints = Sets.newHashSet(strategy.calculateNaturalEndpoints(toFetch.right, tokenMetaCloneAllSettled));
+
+                                    oldEndpoints.removeAll(newEndpoints);
+                                    assert oldEndpoints.size() == 1;
+
+                                    endpoints = Lists.newArrayList(oldEndpoints.iterator().next());
+                                }
+                                else
+                                {
+                                    endpoints = snitch.getSortedListByProximity(localAddress, rangeAddresses.get(range));
+                                }
+
                                 // storing range and preferred endpoint set
                                 rangesToFetchWithPreferredEndpoints.putAll(toFetch, endpoints);
                             }
+                        }
+
+                        //Validate
+                        Collection<InetAddress> addressList = rangesToFetchWithPreferredEndpoints.get(toFetch);
+                        if (addressList == null || addressList.isEmpty())
+                            throw new IllegalStateException("No sources found for " + toFetch);
+
+                        if (RangeStreamer.strictConsistency)
+                        {
+                            if (addressList.size() > 1)
+                                throw new IllegalStateException("Multiple strict sources found for " + toFetch);
+
+                            InetAddress sourceIp = addressList.iterator().next();
+                            if (Gossiper.instance.isEnabled() && !Gossiper.instance.getEndpointStateForEndpoint(sourceIp).isAlive())
+                                throw new RuntimeException("A node required to move the data consistently is down ("+sourceIp+").  If you wish to move the data from a potentially inconsistent replica, restart the node with -Dconsistent.rangemovement=false");
                         }
                     }
 
