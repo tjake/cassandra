@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
 import com.google.common.collect.*;
+import org.apache.cassandra.gms.Gossiper;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.streaming.IStreamCallback;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang.StringUtils;
@@ -45,7 +47,7 @@ import org.apache.cassandra.streaming.StreamIn;
 public class RangeStreamer
 {
     private static final Logger logger = LoggerFactory.getLogger(RangeStreamer.class);
-    private static final boolean strictConsistency = Boolean.valueOf(System.getProperty("consistent.bootstrap","false"));
+    private static final boolean strictConsistency = Boolean.valueOf(System.getProperty("consistent.rangemovement","true"));
     private final Collection<Token> tokens;
     private final TokenMetadata metadata;
     private final InetAddress address;
@@ -126,7 +128,8 @@ public class RangeStreamer
 
     public void addRanges(String table, Collection<Range<Token>> ranges)
     {
-        Multimap<Range<Token>, InetAddress> rangesForTable = strictConsistency && opType == OperationType.BOOTSTRAP ? getAllRangesWithStrictSourcesFor(table, ranges) : getAllRangesWithSourcesFor(table, ranges);
+        Multimap<Range<Token>, InetAddress> rangesForTable = strictConsistency && opType == OperationType.BOOTSTRAP
+                ? getAllRangesWithStrictSourcesFor(table, ranges) : getAllRangesWithSourcesFor(table, ranges);
 
         if (logger.isDebugEnabled())
         {
@@ -185,62 +188,43 @@ public class RangeStreamer
         assert tokens != null;
         AbstractReplicationStrategy strat = Table.open(table).getReplicationStrategy();
 
-        //Active ranges and per node
+        //Active ranges
         TokenMetadata metadataClone = metadata.cloneOnlyTokenMap();
-        Multimap<InetAddress, Range<Token>> addressRanges = strat.getAddressRanges(metadataClone);
-        Multimap<Range<Token>, InetAddress> rangeAddresses = HashMultimap.create();
+        Multimap<Range<Token>,InetAddress> addressRanges = strat.getRangeAddresses(metadataClone);
 
-        //Pending bootstrap ranges per node
+        //Pending ranges
         metadataClone.updateNormalTokens(tokens, address);
-        Multimap<InetAddress, Range<Token>> bootstrapAddressesRanges = strat.getAddressRanges(metadataClone);
+        Multimap<Range<Token>,InetAddress> pendingRangeAddresses = strat.getRangeAddresses(metadataClone);
 
-        //Post bootstrap ranges per node
-        Multimap<Range<Token>, InetAddress> postAddressRanges = strat.getRangeAddresses(metadataClone.cloneAfterAllSettled());
-
-        //Add the address that will moved to the new node
-        //This doesn't need to be a multimap but makes the called api simple.
-        //We assert there is only a single entry below.
+        //Collects the source that will have its range moved to the new node
         Multimap<Range<Token>, InetAddress> rangeSources = ArrayListMultimap.create();
-
-        for (Map.Entry<InetAddress, Collection<Range<Token>>> entry : addressRanges.asMap().entrySet())
-        {
-            //Bootstrapping node can't be a source
-            if (entry.getKey().equals(address))
-                continue;
-
-            Collection<Range<Token>> bootstrapEntry = bootstrapAddressesRanges.get(entry.getKey());
-            Set<Range<Token>> moving = Sets.difference(Sets.newHashSet(entry.getValue()), Sets.newHashSet(bootstrapEntry));
-
-            //For each moving range find the node that contained the range at the start but was removed from
-            //the replica list after bootstrapping is finished. This is our preferred replica.
-            for (Range<Token> range : moving )
-            {
-                for (Map.Entry<Range<Token>, Collection<InetAddress>> postRangeEntry : postAddressRanges.asMap().entrySet())
-                {
-                    if (range.contains(postRangeEntry.getKey()) && !postRangeEntry.getValue().contains(entry.getKey())) {
-                        rangeAddresses.put(range, entry.getKey());
-                    }
-                }
-            }
-        }
-
 
         for (Range<Token> desiredRange : desiredRanges)
         {
-            for (Range<Token> range : rangeAddresses.keySet())
+            for (Map.Entry<Range<Token>, Collection<InetAddress>> preEntry : addressRanges.asMap().entrySet())
             {
-                if (range.contains(desiredRange))
+                if (preEntry.getKey().contains(desiredRange))
                 {
-                    Collection<InetAddress> preferred = rangeAddresses.get(range);
-                    assert preferred.size() == 1;
-                    rangeSources.putAll(desiredRange, preferred);
+                    Set<InetAddress> oldEndpoints = Sets.newHashSet(preEntry.getValue());
+                    Set<InetAddress> newEndpoints = Sets.newHashSet(pendingRangeAddresses.get(desiredRange));
+                    oldEndpoints.removeAll(newEndpoints);
+                    assert oldEndpoints.size() == 1;
 
-                    break;
+                    rangeSources.put(desiredRange, oldEndpoints.iterator().next());
                 }
             }
 
-            if (!rangeSources.keySet().contains(desiredRange))
+            //Validate
+            Collection<InetAddress> addressList = rangeSources.get(desiredRange);
+            if (addressList == null || addressList.isEmpty())
                 throw new IllegalStateException("No sources found for " + desiredRange);
+
+            if (addressList.size() > 1)
+                throw new IllegalStateException("Multiple strict sources found for " + desiredRange);
+
+            InetAddress sourceIp = addressList.iterator().next();
+            if (Gossiper.instance.isEnabled() && !Gossiper.instance.getEndpointStateForEndpoint(sourceIp).isAlive())
+                throw new RuntimeException("A node required to move the data consistently is down ("+sourceIp+").  If you wish to move the data from a potentially inconsistent replica, restart the node with -Dconsistent.rangemovement=false");
         }
 
         return rangeSources;
