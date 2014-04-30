@@ -3252,7 +3252,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
                                         //No relocation required 
                                         if (oldEndpoints.isEmpty())
-                                            break;
+                                            continue;
 
                                         assert oldEndpoints.size() == 1 : "Expected 1 endpoint but found " + oldEndpoints.size();
                                     }
@@ -3269,10 +3269,9 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
                             }
                         }
 
-                        //Validate
                         Collection<InetAddress> addressList = rangesToFetchWithPreferredEndpoints.get(toFetch);
                         if (addressList == null || addressList.isEmpty())
-                            throw new IllegalStateException("No sources found for " + toFetch);
+                            continue;
 
                         if (RangeStreamer.useStrictConsistency)
                         {

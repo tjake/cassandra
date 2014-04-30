@@ -209,7 +209,7 @@ public class RangeStreamer
                     Set<InetAddress> newEndpoints = Sets.newHashSet(pendingRangeAddresses.get(desiredRange));
 
                     //Due to CASSANDRA-5953 we can have a higher RF then we have endpoints.
-                    //Sp we need to be careful to only be strict when endpoints == RF
+                    //So we need to be careful to only be strict when endpoints == RF
                     if (oldEndpoints.size() == strat.getReplicationFactor())
                     {
                         oldEndpoints.removeAll(newEndpoints);
