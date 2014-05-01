@@ -55,6 +55,11 @@ public class Frame
         this.body = body;
     }
 
+    public void release()
+    {
+        body.release();
+    }
+
     public static Frame create(Message.Type type, int streamId, int version, EnumSet<Header.Flag> flags, ByteBuf body)
     {
         Header header = new Header(version, flags, streamId, type);
@@ -195,7 +200,7 @@ public class Frame
 
             // extract body
             // TODO: do we need unpooled?
-            ByteBuf body = Unpooled.copiedBuffer(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
+            ByteBuf body = buffer.alloc().buffer((int) bodyLength).writeBytes(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
             buffer.readerIndex(idx + frameLengthInt);
 
             Connection connection = ctx.channel().attr(Connection.attributeKey).get();
