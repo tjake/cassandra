@@ -268,19 +268,19 @@ public abstract class Message
                 UUID tracingId = ((Response)message).getTracingId();
                 if (tracingId != null)
                 {
-                    body = Unpooled.buffer(CBUtil.sizeOfUUID(tracingId) + messageSize);
+                    body = message.getSourceFrame().body.alloc().buffer(CBUtil.sizeOfUUID(tracingId) + messageSize);
                     CBUtil.writeUUID(tracingId, body);
                     flags.add(Frame.Header.Flag.TRACING);
                 }
                 else
                 {
-                    body = Unpooled.buffer(messageSize);
+                    body = message.getSourceFrame().body.alloc().buffer(messageSize);
                 }
             }
             else
             {
                 assert message instanceof Request;
-                body = Unpooled.buffer(messageSize);
+                body = message.getSourceFrame().body.alloc().buffer(messageSize);
                 if (((Request)message).isTracingRequested())
                     flags.add(Frame.Header.Flag.TRACING);
             }
@@ -307,6 +307,7 @@ public abstract class Message
                 Response response = request.execute(qstate);
                 response.setStreamId(request.getStreamId());
                 response.attach(connection);
+                response.setSourceFrame(request.getSourceFrame());
                 connection.applyStateTransition(request.type, response.type);
 
                 logger.debug("Responding: {}, v={}", response, connection.getVersion());

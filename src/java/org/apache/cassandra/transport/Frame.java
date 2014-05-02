@@ -199,7 +199,6 @@ public class Frame
                 return;
 
             // extract body
-            // TODO: do we need unpooled?
             ByteBuf body = buffer.alloc().buffer((int) bodyLength).writeBytes(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
             buffer.readerIndex(idx + frameLengthInt);
 
@@ -243,7 +242,7 @@ public class Frame
         public void encode(ChannelHandlerContext ctx, Frame frame, List results)
         throws IOException
         {
-            ByteBuf header = Unpooled.buffer(Frame.Header.LENGTH);
+            ByteBuf header = frame.body.alloc().buffer(Frame.Header.LENGTH);
             Message.Type type = frame.header.type;
             header.writeByte(type.direction.addToVersion(frame.header.version));
             header.writeByte(Header.Flag.serialize(frame.header.flags));
