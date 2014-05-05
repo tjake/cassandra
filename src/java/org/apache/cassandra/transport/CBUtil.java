@@ -300,7 +300,7 @@ public abstract class CBUtil
         if (slice.nioBufferCount() > 0)
             return slice.nioBuffer();
         else
-            return Unpooled.copiedBuffer(slice).nioBuffer();
+            return cb.alloc().buffer(length).writeBytes(slice).nioBuffer();
     }
 
     public static void writeValue(byte[] bytes, ByteBuf cb)

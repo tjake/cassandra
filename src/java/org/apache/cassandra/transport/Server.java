@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.util.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,7 +77,7 @@ public class Server implements CassandraDaemon.Server
     public final InetSocketAddress socket;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
-    private EventLoopGroup bossGroup, workerGroup;
+    private EventLoopGroup workerGroup;
     private EventExecutor eventExecutorGroup;
 
     public Server(InetSocketAddress socket)
@@ -135,15 +137,16 @@ public class Server implements CassandraDaemon.Server
 
         // Configure the server.
         eventExecutorGroup = new RequestThreadPoolExecutor();
-        bossGroup = new NioEventLoopGroup();
         workerGroup = new NioEventLoopGroup();
 
         ServerBootstrap bootstrap = new ServerBootstrap()
-                                    .group(bossGroup, workerGroup)
+                                    .group(workerGroup)
                                     .channel(NioServerSocketChannel.class)
-                                    .childOption(ChannelOption.TCP_NODELAY, true);
+                                    .childOption(ChannelOption.TCP_NODELAY, true)
+                                    .childOption(ChannelOption.ALLOCATOR, new PooledByteBufAllocator(true))
+                                    .childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, 32 * 1024)
+                                    .childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, 8 * 1024);
 
-        // Set up the event pipeline factory.
         final EncryptionOptions.ClientEncryptionOptions clientEnc = DatabaseDescriptor.getClientEncryptionOptions();
         if (clientEnc.enabled)
         {
@@ -156,6 +159,7 @@ public class Server implements CassandraDaemon.Server
         }
 
         // Bind and start to accept incoming connections.
+        logger.info("Using Netty Version: {}", Version.identify().entrySet());
         logger.info("Starting listening for CQL clients on {}...", socket);
         Channel channel = bootstrap.bind(socket).channel();
         connectionTracker.allChannels.add(channel);
@@ -178,9 +182,7 @@ public class Server implements CassandraDaemon.Server
     {
         // Close opened connections
         connectionTracker.closeAll();
-        bossGroup.shutdownGracefully();
         workerGroup.shutdownGracefully();
-        bossGroup = null;
         workerGroup = null;
 
         eventExecutorGroup.shutdown();
