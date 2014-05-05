@@ -293,6 +293,11 @@ public abstract class Message
     @ChannelHandler.Sharable
     public static class Dispatcher extends SimpleChannelInboundHandler<Request>
     {
+        public Dispatcher()
+        {
+            super(false);
+        }
+
         @Override
         public void channelRead0(ChannelHandlerContext ctx, Request request)
         {
