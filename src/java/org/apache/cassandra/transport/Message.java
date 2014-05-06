@@ -242,6 +242,7 @@ public abstract class Message
             }
             catch (Exception ex)
             {
+                frame.release();
                 // Remember the streamId
                 throw ErrorMessage.wrap(ex, frame.header.streamId);
             }
@@ -284,7 +285,16 @@ public abstract class Message
                     flags.add(Frame.Header.Flag.TRACING);
             }
 
-            codec.encode(message, body, version);
+            try
+            {
+                codec.encode(message, body, version);
+            }
+            catch (Exception e)
+            {
+                body.release();
+                throw ErrorMessage.wrap(e, message.getStreamId());
+            }
+
             results.add(Frame.create(message.type, message.getStreamId(), version, flags, body));
         }
     }

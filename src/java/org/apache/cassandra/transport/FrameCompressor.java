@@ -19,6 +19,7 @@ package org.apache.cassandra.transport;
 
 import java.io.IOException;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.xerial.snappy.Snappy;
 import org.xerial.snappy.SnappyError;
@@ -74,10 +75,23 @@ public interface FrameCompressor
         public Frame compress(Frame frame) throws IOException
         {
             byte[] input = CBUtil.readRawBytes(frame.body);
-            byte[] output = new byte[Snappy.maxCompressedLength(input.length)];
+            ByteBuf output = CBUtil.onHeapAllocator.buffer(Snappy.maxCompressedLength(input.length));
 
-            int written = Snappy.compress(input, 0, input.length, output, 0);
-            return frame.with(Unpooled.wrappedBuffer(output, 0, written));
+            try
+            {
+                int written = Snappy.compress(input, 0, input.length, output.array(), output.arrayOffset());
+                output.writerIndex(written);
+
+                //release the old frame
+                frame.release();
+            }
+            catch (Exception e)
+            {
+                output.release();
+                throw new IOException(e);
+            }
+
+            return frame.with(output);
         }
 
         public Frame decompress(Frame frame) throws IOException
@@ -87,9 +101,23 @@ public interface FrameCompressor
             if (!Snappy.isValidCompressedBuffer(input, 0, input.length))
                 throw new ProtocolException("Provided frame does not appear to be Snappy compressed");
 
-            byte[] output = new byte[Snappy.uncompressedLength(input)];
-            int size = Snappy.uncompress(input, 0, input.length, output, 0);
-            return frame.with(Unpooled.wrappedBuffer(output, 0, size));
+            ByteBuf output = CBUtil.onHeapAllocator.buffer(Snappy.uncompressedLength(input));
+
+            try
+            {
+                int size = Snappy.uncompress(input, 0, input.length, output.array(), output.arrayOffset());
+                output.writerIndex(size);
+
+                //release the old frame
+                frame.release();
+            }
+            catch (Exception e)
+            {
+                output.release();
+                throw new IOException(e);
+            }
+
+            return frame.with(output);
         }
     }
 
@@ -121,20 +149,27 @@ public interface FrameCompressor
             byte[] input = CBUtil.readRawBytes(frame.body);
 
             int maxCompressedLength = compressor.maxCompressedLength(input.length);
-            byte[] output = new byte[INTEGER_BYTES + maxCompressedLength];
+            ByteBuf output = CBUtil.onHeapAllocator.buffer(INTEGER_BYTES + maxCompressedLength);
 
-            output[0] = (byte) (input.length >>> 24);
-            output[1] = (byte) (input.length >>> 16);
-            output[2] = (byte) (input.length >>>  8);
-            output[3] = (byte) (input.length);
+            output.array()[output.arrayOffset() + 0] = (byte) (input.length >>> 24);
+            output.array()[output.arrayOffset() + 1] = (byte) (input.length >>> 16);
+            output.array()[output.arrayOffset() + 2] = (byte) (input.length >>>  8);
+            output.array()[output.arrayOffset() + 3] = (byte) (input.length);
 
             try
             {
-                int written = compressor.compress(input, 0, input.length, output, INTEGER_BYTES, maxCompressedLength);
-                return frame.with(Unpooled.wrappedBuffer(output, 0, INTEGER_BYTES + written));
+                int written = compressor.compress(input, 0, input.length, output.array(), output.arrayOffset() + INTEGER_BYTES, maxCompressedLength);
+                output.writerIndex(INTEGER_BYTES + written);
+
+                //release the old frame
+                frame.release();
+
+                return frame.with(output);
             }
-            catch (LZ4Exception e)
+            catch (Exception e)
             {
+
+                output.release();
                 throw new IOException(e);
             }
         }
@@ -148,18 +183,24 @@ public interface FrameCompressor
                                    | ((input[2] & 0xFF) <<  8)
                                    | ((input[3] & 0xFF));
 
-            byte[] output = new byte[uncompressedLength];
+            ByteBuf output = CBUtil.onHeapAllocator.buffer(uncompressedLength);
 
             try
             {
-                int read = decompressor.decompress(input, INTEGER_BYTES, output, 0, uncompressedLength);
+                int read = decompressor.decompress(input, INTEGER_BYTES, output.array(), output.arrayOffset(), uncompressedLength);
                 if (read != input.length - INTEGER_BYTES)
                     throw new IOException("Compressed lengths mismatch");
 
-                return frame.with(Unpooled.wrappedBuffer(output));
+                output.writerIndex(uncompressedLength);
+
+                //release the old frame
+                frame.release();
+
+                return frame.with(output);
             }
-            catch (LZ4Exception e)
+            catch (Exception e)
             {
+                output.release();
                 throw new IOException(e);
             }
         }

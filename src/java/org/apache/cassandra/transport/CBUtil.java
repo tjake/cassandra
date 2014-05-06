@@ -38,6 +38,7 @@ import io.netty.util.CharsetUtil;
 
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.TypeSizes;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
 
@@ -51,6 +52,7 @@ import org.apache.cassandra.utils.UUIDGen;
 public abstract class CBUtil
 {
     public static final ByteBufAllocator allocator = new PooledByteBufAllocator(true);
+    public static final ByteBufAllocator onHeapAllocator = new PooledByteBufAllocator(false);
 
     private CBUtil() {}
 
@@ -304,7 +306,8 @@ public abstract class CBUtil
         if (slice.nioBufferCount() > 0)
             return slice.nioBuffer();
         else
-            return allocator.buffer(length).writeBytes(slice).nioBuffer();
+            return ByteBuffer.wrap(readRawBytes(cb));
+
     }
 
     public static void writeValue(byte[] bytes, ByteBuf cb)
