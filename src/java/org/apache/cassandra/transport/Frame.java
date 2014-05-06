@@ -199,7 +199,7 @@ public class Frame
                 return;
 
             // extract body
-            ByteBuf body = buffer.alloc().buffer((int) bodyLength).writeBytes(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
+            ByteBuf body = CBUtil.allocator.buffer((int) bodyLength).writeBytes(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
             buffer.readerIndex(idx + frameLengthInt);
 
             Connection connection = ctx.channel().attr(Connection.attributeKey).get();
@@ -242,7 +242,7 @@ public class Frame
         public void encode(ChannelHandlerContext ctx, Frame frame, List results)
         throws IOException
         {
-            ByteBuf header = frame.body.alloc().buffer(Frame.Header.LENGTH);
+            ByteBuf header = CBUtil.allocator.buffer(Frame.Header.LENGTH);
             Message.Type type = frame.header.type;
             header.writeByte(type.direction.addToVersion(frame.header.version));
             header.writeByte(Header.Flag.serialize(frame.header.flags));

@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.UUID;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -268,19 +267,19 @@ public abstract class Message
                 UUID tracingId = ((Response)message).getTracingId();
                 if (tracingId != null)
                 {
-                    body = message.getSourceFrame().body.alloc().buffer(CBUtil.sizeOfUUID(tracingId) + messageSize);
+                    body = CBUtil.allocator.buffer(CBUtil.sizeOfUUID(tracingId) + messageSize);
                     CBUtil.writeUUID(tracingId, body);
                     flags.add(Frame.Header.Flag.TRACING);
                 }
                 else
                 {
-                    body = message.getSourceFrame().body.alloc().buffer(messageSize);
+                    body = CBUtil.allocator.buffer(messageSize);
                 }
             }
             else
             {
                 assert message instanceof Request;
-                body = message.getSourceFrame().body.alloc().buffer(messageSize);
+                body = CBUtil.allocator.buffer(messageSize);
                 if (((Request)message).isTracingRequested())
                     flags.add(Frame.Header.Flag.TRACING);
             }

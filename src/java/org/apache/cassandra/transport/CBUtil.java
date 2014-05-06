@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
@@ -48,6 +50,8 @@ import org.apache.cassandra.utils.UUIDGen;
  */
 public abstract class CBUtil
 {
+    public static final ByteBufAllocator allocator = new PooledByteBufAllocator(true);
+
     private CBUtil() {}
 
     private static String readString(ByteBuf cb, int length)
@@ -300,7 +304,7 @@ public abstract class CBUtil
         if (slice.nioBufferCount() > 0)
             return slice.nioBuffer();
         else
-            return cb.alloc().buffer(length).writeBytes(slice).nioBuffer();
+            return allocator.buffer(length).writeBytes(slice).nioBuffer();
     }
 
     public static void writeValue(byte[] bytes, ByteBuf cb)
