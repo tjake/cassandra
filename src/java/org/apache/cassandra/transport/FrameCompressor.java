@@ -81,14 +81,16 @@ public interface FrameCompressor
             {
                 int written = Snappy.compress(input, 0, input.length, output.array(), output.arrayOffset());
                 output.writerIndex(written);
-
-                //release the old frame
-                frame.release();
             }
-            catch (Exception e)
+            catch (final Throwable e)
             {
                 output.release();
-                throw new IOException(e);
+                throw e;
+            }
+            finally
+            {
+                //release the old frame
+                frame.release();
             }
 
             return frame.with(output);
@@ -111,10 +113,15 @@ public interface FrameCompressor
                 //release the old frame
                 frame.release();
             }
-            catch (Exception e)
+            catch (final Throwable e)
             {
                 output.release();
-                throw new IOException(e);
+                throw e;
+            }
+            finally
+            {
+                //release the old frame
+                frame.release();
             }
 
             return frame.with(output);
@@ -149,28 +156,32 @@ public interface FrameCompressor
             byte[] input = CBUtil.readRawBytes(frame.body);
 
             int maxCompressedLength = compressor.maxCompressedLength(input.length);
-            ByteBuf output = CBUtil.onHeapAllocator.buffer(INTEGER_BYTES + maxCompressedLength);
+            ByteBuf outputBuf = CBUtil.onHeapAllocator.buffer(INTEGER_BYTES + maxCompressedLength);
 
-            output.array()[output.arrayOffset() + 0] = (byte) (input.length >>> 24);
-            output.array()[output.arrayOffset() + 1] = (byte) (input.length >>> 16);
-            output.array()[output.arrayOffset() + 2] = (byte) (input.length >>>  8);
-            output.array()[output.arrayOffset() + 3] = (byte) (input.length);
+            byte[] output = outputBuf.array();
+            int outputOffset = outputBuf.arrayOffset();
+
+            output[outputOffset + 0] = (byte) (input.length >>> 24);
+            output[outputOffset + 1] = (byte) (input.length >>> 16);
+            output[outputOffset + 2] = (byte) (input.length >>>  8);
+            output[outputOffset + 3] = (byte) (input.length);
 
             try
             {
-                int written = compressor.compress(input, 0, input.length, output.array(), output.arrayOffset() + INTEGER_BYTES, maxCompressedLength);
-                output.writerIndex(INTEGER_BYTES + written);
+                int written = compressor.compress(input, 0, input.length, output, outputOffset + INTEGER_BYTES, maxCompressedLength);
+                outputBuf.writerIndex(INTEGER_BYTES + written);
 
+                return frame.with(outputBuf);
+            }
+            catch (final Throwable e)
+            {
+                outputBuf.release();
+                throw e;
+            }
+            finally
+            {
                 //release the old frame
                 frame.release();
-
-                return frame.with(output);
-            }
-            catch (Exception e)
-            {
-
-                output.release();
-                throw new IOException(e);
             }
         }
 
@@ -193,15 +204,17 @@ public interface FrameCompressor
 
                 output.writerIndex(uncompressedLength);
 
-                //release the old frame
-                frame.release();
-
                 return frame.with(output);
             }
-            catch (Exception e)
+            catch (final Throwable e)
             {
                 output.release();
-                throw new IOException(e);
+                throw e;
+            }
+            finally
+            {
+                //release the old frame
+                frame.release();
             }
         }
     }

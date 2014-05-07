@@ -240,7 +240,7 @@ public abstract class Message
 
                 results.add(message);
             }
-            catch (Exception ex)
+            catch (Throwable ex)
             {
                 frame.release();
                 // Remember the streamId
@@ -289,7 +289,7 @@ public abstract class Message
             {
                 codec.encode(message, body, version);
             }
-            catch (Exception e)
+            catch (Throwable e)
             {
                 body.release();
                 throw ErrorMessage.wrap(e, message.getStreamId());
@@ -328,7 +328,7 @@ public abstract class Message
 
                 ctx.writeAndFlush(response, ctx.voidPromise());
             }
-            catch (Exception ex)
+            catch (Throwable ex)
             {
                 // Don't let the exception propagate to exceptionCaught() if we can help it so that we can assign the right streamID.
                 ctx.writeAndFlush(ErrorMessage.fromException(ex).setStreamId(request.getStreamId()), ctx.voidPromise());
