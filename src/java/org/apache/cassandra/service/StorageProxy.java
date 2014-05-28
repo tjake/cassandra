@@ -780,69 +780,74 @@ public class StorageProxy implements StorageProxyMBean
         // only need to create a Message for non-local writes
         MessageOut<Mutation> message = null;
 
-        for (InetAddress destination : targets)
+        mutation.retain();
+        try
         {
-            // avoid OOMing due to excess hints.  we need to do this check even for "live" nodes, since we can
-            // still generate hints for those if it's overloaded or simply dead but not yet known-to-be-dead.
-            // The idea is that if we have over maxHintsInProgress hints in flight, this is probably due to
-            // a small number of nodes causing problems, so we should avoid shutting down writes completely to
-            // healthy nodes.  Any node with no hintsInProgress is considered healthy.
-            if (StorageMetrics.totalHintsInProgress.count() > maxHintsInProgress
-                && (getHintsInProgressFor(destination).get() > 0 && shouldHint(destination)))
+            for (InetAddress destination : targets)
             {
-                throw new OverloadedException("Too many in flight hints: " + StorageMetrics.totalHintsInProgress.count());
-            }
-
-            if (FailureDetector.instance.isAlive(destination))
-            {
-                if (destination.equals(FBUtilities.getBroadcastAddress()) && OPTIMIZE_LOCAL_REQUESTS)
+                // avoid OOMing due to excess hints.  we need to do this check even for "live" nodes, since we can
+                // still generate hints for those if it's overloaded or simply dead but not yet known-to-be-dead.
+                // The idea is that if we have over maxHintsInProgress hints in flight, this is probably due to
+                // a small number of nodes causing problems, so we should avoid shutting down writes completely to
+                // healthy nodes.  Any node with no hintsInProgress is considered healthy.
+                if (StorageMetrics.totalHintsInProgress.count() > maxHintsInProgress
+                        && (getHintsInProgressFor(destination).get() > 0 && shouldHint(destination)))
                 {
-                    insertLocal(mutation, responseHandler);
+                    throw new OverloadedException("Too many in flight hints: " + StorageMetrics.totalHintsInProgress.count());
                 }
-                else
+
+                if (FailureDetector.instance.isAlive(destination))
                 {
-                    // belongs on a different server
-                    if (message == null)
-                        message = mutation.createMessage();
-                    String dc = DatabaseDescriptor.getEndpointSnitch().getDatacenter(destination);
-                    // direct writes to local DC or old Cassandra versions
-                    // (1.1 knows how to forward old-style String message IDs; updated to int in 2.0)
-                    if (localDataCenter.equals(dc))
+                    if (destination.equals(FBUtilities.getBroadcastAddress()) && OPTIMIZE_LOCAL_REQUESTS)
                     {
-                        MessagingService.instance().sendRR(message, destination, responseHandler, true);
-                    }
-                    else
+                        insertLocal(mutation, responseHandler);
+                    } else
                     {
-                        Collection<InetAddress> messages = (dcGroups != null) ? dcGroups.get(dc) : null;
-                        if (messages == null)
+                        // belongs on a different server
+                        if (message == null)
+                            message = mutation.createMessage();
+                        String dc = DatabaseDescriptor.getEndpointSnitch().getDatacenter(destination);
+                        // direct writes to local DC or old Cassandra versions
+                        // (1.1 knows how to forward old-style String message IDs; updated to int in 2.0)
+                        if (localDataCenter.equals(dc))
                         {
-                            messages = new ArrayList<InetAddress>(3); // most DCs will have <= 3 replicas
-                            if (dcGroups == null)
-                                dcGroups = new HashMap<String, Collection<InetAddress>>();
-                            dcGroups.put(dc, messages);
+                            MessagingService.instance().sendRR(message, destination, responseHandler, true);
+                        } else
+                        {
+                            Collection<InetAddress> messages = (dcGroups != null) ? dcGroups.get(dc) : null;
+                            if (messages == null)
+                            {
+                                messages = new ArrayList<InetAddress>(3); // most DCs will have <= 3 replicas
+                                if (dcGroups == null)
+                                    dcGroups = new HashMap<String, Collection<InetAddress>>();
+                                dcGroups.put(dc, messages);
+                            }
+                            messages.add(destination);
                         }
-                        messages.add(destination);
                     }
+                } else
+                {
+                    if (!shouldHint(destination))
+                        continue;
+
+                    // Schedule a local hint
+                    submitHint(mutation, destination, responseHandler);
                 }
             }
-            else
-            {
-                if (!shouldHint(destination))
-                    continue;
 
-                // Schedule a local hint
-                submitHint(mutation, destination, responseHandler);
+            if (dcGroups != null)
+            {
+                // for each datacenter, send the message to one node to relay the write to other replicas
+                if (message == null)
+                    message = mutation.createMessage();
+
+                for (Collection<InetAddress> dcTargets : dcGroups.values())
+                    sendMessagesToNonlocalDC(message, dcTargets, responseHandler);
             }
         }
-
-        if (dcGroups != null)
+        finally
         {
-            // for each datacenter, send the message to one node to relay the write to other replicas
-            if (message == null)
-                message = mutation.createMessage();
-
-            for (Collection<InetAddress> dcTargets : dcGroups.values())
-                sendMessagesToNonlocalDC(message, dcTargets, responseHandler);
+            mutation.release();
         }
     }
 
