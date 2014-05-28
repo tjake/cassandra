@@ -26,6 +26,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.transport.Frame;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +79,7 @@ public class ClientState
     // Current user for the session
     private volatile AuthenticatedUser user;
     private volatile String keyspace;
+    private volatile Frame sourceFrame;
 
     private SemanticVersion cqlVersion;
     private static final QueryHandler cqlQueryHandler;
@@ -355,5 +357,15 @@ public class ClientState
         {
             throw new RuntimeException(e);
         }
+    }
+
+    public Frame getSourceFrame()
+    {
+        return sourceFrame;
+    }
+
+    public void setSourceFrame(Frame sourceFrame)
+    {
+        this.sourceFrame = sourceFrame;
     }
 }

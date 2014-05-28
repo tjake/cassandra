@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.apache.cassandra.transport.Frame;
 import org.apache.commons.lang3.StringUtils;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -51,6 +52,8 @@ public class Mutation implements IMutation
     private final ByteBuffer key;
     // map of column family id to mutations for that column family.
     private final Map<UUID, ColumnFamily> modifications;
+
+    private volatile Frame sourceFrame;
 
     public Mutation(String keyspaceName, ByteBuffer key)
     {
@@ -102,6 +105,20 @@ public class Mutation implements IMutation
     public Collection<ColumnFamily> getColumnFamilies()
     {
         return modifications.values();
+    }
+
+    @Override
+    public void retain()
+    {
+        if (sourceFrame != null)
+            sourceFrame.retain();
+    }
+
+    @Override
+    public void release()
+    {
+        if (sourceFrame != null)
+            sourceFrame.release();
     }
 
     public ColumnFamily getColumnFamily(UUID cfId)
@@ -263,6 +280,16 @@ public class Mutation implements IMutation
             if (!entry.getKey().equals(cfId))
                 mutation.add(entry.getValue());
         return mutation;
+    }
+
+    public Frame getSourceFrame()
+    {
+        return sourceFrame;
+    }
+
+    public void setSourceFrame(Frame sourceFrame)
+    {
+        this.sourceFrame = sourceFrame;
     }
 
     public static class MutationSerializer implements IVersionedSerializer<Mutation>

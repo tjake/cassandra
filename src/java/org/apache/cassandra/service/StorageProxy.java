@@ -864,23 +864,30 @@ public class StorageProxy implements StorageProxyMBean
     {
         // local write that time out should be handled by LocalMutationRunnable
         assert !target.equals(FBUtilities.getBroadcastAddress()) : target;
+        mutation.retain();
 
         HintRunnable runnable = new HintRunnable(target)
         {
             public void runMayThrow()
             {
-                int ttl = HintedHandOffManager.calculateHintTTL(mutation);
-                if (ttl > 0)
+                try
                 {
-                    logger.debug("Adding hint for {}", target);
-                    writeHintForMutation(mutation, System.currentTimeMillis(), ttl, target);
-                    // Notify the handler only for CL == ANY
-                    if (responseHandler != null && responseHandler.consistencyLevel == ConsistencyLevel.ANY)
-                        responseHandler.response(null);
+                    int ttl = HintedHandOffManager.calculateHintTTL(mutation);
+                    if (ttl > 0)
+                    {
+                        logger.debug("Adding hint for {}", target);
+                        writeHintForMutation(mutation, System.currentTimeMillis(), ttl, target);
+                        // Notify the handler only for CL == ANY
+                        if (responseHandler != null && responseHandler.consistencyLevel == ConsistencyLevel.ANY)
+                            responseHandler.response(null);
+                    } else
+                    {
+                        logger.debug("Skipped writing hint for {} (ttl {})", target, ttl);
+                    }
                 }
-                else
+                finally
                 {
-                    logger.debug("Skipped writing hint for {} (ttl {})", target, ttl);
+                    mutation.release();
                 }
             }
         };
@@ -944,15 +951,24 @@ public class StorageProxy implements StorageProxyMBean
 
     private static void insertLocal(final Mutation mutation, final AbstractWriteResponseHandler responseHandler)
     {
+        mutation.retain();
+
         StageManager.getStage(Stage.MUTATION).execute(new LocalMutationRunnable()
         {
             public void runMayThrow()
             {
-                IMutation processed = SinkManager.processWriteRequest(mutation);
-                if (processed != null)
+                try
                 {
-                    ((Mutation) processed).apply();
-                    responseHandler.response(null);
+                    IMutation processed = SinkManager.processWriteRequest(mutation);
+                    if (processed != null)
+                    {
+                        ((Mutation) processed).apply();
+                        responseHandler.response(null);
+                    }
+                }
+                finally
+                {
+                    mutation.release();
                 }
             }
         });

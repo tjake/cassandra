@@ -29,10 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.buffer.Unpooled;
+import io.netty.buffer.*;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
 
@@ -52,7 +49,6 @@ import org.apache.cassandra.utils.UUIDGen;
 public abstract class CBUtil
 {
     public static final ByteBufAllocator allocator = new PooledByteBufAllocator(true);
-    public static final ByteBufAllocator onHeapAllocator = new PooledByteBufAllocator(false);
 
     private CBUtil() {}
 

@@ -408,6 +408,7 @@ public abstract class Message
                 connection = (ServerConnection)request.connection();
                 QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
+                qstate.getClientState().setSourceFrame(request.getSourceFrame());
                 logger.debug("Received: {}, v={}", request, connection.getVersion());
 
                 response = request.execute(qstate);

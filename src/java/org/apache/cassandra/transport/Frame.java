@@ -55,6 +55,11 @@ public class Frame
         this.body = body;
     }
 
+    public void retain()
+    {
+        body.retain();
+    }
+
     public void release()
     {
         body.release();
