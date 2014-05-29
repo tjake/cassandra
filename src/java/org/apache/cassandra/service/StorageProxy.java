@@ -453,10 +453,19 @@ public class StorageProxy implements StorageProxyMBean
         long startTime = System.nanoTime();
         List<AbstractWriteResponseHandler> responseHandlers = new ArrayList<AbstractWriteResponseHandler>(mutations.size());
 
+        IMutation lastMutation = null;
+
         try
         {
             for (IMutation mutation : mutations)
             {
+                mutation.retain();
+
+                if (lastMutation != null)
+                    lastMutation.release();
+
+                lastMutation = mutation;
+
                 if (mutation instanceof CounterMutation)
                 {
                     responseHandlers.add(mutateCounter((CounterMutation)mutation, localDataCenter));
@@ -517,6 +526,9 @@ public class StorageProxy implements StorageProxyMBean
         }
         finally
         {
+            if (lastMutation != null)
+                lastMutation.release();
+            
             writeMetrics.addNano(System.nanoTime() - startTime);
         }
     }
