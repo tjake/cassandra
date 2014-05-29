@@ -79,7 +79,7 @@ public class ClientState
     // Current user for the session
     private volatile AuthenticatedUser user;
     private volatile String keyspace;
-    private volatile Frame sourceFrame;
+    private Frame sourceFrame;
 
     private SemanticVersion cqlVersion;
     private static final QueryHandler cqlQueryHandler;

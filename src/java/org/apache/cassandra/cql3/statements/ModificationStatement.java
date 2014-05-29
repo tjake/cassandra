@@ -640,6 +640,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
         {
             // We don't use counters internally.
             assert mutation instanceof Mutation;
+
             ((Mutation) mutation).apply();
         }
         return null;
@@ -670,7 +671,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
             ColumnFamily cf = ArrayBackedSortedColumns.factory.create(cfm);
             addUpdateForKey(cf, key, clusteringPrefix, params);
             Mutation mut = new Mutation(cfm.ksName, key, cf);
-
+            assert sourceFrame != null;
             mut.setSourceFrame(sourceFrame);
 
             mutations.add(isCounter() ? new CounterMutation(mut, options.getConsistency()) : mut);
