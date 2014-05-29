@@ -226,6 +226,8 @@ public class Mutation implements IMutation
      */
     public void apply()
     {
+        assert sourceFrame == null || sourceFrame.body.refCnt() > 0;
+
         Keyspace ks = Keyspace.open(keyspaceName);
         ks.apply(this, ks.metadata.durableWrites);
     }
