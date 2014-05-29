@@ -29,7 +29,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import io.netty.buffer.*;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
 
@@ -299,7 +302,11 @@ public abstract class CBUtil
         if (length < 0)
             return null;
         ByteBuf slice = cb.readSlice(length);
-        return ByteBuffer.wrap(readRawBytes(slice));
+        if (slice.nioBufferCount() > 0)
+            return slice.nioBuffer();
+        else
+            return ByteBuffer.wrap(readRawBytes(cb));
+
     }
 
     public static void writeValue(byte[] bytes, ByteBuf cb)
