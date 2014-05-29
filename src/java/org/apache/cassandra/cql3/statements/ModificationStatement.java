@@ -664,14 +664,13 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
 
         UpdateParameters params = makeUpdateParameters(keys, clusteringPrefix, options, local, now);
 
-        Collection<IMutation> mutations = new ArrayList<IMutation>();
+        Collection<IMutation> mutations = new ArrayList<IMutation>(keys.size());
         for (ByteBuffer key: keys)
         {
             ThriftValidation.validateKey(cfm, key);
             ColumnFamily cf = ArrayBackedSortedColumns.factory.create(cfm);
             addUpdateForKey(cf, key, clusteringPrefix, params);
             Mutation mut = new Mutation(cfm.ksName, key, cf);
-            assert sourceFrame != null;
             mut.setSourceFrame(sourceFrame);
 
             mutations.add(isCounter() ? new CounterMutation(mut, options.getConsistency()) : mut);
