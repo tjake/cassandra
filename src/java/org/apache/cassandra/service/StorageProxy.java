@@ -528,7 +528,7 @@ public class StorageProxy implements StorageProxyMBean
         {
             if (lastMutation != null)
                 lastMutation.release();
-            
+
             writeMetrics.addNano(System.nanoTime() - startTime);
         }
     }

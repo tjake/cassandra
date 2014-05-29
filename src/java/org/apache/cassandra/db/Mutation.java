@@ -53,7 +53,7 @@ public class Mutation implements IMutation
     // map of column family id to mutations for that column family.
     private final Map<UUID, ColumnFamily> modifications;
 
-    private volatile Frame sourceFrame;
+    private Frame sourceFrame;
 
     public Mutation(String keyspaceName, ByteBuffer key)
     {
@@ -84,7 +84,10 @@ public class Mutation implements IMutation
 
     public Mutation copy()
     {
-        return new Mutation(keyspaceName, key, new HashMap<>(modifications));
+        Mutation copy = new Mutation(keyspaceName, key, new HashMap<>(modifications));
+        copy.setSourceFrame(getSourceFrame());
+
+        return copy;
     }
 
     public String getKeyspaceName()
