@@ -66,6 +66,16 @@ public class QueryState
         return clientState.getSourceFrame();
     }
 
+    public void setSourceFrame(Frame sourceFrame)
+    {
+        clientState.setSourceFrame(sourceFrame);
+    }
+
+    public void clearSourceFrame()
+    {
+        clientState.clearSourceFrame();
+    }
+
     public boolean traceNextQuery()
     {
         if (preparedTracingSession != null)

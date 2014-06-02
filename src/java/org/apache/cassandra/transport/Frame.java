@@ -60,9 +60,9 @@ public class Frame
         body.retain();
     }
 
-    public void release()
+    public boolean release()
     {
-        body.release();
+        return body.release();
     }
 
     public static Frame create(Message.Type type, int streamId, int version, EnumSet<Header.Flag> flags, ByteBuf body)
@@ -204,8 +204,8 @@ public class Frame
                 return;
 
             // extract body
-            ByteBuf body = CBUtil.allocator.buffer((int) bodyLength).writeBytes(buffer.duplicate().slice(idx + Header.LENGTH, (int) bodyLength));
-            assert body.refCnt() == 1;
+            ByteBuf body = buffer.slice(idx + Header.LENGTH, (int) bodyLength);
+            body.retain();
 
             buffer.readerIndex(idx + frameLengthInt);
 

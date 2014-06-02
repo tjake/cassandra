@@ -451,7 +451,7 @@ public class StorageProxy implements StorageProxyMBean
         final String localDataCenter = DatabaseDescriptor.getEndpointSnitch().getDatacenter(FBUtilities.getBroadcastAddress());
 
         long startTime = System.nanoTime();
-        List<AbstractWriteResponseHandler> responseHandlers = new ArrayList<AbstractWriteResponseHandler>(mutations.size());
+        List<AbstractWriteResponseHandler> responseHandlers = new ArrayList<>(mutations.size());
 
         IMutation lastMutation = null;
 

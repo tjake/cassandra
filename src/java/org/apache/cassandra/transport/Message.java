@@ -124,9 +124,9 @@ public abstract class Message
     }
 
     public final Type type;
-    protected volatile Connection connection;
-    private volatile int streamId;
-    private volatile Frame sourceFrame;
+    protected Connection connection;
+    private int streamId;
+    private Frame sourceFrame = null;
 
     protected Message(Type type)
     {
@@ -360,10 +360,8 @@ public abstract class Message
                     for (ChannelHandlerContext channel : channels)
                         channel.flush();
                     for (FlushItem item : flushed)
-                    {
-                        if (item.response.getSourceFrame().body.refCnt() > 0)
-                            item.response.getSourceFrame().release();
-                    }
+                        item.response.getSourceFrame().release();
+
                     channels.clear();
                     flushed.clear();
                     runsSinceFlush = 0;
@@ -401,14 +399,16 @@ public abstract class Message
 
             final Response response;
             final ServerConnection connection;
+            QueryState qstate = null;
 
             try
             {
                 assert request.connection() instanceof ServerConnection;
                 connection = (ServerConnection)request.connection();
-                QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+                qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+                qstate.setSourceFrame(request.getSourceFrame());
 
-                qstate.getClientState().setSourceFrame(request.getSourceFrame());
+
                 logger.debug("Received: {}, v={}", request, connection.getVersion());
 
                 response = request.execute(qstate);
@@ -423,6 +423,11 @@ public abstract class Message
                 // Don't let the exception propagate to exceptionCaught() if we can help it so that we can assign the right streamID.
                 ctx.writeAndFlush(ErrorMessage.fromException(ex).setStreamId(request.getStreamId()), ctx.voidPromise());
                 return;
+            }
+            finally
+            {
+                if (qstate != null)
+                    qstate.clearSourceFrame();
             }
 
             logger.debug("Responding: {}, v={}", response, connection.getVersion());

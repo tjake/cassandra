@@ -79,7 +79,7 @@ public class ClientState
     // Current user for the session
     private volatile AuthenticatedUser user;
     private volatile String keyspace;
-    private Frame sourceFrame;
+    private final ThreadLocal<Frame> sourceFrame;
 
     private SemanticVersion cqlVersion;
     private static final QueryHandler cqlQueryHandler;
@@ -116,6 +116,7 @@ public class ClientState
     {
         this.isInternal = true;
         this.remoteAddress = null;
+        this.sourceFrame = new ThreadLocal<>();
     }
 
     protected ClientState(SocketAddress remoteAddress)
@@ -124,6 +125,8 @@ public class ClientState
         this.remoteAddress = remoteAddress;
         if (!DatabaseDescriptor.getAuthenticator().requireAuthentication())
             this.user = AuthenticatedUser.ANONYMOUS_USER;
+
+        this.sourceFrame = new ThreadLocal<>();
     }
 
     /**
@@ -361,11 +364,16 @@ public class ClientState
 
     public Frame getSourceFrame()
     {
-        return sourceFrame;
+        return sourceFrame.get();
     }
 
     public void setSourceFrame(Frame sourceFrame)
     {
-        this.sourceFrame = sourceFrame;
+        this.sourceFrame.set(sourceFrame);
+    }
+
+    public void clearSourceFrame()
+    {
+        sourceFrame.remove();
     }
 }
