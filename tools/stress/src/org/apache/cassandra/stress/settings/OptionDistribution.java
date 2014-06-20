@@ -34,7 +34,7 @@ import org.apache.commons.math3.distribution.WeibullDistribution;
 /**
  * For selecting a mathematical distribution
  */
-class OptionDistribution extends Option
+public class OptionDistribution extends Option
 {
 
     private static final Pattern FULL = Pattern.compile("([A-Z]+)\\((.+)\\)", Pattern.CASE_INSENSITIVE);
@@ -61,7 +61,7 @@ class OptionDistribution extends Option
         return true;
     }
 
-    private static DistributionFactory get(String spec)
+    public static DistributionFactory get(String spec)
     {
         Matcher m = FULL.matcher(spec);
         if (!m.matches())

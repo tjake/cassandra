@@ -37,7 +37,6 @@ import org.apache.thrift.transport.TTransport;
 
 public class StressSettings implements Serializable
 {
-
     public final SettingsCommand command;
     public final SettingsRate rate;
     public final SettingsKey keys;
@@ -63,6 +62,16 @@ public class StressSettings implements Serializable
         this.transport = transport;
         this.port = port;
         this.sendToDaemon = sendToDaemon;
+
+        if (schema.stressProfile != null && (command.type == Command.READ || command.type == Command.MIXED))
+        {
+            if (schema.queryName == null)
+                throw new IllegalArgumentException("ERROR: yaml argument requires a separate query argument to perform reads");
+
+            if (schema.stressProfile.queries.get(schema.queryName) == null)
+                throw new IllegalArgumentException("query "+schema.queryName+" is not defined in yaml file");
+        }
+
     }
 
     public SmartThriftClient getSmartThriftClient()
@@ -139,6 +148,11 @@ public class StressSettings implements Serializable
 
     public JavaDriverClient getJavaDriverClient()
     {
+        return getJavaDriverClient(true);
+    }
+
+    public JavaDriverClient getJavaDriverClient(boolean setKeyspace)
+    {
         if (client != null)
             return client;
 
@@ -153,7 +167,9 @@ public class StressSettings implements Serializable
                 EncryptionOptions.ClientEncryptionOptions encOptions = transport.getEncryptionOptions();
                 JavaDriverClient c = new JavaDriverClient(currentNode, port.nativePort, encOptions);
                 c.connect(mode.compression());
-                c.execute("USE \"" + schema.keyspace + "\";", org.apache.cassandra.db.ConsistencyLevel.ONE);
+                if (setKeyspace)
+                    c.execute("USE \"" + schema.keyspace + "\";", org.apache.cassandra.db.ConsistencyLevel.ONE);
+
                 return client = c;
             }
         }

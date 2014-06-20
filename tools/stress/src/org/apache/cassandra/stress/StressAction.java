@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.cassandra.stress.cql3.Cql3Inserter;
+import org.apache.cassandra.stress.cql3.Cql3Reader;
 import org.apache.cassandra.stress.operations.*;
 import org.apache.cassandra.stress.settings.*;
 import org.apache.cassandra.stress.util.JavaDriverClient;
@@ -260,22 +262,29 @@ public class StressAction implements Runnable
                 ThriftClient tclient = null;
                 JavaDriverClient jclient = null;
 
-                switch (settings.mode.api)
+                if (settings.schema.stressProfile != null)
                 {
-                    case JAVA_DRIVER_NATIVE:
-                        jclient = settings.getJavaDriverClient();
-                        break;
-                    case SIMPLE_NATIVE:
-                        sclient = settings.getSimpleNativeClient();
-                        break;
-                    case THRIFT:
-                        tclient = settings.getThriftClient();
-                        break;
-                    case THRIFT_SMART:
-                        tclient = settings.getSmartThriftClient();
-                        break;
-                    default:
-                        throw new IllegalStateException();
+                    jclient = settings.getJavaDriverClient();
+                }
+                else
+                {
+                    switch (settings.mode.api)
+                    {
+                        case JAVA_DRIVER_NATIVE:
+                            jclient = settings.getJavaDriverClient();
+                            break;
+                        case SIMPLE_NATIVE:
+                            sclient = settings.getSimpleNativeClient();
+                            break;
+                        case THRIFT:
+                            tclient = settings.getThriftClient();
+                            break;
+                        case THRIFT_SMART:
+                            tclient = settings.getSmartThriftClient();
+                            break;
+                        default:
+                            throw new IllegalStateException();
+                    }
                 }
 
                 Work work;
@@ -290,18 +299,26 @@ public class StressAction implements Runnable
                         try
                         {
                             Operation op = createOperation(state, i + work.offset);
-                            switch (settings.mode.api)
+
+                            if (settings.schema.stressProfile != null)
                             {
-                                case JAVA_DRIVER_NATIVE:
-                                    op.run(jclient);
-                                    break;
-                                case SIMPLE_NATIVE:
-                                    op.run(sclient);
-                                    break;
-                                case THRIFT:
-                                case THRIFT_SMART:
-                                default:
-                                    op.run(tclient);
+                                op.run(jclient);
+                            }
+                            else
+                            {
+                                switch (settings.mode.api)
+                                {
+                                    case JAVA_DRIVER_NATIVE:
+                                        op.run(jclient);
+                                        break;
+                                    case SIMPLE_NATIVE:
+                                        op.run(sclient);
+                                        break;
+                                    case THRIFT:
+                                    case THRIFT_SMART:
+                                    default:
+                                        op.run(tclient);
+                                }
                             }
                         } catch (Exception e)
                         {
@@ -452,6 +469,11 @@ public class StressAction implements Runnable
         switch (type)
         {
             case READ:
+                if (state.settings.schema.stressProfile != null)
+                {
+                    return new Cql3Reader(state, index);
+                }
+
                 switch(state.settings.mode.style)
                 {
                     case THRIFT:
@@ -477,6 +499,12 @@ public class StressAction implements Runnable
                 }
 
             case WRITE:
+
+                if (state.settings.schema.stressProfile != null)
+                {
+                    return new Cql3Inserter(state, index);
+                }
+
                 switch(state.settings.mode.style)
                 {
                     case THRIFT:

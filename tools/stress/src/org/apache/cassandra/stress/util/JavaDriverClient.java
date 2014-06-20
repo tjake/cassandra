@@ -116,7 +116,7 @@ public class JavaDriverClient
      * @param cl
      * @return
      */
-    ConsistencyLevel from(org.apache.cassandra.db.ConsistencyLevel cl)
+    public static ConsistencyLevel from(org.apache.cassandra.db.ConsistencyLevel cl)
     {
         switch (cl)
         {

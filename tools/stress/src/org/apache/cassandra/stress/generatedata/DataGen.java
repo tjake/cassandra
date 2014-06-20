@@ -26,7 +26,6 @@ import java.util.List;
 
 public abstract class DataGen
 {
-
     public abstract void generate(ByteBuffer fill, long index, ByteBuffer seed);
     public abstract boolean isDeterministic();
 

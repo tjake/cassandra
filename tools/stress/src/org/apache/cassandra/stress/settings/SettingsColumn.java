@@ -39,7 +39,7 @@ public class SettingsColumn implements Serializable
 {
 
     public final int maxColumnsPerKey;
-    public final List<ByteBuffer> names;
+    public transient final List<ByteBuffer> names;
     public final List<String> namestrs;
     public final String comparator;
     public final boolean useTimeUUIDComparator;

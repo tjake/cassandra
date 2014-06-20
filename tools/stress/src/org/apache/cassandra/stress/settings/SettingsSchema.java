@@ -21,13 +21,15 @@ package org.apache.cassandra.stress.settings;
  */
 
 
+import java.io.File;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.exceptions.ConfigurationException;
+import com.datastax.driver.core.BatchStatement;
+import org.apache.cassandra.stress.cql3.StressProfile;
 import org.apache.cassandra.thrift.*;
+import org.apache.cassandra.thrift.ConsistencyLevel;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class SettingsSchema implements Serializable
@@ -45,6 +47,10 @@ public class SettingsSchema implements Serializable
     private final String compactionStrategy;
     private final Map<String, String> compactionStrategyOptions;
     public final String keyspace;
+    public final String queryName;
+    public final Integer batchSize;
+    public final BatchStatement.Type batchType;
+    public final StressProfile stressProfile;
 
     public SettingsSchema(Options options)
     {
@@ -58,12 +64,36 @@ public class SettingsSchema implements Serializable
         compression = options.compression.value();
         compactionStrategy = options.compaction.getStrategy();
         compactionStrategyOptions = options.compaction.getOptions();
-        keyspace = options.keyspace.value();
+
+
+        if (options.yaml.setByUser())
+        {
+            stressProfile = StressProfile.load(new File(options.yaml.value()));
+            keyspace = stressProfile.keyspaceName;
+            batchSize = Integer.valueOf(options.batchSize.value());
+            batchType = BatchStatement.Type.valueOf(options.batchType.value().toUpperCase());
+            queryName = options.query.value();
+        }
+        else
+        {
+            stressProfile = null;
+            queryName = null;
+            batchSize = null;
+            batchType = null;
+            keyspace = options.keyspace.value();
+        }
     }
 
     public void createKeySpaces(StressSettings settings)
     {
-        createKeySpacesThrift(settings);
+        if (stressProfile == null)
+        {
+            createKeySpacesThrift(settings);
+        }
+        else
+        {
+            stressProfile.maybeCreateSchema(settings);
+        }
     }
 
 
@@ -202,11 +232,15 @@ public class SettingsSchema implements Serializable
         final OptionSimple keyspace = new OptionSimple("keyspace=", ".*", "Keyspace1", "The keyspace name to use", false);
         final OptionSimple noReplicateOnWrite = new OptionSimple("no-replicate-on-write", "", null, "Set replicate_on_write to false for counters. Only counter add with CL=ONE will work", false);
         final OptionSimple compression = new OptionSimple("compression=", ".*", null, "Specify the compression to use for sstable, default:no compression", false);
+        final OptionSimple yaml = new OptionSimple("yaml=", ".*", null, "Specify the path to a yaml cql3 profile", false);
+        final OptionSimple query = new OptionSimple("query=", ".*", null, "Specify the query name to use from the yaml file", false);
+        final OptionSimple batchSize = new OptionSimple("batchsize=", "\\d+", "1", "Specify the number of inserts todo per write request", false);
+        final OptionSimple batchType = new OptionSimple("batchtype=", ".*", "LOGGED", "Specify the batch type (LOGGED|UNLOGGED|COUNTER)", false);
 
         @Override
         public List<? extends Option> options()
         {
-            return Arrays.asList(replication, index, keyspace, compaction, noReplicateOnWrite, compression);
+            return Arrays.asList(replication, index, keyspace, compaction, noReplicateOnWrite, compression, yaml, query, batchSize, batchType);
         }
     }
 
