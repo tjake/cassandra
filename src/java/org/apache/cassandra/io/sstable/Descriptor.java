@@ -24,11 +24,13 @@ import java.util.StringTokenizer;
 
 import com.google.common.base.Objects;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.io.sstable.metadata.IMetadataSerializer;
 import org.apache.cassandra.io.sstable.metadata.LegacyMetadataSerializer;
 import org.apache.cassandra.io.sstable.metadata.MetadataSerializer;
 import org.apache.cassandra.utils.Pair;
+import org.apache.commons.lang.StringUtils;
 
 import static org.apache.cassandra.io.sstable.Component.separator;
 
@@ -140,6 +142,49 @@ public class Descriptor
         }
     }
 
+
+    public static enum Format
+    {
+        //Used internally to refer to files with no
+        //format flag in the filename
+        LEGACY("oldinternal", SSTableReader.class, SSTableWriter.class),
+
+        //The original sstable format
+        KEY("key", SSTableReader.class, SSTableWriter.class),
+
+        //The new sstable format
+        BLOCK("block",  null, null);
+
+        public final Class readerClass;
+        public final Class writerClass;
+        public final String name;
+        private Format(String name, Class readerClass, Class writerClass)
+        {
+            //Since format comes right before generation
+            //we disallow formats with numeric names
+            assert !StringUtils.isNumeric(name);
+
+            this.name = name;
+            this.readerClass = readerClass;
+            this.writerClass = writerClass;
+        }
+
+        public static Format validate(String name)
+        {
+            for (Format valid : Format.values())
+            {
+                //This is used internally for old sstables
+                if (valid == LEGACY)
+                    continue;
+
+                if (valid.name.equalsIgnoreCase(name))
+                    return valid;
+            }
+
+            throw new IllegalArgumentException( "No Format constant " + name);
+        }
+    }
+
     public final File directory;
     /** version has the following format: <code>[a-z]+</code> */
     public final Version version;
@@ -147,6 +192,7 @@ public class Descriptor
     public final String cfname;
     public final int generation;
     public final Type type;
+    public final Format fmt;
     private final int hashCode;
 
     /**
@@ -154,15 +200,15 @@ public class Descriptor
      */
     public Descriptor(File directory, String ksname, String cfname, int generation, Type temp)
     {
-        this(Version.CURRENT, directory, ksname, cfname, generation, temp);
+        this(Version.CURRENT, directory, ksname, cfname, generation, temp, DatabaseDescriptor.getSSTableFormat());
     }
 
-    public Descriptor(String version, File directory, String ksname, String cfname, int generation, Type temp)
+    public Descriptor(String version, File directory, String ksname, String cfname, int generation, Type temp, Format fmt)
     {
-        this(new Version(version), directory, ksname, cfname, generation, temp);
+        this(new Version(version), directory, ksname, cfname, generation, temp, fmt);
     }
 
-    public Descriptor(Version version, File directory, String ksname, String cfname, int generation, Type temp)
+    public Descriptor(Version version, File directory, String ksname, String cfname, int generation, Type temp, Format fmt)
     {
         assert version != null && directory != null && ksname != null && cfname != null;
         this.version = version;
@@ -170,13 +216,15 @@ public class Descriptor
         this.ksname = ksname;
         this.cfname = cfname;
         this.generation = generation;
-        type = temp;
-        hashCode = Objects.hashCode(directory, generation, ksname, cfname, temp);
+        this.type = temp;
+        this.fmt = fmt;
+
+        hashCode = Objects.hashCode(directory, generation, ksname, cfname, temp, fmt);
     }
 
     public Descriptor withGeneration(int newGeneration)
     {
-        return new Descriptor(version, directory, ksname, cfname, newGeneration, type);
+        return new Descriptor(version, directory, ksname, cfname, newGeneration, type, fmt);
     }
 
     public String filenameFor(Component component)
@@ -202,6 +250,8 @@ public class Descriptor
         if (type.isTemporary)
             buff.append(type.marker).append(separator);
         buff.append(version).append(separator);
+        if (!fmt.equals(Format.LEGACY))
+            buff.append(fmt.name).append(separator);
         buff.append(generation);
     }
 
@@ -341,7 +391,7 @@ public class Descriptor
      */
     public Descriptor asType(Type type)
     {
-        return new Descriptor(version, directory, ksname, cfname, generation, type);
+        return new Descriptor(version, directory, ksname, cfname, generation, type, fmt);
     }
 
     public IMetadataSerializer getMetadataSerializer()
@@ -378,6 +428,7 @@ public class Descriptor
                        && that.generation == this.generation
                        && that.ksname.equals(this.ksname)
                        && that.cfname.equals(this.cfname)
+                       && that.fmt == this.fmt
                        && that.type == this.type;
     }
 

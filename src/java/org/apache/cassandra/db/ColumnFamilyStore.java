@@ -712,7 +712,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                                descriptor.ksname,
                                                descriptor.cfname,
                                                fileIndexGenerator.incrementAndGet(),
-                                               Descriptor.Type.FINAL);
+                                               Descriptor.Type.FINAL,
+                                               descriptor.fmt);
             }
             while (new File(newDescriptor.filenameFor(Component.DATA)).exists());
 
@@ -791,7 +792,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                          keyspace.getName(),
                                          name,
                                          fileIndexGenerator.incrementAndGet(),
-                                         Descriptor.Type.TEMP);
+                                         Descriptor.Type.TEMP,
+                                         DatabaseDescriptor.getSSTableFormat());
         return desc.filenameFor(Component.DATA);
     }
 

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.cassandra.db.Directories;
@@ -117,4 +118,46 @@ public class DescriptorTest
             assertEquals(Component.DATA.name(), pair.right);
         }
     }
+
+    @Test
+    public void validateNames()
+    {
+
+        String names[] = {
+            "system-schema_keyspaces-ka-1-CompressionInfo.db",  "system-schema_keyspaces-ka-1-Summary.db",
+            "system-schema_keyspaces-ka-1-Data.db",             "system-schema_keyspaces-ka-1-TOC.txt",
+            "system-schema_keyspaces-ka-1-Digest.sha1",         "system-schema_keyspaces-ka-2-CompressionInfo.db",
+            "system-schema_keyspaces-ka-1-Filter.db",           "system-schema_keyspaces-ka-2-Data.db",
+            "system-schema_keyspaces-ka-1-Index.db",            "system-schema_keyspaces-ka-2-Digest.sha1",
+            "system-schema_keyspaces-ka-1-Statistics.db",
+            "system-schema_keyspacest-tmp-ka-1-Data.db"
+        };
+
+        for (String name : names)
+        {
+            Descriptor d = Descriptor.fromFilename(name);
+        }
+    }
+
+    @Test
+    public void badNames()
+    {
+        String names[] = {
+                "system-schema_keyspaces-k234a-1-CompressionInfo.db",  "system-schema_keyspaces-ka-aa-Summary.db",
+                "system-schema_keyspaces-XXX-ka-1-Data.db",             "system-schema_keyspaces-k"
+        };
+
+        for (String name : names)
+        {
+            try
+            {
+                Descriptor d = Descriptor.fromFilename(name);
+                Assert.fail(name);
+            } catch (Exception e) {
+                //good
+            }
+        }
+    }
+
+
 }
