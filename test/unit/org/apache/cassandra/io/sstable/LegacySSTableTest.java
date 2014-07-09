@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.Version;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -119,7 +121,7 @@ public class LegacySSTableTest
         StorageService.instance.initServer();
 
         for (File version : LEGACY_SSTABLE_ROOT.listFiles())
-            if (Descriptor.Version.validate(version.getName()) && new Descriptor.Version(version.getName()).isCompatible())
+            if (Version.validate(version.getName()) && TableFormat.Type.LEGACY.info.getVersion(version.getName()).isCompatible())
                 testStreaming(version.getName());
     }
 

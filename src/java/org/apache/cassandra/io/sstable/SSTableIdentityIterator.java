@@ -21,8 +21,10 @@ import java.io.*;
 import java.util.Iterator;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
+import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.serializers.MarshalException;
 
@@ -82,7 +84,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
         this.flag = flag;
         this.validateColumns = checkData;
 
-        Descriptor.Version dataVersion = sstable == null ? Descriptor.Version.CURRENT : sstable.descriptor.version;
+        Version dataVersion = sstable == null ? DatabaseDescriptor.getSSTableFormat().info.getLatestVersion() : sstable.descriptor.version;
         int expireBefore = (int) (System.currentTimeMillis() / 1000);
         columnFamily = ArrayBackedSortedColumns.factory.create(metadata);
 

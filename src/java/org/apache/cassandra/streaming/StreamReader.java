@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.UUID;
 
 import com.google.common.base.Throwables;
+import org.apache.cassandra.io.sstable.format.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +57,7 @@ public class StreamReader
     protected final long estimatedKeys;
     protected final Collection<Pair<Long, Long>> sections;
     protected final StreamSession session;
-    protected final Descriptor.Version inputVersion;
+    protected final Version inputVersion;
     protected final long repairedAt;
 
     protected Descriptor desc;
@@ -67,7 +68,7 @@ public class StreamReader
         this.cfId = header.cfId;
         this.estimatedKeys = header.estimatedKeys;
         this.sections = header.sections;
-        this.inputVersion = new Descriptor.Version(header.version);
+        this.inputVersion = header.format.info.getVersion(header.version);
         this.repairedAt = header.repairedAt;
     }
 

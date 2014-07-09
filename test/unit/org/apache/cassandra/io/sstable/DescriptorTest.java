@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.UUID;
 
+import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -88,11 +89,11 @@ public class DescriptorTest
         checkFromFilename(new Descriptor(idxDir, ksname, cfname + Directories.SECONDARY_INDEX_NAME_SEPARATOR + idxName, 5, Descriptor.Type.TEMP), false);
 
         // legacy version
-        checkFromFilename(new Descriptor("ja", dir, ksname, cfname, 1, Descriptor.Type.FINAL), false);
+        checkFromFilename(new Descriptor("ja", dir, ksname, cfname, 1, Descriptor.Type.FINAL, TableFormat.Type.LEGACY), false);
         // legacy tmp
-        checkFromFilename(new Descriptor("ja", dir, ksname, cfname, 2, Descriptor.Type.TEMP), false);
+        checkFromFilename(new Descriptor("ja", dir, ksname, cfname, 2, Descriptor.Type.TEMP, TableFormat.Type.LEGACY), false);
         // legacy secondary index
-        checkFromFilename(new Descriptor("ja", dir, ksname, cfname + Directories.SECONDARY_INDEX_NAME_SEPARATOR + idxName, 3, Descriptor.Type.FINAL), false);
+        checkFromFilename(new Descriptor("ja", dir, ksname, cfname + Directories.SECONDARY_INDEX_NAME_SEPARATOR + idxName, 3, Descriptor.Type.FINAL, TableFormat.Type.LEGACY), false);
     }
 
     private void checkFromFilename(Descriptor original, boolean skipComponent)
@@ -124,13 +125,14 @@ public class DescriptorTest
     {
 
         String names[] = {
-            "system-schema_keyspaces-ka-1-CompressionInfo.db",  "system-schema_keyspaces-ka-1-Summary.db",
+            /*"system-schema_keyspaces-ka-1-CompressionInfo.db",  "system-schema_keyspaces-ka-1-Summary.db",
             "system-schema_keyspaces-ka-1-Data.db",             "system-schema_keyspaces-ka-1-TOC.txt",
             "system-schema_keyspaces-ka-1-Digest.sha1",         "system-schema_keyspaces-ka-2-CompressionInfo.db",
             "system-schema_keyspaces-ka-1-Filter.db",           "system-schema_keyspaces-ka-2-Data.db",
             "system-schema_keyspaces-ka-1-Index.db",            "system-schema_keyspaces-ka-2-Digest.sha1",
             "system-schema_keyspaces-ka-1-Statistics.db",
-            "system-schema_keyspacest-tmp-ka-1-Data.db"
+            "system-schema_keyspacest-tmp-ka-1-Data.db",*/
+            "system-schema_keyspace-ka-1-"+ TableFormat.Type.BLOCK.name+"-Data.db"
         };
 
         for (String name : names)
@@ -144,7 +146,8 @@ public class DescriptorTest
     {
         String names[] = {
                 "system-schema_keyspaces-k234a-1-CompressionInfo.db",  "system-schema_keyspaces-ka-aa-Summary.db",
-                "system-schema_keyspaces-XXX-ka-1-Data.db",             "system-schema_keyspaces-k"
+                "system-schema_keyspaces-XXX-ka-1-Data.db",             "system-schema_keyspaces-k",
+                "system-schema_keyspace-ka-1-AAA-Data.db",  "system-schema-keyspace-ka-1-AAA-Data.db"
         };
 
         for (String name : names)
@@ -153,7 +156,7 @@ public class DescriptorTest
             {
                 Descriptor d = Descriptor.fromFilename(name);
                 Assert.fail(name);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 //good
             }
         }

@@ -322,7 +322,7 @@ public class CompactionManager implements CompactionManagerMBean
                     @Override
                     public boolean apply(SSTableReader sstable)
                     {
-                        return !(excludeCurrentVersion && sstable.descriptor.version.equals(Descriptor.Version.CURRENT));
+                        return !(excludeCurrentVersion && sstable.descriptor.version.equals(sstable.descriptor.fmt.info.getLatestVersion()));
                     }
                 });
             }

@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.*;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.cassandra.io.FSWriteError;
+import org.apache.cassandra.io.sstable.format.Version;
 import org.json.simple.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -442,7 +443,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             generations.add(desc.generation);
             if (!desc.isCompatible())
                 throw new RuntimeException(String.format("Incompatible SSTable found. Current version %s is unable to read file: %s. Please run upgradesstables.",
-                                                          Descriptor.Version.CURRENT, desc));
+                        desc.fmt.info.getLatestVersion(), desc));
         }
         Collections.sort(generations);
         int value = (generations.size() > 0) ? (generations.get(generations.size() - 1)) : 0;
@@ -687,7 +688,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
             if (!descriptor.isCompatible())
                 throw new RuntimeException(String.format("Can't open incompatible SSTable! Current version %s, found file: %s",
-                                                         Descriptor.Version.CURRENT,
+                                                         descriptor.fmt.info.getLatestVersion(),
                                                          descriptor));
 
             // force foreign sstables to level 0
@@ -782,10 +783,10 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
     public String getTempSSTablePath(File directory)
     {
-        return getTempSSTablePath(directory, Descriptor.Version.CURRENT);
+        return getTempSSTablePath(directory, DatabaseDescriptor.getSSTableFormat().info.getLatestVersion());
     }
 
-    private String getTempSSTablePath(File directory, Descriptor.Version version)
+    private String getTempSSTablePath(File directory, Version version)
     {
         Descriptor desc = new Descriptor(version,
                                          directory,

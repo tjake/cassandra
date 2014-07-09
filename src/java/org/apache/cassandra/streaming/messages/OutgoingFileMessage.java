@@ -74,6 +74,7 @@ public class OutgoingFileMessage extends StreamMessage
         this.header = new FileMessageHeader(sstable.metadata.cfId,
                                             sequenceNumber,
                                             sstable.descriptor.version.toString(),
+                                            sstable.descriptor.fmt,
                                             estimatedKeys,
                                             sections,
                                             compressionInfo,

@@ -115,7 +115,7 @@ public class SSTableExport
     }
 
     /**
-     * Serialize a given cell to a List of Objects that jsonMapper knows how to turn into strings.  Format is
+     * Serialize a given cell to a List of Objects that jsonMapper knows how to turn into strings.  Type is
      *
      * human_readable_name, value, timestamp, [flag, [options]]
      *

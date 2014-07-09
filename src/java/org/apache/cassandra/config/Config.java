@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
-import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.supercsv.io.CsvListReader;
 import org.supercsv.prefs.CsvPreference;
 
@@ -213,7 +213,7 @@ public class Config
     public volatile Long index_summary_capacity_in_mb;
     public volatile int index_summary_resize_interval_in_minutes = 60;
 
-    public Descriptor.Format sstable_format = Descriptor.Format.KEY;
+    public String sstable_format_type = "key";
 
     private static final CsvPreference STANDARD_SURROUNDING_SPACES_NEED_QUOTES = new CsvPreference.Builder(CsvPreference.STANDARD_PREFERENCE)
                                                                                                   .surroundingSpacesNeedQuotes(true).build();

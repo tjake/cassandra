@@ -38,7 +38,7 @@ import java.util.UUID;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Longs;
-import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.cassandra.auth.AllowAllAuthenticator;
@@ -98,6 +98,8 @@ public class DatabaseDescriptor
     private static Config.DiskAccessMode indexAccessMode;
 
     private static Config conf;
+
+    private static TableFormat.Type sstable_format;
 
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
     private static IAuthorizer authorizer = new AllowAllAuthorizer();
@@ -1560,9 +1562,14 @@ public class DatabaseDescriptor
         return conf.inter_dc_tcp_nodelay;
     }
 
-    public static Descriptor.Format getSSTableFormat()
+
+    public static TableFormat.Type getSSTableFormat()
     {
-        return conf.sstable_format;
+        //We don't care if this is racy
+        if (sstable_format == null)
+            sstable_format = TableFormat.Type.validate(conf.sstable_format_type);
+
+        return sstable_format;
     }
 
     public static MemtablePool getMemtableAllocatorPool()

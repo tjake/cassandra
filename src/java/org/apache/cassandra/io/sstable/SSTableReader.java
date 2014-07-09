@@ -218,7 +218,7 @@ public class SSTableReader extends SSTable
         {
             public boolean apply(SSTableReader sstable)
             {
-                return sstable.descriptor.version.newStatsFile;
+                return sstable.descriptor.version.hasNewStatsFile();
             }
         });
 
@@ -842,7 +842,7 @@ public class SSTableReader extends SSTable
         try
         {
             iStream = new DataInputStream(new FileInputStream(summariesFile));
-            indexSummary = IndexSummary.serializer.deserialize(iStream, partitioner, descriptor.version.hasSamplingLevel, metadata.getMinIndexInterval(), metadata.getMaxIndexInterval());
+            indexSummary = IndexSummary.serializer.deserialize(iStream, partitioner, descriptor.version.hasSamplingLevel(), metadata.getMinIndexInterval(), metadata.getMaxIndexInterval());
             first = partitioner.decorateKey(ByteBufferUtil.readWithLength(iStream));
             last = partitioner.decorateKey(ByteBufferUtil.readWithLength(iStream));
             ibuilder.deserializeBounds(iStream);
@@ -886,7 +886,7 @@ public class SSTableReader extends SSTable
         try
         {
             oStream = new DataOutputStreamAndChannel(new FileOutputStream(summariesFile));
-            IndexSummary.serializer.serialize(summary, oStream, descriptor.version.hasSamplingLevel);
+            IndexSummary.serializer.serialize(summary, oStream, descriptor.version.hasSamplingLevel());
             ByteBufferUtil.writeWithLength(first.getKey(), oStream);
             ByteBufferUtil.writeWithLength(last.getKey(), oStream);
             ibuilder.serializeBounds(oStream);
