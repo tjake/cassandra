@@ -94,7 +94,7 @@ public class LegacySSTableTest
     protected Descriptor getDescriptor(String ver)
     {
         File directory = new File(LEGACY_SSTABLE_ROOT + File.separator + ver + File.separator + KSNAME);
-        return new Descriptor(ver, directory, KSNAME, CFNAME, 0, Descriptor.Type.FINAL, Descriptor.Format.LEGACY);
+        return new Descriptor(ver, directory, KSNAME, CFNAME, 0, Descriptor.Type.FINAL, TableFormat.Type.LEGACY);
     }
 
     /**
@@ -162,7 +162,7 @@ public class LegacySSTableTest
 
         for (File version : LEGACY_SSTABLE_ROOT.listFiles())
         {
-            if (Descriptor.Version.validate(version.getName()) && new Descriptor.Version(version.getName()).isCompatible())
+            if (Version.validate(version.getName()) && TableFormat.Type.LEGACY.info.getVersion(version.getName()).isCompatible())
             {
                 notSkipped = true;
                 testVersion(version.getName());
