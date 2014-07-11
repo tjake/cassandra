@@ -33,6 +33,7 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.compress.CompressionParameters;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.net.MessagingService;
 
 /**
@@ -180,7 +181,7 @@ public class SSTableSimpleUnsortedWriter extends AbstractSSTableSimpleWriter
 
         public void run()
         {
-            SSTableWriter writer = null;
+            TableWriter writer = null;
             try
             {
                 while (true)

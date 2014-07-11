@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.*;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.cassandra.io.FSWriteError;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.json.simple.*;
 import org.slf4j.Logger;
@@ -719,7 +720,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             while (new File(newDescriptor.filenameFor(Component.DATA)).exists());
 
             logger.info("Renaming new SSTable {} to {}", descriptor, newDescriptor);
-            SSTableWriter.rename(descriptor, newDescriptor, entry.getValue());
+            TableWriter.rename(descriptor, newDescriptor, entry.getValue());
 
             SSTableReader reader;
             try

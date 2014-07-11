@@ -21,6 +21,7 @@ import java.util.*;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 
 public class SSTableSplitter {
 
@@ -71,7 +72,7 @@ public class SSTableSplitter {
         }
 
         @Override
-        protected boolean newSSTableSegmentThresholdReached(SSTableWriter writer)
+        protected boolean newSSTableSegmentThresholdReached(TableWriter writer)
         {
             return writer.getOnDiskFilePointer() > sstableSizeInMB * 1024L * 1024L;
         }

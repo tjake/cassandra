@@ -24,6 +24,7 @@ import java.nio.channels.ReadableByteChannel;
 
 import com.google.common.base.Throwables;
 
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,7 +60,7 @@ public class CompressedStreamReader extends StreamReader
      * @throws java.io.IOException if reading the remote sstable fails. Will throw an RTE if local write fails.
      */
     @Override
-    public SSTableWriter read(ReadableByteChannel channel) throws IOException
+    public TableWriter read(ReadableByteChannel channel) throws IOException
     {
         logger.debug("reading file from {}, repairedAt = {}", session.peer, repairedAt);
         long totalSize = totalSize();
@@ -67,7 +68,7 @@ public class CompressedStreamReader extends StreamReader
         Pair<String, String> kscf = Schema.instance.getCF(cfId);
         ColumnFamilyStore cfs = Keyspace.open(kscf.left).getColumnFamilyStore(kscf.right);
 
-        SSTableWriter writer = createWriter(cfs, totalSize, repairedAt);
+        TableWriter writer = createWriter(cfs, totalSize, repairedAt);
 
         CompressedInputStream cis = new CompressedInputStream(Channels.newInputStream(channel), compressionInfo, inputVersion.hasPostCompressionAdlerChecksums());
         BytesReadTracker in = new BytesReadTracker(new DataInputStream(cis));

@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.BeforeClass;
@@ -1776,15 +1777,15 @@ public class ColumnFamilyStoreTest
         writer = new SSTableSimpleWriter(dir.getDirectoryForNewSSTables(),
                                          cfmeta, StorageService.getPartitioner())
         {
-            protected SSTableWriter getWriter()
+            protected TableWriter getWriter()
             {
                 MetadataCollector collector = new MetadataCollector(cfmeta.comparator);
                 collector.addAncestor(sstable1.descriptor.generation); // add ancestor from previously written sstable
-                return new SSTableWriter(makeFilename(directory, metadata.ksName, metadata.cfName),
-                                         0,
+                return TableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName)),
+                                         0L,
                                          ActiveRepairService.UNREPAIRED_SSTABLE,
                                          metadata,
-                                         StorageService.getPartitioner(),
+                                         DatabaseDescriptor.getPartitioner(),
                                          collector);
             }
         };
@@ -1831,14 +1832,14 @@ public class ColumnFamilyStoreTest
         SSTableSimpleWriter writer = new SSTableSimpleWriter(dir.getDirectoryForNewSSTables(),
                                                 cfmeta, StorageService.getPartitioner())
         {
-            protected SSTableWriter getWriter()
+            protected TableWriter getWriter()
             {
                 MetadataCollector collector = new MetadataCollector(cfmeta.comparator);
                 for (int ancestor : ancestors)
                     collector.addAncestor(ancestor);
                 String file = new Descriptor(directory, ks, cf, 3, Descriptor.Type.TEMP).filenameFor(Component.DATA);
-                return new SSTableWriter(file,
-                                         0,
+                return TableWriter.create(Descriptor.fromFilename(file),
+                                         0L,
                                          ActiveRepairService.UNREPAIRED_SSTABLE,
                                          metadata,
                                          StorageService.getPartitioner(),

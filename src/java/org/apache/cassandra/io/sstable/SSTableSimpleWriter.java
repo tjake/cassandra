@@ -24,6 +24,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.FSError;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 
 /**
  * A SSTable writer that assumes rows are in (partitioner) sorted order.
@@ -38,7 +39,7 @@ import org.apache.cassandra.io.FSError;
  */
 public class SSTableSimpleWriter extends AbstractSSTableSimpleWriter
 {
-    private final SSTableWriter writer;
+    private final TableWriter writer;
 
     /**
      * Create a new writer.

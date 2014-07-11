@@ -25,6 +25,7 @@ import com.google.common.base.Throwables;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.utils.CloseableIterator;
 import org.apache.cassandra.utils.OutputHandler;
@@ -60,7 +61,7 @@ public class Upgrader
         this.estimatedRows = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
     }
 
-    private SSTableWriter createCompactionWriter(long repairedAt)
+    private TableWriter createCompactionWriter(long repairedAt)
     {
         MetadataCollector sstableMetadataCollector = new MetadataCollector(cfs.getComparator());
 
@@ -78,7 +79,7 @@ public class Upgrader
             sstableMetadataCollector.sstableLevel(sstable.getSSTableLevel());
         }
 
-        return new SSTableWriter(cfs.getTempSSTablePath(directory), estimatedRows, repairedAt, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
+        return TableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(directory)), estimatedRows, repairedAt, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
     }
 
     public void upgrade()

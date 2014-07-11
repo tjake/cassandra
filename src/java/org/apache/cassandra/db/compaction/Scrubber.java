@@ -25,6 +25,7 @@ import com.google.common.base.Throwables;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -244,7 +245,7 @@ public class Scrubber implements Closeable
             {
                 // out of order rows, but no bad rows found - we can keep our repairedAt time
                 long repairedAt = badRows > 0 ? ActiveRepairService.UNREPAIRED_SSTABLE : sstable.getSSTableMetadata().repairedAt;
-                SSTableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);
+                TableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);
                 for (Row row : outOfOrderRows)
                     inOrderWriter.append(row.key, row.cf);
                 newInOrderSstable = inOrderWriter.closeAndOpenReader(sstable.maxDataAge);

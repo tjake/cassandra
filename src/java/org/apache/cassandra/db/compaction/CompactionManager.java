@@ -52,6 +52,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.RateLimiter;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -832,19 +833,15 @@ public class CompactionManager implements CompactionManagerMBean
         }
     }
 
-    public static SSTableWriter createWriter(ColumnFamilyStore cfs,
+    public static TableWriter createWriter(ColumnFamilyStore cfs,
                                              File compactionFileLocation,
                                              int expectedBloomFilterSize,
                                              long repairedAt,
                                              SSTableReader sstable)
     {
         FileUtils.createDirectory(compactionFileLocation);
-        return new SSTableWriter(cfs.getTempSSTablePath(compactionFileLocation),
-                                 expectedBloomFilterSize,
-                                 repairedAt,
-                                 cfs.metadata,
-                                 cfs.partitioner,
-                                 new MetadataCollector(Collections.singleton(sstable), cfs.metadata.comparator, sstable.getSSTableLevel()));
+
+        return TableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(compactionFileLocation)), expectedBloomFilterSize, repairedAt);
     }
 
     /**

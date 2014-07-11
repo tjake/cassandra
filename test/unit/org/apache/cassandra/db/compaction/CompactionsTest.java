@@ -40,10 +40,8 @@ import org.apache.cassandra.dht.BytesToken;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.Component;
-import org.apache.cassandra.io.sstable.SSTableReader;
-import org.apache.cassandra.io.sstable.SSTableScanner;
-import org.apache.cassandra.io.sstable.SSTableWriter;
+import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -406,12 +404,7 @@ public class CompactionsTest
         cf.addColumn(Util.column("a", "a", 3));
         cf.deletionInfo().add(new RangeTombstone(Util.cellname("0"), Util.cellname("b"), 2, (int) (System.currentTimeMillis()/1000)),cfmeta.comparator);
 
-        SSTableWriter writer = new SSTableWriter(cfs.getTempSSTablePath(dir.getDirectoryForNewSSTables()),
-                                                 0,
-                                                 0,
-                                                 cfs.metadata,
-                                                 StorageService.getPartitioner(),
-                                                 new MetadataCollector(cfs.metadata.comparator));
+        TableWriter writer = TableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(dir.getDirectoryForNewSSTables())), 0, 0);
 
 
         writer.append(Util.dk("0"), cf);
@@ -419,12 +412,7 @@ public class CompactionsTest
         writer.append(Util.dk("3"), cf);
 
         cfs.addSSTable(writer.closeAndOpenReader());
-        writer = new SSTableWriter(cfs.getTempSSTablePath(dir.getDirectoryForNewSSTables()),
-                                   0,
-                                   0,
-                                   cfs.metadata,
-                                   StorageService.getPartitioner(),
-                                   new MetadataCollector(cfs.metadata.comparator));
+        writer = TableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(dir.getDirectoryForNewSSTables())), 0, 0);
 
         writer.append(Util.dk("0"), cf);
         writer.append(Util.dk("1"), cf);

@@ -35,6 +35,7 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.compaction.AbstractCompactedRow;
 import org.apache.cassandra.db.compaction.OperationType;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -80,7 +81,7 @@ public class SSTableRewriter
     private final OperationType rewriteType; // the type of rewrite/compaction being performed
     private final boolean isOffline; // true for operations that are performed without Cassandra running (prevents updates of DataTracker)
 
-    private SSTableWriter writer;
+    private TableWriter writer;
     private Map<DecoratedKey, RowIndexEntry> cachedKeys = new HashMap<>();
 
     public SSTableRewriter(ColumnFamilyStore cfs, Set<SSTableReader> rewriting, long maxAge, OperationType rewriteType, boolean isOffline)
@@ -98,7 +99,7 @@ public class SSTableRewriter
         this.isOffline = isOffline;
     }
 
-    public SSTableWriter currentWriter()
+    public TableWriter currentWriter()
     {
         return writer;
     }
@@ -277,7 +278,7 @@ public class SSTableRewriter
         dataTracker.replaceReaders(toReplace, replaceWith);
     }
 
-    public void switchWriter(SSTableWriter newWriter)
+    public void switchWriter(TableWriter newWriter)
     {
         if (writer == null)
         {

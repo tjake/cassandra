@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.base.Throwables;
+import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -325,7 +327,7 @@ public class Memtable
 
             SSTableReader ssTable;
             // errors when creating the writer that may leave empty temp files.
-            SSTableWriter writer = createFlushWriter(cfs.getTempSSTablePath(sstableDirectory));
+            TableWriter writer = createFlushWriter(cfs.getTempSSTablePath(sstableDirectory));
             try
             {
                 // (we can't clear out the map as-we-go to free up memory,
@@ -375,15 +377,11 @@ public class Memtable
             }
         }
 
-        public SSTableWriter createFlushWriter(String filename) throws ExecutionException, InterruptedException
+        public TableWriter createFlushWriter(String filename) throws ExecutionException, InterruptedException
         {
             MetadataCollector sstableMetadataCollector = new MetadataCollector(cfs.metadata.comparator).replayPosition(context);
-            return new SSTableWriter(filename,
-                                     rows.size(),
-                                     ActiveRepairService.UNREPAIRED_SSTABLE,
-                                     cfs.metadata,
-                                     cfs.partitioner,
-                                     sstableMetadataCollector);
+
+            return TableWriter.create(Descriptor.fromFilename(filename), (long)rows.size(), ActiveRepairService.UNREPAIRED_SSTABLE, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
         }
     }
 

@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -262,14 +264,14 @@ public class CompactionTask extends AbstractCompactionTask
         return minRepairedAt;
     }
 
-    private SSTableWriter createCompactionWriter(File sstableDirectory, long keysPerSSTable, long repairedAt)
+    private TableWriter createCompactionWriter(File sstableDirectory, long keysPerSSTable, long repairedAt)
     {
-        return new SSTableWriter(cfs.getTempSSTablePath(sstableDirectory),
-                                 keysPerSSTable,
-                                 repairedAt,
-                                 cfs.metadata,
-                                 cfs.partitioner,
-                                 new MetadataCollector(sstables, cfs.metadata.comparator, getLevel()));
+        return TableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
+                                  keysPerSSTable,
+                                  repairedAt,
+                                  cfs.metadata,
+                                  cfs.partitioner,
+                                  new MetadataCollector(sstables, cfs.metadata.comparator, getLevel()));
     }
 
     protected int getLevel()
@@ -288,7 +290,7 @@ public class CompactionTask extends AbstractCompactionTask
     }
 
     // extensibility point for other strategies that may want to limit the upper bounds of the sstable segment size
-    protected boolean newSSTableSegmentThresholdReached(SSTableWriter writer)
+    protected boolean newSSTableSegmentThresholdReached(TableWriter writer)
     {
         return false;
     }

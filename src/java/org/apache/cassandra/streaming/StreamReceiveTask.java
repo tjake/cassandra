@@ -27,6 +27,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableWriter;
+import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Pair;
 
@@ -42,7 +43,7 @@ public class StreamReceiveTask extends StreamTask
     private volatile boolean aborted;
 
     //  holds references to SSTables received
-    protected Collection<SSTableWriter> sstables;
+    protected Collection<TableWriter> sstables;
 
     public StreamReceiveTask(StreamSession session, UUID cfId, int totalFiles, long totalSize)
     {
@@ -57,7 +58,7 @@ public class StreamReceiveTask extends StreamTask
      *
      * @param sstable SSTable file received.
      */
-    public void received(SSTableWriter sstable)
+    public void received(TableWriter sstable)
     {
         assert cfId.equals(sstable.metadata.cfId);
         assert !aborted;
@@ -100,7 +101,7 @@ public class StreamReceiveTask extends StreamTask
             StreamLockfile lockfile = new StreamLockfile(cfs.directories.getWriteableLocationAsFile(), UUID.randomUUID());
             lockfile.create(task.sstables);
             List<SSTableReader> readers = new ArrayList<>();
-            for (SSTableWriter writer : task.sstables)
+            for (TableWriter writer : task.sstables)
                 readers.add(writer.closeAndOpenReader());
             lockfile.delete();
 
@@ -128,7 +129,7 @@ public class StreamReceiveTask extends StreamTask
         {
             public void run()
             {
-                for (SSTableWriter writer : sstables)
+                for (TableWriter writer : sstables)
                     writer.abort();
             }
         };
