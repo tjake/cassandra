@@ -1,7 +1,6 @@
 package org.apache.cassandra.io.sstable.format.big;
 
 import org.apache.cassandra.io.sstable.SSTableReader;
-import org.apache.cassandra.io.sstable.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
@@ -35,7 +34,7 @@ public class BigFormat implements TableFormat
     @Override
     public Class<? extends TableWriter> getWriter()
     {
-        return SSTableWriter.class;
+        return BigTableWriter.class;
     }
 
     @Override

@@ -30,10 +30,10 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.io.sstable.format.big.BigTableWriter;
 import org.apache.cassandra.io.sstable.ColumnNameHelper;
 import org.apache.cassandra.io.sstable.ColumnStats;
 import org.apache.cassandra.io.sstable.SSTable;
-import org.apache.cassandra.io.sstable.SSTableWriter;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.MergeIterator;
@@ -130,7 +130,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow
         // in case no columns were ever written, we may still need to write an empty header with a top-level tombstone
         indexBuilder.maybeWriteEmptyRowHeader();
 
-        out.writeShort(SSTableWriter.END_OF_ROW);
+        out.writeShort(BigTableWriter.END_OF_ROW);
 
         close();
 

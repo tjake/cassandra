@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.io.sstable;
+package org.apache.cassandra.io.sstable.format.big;
 
 import java.io.Closeable;
 import java.io.DataInput;
@@ -23,15 +23,13 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
@@ -40,7 +38,6 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ArrayBackedSortedColumns;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnIndex;
@@ -65,16 +62,15 @@ import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.SegmentedFile;
 import org.apache.cassandra.io.util.SequentialWriter;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FilterFactory;
 import org.apache.cassandra.utils.IFilter;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.StreamingHistogram;
 
-public class SSTableWriter extends TableWriter
+public class BigTableWriter extends TableWriter
 {
-    private static final Logger logger = LoggerFactory.getLogger(SSTableWriter.class);
+    private static final Logger logger = LoggerFactory.getLogger(BigTableWriter.class);
 
     // not very random, but the only value that can't be mistaken for a legal column-name length
     public static final int END_OF_ROW = 0x0000;
@@ -85,7 +81,7 @@ public class SSTableWriter extends TableWriter
     private DecoratedKey lastWrittenKey;
     private FileMark dataMark;
 
-    public SSTableWriter(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
+    public BigTableWriter(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
     {
         super(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
 
