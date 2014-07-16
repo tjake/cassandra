@@ -30,8 +30,8 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.cassandra.io.sstable.*;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +68,7 @@ import org.apache.cassandra.utils.IFilter;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.StreamingHistogram;
 
-public class BigTableWriter extends TableWriter
+public class BigTableWriter extends SSTableWriter
 {
     private static final Logger logger = LoggerFactory.getLogger(BigTableWriter.class);
 
@@ -321,7 +321,7 @@ public class BigTableWriter extends TableWriter
         last = lastWrittenKey = getMinimalKey(last);
     }
 
-    public TableReader openEarly(long maxDataAge)
+    public SSTableReader openEarly(long maxDataAge)
     {
         StatsMetadata sstableMetadata = (StatsMetadata) metadataCollector.finalizeMetadata(partitioner.getClass().getCanonicalName(),
                                                   metadata.getBloomFilterFpChance(),
@@ -343,7 +343,7 @@ public class BigTableWriter extends TableWriter
         // open the reader early, giving it a FINAL descriptor type so that it is indistinguishable for other consumers
         SegmentedFile ifile = iwriter.builder.openEarly(link.filenameFor(Component.PRIMARY_INDEX));
         SegmentedFile dfile = dbuilder.openEarly(link.filenameFor(Component.DATA));
-        TableReader sstable = TableReader.internalOpen(descriptor.asType(Descriptor.Type.FINAL),
+        SSTableReader sstable = SSTableReader.internalOpen(descriptor.asType(Descriptor.Type.FINAL),
                 components, metadata,
                 partitioner, ifile,
                 dfile, iwriter.summary.build(partitioner, exclusiveUpperBoundOfReadableIndex),
@@ -358,7 +358,7 @@ public class BigTableWriter extends TableWriter
         int offset = 2;
         while (true)
         {
-            RowIndexEntry indexEntry = sstable.getPosition(inclusiveUpperBoundOfReadableData, TableReader.Operator.GT);
+            RowIndexEntry indexEntry = sstable.getPosition(inclusiveUpperBoundOfReadableData, SSTableReader.Operator.GT);
             if (indexEntry != null && indexEntry.position <= dataFile.getLastFlushOffset())
                 break;
             inclusiveUpperBoundOfReadableData = iwriter.getMaxReadableKey(offset++);
@@ -369,17 +369,17 @@ public class BigTableWriter extends TableWriter
         return sstable;
     }
 
-    public TableReader closeAndOpenReader()
+    public SSTableReader closeAndOpenReader()
     {
         return closeAndOpenReader(System.currentTimeMillis());
     }
 
-    public TableReader closeAndOpenReader(long maxDataAge)
+    public SSTableReader closeAndOpenReader(long maxDataAge)
     {
         return closeAndOpenReader(maxDataAge, this.repairedAt);
     }
 
-    public TableReader closeAndOpenReader(long maxDataAge, long repairedAt)
+    public SSTableReader closeAndOpenReader(long maxDataAge, long repairedAt)
     {
         Pair<Descriptor, StatsMetadata> p = close(repairedAt);
         Descriptor newdesc = p.left;
@@ -388,17 +388,17 @@ public class BigTableWriter extends TableWriter
         // finalize in-memory state for the reader
         SegmentedFile ifile = iwriter.builder.complete(newdesc.filenameFor(Component.PRIMARY_INDEX));
         SegmentedFile dfile = dbuilder.complete(newdesc.filenameFor(Component.DATA));
-        TableReader sstable = TableReader.internalOpen(newdesc,
-                                                           components,
-                                                           metadata,
-                                                           partitioner,
-                                                           ifile,
-                                                           dfile,
-                                                           iwriter.summary.build(partitioner),
-                                                           iwriter.bf,
-                                                           maxDataAge,
-                                                           sstableMetadata,
-                                                           false);
+        SSTableReader sstable = SSTableReader.internalOpen(newdesc,
+                components,
+                metadata,
+                partitioner,
+                ifile,
+                dfile,
+                iwriter.summary.build(partitioner),
+                iwriter.bf,
+                maxDataAge,
+                sstableMetadata,
+                false);
         sstable.first = getMinimalKey(first);
         sstable.last = getMinimalKey(last);
         // try to save the summaries to disk
@@ -433,7 +433,7 @@ public class BigTableWriter extends TableWriter
         SSTable.appendTOC(descriptor, components);
 
         // remove the 'tmp' marker from all components
-        return Pair.create(TableWriter.rename(descriptor, components), (StatsMetadata) metadataComponents.get(MetadataType.STATS));
+        return Pair.create(SSTableWriter.rename(descriptor, components), (StatsMetadata) metadataComponents.get(MetadataType.STATS));
 
     }
 

@@ -24,7 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.Future;
 
 import com.google.common.base.Predicate;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,9 +76,9 @@ public class RepairMessageVerbHandler implements IVerbHandler<RepairMessage>
             case SNAPSHOT:
                 ColumnFamilyStore cfs = Keyspace.open(desc.keyspace).getColumnFamilyStore(desc.columnFamily);
                 final Range<Token> repairingRange = desc.range;
-                cfs.snapshot(desc.sessionId.toString(), new Predicate<TableReader>()
+                cfs.snapshot(desc.sessionId.toString(), new Predicate<SSTableReader>()
                 {
-                    public boolean apply(TableReader sstable)
+                    public boolean apply(SSTableReader sstable)
                     {
                         return sstable != null && new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singleton(repairingRange));
                     }

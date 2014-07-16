@@ -25,8 +25,8 @@ import java.util.UUID;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Pair;
 
@@ -42,7 +42,7 @@ public class StreamReceiveTask extends StreamTask
     private volatile boolean aborted;
 
     //  holds references to SSTables received
-    protected Collection<TableWriter> sstables;
+    protected Collection<SSTableWriter> sstables;
 
     public StreamReceiveTask(StreamSession session, UUID cfId, int totalFiles, long totalSize)
     {
@@ -57,7 +57,7 @@ public class StreamReceiveTask extends StreamTask
      *
      * @param sstable SSTable file received.
      */
-    public void received(TableWriter sstable)
+    public void received(SSTableWriter sstable)
     {
         assert cfId.equals(sstable.metadata.cfId);
         assert !aborted;
@@ -99,12 +99,12 @@ public class StreamReceiveTask extends StreamTask
 
             StreamLockfile lockfile = new StreamLockfile(cfs.directories.getWriteableLocationAsFile(), UUID.randomUUID());
             lockfile.create(task.sstables);
-            List<TableReader> readers = new ArrayList<>();
-            for (TableWriter writer : task.sstables)
+            List<SSTableReader> readers = new ArrayList<>();
+            for (SSTableWriter writer : task.sstables)
                 readers.add(writer.closeAndOpenReader());
             lockfile.delete();
 
-            if (!TableReader.acquireReferences(readers))
+            if (!SSTableReader.acquireReferences(readers))
                 throw new AssertionError("We shouldn't fail acquiring a reference on a sstable that has just been transferred");
             try
             {
@@ -114,7 +114,7 @@ public class StreamReceiveTask extends StreamTask
             }
             finally
             {
-                TableReader.releaseReferences(readers);
+                SSTableReader.releaseReferences(readers);
             }
 
             task.session.taskCompleted(task);
@@ -128,7 +128,7 @@ public class StreamReceiveTask extends StreamTask
         {
             public void run()
             {
-                for (TableWriter writer : sstables)
+                for (SSTableWriter writer : sstables)
                     writer.abort();
             }
         };

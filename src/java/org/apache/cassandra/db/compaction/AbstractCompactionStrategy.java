@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.RateLimiter;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -169,9 +169,9 @@ public abstract class AbstractCompactionStrategy
      *
      * Is responsible for marking its sstables as compaction-pending.
      */
-    public abstract AbstractCompactionTask getUserDefinedTask(Collection<TableReader> sstables, final int gcBefore);
+    public abstract AbstractCompactionTask getUserDefinedTask(Collection<SSTableReader> sstables, final int gcBefore);
 
-    public AbstractCompactionTask getCompactionTask(Collection<TableReader> sstables, final int gcBefore, long maxSSTableBytes)
+    public AbstractCompactionTask getCompactionTask(Collection<SSTableReader> sstables, final int gcBefore, long maxSSTableBytes)
     {
         return new CompactionTask(cfs, sstables, gcBefore, false);
     }
@@ -225,7 +225,7 @@ public abstract class AbstractCompactionStrategy
      * @param memtable the flushed memtable
      * @param sstable the written sstable. can be null if the memtable was clean.
      */
-    public void replaceFlushed(Memtable memtable, TableReader sstable)
+    public void replaceFlushed(Memtable memtable, SSTableReader sstable)
     {
         cfs.getDataTracker().replaceFlushed(memtable, sstable);
         if (sstable != null)
@@ -235,7 +235,7 @@ public abstract class AbstractCompactionStrategy
     /**
      * @return a subset of the suggested sstables that are relevant for read requests.
      */
-    public List<TableReader> filterSSTablesForReads(List<TableReader> sstables)
+    public List<SSTableReader> filterSSTablesForReads(List<SSTableReader> sstables)
     {
         return sstables;
     }
@@ -246,11 +246,11 @@ public abstract class AbstractCompactionStrategy
      * @param originalCandidates The collection to check for blacklisted SSTables
      * @return list of the SSTables with blacklisted ones filtered out
      */
-    public static Iterable<TableReader> filterSuspectSSTables(Iterable<TableReader> originalCandidates)
+    public static Iterable<SSTableReader> filterSuspectSSTables(Iterable<SSTableReader> originalCandidates)
     {
-        return Iterables.filter(originalCandidates, new Predicate<TableReader>()
+        return Iterables.filter(originalCandidates, new Predicate<SSTableReader>()
         {
-            public boolean apply(TableReader sstable)
+            public boolean apply(SSTableReader sstable)
             {
                 return !sstable.isMarkedSuspect();
             }
@@ -263,16 +263,16 @@ public abstract class AbstractCompactionStrategy
      * allow for a more memory efficient solution if we know the sstable don't overlap (see
      * LeveledCompactionStrategy for instance).
      */
-    public List<ICompactionScanner> getScanners(Collection<TableReader> sstables, Range<Token> range)
+    public List<ICompactionScanner> getScanners(Collection<SSTableReader> sstables, Range<Token> range)
     {
         RateLimiter limiter = CompactionManager.instance.getRateLimiter();
         ArrayList<ICompactionScanner> scanners = new ArrayList<ICompactionScanner>();
-        for (TableReader sstable : sstables)
+        for (SSTableReader sstable : sstables)
             scanners.add(sstable.getScanner(range, limiter));
         return scanners;
     }
 
-    public List<ICompactionScanner> getScanners(Collection<TableReader> toCompact)
+    public List<ICompactionScanner> getScanners(Collection<SSTableReader> toCompact)
     {
         return getScanners(toCompact, null);
     }
@@ -285,7 +285,7 @@ public abstract class AbstractCompactionStrategy
      * @param gcBefore time to drop tombstones
      * @return true if given sstable's tombstones are expected to be removed
      */
-    protected boolean worthDroppingTombstones(TableReader sstable, int gcBefore)
+    protected boolean worthDroppingTombstones(SSTableReader sstable, int gcBefore)
     {
         // since we use estimations to calculate, there is a chance that compaction will not drop tombstones actually.
         // if that happens we will end up in infinite compaction loop, so first we check enough if enough time has
@@ -301,7 +301,7 @@ public abstract class AbstractCompactionStrategy
         if (uncheckedTombstoneCompaction)
             return true;
 
-        Set<TableReader> overlaps = cfs.getOverlappingSSTables(Collections.singleton(sstable));
+        Set<SSTableReader> overlaps = cfs.getOverlappingSSTables(Collections.singleton(sstable));
         if (overlaps.isEmpty())
         {
             // there is no overlap, tombstones are safely droppable
@@ -322,7 +322,7 @@ public abstract class AbstractCompactionStrategy
             // first, calculate estimated keys that do not overlap
             long keys = sstable.estimatedKeys();
             Set<Range<Token>> ranges = new HashSet<Range<Token>>(overlaps.size());
-            for (TableReader overlap : overlaps)
+            for (SSTableReader overlap : overlaps)
                 ranges.add(new Range<>(overlap.first.getToken(), overlap.last.getToken(), overlap.partitioner));
             long remainingKeys = keys - sstable.estimatedKeysForRanges(ranges);
             // next, calculate what percentage of columns we have within those keys

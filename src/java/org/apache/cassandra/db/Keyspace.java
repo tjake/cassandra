@@ -32,7 +32,7 @@ import java.util.concurrent.Future;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -259,9 +259,9 @@ public class Keyspace
     /**
      * @return A list of open SSTableReaders
      */
-    public List<TableReader> getAllSSTables()
+    public List<SSTableReader> getAllSSTables()
     {
-        List<TableReader> list = new ArrayList<>(columnFamilyStores.size());
+        List<SSTableReader> list = new ArrayList<>(columnFamilyStores.size());
         for (ColumnFamilyStore cfStore : columnFamilyStores.values())
             list.addAll(cfStore.getSSTables());
         return list;

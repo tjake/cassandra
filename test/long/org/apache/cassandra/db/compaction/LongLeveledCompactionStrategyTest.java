@@ -21,7 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -118,20 +118,20 @@ public class LongLeveledCompactionStrategyTest
         int levels = manifest.getLevelCount();
         for (int level = 0; level < levels; level++)
         {
-            List<TableReader> sstables = manifest.getLevel(level);
+            List<SSTableReader> sstables = manifest.getLevel(level);
             // score check
-            assert (double) TableReader.getTotalBytes(sstables) / manifest.maxBytesForLevel(level) < 1.00;
+            assert (double) SSTableReader.getTotalBytes(sstables) / manifest.maxBytesForLevel(level) < 1.00;
             // overlap check for levels greater than 0
             if (level > 0)
             {
-               for (TableReader sstable : sstables)
+               for (SSTableReader sstable : sstables)
                {
-                   Set<TableReader> overlaps = LeveledManifest.overlapping(sstable, sstables);
+                   Set<SSTableReader> overlaps = LeveledManifest.overlapping(sstable, sstables);
                    assert overlaps.size() == 1 && overlaps.contains(sstable);
                }
             }
         }
-        for (TableReader sstable : store.getSSTables())
+        for (SSTableReader sstable : store.getSSTables())
         {
             assert sstable.getSSTableLevel() == sstable.getSSTableLevel();
         }

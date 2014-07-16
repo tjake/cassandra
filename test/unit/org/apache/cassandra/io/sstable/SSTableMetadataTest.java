@@ -27,7 +27,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -100,7 +100,7 @@ public class SSTableMetadataTest
         assertEquals(1, store.getSSTables().size());
         int ttltimestamp = (int)(System.currentTimeMillis()/1000);
         int firstDelTime = 0;
-        for(TableReader sstable : store.getSSTables())
+        for(SSTableReader sstable : store.getSSTables())
         {
             firstDelTime = sstable.getSSTableMetadata().maxLocalDeletionTime;
             assertEquals(ttltimestamp + 10000, firstDelTime, 10);
@@ -115,7 +115,7 @@ public class SSTableMetadataTest
         ttltimestamp = (int) (System.currentTimeMillis()/1000);
         store.forceBlockingFlush();
         assertEquals(2, store.getSSTables().size());
-        List<TableReader> sstables = new ArrayList<>(store.getSSTables());
+        List<SSTableReader> sstables = new ArrayList<>(store.getSSTables());
         if(sstables.get(0).getSSTableMetadata().maxLocalDeletionTime < sstables.get(1).getSSTableMetadata().maxLocalDeletionTime)
         {
             assertEquals(sstables.get(0).getSSTableMetadata().maxLocalDeletionTime, firstDelTime);
@@ -129,7 +129,7 @@ public class SSTableMetadataTest
 
         Util.compact(store, store.getSSTables());
         assertEquals(1, store.getSSTables().size());
-        for(TableReader sstable : store.getSSTables())
+        for(SSTableReader sstable : store.getSSTables())
         {
             assertEquals(sstable.getSSTableMetadata().maxLocalDeletionTime, ttltimestamp + 20000, 10);
         }
@@ -168,7 +168,7 @@ public class SSTableMetadataTest
         assertEquals(1,store.getSSTables().size());
         int ttltimestamp = (int) (System.currentTimeMillis()/1000);
         int firstMaxDelTime = 0;
-        for(TableReader sstable : store.getSSTables())
+        for(SSTableReader sstable : store.getSSTables())
         {
             firstMaxDelTime = sstable.getSSTableMetadata().maxLocalDeletionTime;
             assertEquals(ttltimestamp + 1000, firstMaxDelTime, 10);
@@ -179,7 +179,7 @@ public class SSTableMetadataTest
         store.forceBlockingFlush();
         assertEquals(2,store.getSSTables().size());
         boolean foundDelete = false;
-        for(TableReader sstable : store.getSSTables())
+        for(SSTableReader sstable : store.getSSTables())
         {
             if(sstable.getSSTableMetadata().maxLocalDeletionTime != firstMaxDelTime)
             {
@@ -190,7 +190,7 @@ public class SSTableMetadataTest
         assertTrue(foundDelete);
         Util.compact(store, store.getSSTables());
         assertEquals(1,store.getSSTables().size());
-        for(TableReader sstable : store.getSSTables())
+        for(SSTableReader sstable : store.getSSTables())
         {
             assertEquals(ttltimestamp + 100, sstable.getSSTableMetadata().maxLocalDeletionTime, 10);
         }
@@ -214,7 +214,7 @@ public class SSTableMetadataTest
         }
         store.forceBlockingFlush();
         assertEquals(1, store.getSSTables().size());
-        for (TableReader sstable : store.getSSTables())
+        for (SSTableReader sstable : store.getSSTables())
         {
             assertEquals(ByteBufferUtil.string(sstable.getSSTableMetadata().minColumnNames.get(0)), "0col100");
             assertEquals(ByteBufferUtil.string(sstable.getSSTableMetadata().maxColumnNames.get(0)), "7col149");
@@ -230,7 +230,7 @@ public class SSTableMetadataTest
         store.forceBlockingFlush();
         store.forceMajorCompaction();
         assertEquals(1, store.getSSTables().size());
-        for (TableReader sstable : store.getSSTables())
+        for (SSTableReader sstable : store.getSSTables())
         {
             assertEquals(ByteBufferUtil.string(sstable.getSSTableMetadata().minColumnNames.get(0)), "0col100");
             assertEquals(ByteBufferUtil.string(sstable.getSSTableMetadata().maxColumnNames.get(0)), "9col298");
@@ -278,7 +278,7 @@ public class SSTableMetadataTest
         cfs.forceBlockingFlush();
         cfs.forceMajorCompaction();
         assertEquals(cfs.getSSTables().size(), 1);
-        for (TableReader sstable : cfs.getSSTables())
+        for (SSTableReader sstable : cfs.getSSTables())
         {
             assertEquals("b9", ByteBufferUtil.string(sstable.getSSTableMetadata().maxColumnNames.get(0)));
             assertEquals(9, ByteBufferUtil.toInt(sstable.getSSTableMetadata().maxColumnNames.get(1)));

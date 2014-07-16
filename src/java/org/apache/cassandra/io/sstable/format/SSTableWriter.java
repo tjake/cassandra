@@ -33,15 +33,15 @@ import java.util.Set;
  * TableWriter.create() is the primary way to create a writer for a particular format.
  * The format information is part of the Descriptor.
  */
-public abstract class TableWriter extends SSTable
+public abstract class SSTableWriter extends SSTable
 {
-    private static final Logger logger = LoggerFactory.getLogger(TableWriter.class);
+    private static final Logger logger = LoggerFactory.getLogger(SSTableWriter.class);
 
     protected final long repairedAt;
     protected final long keyCount;
     protected final MetadataCollector metadataCollector;
 
-    protected TableWriter(Descriptor descriptor, long keyCount, long repairedAt,  CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
+    protected SSTableWriter(Descriptor descriptor, long keyCount, long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
     {
         super(descriptor, components(metadata), metadata, partitioner);
         this.keyCount = keyCount;
@@ -50,13 +50,13 @@ public abstract class TableWriter extends SSTable
     }
 
 
-    public static TableWriter create(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata,  IPartitioner partitioner, MetadataCollector metadataCollector)
+    public static SSTableWriter create(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata,  IPartitioner partitioner, MetadataCollector metadataCollector)
     {
-        Class<? extends TableWriter> writerClass = descriptor.fmt.info.getWriter();
+        Class<? extends SSTableWriter> writerClass = descriptor.fmt.info.getWriter();
 
         try
         {
-            Constructor<? extends TableWriter> constructor = writerClass.getConstructor(Descriptor.class, Long.class, Long.class, CFMetaData.class, IPartitioner.class, MetadataCollector.class);
+            Constructor<? extends SSTableWriter> constructor = writerClass.getConstructor(Descriptor.class, Long.class, Long.class, CFMetaData.class, IPartitioner.class, MetadataCollector.class);
 
             return constructor.newInstance(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
         }
@@ -71,7 +71,7 @@ public abstract class TableWriter extends SSTable
         }
     }
 
-    public static TableWriter create(Descriptor descriptor, long keyCount, long repairedAt)
+    public static SSTableWriter create(Descriptor descriptor, long keyCount, long repairedAt)
     {
         CFMetaData metadata = Schema.instance.getCFMetaData(descriptor);
         MetadataCollector collector = new MetadataCollector(metadata.comparator);
@@ -79,7 +79,7 @@ public abstract class TableWriter extends SSTable
         return create(descriptor, keyCount, repairedAt, metadata, DatabaseDescriptor.getPartitioner(), collector);
     }
 
-    public static TableWriter create(String filename, long keyCount, long repairedAt)
+    public static SSTableWriter create(String filename, long keyCount, long repairedAt)
     {
         return create(Descriptor.fromFilename(filename), keyCount, repairedAt);
     }
@@ -131,19 +131,19 @@ public abstract class TableWriter extends SSTable
 
     public abstract void resetAndTruncate();
 
-    public TableReader closeAndOpenReader()
+    public SSTableReader closeAndOpenReader()
     {
         return closeAndOpenReader(System.currentTimeMillis());
     }
 
-    public TableReader closeAndOpenReader(long maxDataAge)
+    public SSTableReader closeAndOpenReader(long maxDataAge)
     {
         return closeAndOpenReader(maxDataAge, repairedAt);
     }
 
-    public abstract TableReader closeAndOpenReader(long maxDataAge, long repairedAt);
+    public abstract SSTableReader closeAndOpenReader(long maxDataAge, long repairedAt);
 
-    public abstract TableReader openEarly(long maxDataAge);
+    public abstract SSTableReader openEarly(long maxDataAge);
 
     // Close the writer and return the descriptor to the new sstable and it's metadata
     public abstract Pair<Descriptor, StatsMetadata> close();

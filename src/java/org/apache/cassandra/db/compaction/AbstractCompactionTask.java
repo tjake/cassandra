@@ -22,13 +22,13 @@ import java.util.Set;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.compaction.CompactionManager.CompactionExecutorStatsCollector;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DiskAwareRunnable;
 
 public abstract class AbstractCompactionTask extends DiskAwareRunnable
 {
     protected final ColumnFamilyStore cfs;
-    protected Set<TableReader> sstables;
+    protected Set<SSTableReader> sstables;
     protected boolean isUserDefined;
     protected OperationType compactionType;
 
@@ -36,7 +36,7 @@ public abstract class AbstractCompactionTask extends DiskAwareRunnable
      * @param cfs
      * @param sstables must be marked compacting
      */
-    public AbstractCompactionTask(ColumnFamilyStore cfs, Set<TableReader> sstables)
+    public AbstractCompactionTask(ColumnFamilyStore cfs, Set<SSTableReader> sstables)
     {
         this.cfs = cfs;
         this.sstables = sstables;
@@ -44,8 +44,8 @@ public abstract class AbstractCompactionTask extends DiskAwareRunnable
         this.compactionType = OperationType.COMPACTION;
 
         // enforce contract that caller should mark sstables compacting
-        Set<TableReader> compacting = cfs.getDataTracker().getCompacting();
-        for (TableReader sstable : sstables)
+        Set<SSTableReader> compacting = cfs.getDataTracker().getCompacting();
+        for (SSTableReader sstable : sstables)
             assert compacting.contains(sstable) : sstable.getFilename() + " is not correctly marked compacting";
     }
 

@@ -20,13 +20,13 @@ package org.apache.cassandra.notifications;
 
 import java.util.Collection;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 
 public class SSTableRepairStatusChanged implements INotification
 {
-    public final Collection<TableReader> sstable;
+    public final Collection<SSTableReader> sstable;
 
-    public SSTableRepairStatusChanged(Collection<TableReader> repairStatusChanged)
+    public SSTableRepairStatusChanged(Collection<SSTableReader> repairStatusChanged)
     {
         this.sstable = repairStatusChanged;
     }

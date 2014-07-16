@@ -24,8 +24,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.big.BigTableReader;
-import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,9 +38,9 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
 {
     private static final Logger logger = LoggerFactory.getLogger(SizeTieredCompactionStrategy.class);
 
-    private static final Comparator<Pair<List<TableReader>,Double>> bucketsByHotnessComparator = new Comparator<Pair<List<TableReader>, Double>>()
+    private static final Comparator<Pair<List<SSTableReader>,Double>> bucketsByHotnessComparator = new Comparator<Pair<List<SSTableReader>, Double>>()
     {
-        public int compare(Pair<List<TableReader>, Double> o1, Pair<List<TableReader>, Double> o2)
+        public int compare(Pair<List<SSTableReader>, Double> o1, Pair<List<SSTableReader>, Double> o2)
         {
             int comparison = Double.compare(o1.right, o2.right);
             if (comparison != 0)
@@ -51,10 +51,10 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
             return Long.compare(avgSize(o1.left), avgSize(o2.left));
         }
 
-        private long avgSize(List<TableReader> sstables)
+        private long avgSize(List<SSTableReader> sstables)
         {
             long n = 0;
-            for (TableReader sstable : sstables)
+            for (SSTableReader sstable : sstables)
                 n += sstable.bytesOnDisk();
             return n / sstables.size();
         }
@@ -70,7 +70,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         this.options = new SizeTieredCompactionStrategyOptions(options);
     }
 
-    private List<TableReader> getNextBackgroundSSTables(final int gcBefore)
+    private List<SSTableReader> getNextBackgroundSSTables(final int gcBefore)
     {
         if (!isEnabled())
             return Collections.emptyList();
@@ -79,9 +79,9 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         int minThreshold = cfs.getMinimumCompactionThreshold();
         int maxThreshold = cfs.getMaximumCompactionThreshold();
 
-        Iterable<TableReader> candidates = filterSuspectSSTables(cfs.getUncompactingSSTables());
+        Iterable<SSTableReader> candidates = filterSuspectSSTables(cfs.getUncompactingSSTables());
         candidates = filterColdSSTables(Lists.newArrayList(candidates), options.coldReadsToOmit);
-        Pair<Set<TableReader>,Set<TableReader>> repairedUnrepaired = splitInRepairedAndUnrepaired(candidates);
+        Pair<Set<SSTableReader>,Set<SSTableReader>> repairedUnrepaired = splitInRepairedAndUnrepaired(candidates);
         if (repairedUnrepaired.left.size() > repairedUnrepaired.right.size())
         {
             candidates = repairedUnrepaired.left;
@@ -91,17 +91,17 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
             candidates = repairedUnrepaired.right;
         }
 
-        List<List<TableReader>> buckets = getBuckets(createSSTableAndLengthPairs(candidates), options.bucketHigh, options.bucketLow, options.minSSTableSize);
+        List<List<SSTableReader>> buckets = getBuckets(createSSTableAndLengthPairs(candidates), options.bucketHigh, options.bucketLow, options.minSSTableSize);
         logger.debug("Compaction buckets are {}", buckets);
         updateEstimatedCompactionsByTasks(buckets);
-        List<TableReader> mostInteresting = mostInterestingBucket(buckets, minThreshold, maxThreshold);
+        List<SSTableReader> mostInteresting = mostInterestingBucket(buckets, minThreshold, maxThreshold);
         if (!mostInteresting.isEmpty())
             return mostInteresting;
 
         // if there is no sstable to compact in standard way, try compacting single sstable whose droppable tombstone
         // ratio is greater than threshold.
-        List<TableReader> sstablesWithTombstones = new ArrayList<>();
-        for (TableReader sstable : candidates)
+        List<SSTableReader> sstablesWithTombstones = new ArrayList<>();
+        for (SSTableReader sstable : candidates)
         {
             if (worthDroppingTombstones(sstable, gcBefore))
                 sstablesWithTombstones.add(sstable);
@@ -113,11 +113,11 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         return Collections.singletonList(sstablesWithTombstones.get(0));
     }
 
-    private static Pair<Set<TableReader>, Set<TableReader>> splitInRepairedAndUnrepaired(Iterable<TableReader> candidates)
+    private static Pair<Set<SSTableReader>, Set<SSTableReader>> splitInRepairedAndUnrepaired(Iterable<SSTableReader> candidates)
     {
-        Set<TableReader> repaired = new HashSet<>();
-        Set<TableReader> unRepaired = new HashSet<>();
-        for(TableReader candidate : candidates)
+        Set<SSTableReader> repaired = new HashSet<>();
+        Set<SSTableReader> unRepaired = new HashSet<>();
+        for(SSTableReader candidate : candidates)
         {
             if (!candidate.isRepaired())
                 unRepaired.add(candidate);
@@ -135,16 +135,16 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
      * @return a list of sstables with the coldest sstables excluded until the reads they represent reaches coldReadsToOmit
      */
     @VisibleForTesting
-    static List<TableReader> filterColdSSTables(List<TableReader> sstables, double coldReadsToOmit)
+    static List<SSTableReader> filterColdSSTables(List<SSTableReader> sstables, double coldReadsToOmit)
     {
         if (coldReadsToOmit == 0.0)
             return sstables;
 
         // Sort the sstables by hotness (coldest-first). We first build a map because the hotness may change during the sort.
-        final Map<TableReader, Double> hotnessSnapshot = getHotnessMap(sstables);
-        Collections.sort(sstables, new Comparator<TableReader>()
+        final Map<SSTableReader, Double> hotnessSnapshot = getHotnessMap(sstables);
+        Collections.sort(sstables, new Comparator<SSTableReader>()
         {
-            public int compare(TableReader o1, TableReader o2)
+            public int compare(SSTableReader o1, SSTableReader o2)
             {
                 int comparison = Double.compare(hotnessSnapshot.get(o1), hotnessSnapshot.get(o2));
                 if (comparison != 0)
@@ -163,7 +163,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
 
         // calculate the total reads/sec across all sstables
         double totalReads = 0.0;
-        for (TableReader sstr : sstables)
+        for (SSTableReader sstr : sstables)
             if (sstr.readMeter != null)
                 totalReads += sstr.readMeter.twoHourRate();
 
@@ -195,20 +195,20 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
      * @param maxThreshold maximum number of sstables to compact at once (the returned bucket will be trimmed down to this)
      * @return a bucket (list) of sstables to compact
      */
-    public static List<TableReader> mostInterestingBucket(List<List<TableReader>> buckets, int minThreshold, int maxThreshold)
+    public static List<SSTableReader> mostInterestingBucket(List<List<SSTableReader>> buckets, int minThreshold, int maxThreshold)
     {
         // skip buckets containing less than minThreshold sstables, and limit other buckets to maxThreshold sstables
-        final List<Pair<List<TableReader>, Double>> prunedBucketsAndHotness = new ArrayList<>(buckets.size());
-        for (List<TableReader> bucket : buckets)
+        final List<Pair<List<SSTableReader>, Double>> prunedBucketsAndHotness = new ArrayList<>(buckets.size());
+        for (List<SSTableReader> bucket : buckets)
         {
-            Pair<List<TableReader>, Double> bucketAndHotness = trimToThresholdWithHotness(bucket, maxThreshold);
+            Pair<List<SSTableReader>, Double> bucketAndHotness = trimToThresholdWithHotness(bucket, maxThreshold);
             if (bucketAndHotness != null && bucketAndHotness.left.size() >= minThreshold)
                 prunedBucketsAndHotness.add(bucketAndHotness);
         }
         if (prunedBucketsAndHotness.isEmpty())
             return Collections.emptyList();
 
-        Pair<List<TableReader>, Double> hottest = Collections.max(prunedBucketsAndHotness, bucketsByHotnessComparator);
+        Pair<List<SSTableReader>, Double> hottest = Collections.max(prunedBucketsAndHotness, bucketsByHotnessComparator);
         return hottest.left;
     }
 
@@ -217,33 +217,33 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
      * If there are more than maxThreshold sstables, the coldest sstables will be trimmed to meet the threshold.
      **/
     @VisibleForTesting
-    static Pair<List<TableReader>, Double> trimToThresholdWithHotness(List<TableReader> bucket, int maxThreshold)
+    static Pair<List<SSTableReader>, Double> trimToThresholdWithHotness(List<SSTableReader> bucket, int maxThreshold)
     {
         // Sort by sstable hotness (descending). We first build a map because the hotness may change during the sort.
-        final Map<TableReader, Double> hotnessSnapshot = getHotnessMap(bucket);
-        Collections.sort(bucket, new Comparator<TableReader>()
+        final Map<SSTableReader, Double> hotnessSnapshot = getHotnessMap(bucket);
+        Collections.sort(bucket, new Comparator<SSTableReader>()
         {
-            public int compare(TableReader o1, TableReader o2)
+            public int compare(SSTableReader o1, SSTableReader o2)
             {
                 return -1 * Double.compare(hotnessSnapshot.get(o1), hotnessSnapshot.get(o2));
             }
         });
 
         // and then trim the coldest sstables off the end to meet the maxThreshold
-        List<TableReader> prunedBucket = bucket.subList(0, Math.min(bucket.size(), maxThreshold));
+        List<SSTableReader> prunedBucket = bucket.subList(0, Math.min(bucket.size(), maxThreshold));
 
         // bucket hotness is the sum of the hotness of all sstable members
         double bucketHotness = 0.0;
-        for (TableReader sstr : prunedBucket)
+        for (SSTableReader sstr : prunedBucket)
             bucketHotness += hotness(sstr);
 
         return Pair.create(prunedBucket, bucketHotness);
     }
 
-    private static Map<TableReader, Double> getHotnessMap(Collection<TableReader> sstables)
+    private static Map<SSTableReader, Double> getHotnessMap(Collection<SSTableReader> sstables)
     {
-        Map<TableReader, Double> hotness = new HashMap<>(sstables.size());
-        for (TableReader sstable : sstables)
+        Map<SSTableReader, Double> hotness = new HashMap<>(sstables.size());
+        for (SSTableReader sstable : sstables)
             hotness.put(sstable, hotness(sstable));
         return hotness;
     }
@@ -251,7 +251,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
     /**
      * Returns the reads per second per key for this sstable, or 0.0 if the sstable has no read meter
      */
-    private static double hotness(TableReader sstr)
+    private static double hotness(SSTableReader sstr)
     {
         // system tables don't have read meters, just use 0.0 for the hotness
         return sstr.readMeter == null ? 0.0 : sstr.readMeter.twoHourRate() / sstr.estimatedKeys();
@@ -264,7 +264,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
 
         while (true)
         {
-            List<TableReader> hottestBucket = getNextBackgroundSSTables(gcBefore);
+            List<SSTableReader> hottestBucket = getNextBackgroundSSTables(gcBefore);
 
             if (hottestBucket.isEmpty())
                 return null;
@@ -276,13 +276,13 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
 
     public Collection<AbstractCompactionTask> getMaximalTask(final int gcBefore)
     {
-        Iterable<TableReader> allSSTables = cfs.markAllCompacting();
+        Iterable<SSTableReader> allSSTables = cfs.markAllCompacting();
         if (allSSTables == null || Iterables.isEmpty(allSSTables))
             return null;
-        Set<TableReader> sstables = Sets.newHashSet(allSSTables);
-        Set<TableReader> repaired = new HashSet<>();
-        Set<TableReader> unrepaired = new HashSet<>();
-        for (TableReader sstable : sstables)
+        Set<SSTableReader> sstables = Sets.newHashSet(allSSTables);
+        Set<SSTableReader> repaired = new HashSet<>();
+        Set<SSTableReader> unrepaired = new HashSet<>();
+        for (SSTableReader sstable : sstables)
         {
             if (sstable.isRepaired())
                 repaired.add(sstable);
@@ -292,7 +292,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         return Arrays.<AbstractCompactionTask>asList(new CompactionTask(cfs, repaired, gcBefore, false), new CompactionTask(cfs, unrepaired, gcBefore, false));
     }
 
-    public AbstractCompactionTask getUserDefinedTask(Collection<TableReader> sstables, final int gcBefore)
+    public AbstractCompactionTask getUserDefinedTask(Collection<SSTableReader> sstables, final int gcBefore)
     {
         assert !sstables.isEmpty(); // checked for by CM.submitUserDefined
 
@@ -310,10 +310,10 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         return estimatedRemainingTasks;
     }
 
-    public static List<Pair<TableReader, Long>> createSSTableAndLengthPairs(Iterable<TableReader> sstables)
+    public static List<Pair<SSTableReader, Long>> createSSTableAndLengthPairs(Iterable<SSTableReader> sstables)
     {
-        List<Pair<TableReader, Long>> sstableLengthPairs = new ArrayList<>(Iterables.size(sstables));
-        for(TableReader sstable : sstables)
+        List<Pair<SSTableReader, Long>> sstableLengthPairs = new ArrayList<>(Iterables.size(sstables));
+        for(SSTableReader sstable : sstables)
             sstableLengthPairs.add(Pair.create(sstable, sstable.onDiskLength()));
         return sstableLengthPairs;
     }
@@ -369,10 +369,10 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         return new ArrayList<List<T>>(buckets.values());
     }
 
-    private void updateEstimatedCompactionsByTasks(List<List<TableReader>> tasks)
+    private void updateEstimatedCompactionsByTasks(List<List<SSTableReader>> tasks)
     {
         int n = 0;
-        for (List<TableReader> bucket: tasks)
+        for (List<SSTableReader> bucket: tasks)
         {
             if (bucket.size() >= cfs.getMinimumCompactionThreshold())
                 n += Math.ceil((double)bucket.size() / cfs.getMaximumCompactionThreshold());

@@ -35,7 +35,7 @@ import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.marshal.CounterColumnType;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.SearchIterator;
@@ -108,10 +108,10 @@ public class CollationController
             QueryFilter reducedFilter = new QueryFilter(filter.key, filter.cfName, namesFilter.withUpdatedColumns(filterColumns), filter.timestamp);
 
             /* add the SSTables on disk */
-            Collections.sort(view.sstables, TableReader.maxTimestampComparator);
+            Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
 
             // read sorted sstables
-            for (TableReader sstable : view.sstables)
+            for (SSTableReader sstable : view.sstables)
             {
                 // if we've already seen a row tombstone with a timestamp greater
                 // than the most recent update to this sstable, we're done, since the rest of the sstables
@@ -234,13 +234,13 @@ public class CollationController
              * In other words, iterating in maxTimestamp order allow to do our mostRecentTombstone elimination
              * in one pass, and minimize the number of sstables for which we read a rowTombstone.
              */
-            Collections.sort(view.sstables, TableReader.maxTimestampComparator);
-            List<TableReader> skippedSSTables = null;
+            Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
+            List<SSTableReader> skippedSSTables = null;
             long mostRecentRowTombstone = Long.MIN_VALUE;
             long minTimestamp = Long.MAX_VALUE;
             int nonIntersectingSSTables = 0;
 
-            for (TableReader sstable : view.sstables)
+            for (SSTableReader sstable : view.sstables)
             {
                 minTimestamp = Math.min(minTimestamp, sstable.getMinTimestamp());
                 // if we've already seen a row tombstone with a timestamp greater
@@ -279,7 +279,7 @@ public class CollationController
             // Check for row tombstone in the skipped sstables
             if (skippedSSTables != null)
             {
-                for (TableReader sstable : skippedSSTables)
+                for (SSTableReader sstable : skippedSSTables)
                 {
                     if (sstable.getMaxTimestamp() <= minTimestamp)
                         continue;

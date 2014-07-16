@@ -28,7 +28,7 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.*;
 
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -171,7 +171,7 @@ public class CompactionsPurgeTest
         // flush, remember the current sstable and then resurrect one column
         // for first key. Then submit minor compaction on remembered sstables.
         cfs.forceBlockingFlush();
-        Collection<TableReader> sstablesIncomplete = cfs.getSSTables();
+        Collection<SSTableReader> sstablesIncomplete = cfs.getSSTables();
         rm = new Mutation(KEYSPACE2, key1.getKey());
         rm.add(cfName, cellname(String.valueOf(5)), ByteBufferUtil.EMPTY_BYTE_BUFFER, 2);
         rm.applyUnsafe();
@@ -214,7 +214,7 @@ public class CompactionsPurgeTest
         rm.delete(cfName, cellname("c1"), 10);
         rm.applyUnsafe();
         cfs.forceBlockingFlush();
-        Collection<TableReader> sstablesIncomplete = cfs.getSSTables();
+        Collection<SSTableReader> sstablesIncomplete = cfs.getSSTables();
 
         // delete c2 so we have new delete in a diffrent SSTable
         rm = new Mutation(KEYSPACE2, key3.getKey());

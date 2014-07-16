@@ -22,7 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.commons.cli.*;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -111,12 +111,12 @@ public class StandaloneSplitter
 
             String snapshotName = "pre-split-" + System.currentTimeMillis();
 
-            List<TableReader> sstables = new ArrayList<>();
+            List<SSTableReader> sstables = new ArrayList<>();
             for (Map.Entry<Descriptor, Set<Component>> fn : parsedFilenames.entrySet())
             {
                 try
                 {
-                    TableReader sstable = TableReader.openNoValidation(fn.getKey(), fn.getValue(), cfs.metadata);
+                    SSTableReader sstable = SSTableReader.openNoValidation(fn.getKey(), fn.getValue(), cfs.metadata);
                     sstables.add(sstable);
 
                     if (options.snapshot) {
@@ -136,7 +136,7 @@ public class StandaloneSplitter
                 System.out.println(String.format("Pre-split sstables snapshotted into snapshot %s", snapshotName));
 
             cfs.getDataTracker().markCompacting(sstables);
-            for (TableReader sstable : sstables)
+            for (SSTableReader sstable : sstables)
             {
                 try
                 {

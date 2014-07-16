@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.base.Throwables;
 import org.apache.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -310,7 +310,7 @@ public class Memtable
         {
             assert sstableDirectory != null : "Flush task is not bound to any disk";
 
-            TableReader sstable = writeSortedContents(context, sstableDirectory);
+            SSTableReader sstable = writeSortedContents(context, sstableDirectory);
             cfs.replaceFlushed(Memtable.this, sstable);
         }
 
@@ -319,14 +319,14 @@ public class Memtable
             return cfs.directories;
         }
 
-        private TableReader writeSortedContents(ReplayPosition context, File sstableDirectory)
+        private SSTableReader writeSortedContents(ReplayPosition context, File sstableDirectory)
         throws ExecutionException, InterruptedException
         {
             logger.info("Writing {}", Memtable.this.toString());
 
-            TableReader ssTable;
+            SSTableReader ssTable;
             // errors when creating the writer that may leave empty temp files.
-            TableWriter writer = createFlushWriter(cfs.getTempSSTablePath(sstableDirectory));
+            SSTableWriter writer = createFlushWriter(cfs.getTempSSTablePath(sstableDirectory));
             try
             {
                 // (we can't clear out the map as-we-go to free up memory,
@@ -376,11 +376,11 @@ public class Memtable
             }
         }
 
-        public TableWriter createFlushWriter(String filename) throws ExecutionException, InterruptedException
+        public SSTableWriter createFlushWriter(String filename) throws ExecutionException, InterruptedException
         {
             MetadataCollector sstableMetadataCollector = new MetadataCollector(cfs.metadata.comparator).replayPosition(context);
 
-            return TableWriter.create(Descriptor.fromFilename(filename), (long)rows.size(), ActiveRepairService.UNREPAIRED_SSTABLE, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
+            return SSTableWriter.create(Descriptor.fromFilename(filename), (long) rows.size(), ActiveRepairService.UNREPAIRED_SSTABLE, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
         }
     }
 

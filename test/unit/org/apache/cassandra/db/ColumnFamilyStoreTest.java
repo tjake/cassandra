@@ -44,8 +44,8 @@ import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.io.sstable.*;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.BeforeClass;
@@ -196,7 +196,7 @@ public class ColumnFamilyStoreTest
         rms.add(rm);
         Util.writeColumnFamily(rms);
 
-        List<TableReader> ssTables = keyspace.getAllSSTables();
+        List<SSTableReader> ssTables = keyspace.getAllSSTables();
         assertEquals(1, ssTables.size());
         ssTables.get(0).forceFilterFailures();
         ColumnFamily cf = cfs.getColumnFamily(QueryFilter.getIdentityFilter(Util.dk("key2"), CF_STANDARD1, System.currentTimeMillis()));
@@ -1105,7 +1105,7 @@ public class ColumnFamilyStoreTest
         cfs.forceBlockingFlush();
 
         // Nuke the metadata and reload that sstable
-        Collection<TableReader> ssTables = cfs.getSSTables();
+        Collection<SSTableReader> ssTables = cfs.getSSTables();
         assertEquals(1, ssTables.size());
         cfs.clearUnsafe();
         assertEquals(0, cfs.getSSTables().size());
@@ -1767,22 +1767,22 @@ public class ColumnFamilyStoreTest
         assertEquals(1, sstables.size());
 
         Map.Entry<Descriptor, Set<Component>> sstableToOpen = sstables.entrySet().iterator().next();
-        final TableReader sstable1 = TableReader.open(sstableToOpen.getKey());
+        final SSTableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
 
         // simulate incomplete compaction
         writer = new SSTableSimpleWriter(dir.getDirectoryForNewSSTables(),
                                          cfmeta, StorageService.getPartitioner())
         {
-            protected TableWriter getWriter()
+            protected SSTableWriter getWriter()
             {
                 MetadataCollector collector = new MetadataCollector(cfmeta.comparator);
                 collector.addAncestor(sstable1.descriptor.generation); // add ancestor from previously written sstable
-                return TableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName)),
-                                         0L,
-                                         ActiveRepairService.UNREPAIRED_SSTABLE,
-                                         metadata,
-                                         DatabaseDescriptor.getPartitioner(),
-                                         collector);
+                return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName)),
+                        0L,
+                        ActiveRepairService.UNREPAIRED_SSTABLE,
+                        metadata,
+                        DatabaseDescriptor.getPartitioner(),
+                        collector);
             }
         };
         writer.newRow(key);
@@ -1795,7 +1795,7 @@ public class ColumnFamilyStoreTest
 
         UUID compactionTaskID = SystemKeyspace.startCompaction(
                 Keyspace.open(ks).getColumnFamilyStore(cf),
-                Collections.singleton(TableReader.open(sstable1.descriptor)));
+                Collections.singleton(SSTableReader.open(sstable1.descriptor)));
 
         Map<Integer, UUID> unfinishedCompaction = new HashMap<>();
         unfinishedCompaction.put(sstable1.descriptor.generation, compactionTaskID);
@@ -1828,18 +1828,18 @@ public class ColumnFamilyStoreTest
         SSTableSimpleWriter writer = new SSTableSimpleWriter(dir.getDirectoryForNewSSTables(),
                                                 cfmeta, StorageService.getPartitioner())
         {
-            protected TableWriter getWriter()
+            protected SSTableWriter getWriter()
             {
                 MetadataCollector collector = new MetadataCollector(cfmeta.comparator);
                 for (int ancestor : ancestors)
                     collector.addAncestor(ancestor);
                 String file = new Descriptor(directory, ks, cf, 3, Descriptor.Type.TEMP).filenameFor(Component.DATA);
-                return TableWriter.create(Descriptor.fromFilename(file),
-                                         0L,
-                                         ActiveRepairService.UNREPAIRED_SSTABLE,
-                                         metadata,
-                                         StorageService.getPartitioner(),
-                                         collector);
+                return SSTableWriter.create(Descriptor.fromFilename(file),
+                        0L,
+                        ActiveRepairService.UNREPAIRED_SSTABLE,
+                        metadata,
+                        StorageService.getPartitioner(),
+                        collector);
             }
         };
         writer.newRow(key);
@@ -1850,7 +1850,7 @@ public class ColumnFamilyStoreTest
         assert sstables.size() == 1;
 
         Map.Entry<Descriptor, Set<Component>> sstableToOpen = sstables.entrySet().iterator().next();
-        final TableReader sstable1 = TableReader.open(sstableToOpen.getKey());
+        final SSTableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
 
         // simulate we don't have generation in compaction_history
         Map<Integer, UUID> unfinishedCompactions = new HashMap<>();

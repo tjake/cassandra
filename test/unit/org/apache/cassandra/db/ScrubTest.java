@@ -37,8 +37,8 @@ import org.apache.cassandra.db.marshal.CounterColumnType;
 import org.apache.cassandra.db.marshal.UUIDType;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.TableFormat;
-import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.UUIDGen;
 import org.apache.commons.lang3.StringUtils;
@@ -124,11 +124,11 @@ public class ScrubTest
         List<Row> rows = cfs.getRangeSlice(Util.range("", ""), null, new IdentityQueryFilter(), 1000);
         assertEquals(2, rows.size());
 
-        TableReader sstable = cfs.getSSTables().iterator().next();
+        SSTableReader sstable = cfs.getSSTables().iterator().next();
 
         // overwrite one row with garbage
-        long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), TableReader.Operator.EQ).position;
-        long row1Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), TableReader.Operator.EQ).position;
+        long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), SSTableReader.Operator.EQ).position;
+        long row1Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), SSTableReader.Operator.EQ).position;
         long startPosition = row0Start < row1Start ? row0Start : row1Start;
         long endPosition = row0Start < row1Start ? row1Start : row0Start;
 
@@ -236,7 +236,7 @@ public class ScrubTest
 
         try
         {
-            TableReader.open(desc, metadata);
+            SSTableReader.open(desc, metadata);
             fail("SSTR validation should have caught the out-of-order rows");
         }
         catch (IllegalStateException ise) { /* this is expected */ }
@@ -250,7 +250,7 @@ public class ScrubTest
         components.add(Component.STATS);
         components.add(Component.SUMMARY);
         components.add(Component.TOC);
-        TableReader sstable = TableReader.openNoValidation(desc, components, metadata);
+        SSTableReader sstable = SSTableReader.openNoValidation(desc, components, metadata);
 
         Scrubber scrubber = new Scrubber(cfs, sstable, false, true);
         scrubber.scrub();

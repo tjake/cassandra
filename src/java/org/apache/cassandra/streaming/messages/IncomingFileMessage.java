@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.util.DataOutputStreamAndChannel;
 import org.apache.cassandra.streaming.StreamReader;
 import org.apache.cassandra.streaming.StreamSession;
@@ -60,9 +60,9 @@ public class IncomingFileMessage extends StreamMessage
     };
 
     public FileMessageHeader header;
-    public TableWriter sstable;
+    public SSTableWriter sstable;
 
-    public IncomingFileMessage(TableWriter sstable, FileMessageHeader header)
+    public IncomingFileMessage(SSTableWriter sstable, FileMessageHeader header)
     {
         super(Type.FILE);
         this.header = header;

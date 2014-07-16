@@ -33,7 +33,7 @@ import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.Composite;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.utils.MergeIterator;
 
 public class QueryFilter
@@ -57,7 +57,7 @@ public class QueryFilter
         return filter.getColumnIterator(cf);
     }
 
-    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable)
+    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable)
     {
         return filter.getSSTableColumnIterator(sstable, key);
     }
@@ -244,7 +244,7 @@ public class QueryFilter
         return getClass().getSimpleName() + "(key=" + key + ", cfName=" + cfName + (filter == null ? "" : ", filter=" + filter) + ")";
     }
 
-    public boolean shouldInclude(TableReader sstable)
+    public boolean shouldInclude(SSTableReader sstable)
     {
         return filter.shouldInclude(sstable);
     }

@@ -20,7 +20,7 @@ package org.apache.cassandra.db.compaction;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -159,7 +159,7 @@ public class LeveledCompactionStrategyTest
         assert strategy.getLevelSize(1) > 0;
 
         // get LeveledScanner for level 1 sstables
-        Collection<TableReader> sstables = strategy.manifest.getLevel(1);
+        Collection<SSTableReader> sstables = strategy.manifest.getLevel(1);
         List<ICompactionScanner> scanners = strategy.getScanners(sstables);
         assertEquals(1, scanners.size()); // should be one per level
         ICompactionScanner scanner = scanners.get(0);
@@ -168,7 +168,7 @@ public class LeveledCompactionStrategyTest
             scanner.next();
 
         // scanner.getCurrentPosition should be equal to total bytes of L1 sstables
-        assert scanner.getCurrentPosition() == TableReader.getTotalBytes(sstables);
+        assert scanner.getCurrentPosition() == SSTableReader.getTotalBytes(sstables);
     }
 
     @Test
@@ -200,7 +200,7 @@ public class LeveledCompactionStrategyTest
         while(CompactionManager.instance.isCompacting(Arrays.asList(cfs)))
             Thread.sleep(100);
 
-        for (TableReader s : cfs.getSSTables())
+        for (SSTableReader s : cfs.getSSTables())
         {
             assertTrue(s.getSSTableLevel() != 6);
             strategy.manifest.remove(s);
@@ -209,7 +209,7 @@ public class LeveledCompactionStrategyTest
             strategy.manifest.add(s);
         }
         // verify that all sstables in the changed set is level 6
-        for (TableReader s : cfs.getSSTables())
+        for (SSTableReader s : cfs.getSSTables())
             assertEquals(6, s.getSSTableLevel());
 
         int[] levels = strategy.manifest.getAllLevelSize();
@@ -248,12 +248,12 @@ public class LeveledCompactionStrategyTest
         assertTrue(strategy.getLevelSize(1) > 0);
         assertTrue(strategy.getLevelSize(2) > 0);
 
-        for (TableReader sstable : cfs.getSSTables())
+        for (SSTableReader sstable : cfs.getSSTables())
         {
             assertFalse(sstable.isRepaired());
         }
         int sstableCount = 0;
-        for (List<TableReader> level : strategy.manifest.generations)
+        for (List<SSTableReader> level : strategy.manifest.generations)
             sstableCount += level.size();
 
         assertEquals(sstableCount, cfs.getSSTables().size());
@@ -261,8 +261,8 @@ public class LeveledCompactionStrategyTest
         assertFalse(strategy.manifest.hasRepairedData());
         assertTrue(strategy.manifest.unrepairedL0.size() == 0);
 
-        TableReader sstable1 = strategy.manifest.generations[2].get(0);
-        TableReader sstable2 = strategy.manifest.generations[1].get(0);
+        SSTableReader sstable1 = strategy.manifest.generations[2].get(0);
+        SSTableReader sstable2 = strategy.manifest.generations[1].get(0);
 
         // "repair" an sstable:
         strategy.manifest.remove(sstable1);

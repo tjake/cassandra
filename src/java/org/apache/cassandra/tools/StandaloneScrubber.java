@@ -21,7 +21,7 @@ package org.apache.cassandra.tools;
 import java.io.File;
 import java.util.*;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.commons.cli.*;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -67,7 +67,7 @@ public class StandaloneScrubber
             OutputHandler handler = new OutputHandler.SystemOutput(options.verbose, options.debug);
             Directories.SSTableLister lister = cfs.directories.sstableLister().skipTemporary(true);
 
-            List<TableReader> sstables = new ArrayList<>();
+            List<SSTableReader> sstables = new ArrayList<>();
 
             // Scrub sstables
             for (Map.Entry<Descriptor, Set<Component>> entry : lister.list().entrySet())
@@ -78,7 +78,7 @@ public class StandaloneScrubber
 
                 try
                 {
-                    TableReader sstable = TableReader.openNoValidation(entry.getKey(), components, cfs.metadata);
+                    SSTableReader sstable = SSTableReader.openNoValidation(entry.getKey(), components, cfs.metadata);
                     sstables.add(sstable);
 
                     File snapshotDirectory = Directories.getSnapshotDirectory(sstable.descriptor, snapshotName);
@@ -104,7 +104,7 @@ public class StandaloneScrubber
 
             if (!options.manifestCheckOnly)
             {
-                for (TableReader sstable : sstables)
+                for (SSTableReader sstable : sstables)
                 {
                     try
                     {

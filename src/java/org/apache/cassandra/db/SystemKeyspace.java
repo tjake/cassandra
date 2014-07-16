@@ -29,7 +29,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -201,15 +201,15 @@ public class SystemKeyspace
      * @param toCompact sstables to compact
      * @return compaction task id or null if cfs is under system keyspace
      */
-    public static UUID startCompaction(ColumnFamilyStore cfs, Iterable<TableReader> toCompact)
+    public static UUID startCompaction(ColumnFamilyStore cfs, Iterable<SSTableReader> toCompact)
     {
         if (Keyspace.SYSTEM_KS.equals(cfs.keyspace.getName()))
             return null;
 
         UUID compactionId = UUIDGen.getTimeUUID();
-        Iterable<Integer> generations = Iterables.transform(toCompact, new Function<TableReader, Integer>()
+        Iterable<Integer> generations = Iterables.transform(toCompact, new Function<SSTableReader, Integer>()
         {
-            public Integer apply(TableReader sstable)
+            public Integer apply(SSTableReader sstable)
             {
                 return sstable.descriptor.generation;
             }

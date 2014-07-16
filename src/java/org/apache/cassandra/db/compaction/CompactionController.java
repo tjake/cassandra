@@ -24,7 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,8 +42,8 @@ public class CompactionController implements AutoCloseable
 
     public final ColumnFamilyStore cfs;
     private final DataTracker.SSTableIntervalTree overlappingTree;
-    private final Set<TableReader> overlappingSSTables;
-    private final Set<TableReader> compacting;
+    private final Set<SSTableReader> overlappingSSTables;
+    private final Set<SSTableReader> compacting;
 
     public final int gcBefore;
 
@@ -52,18 +52,18 @@ public class CompactionController implements AutoCloseable
         this(cfs, null, maxValue);
     }
 
-    public CompactionController(ColumnFamilyStore cfs, Set<TableReader> compacting,  int gcBefore)
+    public CompactionController(ColumnFamilyStore cfs, Set<SSTableReader> compacting,  int gcBefore)
     {
         assert cfs != null;
         this.cfs = cfs;
         this.gcBefore = gcBefore;
         this.compacting = compacting;
-        Set<TableReader> overlapping = compacting == null ? null : cfs.getAndReferenceOverlappingSSTables(compacting);
-        this.overlappingSSTables = overlapping == null ? Collections.<TableReader>emptySet() : overlapping;
+        Set<SSTableReader> overlapping = compacting == null ? null : cfs.getAndReferenceOverlappingSSTables(compacting);
+        this.overlappingSSTables = overlapping == null ? Collections.<SSTableReader>emptySet() : overlapping;
         this.overlappingTree = overlapping == null ? null : DataTracker.buildIntervalTree(overlapping);
     }
 
-    public Set<TableReader> getFullyExpiredSSTables()
+    public Set<SSTableReader> getFullyExpiredSSTables()
     {
         return getFullyExpiredSSTables(cfs, compacting, overlappingSSTables, gcBefore);
     }
@@ -85,21 +85,21 @@ public class CompactionController implements AutoCloseable
      * @param gcBefore
      * @return
      */
-    public static Set<TableReader> getFullyExpiredSSTables(ColumnFamilyStore cfStore, Set<TableReader> compacting, Set<TableReader> overlapping, int gcBefore)
+    public static Set<SSTableReader> getFullyExpiredSSTables(ColumnFamilyStore cfStore, Set<SSTableReader> compacting, Set<SSTableReader> overlapping, int gcBefore)
     {
         logger.debug("Checking droppable sstables in {}", cfStore);
 
         if (compacting == null)
-            return Collections.<TableReader>emptySet();
+            return Collections.<SSTableReader>emptySet();
 
-        List<TableReader> candidates = new ArrayList<>();
+        List<SSTableReader> candidates = new ArrayList<>();
 
         long minTimestamp = Long.MAX_VALUE;
 
-        for (TableReader sstable : overlapping)
+        for (SSTableReader sstable : overlapping)
             minTimestamp = Math.min(minTimestamp, sstable.getMinTimestamp());
 
-        for (TableReader candidate : compacting)
+        for (SSTableReader candidate : compacting)
         {
             if (candidate.getSSTableMetadata().maxLocalDeletionTime < gcBefore)
                 candidates.add(candidate);
@@ -110,12 +110,12 @@ public class CompactionController implements AutoCloseable
         // we still need to keep candidates that might shadow something in a
         // non-candidate sstable. And if we remove a sstable from the candidates, we
         // must take it's timestamp into account (hence the sorting below).
-        Collections.sort(candidates, TableReader.maxTimestampComparator);
+        Collections.sort(candidates, SSTableReader.maxTimestampComparator);
 
-        Iterator<TableReader> iterator = candidates.iterator();
+        Iterator<SSTableReader> iterator = candidates.iterator();
         while (iterator.hasNext())
         {
-            TableReader candidate = iterator.next();
+            SSTableReader candidate = iterator.next();
             if (candidate.getMaxTimestamp() >= minTimestamp)
             {
                 minTimestamp = Math.min(candidate.getMinTimestamp(), minTimestamp);
@@ -148,13 +148,13 @@ public class CompactionController implements AutoCloseable
      */
     public long maxPurgeableTimestamp(DecoratedKey key)
     {
-        List<TableReader> filteredSSTables = overlappingTree.search(key);
+        List<SSTableReader> filteredSSTables = overlappingTree.search(key);
         long min = Long.MAX_VALUE;
-        for (TableReader sstable : filteredSSTables)
+        for (SSTableReader sstable : filteredSSTables)
         {
             // if we don't have bloom filter(bf_fp_chance=1.0 or filter file is missing),
             // we check index file instead.
-            if (sstable.getBloomFilter() instanceof AlwaysPresentFilter && sstable.getPosition(key, TableReader.Operator.EQ, false) != null)
+            if (sstable.getBloomFilter() instanceof AlwaysPresentFilter && sstable.getPosition(key, SSTableReader.Operator.EQ, false) != null)
                 min = Math.min(min, sstable.getMinTimestamp());
             else if (sstable.getBloomFilter().isPresent(key.getKey()))
                 min = Math.min(min, sstable.getMinTimestamp());
@@ -169,6 +169,6 @@ public class CompactionController implements AutoCloseable
 
     public void close()
     {
-        TableReader.releaseReferences(overlappingSSTables);
+        SSTableReader.releaseReferences(overlappingSSTables);
     }
 }

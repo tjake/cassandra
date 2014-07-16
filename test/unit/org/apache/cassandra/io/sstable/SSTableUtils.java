@@ -25,8 +25,8 @@ import java.util.*;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -81,7 +81,7 @@ public class SSTableUtils
         return datafile;
     }
 
-    public static void assertContentEquals(TableReader lhs, TableReader rhs)
+    public static void assertContentEquals(SSTableReader lhs, SSTableReader rhs)
     {
         SSTableScanner slhs = lhs.getScanner();
         SSTableScanner srhs = rhs.getScanner();
@@ -172,7 +172,7 @@ public class SSTableUtils
             return this;
         }
 
-        public TableReader write(Set<String> keys) throws IOException
+        public SSTableReader write(Set<String> keys) throws IOException
         {
             Map<String, ColumnFamily> map = new HashMap<String, ColumnFamily>();
             for (String key : keys)
@@ -184,13 +184,13 @@ public class SSTableUtils
             return write(map);
         }
 
-        public TableReader write(SortedMap<DecoratedKey, ColumnFamily> sorted) throws IOException
+        public SSTableReader write(SortedMap<DecoratedKey, ColumnFamily> sorted) throws IOException
         {
             final Iterator<Map.Entry<DecoratedKey, ColumnFamily>> iter = sorted.entrySet().iterator();
             return write(sorted.size(), new Appender()
             {
                 @Override
-                public boolean append(TableWriter writer) throws IOException
+                public boolean append(SSTableWriter writer) throws IOException
                 {
                     if (!iter.hasNext())
                         return false;
@@ -201,7 +201,7 @@ public class SSTableUtils
             });
         }
 
-        public TableReader write(Map<String, ColumnFamily> entries) throws IOException
+        public SSTableReader write(Map<String, ColumnFamily> entries) throws IOException
         {
             SortedMap<DecoratedKey, ColumnFamily> sorted = new TreeMap<DecoratedKey, ColumnFamily>();
             for (Map.Entry<String, ColumnFamily> entry : entries.entrySet())
@@ -210,12 +210,12 @@ public class SSTableUtils
             return write(sorted);
         }
 
-        public TableReader write(int expectedSize, Appender appender) throws IOException
+        public SSTableReader write(int expectedSize, Appender appender) throws IOException
         {
             File datafile = (dest == null) ? tempSSTableFile(ksname, cfname, generation) : new File(dest.filenameFor(Component.DATA));
-            TableWriter writer = TableWriter.create(Descriptor.fromFilename(datafile.getAbsolutePath()), expectedSize, ActiveRepairService.UNREPAIRED_SSTABLE);
+            SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(datafile.getAbsolutePath()), expectedSize, ActiveRepairService.UNREPAIRED_SSTABLE);
             while (appender.append(writer)) { /* pass */ }
-            TableReader reader = writer.closeAndOpenReader();
+            SSTableReader reader = writer.closeAndOpenReader();
             // mark all components for removal
             if (cleanup)
                 for (Component component : reader.components)
@@ -227,6 +227,6 @@ public class SSTableUtils
     public static abstract class Appender
     {
         /** Called with an open writer until it returns false. */
-        public abstract boolean append(TableWriter writer) throws IOException;
+        public abstract boolean append(SSTableWriter writer) throws IOException;
     }
 }

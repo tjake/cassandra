@@ -21,7 +21,7 @@ package org.apache.cassandra.io.sstable;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -90,7 +90,7 @@ public class SSTableScannerTest
         rm.applyUnsafe();
     }
 
-    private static void assertScanMatches(TableReader sstable, int scanStart, int scanEnd, int expectedStart, int expectedEnd)
+    private static void assertScanMatches(SSTableReader sstable, int scanStart, int scanEnd, int expectedStart, int expectedEnd)
     {
         SSTableScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
         for (int i = expectedStart; i <= expectedEnd; i++)
@@ -98,7 +98,7 @@ public class SSTableScannerTest
         assertFalse(scanner.hasNext());
     }
 
-    private static void assertScanEmpty(TableReader sstable, int scanStart, int scanEnd)
+    private static void assertScanEmpty(SSTableReader sstable, int scanStart, int scanEnd)
     {
         SSTableScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
         assertFalse(String.format("scan of (%03d, %03d] should be empty", scanStart, scanEnd), scanner.hasNext());
@@ -119,7 +119,7 @@ public class SSTableScannerTest
         store.forceBlockingFlush();
 
         assertEquals(1, store.getSSTables().size());
-        TableReader sstable = store.getSSTables().iterator().next();
+        SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
         SSTableScanner scanner = sstable.getScanner();
@@ -183,7 +183,7 @@ public class SSTableScannerTest
         store.forceBlockingFlush();
 
         assertEquals(1, store.getSSTables().size());
-        TableReader sstable = store.getSSTables().iterator().next();
+        SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
         SSTableScanner fullScanner = sstable.getScanner();
@@ -313,7 +313,7 @@ public class SSTableScannerTest
         store.forceBlockingFlush();
 
         assertEquals(1, store.getSSTables().size());
-        TableReader sstable = store.getSSTables().iterator().next();
+        SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
         SSTableScanner fullScanner = sstable.getScanner();

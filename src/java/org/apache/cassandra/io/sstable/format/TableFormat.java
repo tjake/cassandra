@@ -11,8 +11,8 @@ public interface TableFormat
     Version getLatestVersion();
     Version getVersion(String version);
 
-    Class<? extends TableWriter> getWriter();
-    Class<? extends TableReader> getReader();
+    Class<? extends SSTableWriter> getWriter();
+    Class<? extends SSTableReader> getReader();
 
     static enum Type
     {

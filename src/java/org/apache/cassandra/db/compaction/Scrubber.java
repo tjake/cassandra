@@ -25,8 +25,8 @@ import com.google.common.base.Throwables;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -36,7 +36,7 @@ import org.apache.cassandra.utils.OutputHandler;
 public class Scrubber implements Closeable
 {
     private final ColumnFamilyStore cfs;
-    private final TableReader sstable;
+    private final SSTableReader sstable;
     private final File destination;
     private final boolean skipCorrupted;
 
@@ -50,8 +50,8 @@ public class Scrubber implements Closeable
 
     private final boolean isOffline;
 
-    private TableReader newSstable;
-    private TableReader newInOrderSstable;
+    private SSTableReader newSstable;
+    private SSTableReader newInOrderSstable;
 
     private int goodRows;
     private int badRows;
@@ -68,12 +68,12 @@ public class Scrubber implements Closeable
     };
     private final SortedSet<Row> outOfOrderRows = new TreeSet<>(rowComparator);
 
-    public Scrubber(ColumnFamilyStore cfs, TableReader sstable, boolean skipCorrupted, boolean isOffline) throws IOException
+    public Scrubber(ColumnFamilyStore cfs, SSTableReader sstable, boolean skipCorrupted, boolean isOffline) throws IOException
     {
         this(cfs, sstable, skipCorrupted, new OutputHandler.LogOutput(), isOffline);
     }
 
-    public Scrubber(ColumnFamilyStore cfs, TableReader sstable, boolean skipCorrupted, OutputHandler outputHandler, boolean isOffline) throws IOException
+    public Scrubber(ColumnFamilyStore cfs, SSTableReader sstable, boolean skipCorrupted, OutputHandler outputHandler, boolean isOffline) throws IOException
     {
         this.cfs = cfs;
         this.sstable = sstable;
@@ -86,13 +86,13 @@ public class Scrubber implements Closeable
         if (destination == null)
             throw new IOException("disk full");
 
-        List<TableReader> toScrub = Collections.singletonList(sstable);
+        List<SSTableReader> toScrub = Collections.singletonList(sstable);
         // If we run scrub offline, we should never purge tombstone, as we cannot know if other sstable have data that the tombstone deletes.
         this.controller = isOffline
                         ? new ScrubController(cfs)
                         : new CompactionController(cfs, Collections.singleton(sstable), CompactionManager.getDefaultGcBefore(cfs));
         this.isCommutative = cfs.metadata.isCounter();
-        this.expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(TableReader.getApproximateKeyCount(toScrub)));
+        this.expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(toScrub)));
 
         // loop through each row, deserializing to check for damage.
         // we'll also loop through the index at the same time, using the position from the index to recover if the
@@ -246,7 +246,7 @@ public class Scrubber implements Closeable
             {
                 // out of order rows, but no bad rows found - we can keep our repairedAt time
                 long repairedAt = badRows > 0 ? ActiveRepairService.UNREPAIRED_SSTABLE : sstable.getSSTableMetadata().repairedAt;
-                TableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);
+                SSTableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);
                 for (Row row : outOfOrderRows)
                     inOrderWriter.append(row.key, row.cf);
                 newInOrderSstable = inOrderWriter.closeAndOpenReader(sstable.maxDataAge);
@@ -300,12 +300,12 @@ public class Scrubber implements Closeable
         outOfOrderRows.add(new Row(key, cf));
     }
 
-    public TableReader getNewSSTable()
+    public SSTableReader getNewSSTable()
     {
         return newSstable;
     }
 
-    public TableReader getNewInOrderSSTable()
+    public SSTableReader getNewInOrderSSTable()
     {
         return newInOrderSstable;
     }
@@ -343,9 +343,9 @@ public class Scrubber implements Closeable
     private static class ScrubInfo extends CompactionInfo.Holder
     {
         private final RandomAccessReader dataFile;
-        private final TableReader sstable;
+        private final SSTableReader sstable;
 
-        public ScrubInfo(RandomAccessReader dataFile, TableReader sstable)
+        public ScrubInfo(RandomAccessReader dataFile, SSTableReader sstable)
         {
             this.dataFile = dataFile;
             this.sstable = sstable;

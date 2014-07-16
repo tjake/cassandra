@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -296,11 +296,11 @@ public class ActiveRepairService
 
     public void registerParentRepairSession(UUID parentRepairSession, List<ColumnFamilyStore> columnFamilyStores, Collection<Range<Token>> ranges)
     {
-        Map<UUID, Set<TableReader>> sstablesToRepair = new HashMap<>();
+        Map<UUID, Set<SSTableReader>> sstablesToRepair = new HashMap<>();
         for (ColumnFamilyStore cfs : columnFamilyStores)
         {
-            Set<TableReader> sstables = new HashSet<>();
-            for (TableReader sstable : cfs.getSSTables())
+            Set<SSTableReader> sstables = new HashSet<>();
+            for (SSTableReader sstable : cfs.getSSTables())
             {
                 if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(ranges))
                 {
@@ -351,15 +351,15 @@ public class ActiveRepairService
         for (Map.Entry<UUID, ColumnFamilyStore> columnFamilyStoreEntry : prs.columnFamilyStores.entrySet())
         {
 
-            Collection<TableReader> sstables = new HashSet<>(prs.getAndReferenceSSTables(columnFamilyStoreEntry.getKey()));
+            Collection<SSTableReader> sstables = new HashSet<>(prs.getAndReferenceSSTables(columnFamilyStoreEntry.getKey()));
             ColumnFamilyStore cfs = columnFamilyStoreEntry.getValue();
             boolean success = false;
             while (!success)
             {
-                for (TableReader compactingSSTable : cfs.getDataTracker().getCompacting())
+                for (SSTableReader compactingSSTable : cfs.getDataTracker().getCompacting())
                 {
                     if (sstables.remove(compactingSSTable))
-                        TableReader.releaseReferences(Arrays.asList(compactingSSTable));
+                        SSTableReader.releaseReferences(Arrays.asList(compactingSSTable));
                 }
                 success = sstables.isEmpty() || cfs.getDataTracker().markCompacting(sstables);
             }
@@ -396,10 +396,10 @@ public class ActiveRepairService
     {
         public final Map<UUID, ColumnFamilyStore> columnFamilyStores = new HashMap<>();
         public final Collection<Range<Token>> ranges;
-        public final Map<UUID, Set<TableReader>> sstableMap;
+        public final Map<UUID, Set<SSTableReader>> sstableMap;
         public final long repairedAt;
 
-        public ParentRepairSession(List<ColumnFamilyStore> columnFamilyStores, Collection<Range<Token>> ranges, Map<UUID, Set<TableReader>> sstables, long repairedAt)
+        public ParentRepairSession(List<ColumnFamilyStore> columnFamilyStores, Collection<Range<Token>> ranges, Map<UUID, Set<SSTableReader>> sstables, long repairedAt)
         {
             for (ColumnFamilyStore cfs : columnFamilyStores)
                 this.columnFamilyStores.put(cfs.metadata.cfId, cfs);
@@ -408,13 +408,13 @@ public class ActiveRepairService
             this.repairedAt = repairedAt;
         }
 
-        public Collection<TableReader> getAndReferenceSSTables(UUID cfId)
+        public Collection<SSTableReader> getAndReferenceSSTables(UUID cfId)
         {
-            Set<TableReader> sstables = sstableMap.get(cfId);
-            Iterator<TableReader> sstableIterator = sstables.iterator();
+            Set<SSTableReader> sstables = sstableMap.get(cfId);
+            Iterator<SSTableReader> sstableIterator = sstables.iterator();
             while (sstableIterator.hasNext())
             {
-                TableReader sstable = sstableIterator.next();
+                SSTableReader sstable = sstableIterator.next();
                 if (!new File(sstable.descriptor.filenameFor(Component.DATA)).exists())
                 {
                     sstableIterator.remove();

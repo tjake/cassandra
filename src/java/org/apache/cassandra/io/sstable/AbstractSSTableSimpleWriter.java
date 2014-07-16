@@ -29,8 +29,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.io.sstable.format.TableWriter;
-import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.CounterId;
 import org.apache.cassandra.utils.Pair;
@@ -51,9 +50,9 @@ public abstract class AbstractSSTableSimpleWriter
         DatabaseDescriptor.setPartitioner(partitioner);
     }
 
-    protected TableWriter getWriter()
+    protected SSTableWriter getWriter()
     {
-        return TableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName)), 0, ActiveRepairService.UNREPAIRED_SSTABLE);
+        return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName)), 0, ActiveRepairService.UNREPAIRED_SSTABLE);
     }
 
     // find available generation and pick up filename from that

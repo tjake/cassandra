@@ -35,8 +35,8 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.compaction.AbstractCompactedRow;
 import org.apache.cassandra.db.compaction.OperationType;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -71,24 +71,24 @@ public class SSTableRewriter
     private final ColumnFamilyStore cfs;
 
     private final long maxAge;
-    private final Set<TableReader> rewriting; // the readers we are rewriting (updated as they are replaced)
+    private final Set<SSTableReader> rewriting; // the readers we are rewriting (updated as they are replaced)
     private final Map<Descriptor, DecoratedKey> originalStarts = new HashMap<>(); // the start key for each reader we are rewriting
     private final Map<Descriptor, Integer> fileDescriptors = new HashMap<>(); // the file descriptors for each reader descriptor we are rewriting
 
-    private TableReader currentlyOpenedEarly; // the reader for the most recent (re)opening of the target file
+    private SSTableReader currentlyOpenedEarly; // the reader for the most recent (re)opening of the target file
     private long currentlyOpenedEarlyAt; // the position (in MB) in the target file we last (re)opened at
 
-    private final List<TableReader> finished = new ArrayList<>(); // the resultant sstables
+    private final List<SSTableReader> finished = new ArrayList<>(); // the resultant sstables
     private final OperationType rewriteType; // the type of rewrite/compaction being performed
     private final boolean isOffline; // true for operations that are performed without Cassandra running (prevents updates of DataTracker)
 
-    private TableWriter writer;
+    private SSTableWriter writer;
     private Map<DecoratedKey, RowIndexEntry> cachedKeys = new HashMap<>();
 
-    public SSTableRewriter(ColumnFamilyStore cfs, Set<TableReader> rewriting, long maxAge, OperationType rewriteType, boolean isOffline)
+    public SSTableRewriter(ColumnFamilyStore cfs, Set<SSTableReader> rewriting, long maxAge, OperationType rewriteType, boolean isOffline)
     {
         this.rewriting = rewriting;
-        for (TableReader sstable : rewriting)
+        for (SSTableReader sstable : rewriting)
         {
             originalStarts.put(sstable.descriptor, sstable.first);
             fileDescriptors.put(sstable.descriptor, CLibrary.getfd(sstable.getFilename()));
@@ -100,7 +100,7 @@ public class SSTableRewriter
         this.isOffline = isOffline;
     }
 
-    public TableWriter currentWriter()
+    public SSTableWriter currentWriter()
     {
         return writer;
     }
@@ -119,7 +119,7 @@ public class SSTableRewriter
             else
             {
                 boolean save = false;
-                for (TableReader reader : rewriting)
+                for (SSTableReader reader : rewriting)
                 {
                     if (reader.getCachedPosition(row.key, false) != null)
                     {
@@ -165,15 +165,15 @@ public class SSTableRewriter
         {
             if (isOffline)
             {
-                for (TableReader reader : rewriting)
+                for (SSTableReader reader : rewriting)
                 {
-                    RowIndexEntry index = reader.getPosition(key, TableReader.Operator.GE);
+                    RowIndexEntry index = reader.getPosition(key, SSTableReader.Operator.GE);
                     CLibrary.trySkipCache(fileDescriptors.get(reader.descriptor), 0, index == null ? 0 : index.position);
                 }
             }
             else
             {
-                TableReader reader = writer.openEarly(maxAge);
+                SSTableReader reader = writer.openEarly(maxAge);
                 if (reader != null)
                 {
                     replaceReader(currentlyOpenedEarly, reader);
@@ -190,16 +190,16 @@ public class SSTableRewriter
         if (writer == null)
             return;
         moveStarts(null, Functions.forMap(originalStarts), true);
-        List<TableReader> close = new ArrayList<>(finished);
+        List<SSTableReader> close = new ArrayList<>(finished);
         if (currentlyOpenedEarly != null)
             close.add(currentlyOpenedEarly);
         // also remove already completed SSTables
-        for (TableReader sstable : close)
+        for (SSTableReader sstable : close)
             sstable.markObsolete();
         // releases reference in replaceReaders
         if (!isOffline)
         {
-            dataTracker.replaceReaders(close, Collections.<TableReader>emptyList());
+            dataTracker.replaceReaders(close, Collections.<SSTableReader>emptyList());
             dataTracker.unmarkCompacting(close);
         }
         writer.abort(currentlyOpenedEarly == null);
@@ -214,12 +214,12 @@ public class SSTableRewriter
      * @param newStarts a function mapping a reader's descriptor to their new start value
      * @param reset true iff we are restoring earlier starts (increasing the range over which they are valid)
      */
-    private void moveStarts(TableReader newReader, Function<? super Descriptor, DecoratedKey> newStarts, boolean reset)
+    private void moveStarts(SSTableReader newReader, Function<? super Descriptor, DecoratedKey> newStarts, boolean reset)
     {
         if (isOffline)
             return;
-        List<TableReader> toReplace = new ArrayList<>();
-        List<TableReader> replaceWith = new ArrayList<>();
+        List<SSTableReader> toReplace = new ArrayList<>();
+        List<SSTableReader> replaceWith = new ArrayList<>();
         final List<DecoratedKey> invalidateKeys = new ArrayList<>();
         if (!reset)
         {
@@ -228,7 +228,7 @@ public class SSTableRewriter
                 newReader.cacheKey(cacheKey.getKey(), cacheKey.getValue());
         }
         cachedKeys = new HashMap<>();
-        for (final TableReader sstable : rewriting)
+        for (final SSTableReader sstable : rewriting)
         {
             DecoratedKey newStart = newStarts.apply(sstable.descriptor);
             assert newStart != null;
@@ -254,11 +254,11 @@ public class SSTableRewriter
         rewriting.addAll(replaceWith);
     }
 
-    private void replaceReader(TableReader toReplace, TableReader replaceWith)
+    private void replaceReader(SSTableReader toReplace, SSTableReader replaceWith)
     {
         if (isOffline)
             return;
-        Set<TableReader> toReplaceSet;
+        Set<SSTableReader> toReplaceSet;
         if (toReplace != null)
         {
             toReplace.setReplacedBy(replaceWith);
@@ -272,14 +272,14 @@ public class SSTableRewriter
         replaceReaders(toReplaceSet, Collections.singleton(replaceWith));
     }
 
-    private void replaceReaders(Collection<TableReader> toReplace, Collection<TableReader> replaceWith)
+    private void replaceReaders(Collection<SSTableReader> toReplace, Collection<SSTableReader> replaceWith)
     {
         if (isOffline)
             return;
         dataTracker.replaceReaders(toReplace, replaceWith);
     }
 
-    public void switchWriter(TableWriter newWriter)
+    public void switchWriter(SSTableWriter newWriter)
     {
         if (writer == null)
         {
@@ -287,7 +287,7 @@ public class SSTableRewriter
             return;
         }
         // tmp = false because later we want to query it with descriptor from SSTableReader
-        TableReader reader = writer.closeAndOpenReader(maxAge);
+        SSTableReader reader = writer.closeAndOpenReader(maxAge);
         finished.add(reader);
         replaceReader(currentlyOpenedEarly, reader);
         moveStarts(reader, Functions.constant(reader.last), false);
@@ -312,7 +312,7 @@ public class SSTableRewriter
     {
         if (writer.getFilePointer() > 0)
         {
-            TableReader reader = repairedAt < 0 ?
+            SSTableReader reader = repairedAt < 0 ?
                                     writer.closeAndOpenReader(maxAge) :
                                     writer.closeAndOpenReader(maxAge, repairedAt);
             finished.add(reader);
@@ -333,7 +333,7 @@ public class SSTableRewriter
         }
         else if (cleanupOldReaders)
         {
-            for (TableReader reader : rewriting)
+            for (SSTableReader reader : rewriting)
             {
                 reader.markObsolete();
                 reader.releaseReference();
@@ -341,7 +341,7 @@ public class SSTableRewriter
         }
     }
 
-    public List<TableReader> finished()
+    public List<SSTableReader> finished()
     {
         return finished;
     }

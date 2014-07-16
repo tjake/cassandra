@@ -48,7 +48,6 @@ import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.*;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.slf4j.Logger;
@@ -71,16 +70,16 @@ import static org.apache.cassandra.db.Directories.SECONDARY_INDEX_NAME_SEPARATOR
  * SSTableReaders are open()ed by Keyspace.onStart; after that they are created by SSTableWriter.renameAndOpen.
  * Do not re-call open() on existing SSTable files; use the references kept by ColumnFamilyStore post-start instead.
  */
-public abstract class TableReader extends SSTable
+public abstract class SSTableReader extends SSTable
 {
-    private static final Logger logger = LoggerFactory.getLogger(TableReader.class);
+    private static final Logger logger = LoggerFactory.getLogger(SSTableReader.class);
 
     private static final ScheduledThreadPoolExecutor syncExecutor = new ScheduledThreadPoolExecutor(1);
     private static final RateLimiter meterSyncThrottle = RateLimiter.create(100.0);
 
-    public static final Comparator<TableReader> maxTimestampComparator = new Comparator<TableReader>()
+    public static final Comparator<SSTableReader> maxTimestampComparator = new Comparator<SSTableReader>()
     {
-        public int compare(TableReader o1, TableReader o2)
+        public int compare(SSTableReader o1, SSTableReader o2)
         {
             long ts1 = o1.getMaxTimestamp();
             long ts2 = o2.getMaxTimestamp();
@@ -88,15 +87,15 @@ public abstract class TableReader extends SSTable
         }
     };
 
-    public static final Comparator<TableReader> sstableComparator = new Comparator<TableReader>()
+    public static final Comparator<SSTableReader> sstableComparator = new Comparator<SSTableReader>()
     {
-        public int compare(TableReader o1, TableReader o2)
+        public int compare(SSTableReader o1, SSTableReader o2)
         {
             return o1.first.compareTo(o2.first);
         }
     };
 
-    public static final Ordering<TableReader> sstableOrdering = Ordering.from(sstableComparator);
+    public static final Ordering<SSTableReader> sstableOrdering = Ordering.from(sstableComparator);
 
     /**
      * maxDataAge is a timestamp in local server time (e.g. System.currentTimeMilli) which represents an upper bound
@@ -143,8 +142,8 @@ public abstract class TableReader extends SSTable
      * Once we've made this decision we remove ourselves from the linked list, so that anybody behind/ahead will compare against only other still opened resources.
      */
     protected Object replaceLock = new Object();
-    protected TableReader replacedBy;
-    private TableReader replaces;
+    protected SSTableReader replacedBy;
+    private SSTableReader replaces;
     private SSTableDeletingTask deletingTask;
     private Runnable runOnClose;
 
@@ -153,7 +152,7 @@ public abstract class TableReader extends SSTable
     protected ScheduledFuture readMeterSyncFuture;
 
 
-    public static TableReader open(Descriptor descriptor) throws IOException
+    public static SSTableReader open(Descriptor descriptor) throws IOException
     {
         CFMetaData metadata;
         if (descriptor.cfname.contains(SECONDARY_INDEX_NAME_SEPARATOR))
@@ -171,7 +170,7 @@ public abstract class TableReader extends SSTable
         return open(descriptor, metadata);
     }
 
-    public static TableReader open(Descriptor desc, CFMetaData metadata) throws IOException
+    public static SSTableReader open(Descriptor desc, CFMetaData metadata) throws IOException
     {
         IPartitioner p = desc.cfname.contains(SECONDARY_INDEX_NAME_SEPARATOR)
                 ? new LocalPartitioner(metadata.getKeyValidator())
@@ -179,12 +178,12 @@ public abstract class TableReader extends SSTable
         return open(desc, componentsFor(desc), metadata, p);
     }
 
-    public static TableReader open(Descriptor descriptor, Set<Component> components, CFMetaData metadata, IPartitioner partitioner) throws IOException
+    public static SSTableReader open(Descriptor descriptor, Set<Component> components, CFMetaData metadata, IPartitioner partitioner) throws IOException
     {
         return open(descriptor, components, metadata, partitioner, true);
     }
 
-    public static TableReader openNoValidation(Descriptor descriptor, Set<Component> components, CFMetaData metadata) throws IOException
+    public static SSTableReader openNoValidation(Descriptor descriptor, Set<Component> components, CFMetaData metadata) throws IOException
     {
         return open(descriptor, components, metadata, StorageService.getPartitioner(), false);
     }
@@ -199,7 +198,7 @@ public abstract class TableReader extends SSTable
      * @return opened SSTableReader
      * @throws IOException
      */
-    public static TableReader openForBatch(Descriptor descriptor, Set<Component> components, CFMetaData metadata, IPartitioner partitioner) throws IOException
+    public static SSTableReader openForBatch(Descriptor descriptor, Set<Component> components, CFMetaData metadata, IPartitioner partitioner) throws IOException
     {
         // Minimum components without which we can't do anything
         assert components.contains(Component.DATA) : "Data component is missing for sstable" + descriptor;
@@ -222,7 +221,7 @@ public abstract class TableReader extends SSTable
         }
 
         logger.info("Opening {} ({} bytes)", descriptor, new File(descriptor.filenameFor(Component.DATA)).length());
-        TableReader sstable = internalOpen(descriptor, components, metadata, partitioner, System.currentTimeMillis(),
+        SSTableReader sstable = internalOpen(descriptor, components, metadata, partitioner, System.currentTimeMillis(),
                 statsMetadata, false);
 
         // special implementation of load to use non-pooled SegmentedFile builders
@@ -239,7 +238,7 @@ public abstract class TableReader extends SSTable
         return sstable;
     }
 
-    private static TableReader open(Descriptor descriptor,
+    private static SSTableReader open(Descriptor descriptor,
                                       Set<Component> components,
                                       CFMetaData metadata,
                                       IPartitioner partitioner,
@@ -266,7 +265,7 @@ public abstract class TableReader extends SSTable
         }
 
         logger.info("Opening {} ({} bytes)", descriptor, new File(descriptor.filenameFor(Component.DATA)).length());
-        TableReader sstable = internalOpen(descriptor, components, metadata, partitioner, System.currentTimeMillis(),
+        SSTableReader sstable = internalOpen(descriptor, components, metadata, partitioner, System.currentTimeMillis(),
                 statsMetadata, false);
 
         // load index and filter
@@ -291,11 +290,11 @@ public abstract class TableReader extends SSTable
             logger.error("Corrupt sstable {}; skipped", descriptor, e);
     }
 
-    public static Collection<TableReader> openAll(Set<Map.Entry<Descriptor, Set<Component>>> entries,
+    public static Collection<SSTableReader> openAll(Set<Map.Entry<Descriptor, Set<Component>>> entries,
                                                     final CFMetaData metadata,
                                                     final IPartitioner partitioner)
     {
-        final Collection<TableReader> sstables = new LinkedBlockingQueue<>();
+        final Collection<SSTableReader> sstables = new LinkedBlockingQueue<>();
 
         ExecutorService executor = DebuggableThreadPoolExecutor.createWithFixedPoolSize("SSTableBatchOpen", FBUtilities.getAvailableProcessors());
         for (final Map.Entry<Descriptor, Set<Component>> entry : entries)
@@ -304,7 +303,7 @@ public abstract class TableReader extends SSTable
             {
                 public void run()
                 {
-                    TableReader sstable;
+                    SSTableReader sstable;
                     try
                     {
                         sstable = open(entry.getKey(), entry.getValue(), metadata, partitioner);
@@ -337,7 +336,7 @@ public abstract class TableReader extends SSTable
     /**
      * Open a RowIndexedReader which already has its state initialized (by SSTableWriter).
      */
-    public static TableReader internalOpen(Descriptor desc,
+    public static SSTableReader internalOpen(Descriptor desc,
                                       Set<Component> components,
                                       CFMetaData metadata,
                                       IPartitioner partitioner,
@@ -351,7 +350,7 @@ public abstract class TableReader extends SSTable
     {
         assert desc != null && partitioner != null && ifile != null && dfile != null && isummary != null && bf != null && sstableMetadata != null;
 
-        TableReader reader = internalOpen(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+        SSTableReader reader = internalOpen(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
 
         reader.bf = bf;
         reader.ifile = ifile;
@@ -371,14 +370,14 @@ public abstract class TableReader extends SSTable
      * @param sstables SSTables to calculate key count
      * @return estimated key count
      */
-    public static long getApproximateKeyCount(Collection<TableReader> sstables)
+    public static long getApproximateKeyCount(Collection<SSTableReader> sstables)
     {
         long count = -1;
 
         // check if cardinality estimator is available for all SSTables
-        boolean cardinalityAvailable = !sstables.isEmpty() && Iterators.all(sstables.iterator(), new Predicate<TableReader>()
+        boolean cardinalityAvailable = !sstables.isEmpty() && Iterators.all(sstables.iterator(), new Predicate<SSTableReader>()
         {
-            public boolean apply(TableReader sstable)
+            public boolean apply(SSTableReader sstable)
             {
                 return sstable.descriptor.version.hasNewStatsFile();
             }
@@ -389,7 +388,7 @@ public abstract class TableReader extends SSTable
         {
             boolean failed = false;
             ICardinality cardinality = null;
-            for (TableReader sstable : sstables)
+            for (SSTableReader sstable : sstables)
             {
                 try
                 {
@@ -419,14 +418,14 @@ public abstract class TableReader extends SSTable
         // if something went wrong above or cardinality is not available, calculate using index summary
         if (count < 0)
         {
-            for (TableReader sstable : sstables)
+            for (SSTableReader sstable : sstables)
                 count += sstable.estimatedKeys();
         }
         return count;
     }
 
 
-    private static TableReader internalOpen(final Descriptor descriptor,
+    private static SSTableReader internalOpen(final Descriptor descriptor,
                                             Set<Component> components,
                                             CFMetaData metadata,
                                             IPartitioner partitioner,
@@ -434,11 +433,11 @@ public abstract class TableReader extends SSTable
                                             StatsMetadata sstableMetadata,
                                             Boolean isOpenEarly)
     {
-        Class<? extends TableReader> readerClass = descriptor.fmt.info.getReader();
+        Class<? extends SSTableReader> readerClass = descriptor.fmt.info.getReader();
 
         try
         {
-            Constructor<? extends TableReader> constructor = readerClass.getConstructor(Descriptor.class, Set.class, CFMetaData.class, IPartitioner.class, Long.class, StatsMetadata.class, Boolean.class);
+            Constructor<? extends SSTableReader> constructor = readerClass.getConstructor(Descriptor.class, Set.class, CFMetaData.class, IPartitioner.class, Long.class, StatsMetadata.class, Boolean.class);
 
             return constructor.newInstance(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
         }
@@ -453,13 +452,13 @@ public abstract class TableReader extends SSTable
         }
     }
 
-    protected TableReader(final Descriptor desc,
-                          Set<Component> components,
-                          CFMetaData metadata,
-                          IPartitioner partitioner,
-                          long maxDataAge,
-                          StatsMetadata sstableMetadata,
-                          boolean isOpenEarly)
+    protected SSTableReader(final Descriptor desc,
+                            Set<Component> components,
+                            CFMetaData metadata,
+                            IPartitioner partitioner,
+                            long maxDataAge,
+                            StatsMetadata sstableMetadata,
+                            boolean isOpenEarly)
     {
         super(desc, components, metadata, partitioner);
         this.sstableMetadata = sstableMetadata;
@@ -492,10 +491,10 @@ public abstract class TableReader extends SSTable
         }, 1, 5, TimeUnit.MINUTES);
     }
 
-    public static long getTotalBytes(Iterable<TableReader> sstables)
+    public static long getTotalBytes(Iterable<SSTableReader> sstables)
     {
         long sum = 0;
-        for (TableReader sstable : sstables)
+        for (SSTableReader sstable : sstables)
         {
             sum += sstable.onDiskLength();
         }
@@ -615,7 +614,7 @@ public abstract class TableReader extends SSTable
 
     public boolean equals(Object that)
     {
-        return that instanceof TableReader && ((TableReader) that).descriptor.equals(this.descriptor);
+        return that instanceof SSTableReader && ((SSTableReader) that).descriptor.equals(this.descriptor);
     }
 
     public int hashCode()
@@ -856,7 +855,7 @@ public abstract class TableReader extends SSTable
         }
     }
 
-    public void setReplacedBy(TableReader replacement)
+    public void setReplacedBy(SSTableReader replacement)
     {
         synchronized (replaceLock)
         {
@@ -867,7 +866,7 @@ public abstract class TableReader extends SSTable
         }
     }
 
-    public TableReader cloneWithNewStart(DecoratedKey newStart, final Runnable runOnClose)
+    public SSTableReader cloneWithNewStart(DecoratedKey newStart, final Runnable runOnClose)
     {
         synchronized (replaceLock)
         {
@@ -905,7 +904,7 @@ public abstract class TableReader extends SSTable
 
             if (readMeterSyncFuture != null)
                 readMeterSyncFuture.cancel(false);
-            TableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, indexSummary.readOnlyClone(), bf, maxDataAge, sstableMetadata, isOpenEarly);
+            SSTableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, indexSummary.readOnlyClone(), bf, maxDataAge, sstableMetadata, isOpenEarly);
             replacement.readMeter = this.readMeter;
             replacement.first = this.last.compareTo(newStart) > 0 ? newStart : this.last;
             replacement.last = this.last;
@@ -922,7 +921,7 @@ public abstract class TableReader extends SSTable
      * @return a new SSTableReader
      * @throws IOException
      */
-    public TableReader cloneWithNewSummarySamplingLevel(ColumnFamilyStore parent, int samplingLevel) throws IOException
+    public SSTableReader cloneWithNewSummarySamplingLevel(ColumnFamilyStore parent, int samplingLevel) throws IOException
     {
         synchronized (replaceLock)
         {
@@ -968,7 +967,7 @@ public abstract class TableReader extends SSTable
             if (readMeterSyncFuture != null)
                 readMeterSyncFuture.cancel(false);
 
-            TableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, newSummary, bf, maxDataAge, sstableMetadata, isOpenEarly);
+            SSTableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, newSummary, bf, maxDataAge, sstableMetadata, isOpenEarly);
             replacement.readMeter = this.readMeter;
             replacement.first = this.first;
             replacement.last = this.last;
@@ -1313,7 +1312,7 @@ public abstract class TableReader extends SSTable
 
     /**
      * Get position updating key cache and stats.
-     * @see #getPosition(org.apache.cassandra.db.RowPosition, org.apache.cassandra.io.sstable.format.TableReader.Operator, boolean)
+     * @see #getPosition(org.apache.cassandra.db.RowPosition, SSTableReader.Operator, boolean)
      */
     public RowIndexEntry getPosition(RowPosition key, Operator op)
     {
@@ -1531,11 +1530,11 @@ public abstract class TableReader extends SSTable
         return sstableMetadata.repairedAt != ActiveRepairService.UNREPAIRED_SSTABLE;
     }
 
-    public TableReader getCurrentReplacement()
+    public SSTableReader getCurrentReplacement()
     {
         synchronized (replaceLock)
         {
-            TableReader cur = this, next = replacedBy;
+            SSTableReader cur = this, next = replacedBy;
             while (next != null)
             {
                 cur = next;
@@ -1650,7 +1649,7 @@ public abstract class TableReader extends SSTable
         }
         catch (IOException e)
         {
-            TableReader.logOpenException(descriptor, e);
+            SSTableReader.logOpenException(descriptor, e);
             return Collections.emptySet();
         }
     }
@@ -1728,10 +1727,10 @@ public abstract class TableReader extends SSTable
      * @param sstables
      * @return true if all desired references were acquired.  Otherwise, it will unreference any partial acquisition, and return false.
      */
-    public static boolean acquireReferences(Iterable<TableReader> sstables)
+    public static boolean acquireReferences(Iterable<SSTableReader> sstables)
     {
-        TableReader failed = null;
-        for (TableReader sstable : sstables)
+        SSTableReader failed = null;
+        for (SSTableReader sstable : sstables)
         {
             if (!sstable.acquireReference())
             {
@@ -1743,7 +1742,7 @@ public abstract class TableReader extends SSTable
         if (failed == null)
             return true;
 
-        for (TableReader sstable : sstables)
+        for (SSTableReader sstable : sstables)
         {
             if (sstable == failed)
                 break;
@@ -1752,9 +1751,9 @@ public abstract class TableReader extends SSTable
         return false;
     }
 
-    public static void releaseReferences(Iterable<TableReader> sstables)
+    public static void releaseReferences(Iterable<SSTableReader> sstables)
     {
-        for (TableReader sstable : sstables)
+        for (SSTableReader sstable : sstables)
         {
             sstable.releaseReference();
         }
@@ -1843,9 +1842,9 @@ public abstract class TableReader extends SSTable
         public void remove() { }
     }
 
-    public static class SizeComparator implements Comparator<TableReader>
+    public static class SizeComparator implements Comparator<SSTableReader>
     {
-        public int compare(TableReader o1, TableReader o2)
+        public int compare(SSTableReader o1, SSTableReader o2)
         {
             return Longs.compare(o1.onDiskLength(), o2.onDiskLength());
         }

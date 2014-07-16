@@ -24,7 +24,7 @@ import java.util.*;
 
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -174,12 +174,12 @@ public class SliceQueryFilter implements IDiskAtomFilter
         };
     }
 
-    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, DecoratedKey key)
+    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, DecoratedKey key)
     {
         return new SSTableSliceIterator(sstable, key, slices, reversed);
     }
 
-    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry)
+    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry)
     {
         return new SSTableSliceIterator(sstable, file, key, slices, reversed, indexEntry);
     }
@@ -340,7 +340,7 @@ public class SliceQueryFilter implements IDiskAtomFilter
         return false;
     }
 
-    public boolean shouldInclude(TableReader sstable)
+    public boolean shouldInclude(SSTableReader sstable)
     {
         List<ByteBuffer> minColumnNames = sstable.getSSTableMetadata().minColumnNames;
         List<ByteBuffer> maxColumnNames = sstable.getSSTableMetadata().maxColumnNames;

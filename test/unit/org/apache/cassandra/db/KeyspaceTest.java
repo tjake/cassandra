@@ -26,7 +26,7 @@ import java.util.*;
 import java.io.IOException;
 
 import com.google.common.collect.Iterables;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -188,7 +188,7 @@ public class KeyspaceTest
         keyspace.getColumnFamilyStore("Standard2").forceBlockingFlush();
         validateGetSliceNoMatch(keyspace);
 
-        Collection<TableReader> ssTables = keyspace.getColumnFamilyStore("Standard2").getSSTables();
+        Collection<SSTableReader> ssTables = keyspace.getColumnFamilyStore("Standard2").getSSTables();
         assertEquals(1, ssTables.size());
         ssTables.iterator().next().forceFilterFailures();
         validateGetSliceNoMatch(keyspace);
@@ -456,8 +456,8 @@ public class KeyspaceTest
             CompactionManager.instance.performMaximal(cfStore);
         }
         // verify that we do indeed have multiple index entries
-        TableReader sstable = cfStore.getSSTables().iterator().next();
-        RowIndexEntry indexEntry = sstable.getPosition(key, TableReader.Operator.EQ);
+        SSTableReader sstable = cfStore.getSSTables().iterator().next();
+        RowIndexEntry indexEntry = sstable.getPosition(key, SSTableReader.Operator.EQ);
         assert indexEntry.columnsIndex().size() > 2;
 
         validateSliceLarge(cfStore);

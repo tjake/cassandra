@@ -20,15 +20,15 @@ package org.apache.cassandra.db.compaction;
 import java.util.Collection;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.io.sstable.format.TableReader;
-import org.apache.cassandra.io.sstable.format.TableWriter;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 
 public class LeveledCompactionTask extends CompactionTask
 {
     private final int level;
     private final long maxSSTableBytes;
 
-    public LeveledCompactionTask(ColumnFamilyStore cfs, Collection<TableReader> sstables, int level, final int gcBefore, long maxSSTableBytes)
+    public LeveledCompactionTask(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, int level, final int gcBefore, long maxSSTableBytes)
     {
         super(cfs, sstables, gcBefore, false);
         this.level = level;
@@ -36,7 +36,7 @@ public class LeveledCompactionTask extends CompactionTask
     }
 
     @Override
-    protected boolean newSSTableSegmentThresholdReached(TableWriter writer)
+    protected boolean newSSTableSegmentThresholdReached(SSTableWriter writer)
     {
         return writer.getOnDiskFilePointer() > maxSSTableBytes;
     }

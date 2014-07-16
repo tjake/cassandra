@@ -20,7 +20,7 @@ package org.apache.cassandra.db.compaction;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -185,10 +185,10 @@ public class SizeTieredCompactionStrategyTest
         }
         cfs.forceBlockingFlush();
 
-        List<TableReader> sstrs = new ArrayList<>(cfs.getSSTables());
-        Pair<List<TableReader>, Double> bucket;
+        List<SSTableReader> sstrs = new ArrayList<>(cfs.getSSTables());
+        Pair<List<SSTableReader>, Double> bucket;
 
-        List<TableReader> interestingBucket = mostInterestingBucket(Collections.singletonList(sstrs.subList(0, 2)), 4, 32);
+        List<SSTableReader> interestingBucket = mostInterestingBucket(Collections.singletonList(sstrs.subList(0, 2)), 4, 32);
         assertTrue("nothing should be returned when all buckets are below the min threshold", interestingBucket.isEmpty());
 
         sstrs.get(0).readMeter = new RestorableMeter(100.0, 100.0);
@@ -229,15 +229,15 @@ public class SizeTieredCompactionStrategyTest
         }
         cfs.forceBlockingFlush();
 
-        List<TableReader> filtered;
-        List<TableReader> sstrs = new ArrayList<>(cfs.getSSTables());
+        List<SSTableReader> filtered;
+        List<SSTableReader> sstrs = new ArrayList<>(cfs.getSSTables());
 
-        for (TableReader sstr : sstrs)
+        for (SSTableReader sstr : sstrs)
             sstr.readMeter = null;
         filtered = filterColdSSTables(sstrs, 0.05);
         assertEquals("when there are no read meters, no sstables should be filtered", sstrs.size(), filtered.size());
 
-        for (TableReader sstr : sstrs)
+        for (SSTableReader sstr : sstrs)
             sstr.readMeter = new RestorableMeter(0.0, 0.0);
         filtered = filterColdSSTables(sstrs, 0.05);
         assertEquals("when all read meters are zero, no sstables should be filtered", sstrs.size(), filtered.size());
@@ -250,7 +250,7 @@ public class SizeTieredCompactionStrategyTest
 
         // the total read rate is 100, and we'll set a threshold of 2.5%, so two of the sstables with read
         // rate 1.0 should be ignored, but not the third
-        for (TableReader sstr : sstrs)
+        for (SSTableReader sstr : sstrs)
             sstr.readMeter = new RestorableMeter(0.0, 0.0);
         sstrs.get(0).readMeter = new RestorableMeter(97.0, 97.0);
         sstrs.get(1).readMeter = new RestorableMeter(1.0, 1.0);
@@ -262,13 +262,13 @@ public class SizeTieredCompactionStrategyTest
         assertEquals(98.0, filtered.get(0).readMeter.twoHourRate() + filtered.get(1).readMeter.twoHourRate(), 0.5);
 
         // make sure a threshold of 0.0 doesn't result in any sstables being filtered
-        for (TableReader sstr : sstrs)
+        for (SSTableReader sstr : sstrs)
             sstr.readMeter = new RestorableMeter(1.0, 1.0);
         filtered = filterColdSSTables(sstrs, 0.0);
         assertEquals(sstrs.size(), filtered.size());
 
         // just for fun, set a threshold where all sstables are considered cold
-        for (TableReader sstr : sstrs)
+        for (SSTableReader sstr : sstrs)
             sstr.readMeter = new RestorableMeter(1.0, 1.0);
         filtered = filterColdSSTables(sstrs, 1.0);
         assertTrue(filtered.isEmpty());

@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.Uninterruptibles;
-import org.apache.cassandra.io.sstable.format.TableReader;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -165,8 +165,8 @@ public class KeyCacheTest
 
         assertKeyCacheSize(2, KEYSPACE1, COLUMN_FAMILY1);
 
-        Set<TableReader> readers = cfs.getDataTracker().getSSTables();
-        for (TableReader reader : readers)
+        Set<SSTableReader> readers = cfs.getDataTracker().getSSTables();
+        for (SSTableReader reader : readers)
             reader.acquireReference();
 
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
@@ -175,7 +175,7 @@ public class KeyCacheTest
         // if we had 2 keys in cache previously it should become 4
         assertKeyCacheSize(4, KEYSPACE1, COLUMN_FAMILY1);
 
-        for (TableReader reader : readers)
+        for (SSTableReader reader : readers)
             reader.releaseReference();
 
         Uninterruptibles.sleepUninterruptibly(10, TimeUnit.MILLISECONDS);
