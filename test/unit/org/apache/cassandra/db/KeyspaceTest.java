@@ -50,7 +50,6 @@ import static org.apache.cassandra.Util.column;
 import static org.apache.cassandra.Util.expiringColumn;
 import static org.apache.cassandra.Util.cellname;
 import org.apache.cassandra.Util;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 
@@ -458,7 +457,7 @@ public class KeyspaceTest
         }
         // verify that we do indeed have multiple index entries
         TableReader sstable = cfStore.getSSTables().iterator().next();
-        RowIndexEntry indexEntry = sstable.getPosition(key, SSTableReader.Operator.EQ);
+        RowIndexEntry indexEntry = sstable.getPosition(key, TableReader.Operator.EQ);
         assert indexEntry.columnsIndex().size() > 2;
 
         validateSliceLarge(cfStore);

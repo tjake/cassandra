@@ -58,7 +58,6 @@ import org.apache.cassandra.db.compaction.Scrubber;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 import static org.apache.cassandra.Util.cellname;
@@ -128,8 +127,8 @@ public class ScrubTest
         TableReader sstable = cfs.getSSTables().iterator().next();
 
         // overwrite one row with garbage
-        long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), SSTableReader.Operator.EQ).position;
-        long row1Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), SSTableReader.Operator.EQ).position;
+        long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), TableReader.Operator.EQ).position;
+        long row1Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), TableReader.Operator.EQ).position;
         long startPosition = row0Start < row1Start ? row0Start : row1Start;
         long endPosition = row0Start < row1Start ? row1Start : row0Start;
 
@@ -237,7 +236,7 @@ public class ScrubTest
 
         try
         {
-            SSTableReader.open(desc, metadata);
+            TableReader.open(desc, metadata);
             fail("SSTR validation should have caught the out-of-order rows");
         }
         catch (IllegalStateException ise) { /* this is expected */ }

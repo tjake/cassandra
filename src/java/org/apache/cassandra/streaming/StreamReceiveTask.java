@@ -25,7 +25,6 @@ import java.util.UUID;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.service.StorageService;
@@ -105,7 +104,7 @@ public class StreamReceiveTask extends StreamTask
                 readers.add(writer.closeAndOpenReader());
             lockfile.delete();
 
-            if (!SSTableReader.acquireReferences(readers))
+            if (!TableReader.acquireReferences(readers))
                 throw new AssertionError("We shouldn't fail acquiring a reference on a sstable that has just been transferred");
             try
             {
@@ -115,7 +114,7 @@ public class StreamReceiveTask extends StreamTask
             }
             finally
             {
-                SSTableReader.releaseReferences(readers);
+                TableReader.releaseReferences(readers);
             }
 
             task.session.taskCompleted(task);

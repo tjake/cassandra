@@ -261,7 +261,7 @@ public class SSTableExport
      */
     public static void export(Descriptor desc, PrintStream outs, Collection<String> toExport, String[] excludes, CFMetaData metadata) throws IOException
     {
-        TableReader sstable = SSTableReader.open(desc);
+        TableReader sstable = TableReader.open(desc);
         RandomAccessReader dfile = sstable.openDataReader();
         try
         {

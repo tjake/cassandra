@@ -41,7 +41,6 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionManager.CompactionExecutorStatsCollector;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableRewriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -138,7 +137,7 @@ public class CompactionTask extends AbstractCompactionTask
 
         long start = System.nanoTime();
         long totalKeysWritten = 0;
-        long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), SSTableReader.getApproximateKeyCount(actuallyCompact));
+        long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), TableReader.getApproximateKeyCount(actuallyCompact));
         long estimatedSSTables = Math.max(1, TableReader.getTotalBytes(actuallyCompact) / strategy.getMaxSSTableBytes());
         long keysPerSSTable = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
         logger.debug("Expected bloom filter size : {}", keysPerSSTable);
@@ -222,8 +221,8 @@ public class CompactionTask extends AbstractCompactionTask
 
         // log a bunch of statistics about the result and save to system table compaction_history
         long dTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-        long startsize = SSTableReader.getTotalBytes(oldSStables);
-        long endsize = SSTableReader.getTotalBytes(newSStables);
+        long startsize = TableReader.getTotalBytes(oldSStables);
+        long endsize = TableReader.getTotalBytes(newSStables);
         double ratio = (double) endsize / (double) startsize;
 
         StringBuilder newSSTableNames = new StringBuilder();

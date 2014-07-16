@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.io.sstable;
+package org.apache.cassandra.io.sstable.format.big;
 
 import org.apache.cassandra.cache.KeyCacheKey;
 import org.apache.cassandra.config.CFMetaData;
@@ -23,6 +23,9 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.RowPosition;
 import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.io.sstable.Component;
+import org.apache.cassandra.io.sstable.CorruptSSTableException;
+import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -41,11 +44,11 @@ import java.util.Set;
  * SSTableReaders are open()ed by Keyspace.onStart; after that they are created by SSTableWriter.renameAndOpen.
  * Do not re-call open() on existing SSTable files; use the references kept by ColumnFamilyStore post-start instead.
  */
-public class SSTableReader extends TableReader
+public class BigTableReader extends TableReader
 {
-    private static final Logger logger = LoggerFactory.getLogger(SSTableReader.class);
+    private static final Logger logger = LoggerFactory.getLogger(BigTableReader.class);
 
-    public SSTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
+    public BigTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
     {
         super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
     }

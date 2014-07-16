@@ -167,7 +167,7 @@ public class SSTableRewriter
             {
                 for (TableReader reader : rewriting)
                 {
-                    RowIndexEntry index = reader.getPosition(key, SSTableReader.Operator.GE);
+                    RowIndexEntry index = reader.getPosition(key, TableReader.Operator.GE);
                     CLibrary.trySkipCache(fileDescriptors.get(reader.descriptor), 0, index == null ? 0 : index.position);
                 }
             }

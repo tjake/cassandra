@@ -79,7 +79,7 @@ public class SSTableImportTest
         new SSTableImport(true).importJson(jsonUrl, KEYSPACE1, "Standard1", tempSS.getPath());
 
         // Verify results
-        TableReader reader = SSTableReader.open(Descriptor.fromFilename(tempSS.getPath()));
+        TableReader reader = TableReader.open(Descriptor.fromFilename(tempSS.getPath()));
         QueryFilter qf = QueryFilter.getIdentityFilter(Util.dk("rowA"), "Standard1", System.currentTimeMillis());
         OnDiskAtomIterator iter = qf.getSSTableColumnIterator(reader);
         ColumnFamily cf = cloneForAdditions(iter);

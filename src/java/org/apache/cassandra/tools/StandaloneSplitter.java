@@ -116,7 +116,7 @@ public class StandaloneSplitter
             {
                 try
                 {
-                    TableReader sstable = SSTableReader.openNoValidation(fn.getKey(), fn.getValue(), cfs.metadata);
+                    TableReader sstable = TableReader.openNoValidation(fn.getKey(), fn.getValue(), cfs.metadata);
                     sstables.add(sstable);
 
                     if (options.snapshot) {

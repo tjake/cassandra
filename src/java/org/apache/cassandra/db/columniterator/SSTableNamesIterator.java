@@ -28,7 +28,6 @@ import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
@@ -51,7 +50,7 @@ public class SSTableNamesIterator extends AbstractIterator<OnDiskAtom> implement
         this.columns = columns;
         this.key = key;
 
-        RowIndexEntry indexEntry = sstable.getPosition(key, SSTableReader.Operator.EQ);
+        RowIndexEntry indexEntry = sstable.getPosition(key, TableReader.Operator.EQ);
         if (indexEntry == null)
             return;
 

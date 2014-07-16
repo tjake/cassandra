@@ -50,7 +50,6 @@ import org.apache.cassandra.db.marshal.LocalByPartionerType;
 import org.apache.cassandra.dht.LocalToken;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.ReducingKeyIterator;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 

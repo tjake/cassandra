@@ -24,6 +24,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.big.BigTableReader;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +32,6 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.cql3.statements.CFPropDefs;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.utils.Pair;
 
 public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
@@ -109,7 +109,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         if (sstablesWithTombstones.isEmpty())
             return Collections.emptyList();
 
-        Collections.sort(sstablesWithTombstones, new SSTableReader.SizeComparator());
+        Collections.sort(sstablesWithTombstones, new BigTableReader.SizeComparator());
         return Collections.singletonList(sstablesWithTombstones.get(0));
     }
 

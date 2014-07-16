@@ -24,7 +24,6 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.OnDiskAtom;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.filter.ColumnSlice;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 
@@ -39,7 +38,7 @@ public class SSTableSliceIterator implements OnDiskAtomIterator
     public SSTableSliceIterator(TableReader sstable, DecoratedKey key, ColumnSlice[] slices, boolean reversed)
     {
         this.key = key;
-        RowIndexEntry indexEntry = sstable.getPosition(key, SSTableReader.Operator.EQ);
+        RowIndexEntry indexEntry = sstable.getPosition(key, TableReader.Operator.EQ);
         this.reader = indexEntry == null ? null : createReader(sstable, indexEntry, null, slices, reversed);
     }
 

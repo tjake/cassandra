@@ -701,7 +701,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             catch (IOException e)
             {
-                SSTableReader.logOpenException(entry.getKey(), e);
+                TableReader.logOpenException(entry.getKey(), e);
                 continue;
             }
 
@@ -730,7 +730,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             catch (IOException e)
             {
-                SSTableReader.logOpenException(entry.getKey(), e);
+                TableReader.logOpenException(entry.getKey(), e);
                 continue;
             }
             newSSTables.add(reader);
@@ -774,7 +774,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         finally
         {
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
         }
     }
 
@@ -1740,7 +1740,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         while (true)
         {
             DataTracker.View currentView = data.getView();
-            if (SSTableReader.acquireReferences(currentView.sstables))
+            if (TableReader.acquireReferences(currentView.sstables))
                 return currentView;
         }
     }
@@ -1861,7 +1861,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             for (TableReader sstr : select(viewFilter(dk)).sstables)
             {
                 // check if the key actually exists in this sstable, without updating cache and stats
-                if (sstr.getPosition(dk, SSTableReader.Operator.EQ, false) != null)
+                if (sstr.getPosition(dk, TableReader.Operator.EQ, false) != null)
                     files.add(sstr.getFilename());
             }
             return files;
@@ -2171,7 +2171,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             finally
             {
-                SSTableReader.releaseReferences(currentView.sstables);
+                TableReader.releaseReferences(currentView.sstables);
             }
         }
     }
@@ -2366,7 +2366,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         finally
         {
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
         }
     }
 
@@ -2382,7 +2382,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         finally
         {
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
         }
     }
 

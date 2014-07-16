@@ -57,7 +57,7 @@ public class Upgrader
         this.controller = new UpgradeController(cfs);
 
         this.strategy = cfs.getCompactionStrategy();
-        long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), SSTableReader.getApproximateKeyCount(toUpgrade));
+        long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), TableReader.getApproximateKeyCount(toUpgrade));
         long estimatedSSTables = Math.max(1, TableReader.getTotalBytes(this.toUpgrade) / strategy.getMaxSSTableBytes());
         this.estimatedRows = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
     }

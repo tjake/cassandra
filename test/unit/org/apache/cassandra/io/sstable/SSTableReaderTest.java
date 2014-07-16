@@ -171,7 +171,7 @@ public class SSTableReaderTest
         for (int j = 0; j < 100; j += 2)
         {
             DecoratedKey dk = Util.dk(String.valueOf(j));
-            FileDataInput file = sstable.getFileDataInput(sstable.getPosition(dk, SSTableReader.Operator.EQ).position);
+            FileDataInput file = sstable.getFileDataInput(sstable.getPosition(dk, TableReader.Operator.EQ).position);
             DecoratedKey keyInDisk = sstable.partitioner.decorateKey(ByteBufferUtil.readWithShortLength(file));
             assert keyInDisk.equals(dk) : String.format("%s != %s in %s", keyInDisk, dk, file.getPath());
         }
@@ -180,7 +180,7 @@ public class SSTableReaderTest
         for (int j = 1; j < 110; j += 2)
         {
             DecoratedKey dk = Util.dk(String.valueOf(j));
-            assert sstable.getPosition(dk, SSTableReader.Operator.EQ) == null;
+            assert sstable.getPosition(dk, TableReader.Operator.EQ) == null;
         }
     }
 
@@ -230,10 +230,10 @@ public class SSTableReaderTest
         CompactionManager.instance.performMaximal(store);
 
         TableReader sstable = store.getSSTables().iterator().next();
-        long p2 = sstable.getPosition(k(2), SSTableReader.Operator.EQ).position;
-        long p3 = sstable.getPosition(k(3), SSTableReader.Operator.EQ).position;
-        long p6 = sstable.getPosition(k(6), SSTableReader.Operator.EQ).position;
-        long p7 = sstable.getPosition(k(7), SSTableReader.Operator.EQ).position;
+        long p2 = sstable.getPosition(k(2), TableReader.Operator.EQ).position;
+        long p3 = sstable.getPosition(k(3), TableReader.Operator.EQ).position;
+        long p6 = sstable.getPosition(k(6), TableReader.Operator.EQ).position;
+        long p7 = sstable.getPosition(k(7), TableReader.Operator.EQ).position;
 
         Pair<Long, Long> p = sstable.getPositionsForRanges(makeRanges(t(2), t(6))).get(0);
 
@@ -323,7 +323,7 @@ public class SSTableReaderTest
                                           : SegmentedFile.getBuilder(DatabaseDescriptor.getDiskAccessMode());
         sstable.saveSummary(ibuilder, dbuilder);
 
-        TableReader reopened = SSTableReader.open(sstable.descriptor);
+        TableReader reopened = TableReader.open(sstable.descriptor);
         assert reopened.first.getToken() instanceof LocalToken;
     }
 
@@ -379,7 +379,7 @@ public class SSTableReaderTest
 
         // re-open the same sstable as it would be during bulk loading
         Set<Component> components = Sets.newHashSet(Component.DATA, Component.PRIMARY_INDEX);
-        TableReader bulkLoaded = SSTableReader.openForBatch(sstable.descriptor, components, store.metadata, sstable.partitioner);
+        TableReader bulkLoaded = TableReader.openForBatch(sstable.descriptor, components, store.metadata, sstable.partitioner);
         sections = bulkLoaded.getPositionsForRanges(ranges);
         assert sections.size() == 1 : "Expected to find range in sstable opened for bulk loading";
     }

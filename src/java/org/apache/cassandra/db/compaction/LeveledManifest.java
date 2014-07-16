@@ -32,15 +32,12 @@ import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowPosition;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.utils.Pair;
 
 public class LeveledManifest
@@ -210,13 +207,13 @@ public class LeveledManifest
 
         for (TableReader ssTableReader : added)
             add(ssTableReader);
-        lastCompactedKeys[minLevel] = SSTableReader.sstableOrdering.max(added).last;
+        lastCompactedKeys[minLevel] = TableReader.sstableOrdering.max(added).last;
     }
 
     public synchronized void repairOverlappingSSTables(int level)
     {
         TableReader previous = null;
-        Collections.sort(generations[level], SSTableReader.sstableComparator);
+        Collections.sort(generations[level], TableReader.sstableComparator);
         List<TableReader> outOfOrderSSTables = new ArrayList<TableReader>();
         for (TableReader current : generations[level])
         {
@@ -253,7 +250,7 @@ public class LeveledManifest
 
         List<TableReader> copyLevel = new ArrayList<>(generations[level]);
         copyLevel.add(sstable);
-        Collections.sort(copyLevel, SSTableReader.sstableComparator);
+        Collections.sort(copyLevel, TableReader.sstableComparator);
 
         TableReader previous = null;
         for (TableReader current : copyLevel)
@@ -368,7 +365,7 @@ public class LeveledManifest
             // we want to calculate score excluding compacting ones
             Set<TableReader> sstablesInLevel = Sets.newHashSet(sstables);
             Set<TableReader> remaining = Sets.difference(sstablesInLevel, cfs.getDataTracker().getCompacting());
-            double score = (double) SSTableReader.getTotalBytes(remaining) / (double)maxBytesForLevel(i);
+            double score = (double) TableReader.getTotalBytes(remaining) / (double)maxBytesForLevel(i);
             logger.debug("Compaction score for level {} is {}", i, score);
 
             if (score > 1.001)
@@ -641,7 +638,7 @@ public class LeveledManifest
             }
 
             // leave everything in L0 if we didn't end up with a full sstable's worth of data
-            if (SSTableReader.getTotalBytes(candidates) > maxSSTableSizeInBytes)
+            if (TableReader.getTotalBytes(candidates) > maxSSTableSizeInBytes)
             {
                 // add sstables from L1 that overlap candidates
                 // if the overlapping ones are already busy in a compaction, leave it out.
@@ -655,7 +652,7 @@ public class LeveledManifest
         }
 
         // for non-L0 compactions, pick up where we left off last time
-        Collections.sort(getLevel(level), SSTableReader.sstableComparator);
+        Collections.sort(getLevel(level), TableReader.sstableComparator);
         int start = 0; // handles case where the prior compaction touched the very last range
         for (int i = 0; i < getLevel(level).size(); i++)
         {
@@ -724,7 +721,7 @@ public class LeveledManifest
         for (int i = generations.length - 1; i >= 0; i--)
         {
             List<TableReader> sstables = getLevel(i);
-            estimated[i] = Math.max(0L, SSTableReader.getTotalBytes(sstables) - maxBytesForLevel(i)) / maxSSTableSizeInBytes;
+            estimated[i] = Math.max(0L, TableReader.getTotalBytes(sstables) - maxBytesForLevel(i)) / maxSSTableSizeInBytes;
             tasks += estimated[i];
         }
 
@@ -744,7 +741,7 @@ public class LeveledManifest
         }
 
         int newLevel;
-        if (minimumLevel == 0 && minimumLevel == maximumLevel && SSTableReader.getTotalBytes(sstables) < maxSSTableSizeInBytes)
+        if (minimumLevel == 0 && minimumLevel == maximumLevel && TableReader.getTotalBytes(sstables) < maxSSTableSizeInBytes)
         {
             newLevel = 0;
         }

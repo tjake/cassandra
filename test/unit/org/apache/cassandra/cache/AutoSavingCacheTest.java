@@ -30,7 +30,6 @@ import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -66,7 +65,7 @@ public class AutoSavingCacheTest
 
         // preheat key cache
         for (TableReader sstable : cfs.getSSTables())
-            sstable.getPosition(Util.dk("key1"), SSTableReader.Operator.EQ);
+            sstable.getPosition(Util.dk("key1"), TableReader.Operator.EQ);
 
         AutoSavingCache<KeyCacheKey, RowIndexEntry> keyCache = CacheService.instance.keyCache;
 

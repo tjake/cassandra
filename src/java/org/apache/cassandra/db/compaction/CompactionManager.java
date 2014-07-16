@@ -77,7 +77,6 @@ import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.SSTableIdentityIterator;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableRewriter;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.metrics.CompactionMetrics;
@@ -434,7 +433,7 @@ public class CompactionManager implements CompactionManagerMBean
         cfs.getDataTracker().unmarkCompacting(Sets.union(nonAnticompacting, mutatedRepairStatuses));
         if (!sstables.isEmpty())
             doAntiCompaction(cfs, ranges, sstables, repairedAt);
-        SSTableReader.releaseReferences(sstables);
+        TableReader.releaseReferences(sstables);
         cfs.getDataTracker().unmarkCompacting(sstables);
         logger.info(String.format("Completed anticompaction successfully"));
     }
@@ -669,7 +668,7 @@ public class CompactionManager implements CompactionManagerMBean
         long totalkeysWritten = 0;
 
         int expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(),
-                                               (int) (SSTableReader.getApproximateKeyCount(Arrays.asList(sstable))));
+                                               (int) (TableReader.getApproximateKeyCount(Arrays.asList(sstable))));
         if (logger.isDebugEnabled())
             logger.debug("Expected bloom filter size : {}", expectedBloomFilterSize);
 
@@ -921,7 +920,7 @@ public class CompactionManager implements CompactionManagerMBean
         finally
         {
             iter.close();
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
             if (isSnapshotValidation)
             {
                 cfs.clearSnapshot(snapshotName);
@@ -958,7 +957,7 @@ public class CompactionManager implements CompactionManagerMBean
         int repairedKeyCount = 0;
         int unrepairedKeyCount = 0;
         // TODO(5351): we can do better here:
-        int expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(repairedSSTables)));
+        int expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(TableReader.getApproximateKeyCount(repairedSSTables)));
         logger.info("Performing anticompaction on {} sstables", repairedSSTables.size());
         // iterate over sstables to check if the repaired / unrepaired ranges intersect them.
         for (TableReader sstable : repairedSSTables)

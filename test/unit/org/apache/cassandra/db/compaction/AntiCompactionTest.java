@@ -40,7 +40,6 @@ import org.apache.cassandra.dht.BytesToken;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.SSTableIdentityIterator;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableScanner;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import static junit.framework.Assert.assertFalse;
@@ -86,7 +85,7 @@ public class AntiCompactionTest
         Range<Token> range = new Range<Token>(new BytesToken("0".getBytes()), new BytesToken("4".getBytes()));
         List<Range<Token>> ranges = Arrays.asList(range);
 
-        SSTableReader.acquireReferences(sstables);
+        TableReader.acquireReferences(sstables);
         long repairedAt = 1000;
         CompactionManager.instance.performAnticompaction(store, ranges, sstables, repairedAt);
 

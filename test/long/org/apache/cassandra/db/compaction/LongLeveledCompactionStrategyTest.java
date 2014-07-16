@@ -30,7 +30,6 @@ import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -121,7 +120,7 @@ public class LongLeveledCompactionStrategyTest
         {
             List<TableReader> sstables = manifest.getLevel(level);
             // score check
-            assert (double) SSTableReader.getTotalBytes(sstables) / manifest.maxBytesForLevel(level) < 1.00;
+            assert (double) TableReader.getTotalBytes(sstables) / manifest.maxBytesForLevel(level) < 1.00;
             // overlap check for levels greater than 0
             if (level > 0)
             {

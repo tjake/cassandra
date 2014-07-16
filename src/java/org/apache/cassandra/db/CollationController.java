@@ -35,7 +35,6 @@ import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.marshal.CounterColumnType;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.tracing.Tracing;
@@ -109,7 +108,7 @@ public class CollationController
             QueryFilter reducedFilter = new QueryFilter(filter.key, filter.cfName, namesFilter.withUpdatedColumns(filterColumns), filter.timestamp);
 
             /* add the SSTables on disk */
-            Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
+            Collections.sort(view.sstables, TableReader.maxTimestampComparator);
 
             // read sorted sstables
             for (TableReader sstable : view.sstables)
@@ -235,7 +234,7 @@ public class CollationController
              * In other words, iterating in maxTimestamp order allow to do our mostRecentTombstone elimination
              * in one pass, and minimize the number of sstables for which we read a rowTombstone.
              */
-            Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
+            Collections.sort(view.sstables, TableReader.maxTimestampComparator);
             List<TableReader> skippedSSTables = null;
             long mostRecentRowTombstone = Long.MIN_VALUE;
             long minTimestamp = Long.MAX_VALUE;

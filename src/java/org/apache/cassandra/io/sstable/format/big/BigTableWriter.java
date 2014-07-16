@@ -358,7 +358,7 @@ public class BigTableWriter extends TableWriter
         int offset = 2;
         while (true)
         {
-            RowIndexEntry indexEntry = sstable.getPosition(inclusiveUpperBoundOfReadableData, SSTableReader.Operator.GT);
+            RowIndexEntry indexEntry = sstable.getPosition(inclusiveUpperBoundOfReadableData, TableReader.Operator.GT);
             if (indexEntry != null && indexEntry.position <= dataFile.getLastFlushOffset())
                 break;
             inclusiveUpperBoundOfReadableData = iwriter.getMaxReadableKey(offset++);

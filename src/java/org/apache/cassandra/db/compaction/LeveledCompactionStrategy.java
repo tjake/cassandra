@@ -33,7 +33,6 @@ import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.notifications.INotification;
 import org.apache.cassandra.notifications.INotificationConsumer;
 import org.apache.cassandra.notifications.SSTableAddedNotification;
@@ -266,7 +265,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
             }
 
             totalLength = length;
-            Collections.sort(this.sstables, SSTableReader.sstableComparator);
+            Collections.sort(this.sstables, TableReader.sstableComparator);
             sstableIterator = this.sstables.iterator();
             assert sstableIterator.hasNext(); // caller should check intersecting first
             currentScanner = sstableIterator.next().getScanner(range, CompactionManager.instance.getRateLimiter());

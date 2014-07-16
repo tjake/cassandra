@@ -50,7 +50,6 @@ import org.apache.cassandra.db.marshal.IntegerType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableUtils;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
@@ -460,7 +459,7 @@ public class StreamingTransferTest
         ranges.add(new Range<>(secondtolast.getKey().getToken(), p.getMinimumToken()));
 
         // Acquiring references, transferSSTables needs it
-        if (!SSTableReader.acquireReferences(ssTableReaders))
+        if (!TableReader.acquireReferences(ssTableReaders))
             throw new AssertionError();
 
         new StreamPlan("StreamingTransferTest").transferFiles(LOCAL, makeStreamingDetails(ranges, ssTableReaders)).execute().get();
