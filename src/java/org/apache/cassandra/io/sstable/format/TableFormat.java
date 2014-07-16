@@ -18,13 +18,13 @@ public interface TableFormat
     {
         //Used internally to refer to files with no
         //format flag in the filename
-        LEGACY("key", BigFormat.instance),
+        LEGACY("big", BigFormat.instance),
 
         //The original sstable format
-        KEY("key", BigFormat.instance),
+        BIG("big", BigFormat.instance),
 
         //The new sstable format
-        BLOCK("block",  BigFormat.instance);
+        TEST("test",  BigFormat.instance);
 
         public final TableFormat info;
         public final String name;

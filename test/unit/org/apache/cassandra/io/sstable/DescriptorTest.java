@@ -132,7 +132,7 @@ public class DescriptorTest
             "system-schema_keyspaces-ka-1-Index.db",            "system-schema_keyspaces-ka-2-Digest.sha1",
             "system-schema_keyspaces-ka-1-Statistics.db",
             "system-schema_keyspacest-tmp-ka-1-Data.db",*/
-            "system-schema_keyspace-ka-1-"+ TableFormat.Type.BLOCK.name+"-Data.db"
+            "system-schema_keyspace-ka-1-"+ TableFormat.Type.BIG.name+"-Data.db"
         };
 
         for (String name : names)

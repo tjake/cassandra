@@ -134,7 +134,7 @@ public class FileMessageHeader
             out.writeUTF(header.version);
 
             //We can't stream to a node that doesn't understand a new sstable format
-            if (version < MessagingService.VERSION_30 && header.format != TableFormat.Type.LEGACY && header.format != TableFormat.Type.KEY)
+            if (version < MessagingService.VERSION_30 && header.format != TableFormat.Type.LEGACY && header.format != TableFormat.Type.BIG)
                 throw new UnsupportedOperationException("Can't stream non-legacy sstables to nodes < 3.0");
 
             if (version >= MessagingService.VERSION_30)
