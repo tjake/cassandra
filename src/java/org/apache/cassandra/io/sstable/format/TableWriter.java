@@ -5,7 +5,6 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.compaction.AbstractCompactedRow;
@@ -17,7 +16,6 @@ import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.FileUtils;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,19 +132,19 @@ public abstract class TableWriter extends SSTable
 
     public abstract void resetAndTruncate();
 
-    public SSTableReader closeAndOpenReader()
+    public TableReader closeAndOpenReader()
     {
         return closeAndOpenReader(System.currentTimeMillis());
     }
 
-    public SSTableReader closeAndOpenReader(long maxDataAge)
+    public TableReader closeAndOpenReader(long maxDataAge)
     {
         return closeAndOpenReader(maxDataAge, repairedAt);
     }
 
-    public abstract SSTableReader closeAndOpenReader(long maxDataAge, long repairedAt);
+    public abstract TableReader closeAndOpenReader(long maxDataAge, long repairedAt);
 
-    public abstract SSTableReader openEarly(long maxDataAge);
+    public abstract TableReader openEarly(long maxDataAge);
 
     // Close the writer and return the descriptor to the new sstable and it's metadata
     public abstract Pair<Descriptor, StatsMetadata> close();

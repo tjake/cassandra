@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -200,7 +201,7 @@ public class ColumnFamilyStoreTest
         rms.add(rm);
         Util.writeColumnFamily(rms);
 
-        List<SSTableReader> ssTables = keyspace.getAllSSTables();
+        List<TableReader> ssTables = keyspace.getAllSSTables();
         assertEquals(1, ssTables.size());
         ssTables.get(0).forceFilterFailures();
         ColumnFamily cf = cfs.getColumnFamily(QueryFilter.getIdentityFilter(Util.dk("key2"), CF_STANDARD1, System.currentTimeMillis()));
@@ -1109,7 +1110,7 @@ public class ColumnFamilyStoreTest
         cfs.forceBlockingFlush();
 
         // Nuke the metadata and reload that sstable
-        Collection<SSTableReader> ssTables = cfs.getSSTables();
+        Collection<TableReader> ssTables = cfs.getSSTables();
         assertEquals(1, ssTables.size());
         cfs.clearUnsafe();
         assertEquals(0, cfs.getSSTables().size());
@@ -1771,7 +1772,7 @@ public class ColumnFamilyStoreTest
         assertEquals(1, sstables.size());
 
         Map.Entry<Descriptor, Set<Component>> sstableToOpen = sstables.entrySet().iterator().next();
-        final SSTableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
+        final TableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
 
         // simulate incomplete compaction
         writer = new SSTableSimpleWriter(dir.getDirectoryForNewSSTables(),
@@ -1854,7 +1855,7 @@ public class ColumnFamilyStoreTest
         assert sstables.size() == 1;
 
         Map.Entry<Descriptor, Set<Component>> sstableToOpen = sstables.entrySet().iterator().next();
-        final SSTableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
+        final TableReader sstable1 = SSTableReader.open(sstableToOpen.getKey());
 
         // simulate we don't have generation in compaction_history
         Map<Integer, UUID> unfinishedCompactions = new HashMap<>();

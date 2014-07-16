@@ -18,11 +18,12 @@
 package org.apache.cassandra.notifications;
 
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 
 public class SSTableAddedNotification implements INotification
 {
-    public final SSTableReader added;
-    public SSTableAddedNotification(SSTableReader added)
+    public final TableReader added;
+    public SSTableAddedNotification(TableReader added)
     {
         this.added = added;
     }

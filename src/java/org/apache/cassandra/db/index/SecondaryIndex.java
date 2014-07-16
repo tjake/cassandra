@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,7 +194,7 @@ public abstract class SecondaryIndex
         logger.info(String.format("Submitting index build of %s for data in %s",
                 getIndexName(), StringUtils.join(baseCfs.getSSTables(), ", ")));
 
-        Collection<SSTableReader> sstables = baseCfs.markCurrentSSTablesReferenced();
+        Collection<TableReader> sstables = baseCfs.markCurrentSSTablesReferenced();
         try
         {
             SecondaryIndexBuilder builder = new SecondaryIndexBuilder(baseCfs,
@@ -206,7 +207,7 @@ public abstract class SecondaryIndex
         }
         finally
         {
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
         }
         logger.info("Index build of {} complete", getIndexName());
     }

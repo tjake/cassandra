@@ -33,6 +33,7 @@ import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.streaming.*;
 import org.apache.cassandra.utils.FBUtilities;
@@ -52,7 +53,7 @@ public class SSTableLoader implements StreamEventHandler
     private final OutputHandler outputHandler;
     private final Set<InetAddress> failedHosts = new HashSet<>();
 
-    private final List<SSTableReader> sstables = new ArrayList<SSTableReader>();
+    private final List<TableReader> sstables = new ArrayList<>();
     private final Multimap<InetAddress, StreamSession.SSTableStreamingSections> streamingDetails = HashMultimap.create();
 
     static
@@ -74,7 +75,7 @@ public class SSTableLoader implements StreamEventHandler
         this.connectionsPerHost = connectionsPerHost;
     }
 
-    protected Collection<SSTableReader> openSSTables(final Map<InetAddress, Collection<Range<Token>>> ranges)
+    protected Collection<TableReader> openSSTables(final Map<InetAddress, Collection<Range<Token>>> ranges)
     {
         outputHandler.output("Opening sstables and calculating sections to stream");
 
@@ -117,7 +118,7 @@ public class SSTableLoader implements StreamEventHandler
                     // To conserve memory, open SSTableReaders without bloom filters and discard
                     // the index summary after calculating the file sections to stream and the estimated
                     // number of keys for each endpoint. See CASSANDRA-5555 for details.
-                    SSTableReader sstable = SSTableReader.openForBatch(desc, components, metadata, client.getPartitioner());
+                    TableReader sstable = TableReader.openForBatch(desc, components, metadata, client.getPartitioner());
                     sstables.add(sstable);
 
                     // calculate the sstable sections to stream as well as the estimated number of
@@ -213,10 +214,10 @@ public class SSTableLoader implements StreamEventHandler
         }
     }
 
-    private String names(Collection<SSTableReader> sstables)
+    private String names(Collection<TableReader> sstables)
     {
         StringBuilder builder = new StringBuilder();
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
             builder.append(sstable.descriptor.filenameFor(Component.DATA)).append(" ");
         return builder.toString();
     }

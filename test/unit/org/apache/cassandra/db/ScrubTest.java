@@ -38,6 +38,7 @@ import org.apache.cassandra.db.marshal.UUIDType;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.UUIDGen;
 import org.apache.commons.lang3.StringUtils;
@@ -124,7 +125,7 @@ public class ScrubTest
         List<Row> rows = cfs.getRangeSlice(Util.range("", ""), null, new IdentityQueryFilter(), 1000);
         assertEquals(2, rows.size());
 
-        SSTableReader sstable = cfs.getSSTables().iterator().next();
+        TableReader sstable = cfs.getSSTables().iterator().next();
 
         // overwrite one row with garbage
         long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), SSTableReader.Operator.EQ).position;
@@ -250,7 +251,7 @@ public class ScrubTest
         components.add(Component.STATS);
         components.add(Component.SUMMARY);
         components.add(Component.TOC);
-        SSTableReader sstable = SSTableReader.openNoValidation(desc, components, metadata);
+        TableReader sstable = TableReader.openNoValidation(desc, components, metadata);
 
         Scrubber scrubber = new Scrubber(cfs, sstable, false, true);
         scrubber.scrub();

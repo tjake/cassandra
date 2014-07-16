@@ -37,6 +37,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -158,9 +159,9 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
 
     public Map<String, Integer> getIndexIntervals()
     {
-        List<SSTableReader> sstables = getAllSSTables();
+        List<TableReader> sstables = getAllSSTables();
         Map<String, Integer> intervals = new HashMap<>(sstables.size());
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
             intervals.put(sstable.getFilename(), (int) Math.round(sstable.getEffectiveIndexInterval()));
 
         return intervals;
@@ -168,9 +169,9 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
 
     public double getAverageIndexInterval()
     {
-        List<SSTableReader> sstables = getAllSSTables();
+        List<TableReader> sstables = getAllSSTables();
         double total = 0.0;
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
             total += sstable.getEffectiveIndexInterval();
         return total / sstables.size();
     }
@@ -187,14 +188,14 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
     public double getMemoryPoolSizeInMB()
     {
         long total = 0;
-        for (SSTableReader sstable : getAllSSTables())
+        for (TableReader sstable : getAllSSTables())
             total += sstable.getIndexSummaryOffHeapSize();
         return total / 1024.0 / 1024.0;
     }
 
-    private List<SSTableReader> getAllSSTables()
+    private List<TableReader> getAllSSTables()
     {
-        List<SSTableReader> result = new ArrayList<>();
+        List<TableReader> result = new ArrayList<>();
         for (Keyspace ks : Keyspace.all())
         {
             for (ColumnFamilyStore cfStore: ks.getColumnFamilyStores())
@@ -208,15 +209,15 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
      * Returns a Pair of all compacting and non-compacting sstables.  Non-compacting sstables will be marked as
      * compacting.
      */
-    private Pair<List<SSTableReader>, Multimap<DataTracker, SSTableReader>> getCompactingAndNonCompactingSSTables()
+    private Pair<List<TableReader>, Multimap<DataTracker, TableReader>> getCompactingAndNonCompactingSSTables()
     {
-        List<SSTableReader> allCompacting = new ArrayList<>();
-        Multimap<DataTracker, SSTableReader> allNonCompacting = HashMultimap.create();
+        List<TableReader> allCompacting = new ArrayList<>();
+        Multimap<DataTracker, TableReader> allNonCompacting = HashMultimap.create();
         for (Keyspace ks : Keyspace.all())
         {
             for (ColumnFamilyStore cfStore: ks.getColumnFamilyStores())
             {
-                Set<SSTableReader> nonCompacting, allSSTables;
+                Set<TableReader> nonCompacting, allSSTables;
                 do
                 {
                     allSSTables = cfStore.getDataTracker().getSSTables();
@@ -232,7 +233,7 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
 
     public void redistributeSummaries() throws IOException
     {
-        Pair<List<SSTableReader>, Multimap<DataTracker, SSTableReader>> compactingAndNonCompacting = getCompactingAndNonCompactingSSTables();
+        Pair<List<TableReader>, Multimap<DataTracker, TableReader>> compactingAndNonCompacting = getCompactingAndNonCompactingSSTables();
         try
         {
             redistributeSummaries(compactingAndNonCompacting.left, Lists.newArrayList(compactingAndNonCompacting.right.values()), this.memoryPoolBytes);
@@ -253,17 +254,17 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
      * @return a list of new SSTableReader instances
      */
     @VisibleForTesting
-    public static List<SSTableReader> redistributeSummaries(List<SSTableReader> compacting, List<SSTableReader> nonCompacting, long memoryPoolBytes) throws IOException
+    public static List<TableReader> redistributeSummaries(List<TableReader> compacting, List<TableReader> nonCompacting, long memoryPoolBytes) throws IOException
     {
         long total = 0;
-        for (SSTableReader sstable : Iterables.concat(compacting, nonCompacting))
+        for (TableReader sstable : Iterables.concat(compacting, nonCompacting))
             total += sstable.getIndexSummaryOffHeapSize();
 
         logger.debug("Beginning redistribution of index summaries for {} sstables with memory pool size {} MB; current spaced used is {} MB",
                      nonCompacting.size(), memoryPoolBytes / 1024L / 1024L, total / 1024.0 / 1024.0);
 
         double totalReadsPerSec = 0.0;
-        for (SSTableReader sstable : nonCompacting)
+        for (TableReader sstable : nonCompacting)
         {
             if (sstable.readMeter != null)
             {
@@ -273,10 +274,10 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         logger.trace("Total reads/sec across all sstables in index summary resize process: {}", totalReadsPerSec);
 
         // copy and sort by read rates (ascending)
-        List<SSTableReader> sstablesByHotness = new ArrayList<>(nonCompacting);
-        Collections.sort(sstablesByHotness, new Comparator<SSTableReader>()
+        List<TableReader> sstablesByHotness = new ArrayList<>(nonCompacting);
+        Collections.sort(sstablesByHotness, new Comparator<TableReader>()
         {
-            public int compare(SSTableReader o1, SSTableReader o2)
+            public int compare(TableReader o1, TableReader o2)
             {
                 if (o1.readMeter == null && o2.readMeter == null)
                     return 0;
@@ -290,15 +291,15 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         });
 
         long remainingBytes = memoryPoolBytes;
-        for (SSTableReader sstable : compacting)
+        for (TableReader sstable : compacting)
             remainingBytes -= sstable.getIndexSummaryOffHeapSize();
 
         logger.trace("Index summaries for compacting SSTables are using {} MB of space",
                      (memoryPoolBytes - remainingBytes) / 1024.0 / 1024.0);
-        List<SSTableReader> newSSTables = adjustSamplingLevels(sstablesByHotness, totalReadsPerSec, remainingBytes);
+        List<TableReader> newSSTables = adjustSamplingLevels(sstablesByHotness, totalReadsPerSec, remainingBytes);
 
         total = 0;
-        for (SSTableReader sstable : Iterables.concat(compacting, newSSTables))
+        for (TableReader sstable : Iterables.concat(compacting, newSSTables))
             total += sstable.getIndexSummaryOffHeapSize();
         logger.debug("Completed resizing of index summaries; current approximate memory used: {} MB",
                      total / 1024.0 / 1024.0);
@@ -306,7 +307,7 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         return newSSTables;
     }
 
-    private static List<SSTableReader> adjustSamplingLevels(List<SSTableReader> sstables,
+    private static List<TableReader> adjustSamplingLevels(List<TableReader> sstables,
                                                             double totalReadsPerSec, long memoryPoolCapacity) throws IOException
     {
 
@@ -314,12 +315,12 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         List<ResampleEntry> toUpsample = new ArrayList<>(sstables.size() / 4);
         List<ResampleEntry> forceResample = new ArrayList<>();
         List<ResampleEntry> forceUpsample = new ArrayList<>();
-        List<SSTableReader> newSSTables = new ArrayList<>(sstables.size());
+        List<TableReader> newSSTables = new ArrayList<>(sstables.size());
 
         // Going from the coldest to the hottest sstables, try to give each sstable an amount of space proportional
         // to the number of total reads/sec it handles.
         long remainingSpace = memoryPoolCapacity;
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             int minIndexInterval = sstable.metadata.getMinIndexInterval();
             int maxIndexInterval = sstable.metadata.getMaxIndexInterval();
@@ -399,7 +400,7 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
 
         if (remainingSpace > 0)
         {
-            Pair<List<SSTableReader>, List<ResampleEntry>> result = distributeRemainingSpace(toDownsample, remainingSpace);
+            Pair<List<TableReader>, List<ResampleEntry>> result = distributeRemainingSpace(toDownsample, remainingSpace);
             toDownsample = result.right;
             newSSTables.addAll(result.left);
         }
@@ -408,16 +409,16 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         toDownsample.addAll(forceResample);
         toDownsample.addAll(toUpsample);
         toDownsample.addAll(forceUpsample);
-        Multimap<DataTracker, SSTableReader> replacedByTracker = HashMultimap.create();
-        Multimap<DataTracker, SSTableReader> replacementsByTracker = HashMultimap.create();
+        Multimap<DataTracker, TableReader> replacedByTracker = HashMultimap.create();
+        Multimap<DataTracker, TableReader> replacementsByTracker = HashMultimap.create();
         for (ResampleEntry entry : toDownsample)
         {
-            SSTableReader sstable = entry.sstable;
+            TableReader sstable = entry.sstable;
             logger.debug("Re-sampling index summary for {} from {}/{} to {}/{} of the original number of entries",
                          sstable, sstable.getIndexSummarySamplingLevel(), Downsampling.BASE_SAMPLING_LEVEL,
                          entry.newSamplingLevel, Downsampling.BASE_SAMPLING_LEVEL);
             ColumnFamilyStore cfs = Keyspace.open(sstable.getKeyspaceName()).getColumnFamilyStore(sstable.getColumnFamilyName());
-            SSTableReader replacement = sstable.cloneWithNewSummarySamplingLevel(cfs, entry.newSamplingLevel);
+            TableReader replacement = sstable.cloneWithNewSummarySamplingLevel(cfs, entry.newSamplingLevel);
             DataTracker tracker = cfs.getDataTracker();
 
             replacedByTracker.put(tracker, sstable);
@@ -434,7 +435,7 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
     }
 
     @VisibleForTesting
-    static Pair<List<SSTableReader>, List<ResampleEntry>> distributeRemainingSpace(List<ResampleEntry> toDownsample, long remainingSpace)
+    static Pair<List<TableReader>, List<ResampleEntry>> distributeRemainingSpace(List<ResampleEntry> toDownsample, long remainingSpace)
     {
         // sort by the amount of space regained by doing the downsample operation; we want to try to avoid operations
         // that will make little difference.
@@ -448,7 +449,7 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
         });
 
         int noDownsampleCutoff = 0;
-        List<SSTableReader> willNotDownsample = new ArrayList<>();
+        List<TableReader> willNotDownsample = new ArrayList<>();
         while (remainingSpace > 0 && noDownsampleCutoff < toDownsample.size())
         {
             ResampleEntry entry = toDownsample.get(noDownsampleCutoff);
@@ -474,11 +475,11 @@ public class IndexSummaryManager implements IndexSummaryManagerMBean
 
     private static class ResampleEntry
     {
-        public final SSTableReader sstable;
+        public final TableReader sstable;
         public final long newSpaceUsed;
         public final int newSamplingLevel;
 
-        public ResampleEntry(SSTableReader sstable, long newSpaceUsed, int newSamplingLevel)
+        public ResampleEntry(TableReader sstable, long newSpaceUsed, int newSamplingLevel)
         {
             this.sstable = sstable;
             this.newSpaceUsed = newSpaceUsed;

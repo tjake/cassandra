@@ -24,6 +24,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.collect.*;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -264,7 +265,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
 
     private List<SSTableStreamingSections> getSSTableSectionsForRanges(Collection<Range<Token>> ranges, Collection<ColumnFamilyStore> stores, long overriddenRepairedAt)
     {
-        List<SSTableReader> sstables = new ArrayList<>();
+        List<TableReader> sstables = new ArrayList<>();
         try
         {
             for (ColumnFamilyStore cfStore : stores)
@@ -277,7 +278,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
             }
 
             List<SSTableStreamingSections> sections = new ArrayList<>(sstables.size());
-            for (SSTableReader sstable : sstables)
+            for (TableReader sstable : sstables)
             {
                 long repairedAt = overriddenRepairedAt;
                 if (overriddenRepairedAt == ActiveRepairService.UNREPAIRED_SSTABLE)
@@ -291,7 +292,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         }
         catch (Throwable t)
         {
-            SSTableReader.releaseReferences(sstables);
+            TableReader.releaseReferences(sstables);
             throw t;
         }
     }
@@ -324,12 +325,12 @@ public class StreamSession implements IEndpointStateChangeSubscriber
 
     public static class SSTableStreamingSections
     {
-        public final SSTableReader sstable;
+        public final TableReader sstable;
         public final List<Pair<Long, Long>> sections;
         public final long estimatedKeys;
         public final long repairedAt;
 
-        public SSTableStreamingSections(SSTableReader sstable, List<Pair<Long, Long>> sections, long estimatedKeys, long repairedAt)
+        public SSTableStreamingSections(TableReader sstable, List<Pair<Long, Long>> sections, long estimatedKeys, long repairedAt)
         {
             this.sstable = sstable;
             this.sections = sections;

@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -127,7 +128,7 @@ public class LegacySSTableTest
 
     private void testStreaming(String version) throws Exception
     {
-        SSTableReader sstable = SSTableReader.open(getDescriptor(version));
+        TableReader sstable = TableReader.open(getDescriptor(version));
         IPartitioner p = StorageService.getPartitioner();
         List<Range<Token>> ranges = new ArrayList<>();
         ranges.add(new Range<>(p.getMinimumToken(), p.getToken(ByteBufferUtil.bytes("100"))));
@@ -176,7 +177,7 @@ public class LegacySSTableTest
     {
         try
         {
-            SSTableReader reader = SSTableReader.open(getDescriptor(version));
+            TableReader reader = TableReader.open(getDescriptor(version));
             CellNameType type = reader.metadata.comparator;
             for (String keystring : TEST_DATA)
             {

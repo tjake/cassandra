@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -115,12 +116,12 @@ public class BlacklistingCompactionsTest
             assertEquals(inserted.toString(), inserted.size(), Util.getRangeSlice(cfs).size());
         }
 
-        Collection<SSTableReader> sstables = cfs.getSSTables();
+        Collection<TableReader> sstables = cfs.getSSTables();
         int currentSSTable = 0;
         int sstablesToCorrupt = 8;
 
         // corrupt first 'sstablesToCorrupt' SSTables
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             if(currentSSTable + 1 > sstablesToCorrupt)
                 break;

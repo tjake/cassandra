@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -175,7 +176,7 @@ public class StreamingTransferTest
         int[] offs;
         if (transferSSTables)
         {
-            SSTableReader sstable = cfs.getSSTables().iterator().next();
+            TableReader sstable = cfs.getSSTables().iterator().next();
             cfs.clearUnsafe();
             transferSSTables(sstable);
             offs = new int[]{1, 3};
@@ -214,7 +215,7 @@ public class StreamingTransferTest
         return keys;
     }
 
-    private void transferSSTables(SSTableReader sstable) throws Exception
+    private void transferSSTables(TableReader sstable) throws Exception
     {
         IPartitioner p = StorageService.getPartitioner();
         List<Range<Token>> ranges = new ArrayList<>();
@@ -232,15 +233,15 @@ public class StreamingTransferTest
         new StreamPlan("StreamingTransferTest").transferRanges(LOCAL, cfs.keyspace.getName(), ranges, cfs.getColumnFamilyName()).execute().get();
     }
 
-    private void transfer(SSTableReader sstable, List<Range<Token>> ranges) throws Exception
+    private void transfer(TableReader sstable, List<Range<Token>> ranges) throws Exception
     {
         new StreamPlan("StreamingTransferTest").transferFiles(LOCAL, makeStreamingDetails(ranges, Arrays.asList(sstable))).execute().get();
     }
 
-    private Collection<StreamSession.SSTableStreamingSections> makeStreamingDetails(List<Range<Token>> ranges, Collection<SSTableReader> sstables)
+    private Collection<StreamSession.SSTableStreamingSections> makeStreamingDetails(List<Range<Token>> ranges, Collection<TableReader> sstables)
     {
         ArrayList<StreamSession.SSTableStreamingSections> details = new ArrayList<>();
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             details.add(new StreamSession.SSTableStreamingSections(sstable,
                                                                    sstable.getPositionsForRanges(ranges),
@@ -307,7 +308,7 @@ public class StreamingTransferTest
         rm.applyUnsafe();
         cfs.forceBlockingFlush();
 
-        SSTableReader sstable = cfs.getSSTables().iterator().next();
+        TableReader sstable = cfs.getSSTables().iterator().next();
         cfs.clearUnsafe();
         transferSSTables(sstable);
 
@@ -367,18 +368,18 @@ public class StreamingTransferTest
 
         // filter pre-cleaned entries locally, and ensure that the end result is equal
         cleanedEntries.keySet().retainAll(keys);
-        SSTableReader cleaned = SSTableUtils.prepare()
+        TableReader cleaned = SSTableUtils.prepare()
             .ks(keyspace.getName())
             .cf(cfs.name)
             .generation(0)
             .write(cleanedEntries);
-        SSTableReader streamed = cfs.getSSTables().iterator().next();
+        TableReader streamed = cfs.getSSTables().iterator().next();
         SSTableUtils.assertContentEquals(cleaned, streamed);
 
         // Retransfer the file, making sure it is now idempotent (see CASSANDRA-3481)
         cfs.clearUnsafe();
         transferSSTables(streamed);
-        SSTableReader restreamed = cfs.getSSTables().iterator().next();
+        TableReader restreamed = cfs.getSSTables().iterator().next();
         SSTableUtils.assertContentEquals(streamed, restreamed);
     }
 
@@ -390,7 +391,7 @@ public class StreamingTransferTest
         content.add("test");
         content.add("test2");
         content.add("test3");
-        SSTableReader sstable = new SSTableUtils(KEYSPACE1, CF_STANDARD).prepare().write(content);
+        TableReader sstable = new SSTableUtils(KEYSPACE1, CF_STANDARD).prepare().write(content);
         String keyspaceName = sstable.getKeyspaceName();
         String cfname = sstable.getColumnFamilyName();
 
@@ -398,7 +399,7 @@ public class StreamingTransferTest
         content.add("transfer1");
         content.add("transfer2");
         content.add("transfer3");
-        SSTableReader sstable2 = SSTableUtils.prepare().write(content);
+        TableReader sstable2 = SSTableUtils.prepare().write(content);
 
         // transfer the first and last key
         IPartitioner p = StorageService.getPartitioner();
@@ -432,7 +433,7 @@ public class StreamingTransferTest
         String keyspace = KEYSPACE_CACHEKEY;
         IPartitioner p = StorageService.getPartitioner();
         String[] columnFamilies = new String[] { "Standard1", "Standard2", "Standard3" };
-        List<SSTableReader> ssTableReaders = new ArrayList<>();
+        List<TableReader> ssTableReaders = new ArrayList<>();
 
         NavigableMap<DecoratedKey,String> keys = new TreeMap<>();
         for (String cf : columnFamilies)
@@ -496,7 +497,7 @@ public class StreamingTransferTest
             mutator.mutate("key" + i, "col" + i, System.currentTimeMillis());
         cfs.forceBlockingFlush();
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
-        SSTableReader sstable = cfs.getSSTables().iterator().next();
+        TableReader sstable = cfs.getSSTables().iterator().next();
         cfs.clearUnsafe();
 
         IPartitioner p = StorageService.getPartitioner();

@@ -41,6 +41,7 @@ import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
@@ -189,7 +190,7 @@ public class CompactionsTest
         assertEquals(1, cfs.getSSTables().size());
 
         // check that the shadowed column is gone
-        SSTableReader sstable = cfs.getSSTables().iterator().next();
+        TableReader sstable = cfs.getSSTables().iterator().next();
         Range keyRange = new Range<RowPosition>(key, sstable.partitioner.getMinimumToken().maxKeyBound());
         SSTableScanner scanner = sstable.getScanner(DataRange.forKeyRange(keyRange));
         OnDiskAtomIterator iter = scanner.next();
@@ -223,7 +224,7 @@ public class CompactionsTest
 
         assertEquals(2, store.getSSTables().size());
 
-        Iterator<SSTableReader> it = store.getSSTables().iterator();
+        Iterator<TableReader> it = store.getSSTables().iterator();
         long originalSize1 = it.next().uncompressedLength();
         long originalSize2 = it.next().uncompressedLength();
 
@@ -271,7 +272,7 @@ public class CompactionsTest
     public static void assertMaxTimestamp(ColumnFamilyStore cfs, long maxTimestampExpected)
     {
         long maxTimestampObserved = Long.MIN_VALUE;
-        for (SSTableReader sstable : cfs.getSSTables())
+        for (TableReader sstable : cfs.getSSTables())
             maxTimestampObserved = Math.max(sstable.getMaxTimestamp(), maxTimestampObserved);
         assertEquals(maxTimestampExpected, maxTimestampObserved);
     }
@@ -299,7 +300,7 @@ public class CompactionsTest
             if (i % 2 == 0)
                 cfs.forceBlockingFlush();
         }
-        Collection<SSTableReader> toCompact = cfs.getSSTables();
+        Collection<TableReader> toCompact = cfs.getSSTables();
         assertEquals(2, toCompact.size());
 
         // Reinserting the same keys. We will compact only the previous sstable, but we need those new ones
@@ -312,8 +313,8 @@ public class CompactionsTest
             rm.applyUnsafe();
         }
         cfs.forceBlockingFlush();
-        SSTableReader tmpSSTable = null;
-        for (SSTableReader sstable : cfs.getSSTables())
+        TableReader tmpSSTable = null;
+        for (TableReader sstable : cfs.getSSTables())
             if (!toCompact.contains(sstable))
                 tmpSSTable = sstable;
         assertNotNull(tmpSSTable);
@@ -359,10 +360,10 @@ public class CompactionsTest
             rm.applyUnsafe();
         }
         cfs.forceBlockingFlush();
-        Collection<SSTableReader> sstables = cfs.getSSTables();
+        Collection<TableReader> sstables = cfs.getSSTables();
 
         assertEquals(1, sstables.size());
-        SSTableReader sstable = sstables.iterator().next();
+        TableReader sstable = sstables.iterator().next();
 
         int prevGeneration = sstable.descriptor.generation;
         String file = new File(sstable.descriptor.filenameFor(Component.DATA)).getAbsolutePath();
@@ -420,7 +421,7 @@ public class CompactionsTest
         writer.append(Util.dk("3"), cf);
         cfs.addSSTable(writer.closeAndOpenReader());
 
-        Collection<SSTableReader> toCompact = cfs.getSSTables();
+        Collection<TableReader> toCompact = cfs.getSSTables();
         assert toCompact.size() == 2;
 
         // Force compaction on first sstables. Since each row is in only one sstable, we will be using EchoedRow.
@@ -439,7 +440,7 @@ public class CompactionsTest
             assertEquals(3,r.cf.getColumn(Util.cellname("a")).timestamp());
         }
 
-        for (SSTableReader sstable : cfs.getSSTables())
+        for (TableReader sstable : cfs.getSSTables())
         {
             StatsMetadata stats = sstable.getSSTableMetadata();
             assertEquals(ByteBufferUtil.bytes("0"), stats.minColumnNames.get(0));
@@ -459,11 +460,11 @@ public class CompactionsTest
         SchemaLoader.insertData(KEYSPACE1, cf, 0, 1);
         cfs.forceBlockingFlush();
 
-        Collection<SSTableReader> sstables = cfs.getSSTables();
+        Collection<TableReader> sstables = cfs.getSSTables();
         assertFalse(sstables.isEmpty());
-        Set<Integer> generations = Sets.newHashSet(Iterables.transform(sstables, new Function<SSTableReader, Integer>()
+        Set<Integer> generations = Sets.newHashSet(Iterables.transform(sstables, new Function<TableReader, Integer>()
         {
-            public Integer apply(SSTableReader sstable)
+            public Integer apply(TableReader sstable)
             {
                 return sstable.descriptor.generation;
             }
@@ -496,7 +497,7 @@ public class CompactionsTest
 
         cfs.forceBlockingFlush();
 
-        Collection<SSTableReader> sstablesBefore = cfs.getSSTables();
+        Collection<TableReader> sstablesBefore = cfs.getSSTables();
 
         QueryFilter filter = QueryFilter.getIdentityFilter(key, cfname, System.currentTimeMillis());
         assertTrue(cfs.getColumnFamily(filter).hasColumns());
@@ -514,9 +515,9 @@ public class CompactionsTest
 
         cfs.forceBlockingFlush();
 
-        Collection<SSTableReader> sstablesAfter = cfs.getSSTables();
-        Collection<SSTableReader> toCompact = new ArrayList<SSTableReader>();
-        for (SSTableReader sstable : sstablesAfter)
+        Collection<TableReader> sstablesAfter = cfs.getSSTables();
+        Collection<TableReader> toCompact = new ArrayList<TableReader>();
+        for (TableReader sstable : sstablesAfter)
             if (!sstablesBefore.contains(sstable))
                 toCompact.add(sstable);
 
@@ -572,7 +573,7 @@ public class CompactionsTest
         store.forceBlockingFlush();
 
         assertEquals(1, store.getSSTables().size());
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
 
 
         // contiguous range spans all data

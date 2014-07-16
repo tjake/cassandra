@@ -21,6 +21,7 @@ import java.util.*;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 
 public class SSTableSplitter {
@@ -29,7 +30,7 @@ public class SSTableSplitter {
 
     private CompactionInfo.Holder info;
 
-    public SSTableSplitter(ColumnFamilyStore cfs, SSTableReader sstable, int sstableSizeInMB)
+    public SSTableSplitter(ColumnFamilyStore cfs, TableReader sstable, int sstableSizeInMB)
     {
         this.task = new SplittingCompactionTask(cfs, sstable, sstableSizeInMB);
     }
@@ -56,7 +57,7 @@ public class SSTableSplitter {
     {
         private final int sstableSizeInMB;
 
-        public SplittingCompactionTask(ColumnFamilyStore cfs, SSTableReader sstable, int sstableSizeInMB)
+        public SplittingCompactionTask(ColumnFamilyStore cfs, TableReader sstable, int sstableSizeInMB)
         {
             super(cfs, Collections.singletonList(sstable), CompactionManager.NO_GC, true);
             this.sstableSizeInMB = sstableSizeInMB;
@@ -66,7 +67,7 @@ public class SSTableSplitter {
         }
 
         @Override
-        protected CompactionController getCompactionController(Set<SSTableReader> toCompact)
+        protected CompactionController getCompactionController(Set<TableReader> toCompact)
         {
             return new SplitController(cfs);
         }

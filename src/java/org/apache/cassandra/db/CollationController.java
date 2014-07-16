@@ -36,6 +36,7 @@ import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.marshal.CounterColumnType;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.SearchIterator;
@@ -111,7 +112,7 @@ public class CollationController
             Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
 
             // read sorted sstables
-            for (SSTableReader sstable : view.sstables)
+            for (TableReader sstable : view.sstables)
             {
                 // if we've already seen a row tombstone with a timestamp greater
                 // than the most recent update to this sstable, we're done, since the rest of the sstables
@@ -235,12 +236,12 @@ public class CollationController
              * in one pass, and minimize the number of sstables for which we read a rowTombstone.
              */
             Collections.sort(view.sstables, SSTableReader.maxTimestampComparator);
-            List<SSTableReader> skippedSSTables = null;
+            List<TableReader> skippedSSTables = null;
             long mostRecentRowTombstone = Long.MIN_VALUE;
             long minTimestamp = Long.MAX_VALUE;
             int nonIntersectingSSTables = 0;
 
-            for (SSTableReader sstable : view.sstables)
+            for (TableReader sstable : view.sstables)
             {
                 minTimestamp = Math.min(minTimestamp, sstable.getMinTimestamp());
                 // if we've already seen a row tombstone with a timestamp greater
@@ -279,7 +280,7 @@ public class CollationController
             // Check for row tombstone in the skipped sstables
             if (skippedSSTables != null)
             {
-                for (SSTableReader sstable : skippedSSTables)
+                for (TableReader sstable : skippedSSTables)
                 {
                     if (sstable.getMaxTimestamp() <= minTimestamp)
                         continue;

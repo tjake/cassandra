@@ -24,6 +24,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.*;
 import com.google.common.primitives.Doubles;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,7 +125,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
             if (candidate == null)
             {
                 // if there is no sstable to compact in standard way, try compacting based on droppable tombstone ratio
-                SSTableReader sstable = findDroppableSSTable(gcBefore);
+                TableReader sstable = findDroppableSSTable(gcBefore);
                 if (sstable == null)
                 {
                     logger.debug("No compaction necessary for {}", this);
@@ -149,18 +150,19 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
         }
     }
 
-    public AbstractCompactionTask getUserDefinedTask(Collection<SSTableReader> sstables, int gcBefore)
+    @Override
+    public AbstractCompactionTask getUserDefinedTask(Collection<TableReader> sstables, int gcBefore)
     {
         throw new UnsupportedOperationException("LevelDB compaction strategy does not allow user-specified compactions");
     }
 
     @Override
-    public AbstractCompactionTask getCompactionTask(Collection<SSTableReader> sstables, int gcBefore, long maxSSTableBytes)
+    public AbstractCompactionTask getCompactionTask(Collection<TableReader> sstables, int gcBefore, long maxSSTableBytes)
     {
         assert sstables.size() > 0;
         int level = -1;
         // if all sstables are in the same level, we can set that level:
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             if (level == -1)
                 level = sstable.getSSTableLevel();
@@ -198,10 +200,10 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
         return maxSSTableSizeInMB * 1024L * 1024L;
     }
 
-    public List<ICompactionScanner> getScanners(Collection<SSTableReader> sstables, Range<Token> range)
+    public List<ICompactionScanner> getScanners(Collection<TableReader> sstables, Range<Token> range)
     {
-        Multimap<Integer, SSTableReader> byLevel = ArrayListMultimap.create();
-        for (SSTableReader sstable : sstables)
+        Multimap<Integer, TableReader> byLevel = ArrayListMultimap.create();
+        for (TableReader sstable : sstables)
         {
             if (manifest.hasRepairedData() && !sstable.isRepaired())
                 byLevel.get(0).add(sstable);
@@ -217,13 +219,13 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
             if (level <= 0)
             {
                 // L0 makes no guarantees about overlapping-ness.  Just create a direct scanner for each
-                for (SSTableReader sstable : byLevel.get(level))
+                for (TableReader sstable : byLevel.get(level))
                     scanners.add(sstable.getScanner(range, CompactionManager.instance.getRateLimiter()));
             }
             else
             {
                 // Create a LeveledScanner that only opens one sstable at a time, in sorted order
-                List<SSTableReader> intersecting = LeveledScanner.intersecting(byLevel.get(level), range);
+                List<TableReader> intersecting = LeveledScanner.intersecting(byLevel.get(level), range);
                 if (!intersecting.isEmpty())
                     scanners.add(new LeveledScanner(intersecting, range));
             }
@@ -237,21 +239,21 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
     private static class LeveledScanner extends AbstractIterator<OnDiskAtomIterator> implements ICompactionScanner
     {
         private final Range<Token> range;
-        private final List<SSTableReader> sstables;
-        private final Iterator<SSTableReader> sstableIterator;
+        private final List<TableReader> sstables;
+        private final Iterator<TableReader> sstableIterator;
         private final long totalLength;
 
         private ICompactionScanner currentScanner;
         private long positionOffset;
 
-        public LeveledScanner(Collection<SSTableReader> sstables, Range<Token> range)
+        public LeveledScanner(Collection<TableReader> sstables, Range<Token> range)
         {
             this.range = range;
 
             // add only sstables that intersect our range, and estimate how much data that involves
-            this.sstables = new ArrayList<SSTableReader>(sstables.size());
+            this.sstables = new ArrayList<>(sstables.size());
             long length = 0;
-            for (SSTableReader sstable : sstables)
+            for (TableReader sstable : sstables)
             {
                 this.sstables.add(sstable);
                 long estimatedKeys = sstable.estimatedKeys();
@@ -270,12 +272,12 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
             currentScanner = sstableIterator.next().getScanner(range, CompactionManager.instance.getRateLimiter());
         }
 
-        public static List<SSTableReader> intersecting(Collection<SSTableReader> sstables, Range<Token> range)
+        public static List<TableReader> intersecting(Collection<TableReader> sstables, Range<Token> range)
         {
-            ArrayList<SSTableReader> filtered = new ArrayList<SSTableReader>();
-            for (SSTableReader sstable : sstables)
+            ArrayList<TableReader> filtered = new ArrayList<>();
+            for (TableReader sstable : sstables)
             {
-                Range<Token> sstableRange = new Range<Token>(sstable.first.getToken(), sstable.last.getToken(), sstable.partitioner);
+                Range<Token> sstableRange = new Range<>(sstable.first.getToken(), sstable.last.getToken(), sstable.partitioner);
                 if (range == null || sstableRange.intersects(range))
                     filtered.add(sstable);
             }
@@ -339,15 +341,15 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
         return String.format("LCS@%d(%s)", hashCode(), cfs.name);
     }
 
-    private SSTableReader findDroppableSSTable(final int gcBefore)
+    private TableReader findDroppableSSTable(final int gcBefore)
     {
         level:
         for (int i = manifest.getLevelCount(); i >= 0; i--)
         {
             // sort sstables by droppable ratio in descending order
-            SortedSet<SSTableReader> sstables = manifest.getLevelSorted(i, new Comparator<SSTableReader>()
+            SortedSet<TableReader> sstables = manifest.getLevelSorted(i, new Comparator<TableReader>()
             {
-                public int compare(SSTableReader o1, SSTableReader o2)
+                public int compare(TableReader o1, TableReader o2)
                 {
                     double r1 = o1.getEstimatedDroppableTombstoneRatio(gcBefore);
                     double r2 = o2.getEstimatedDroppableTombstoneRatio(gcBefore);
@@ -357,8 +359,8 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy implem
             if (sstables.isEmpty())
                 continue;
 
-            Set<SSTableReader> compacting = cfs.getDataTracker().getCompacting();
-            for (SSTableReader sstable : sstables)
+            Set<TableReader> compacting = cfs.getDataTracker().getCompacting();
+            for (TableReader sstable : sstables)
             {
                 if (sstable.getEstimatedDroppableTombstoneRatio(gcBefore) <= tombstoneThreshold)
                     continue level;

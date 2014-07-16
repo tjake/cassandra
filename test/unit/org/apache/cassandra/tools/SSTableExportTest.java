@@ -48,6 +48,7 @@ import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableWriter;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -153,7 +154,7 @@ public class SSTableExportTest
         writer.append(Util.dk("rowExclude"), cfamily);
         cfamily.clear();
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
 
         // Export to JSON and verify
         File tempJson = File.createTempFile("Standard1", ".json");
@@ -203,7 +204,7 @@ public class SSTableExportTest
         writer.append(Util.dk("rowExclude"), cfamily);
         cfamily.clear();
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
 
         // Export to JSON and verify
         File tempJson = File.createTempFile("Standard1", ".json");
@@ -238,7 +239,7 @@ public class SSTableExportTest
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
 
         // Export to JSON and verify
         File tempJson = File.createTempFile("Counter1", ".json");
@@ -270,7 +271,7 @@ public class SSTableExportTest
         writer.append(Util.dk("rowA"), cfamily);
         cfamily.clear();
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
 
         // Export to JSON and verify
         File tempJson = File.createTempFile("ValuesWithQuotes", ".json");
@@ -303,7 +304,7 @@ public class SSTableExportTest
         cfamily.delete(new DeletionInfo(0, 0));
         writer.append(Util.dk("rowA"), cfamily);
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
         // Export to JSON and verify
         File tempJson = File.createTempFile("CFWithDeletionInfo", ".json");
         SSTableExport.export(reader, new PrintStream(tempJson.getPath()), new String[0],
@@ -363,7 +364,7 @@ public class SSTableExportTest
         cfamily.addColumn(column(CFMetaData.DEFAULT_KEY_ALIAS, "not a uuid", 1L));
         writer.append(Util.dk(ByteBufferUtil.bytes(UUIDGen.getTimeUUID())), cfamily);
 
-        SSTableReader reader = writer.closeAndOpenReader();
+        TableReader reader = writer.closeAndOpenReader();
         // Export to JSON and verify
         File tempJson = File.createTempFile("CFWithColumnNameEqualToDefaultKeyAlias", ".json");
         SSTableExport.export(reader, new PrintStream(tempJson.getPath()), new String[0],

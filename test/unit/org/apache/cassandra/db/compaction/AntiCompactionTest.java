@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutionException;
 
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -80,7 +81,7 @@ public class AntiCompactionTest
             rm.applyUnsafe();
         }
         store.forceBlockingFlush();
-        Collection<SSTableReader> sstables = store.getUnrepairedSSTables();
+        Collection<TableReader> sstables = store.getUnrepairedSSTables();
         assertEquals(store.getSSTables().size(), sstables.size());
         Range<Token> range = new Range<Token>(new BytesToken("0".getBytes()), new BytesToken("4".getBytes()));
         List<Range<Token>> ranges = Arrays.asList(range);
@@ -92,7 +93,7 @@ public class AntiCompactionTest
         assertEquals(2, store.getSSTables().size());
         int repairedKeys = 0;
         int nonRepairedKeys = 0;
-        for (SSTableReader sstable : store.getSSTables())
+        for (TableReader sstable : store.getSSTables())
         {
             SSTableScanner scanner = sstable.getScanner();
             while (scanner.hasNext())

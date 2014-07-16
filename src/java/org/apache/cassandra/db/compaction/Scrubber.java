@@ -25,6 +25,7 @@ import com.google.common.base.Throwables;
 
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
@@ -35,7 +36,7 @@ import org.apache.cassandra.utils.OutputHandler;
 public class Scrubber implements Closeable
 {
     private final ColumnFamilyStore cfs;
-    private final SSTableReader sstable;
+    private final TableReader sstable;
     private final File destination;
     private final boolean skipCorrupted;
 
@@ -49,8 +50,8 @@ public class Scrubber implements Closeable
 
     private final boolean isOffline;
 
-    private SSTableReader newSstable;
-    private SSTableReader newInOrderSstable;
+    private TableReader newSstable;
+    private TableReader newInOrderSstable;
 
     private int goodRows;
     private int badRows;
@@ -67,12 +68,12 @@ public class Scrubber implements Closeable
     };
     private final SortedSet<Row> outOfOrderRows = new TreeSet<>(rowComparator);
 
-    public Scrubber(ColumnFamilyStore cfs, SSTableReader sstable, boolean skipCorrupted, boolean isOffline) throws IOException
+    public Scrubber(ColumnFamilyStore cfs, TableReader sstable, boolean skipCorrupted, boolean isOffline) throws IOException
     {
         this(cfs, sstable, skipCorrupted, new OutputHandler.LogOutput(), isOffline);
     }
 
-    public Scrubber(ColumnFamilyStore cfs, SSTableReader sstable, boolean skipCorrupted, OutputHandler outputHandler, boolean isOffline) throws IOException
+    public Scrubber(ColumnFamilyStore cfs, TableReader sstable, boolean skipCorrupted, OutputHandler outputHandler, boolean isOffline) throws IOException
     {
         this.cfs = cfs;
         this.sstable = sstable;
@@ -85,7 +86,7 @@ public class Scrubber implements Closeable
         if (destination == null)
             throw new IOException("disk full");
 
-        List<SSTableReader> toScrub = Collections.singletonList(sstable);
+        List<TableReader> toScrub = Collections.singletonList(sstable);
         // If we run scrub offline, we should never purge tombstone, as we cannot know if other sstable have data that the tombstone deletes.
         this.controller = isOffline
                         ? new ScrubController(cfs)
@@ -299,12 +300,12 @@ public class Scrubber implements Closeable
         outOfOrderRows.add(new Row(key, cf));
     }
 
-    public SSTableReader getNewSSTable()
+    public TableReader getNewSSTable()
     {
         return newSstable;
     }
 
-    public SSTableReader getNewInOrderSSTable()
+    public TableReader getNewInOrderSSTable()
     {
         return newInOrderSstable;
     }
@@ -342,9 +343,9 @@ public class Scrubber implements Closeable
     private static class ScrubInfo extends CompactionInfo.Holder
     {
         private final RandomAccessReader dataFile;
-        private final SSTableReader sstable;
+        private final TableReader sstable;
 
-        public ScrubInfo(RandomAccessReader dataFile, SSTableReader sstable)
+        public ScrubInfo(RandomAccessReader dataFile, TableReader sstable)
         {
             this.dataFile = dataFile;
             this.sstable = sstable;

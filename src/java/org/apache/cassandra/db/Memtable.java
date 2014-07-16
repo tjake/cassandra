@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.base.Throwables;
 import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -311,7 +312,7 @@ public class Memtable
         {
             assert sstableDirectory != null : "Flush task is not bound to any disk";
 
-            SSTableReader sstable = writeSortedContents(context, sstableDirectory);
+            TableReader sstable = writeSortedContents(context, sstableDirectory);
             cfs.replaceFlushed(Memtable.this, sstable);
         }
 
@@ -320,12 +321,12 @@ public class Memtable
             return cfs.directories;
         }
 
-        private SSTableReader writeSortedContents(ReplayPosition context, File sstableDirectory)
+        private TableReader writeSortedContents(ReplayPosition context, File sstableDirectory)
         throws ExecutionException, InterruptedException
         {
             logger.info("Writing {}", Memtable.this.toString());
 
-            SSTableReader ssTable;
+            TableReader ssTable;
             // errors when creating the writer that may leave empty temp files.
             TableWriter writer = createFlushWriter(cfs.getTempSSTablePath(sstableDirectory));
             try

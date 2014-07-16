@@ -36,6 +36,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.cache.CachingOptions;
 import org.apache.cassandra.config.KSMetaData;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -135,7 +136,7 @@ public class SSTableReaderTest
         ranges.add(new Range<Token>(t(9), t(91)));
 
         // confirm that positions increase continuously
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
         long previous = -1;
         for (Pair<Long,Long> section : sstable.getPositionsForRanges(ranges))
         {
@@ -166,7 +167,7 @@ public class SSTableReaderTest
         CompactionManager.instance.performMaximal(store);
 
         // check that all our keys are found correctly
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
         for (int j = 0; j < 100; j += 2)
         {
             DecoratedKey dk = Util.dk(String.valueOf(j));
@@ -228,7 +229,7 @@ public class SSTableReaderTest
         store.forceBlockingFlush();
         CompactionManager.instance.performMaximal(store);
 
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
         long p2 = sstable.getPosition(k(2), SSTableReader.Operator.EQ).position;
         long p3 = sstable.getPosition(k(3), SSTableReader.Operator.EQ).position;
         long p6 = sstable.getPosition(k(6), SSTableReader.Operator.EQ).position;
@@ -289,11 +290,11 @@ public class SSTableReaderTest
         }
         store.forceBlockingFlush();
 
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
         Descriptor desc = sstable.descriptor;
 
         // test to see if sstable can be opened as expected
-        SSTableReader target = SSTableReader.open(desc);
+        TableReader target = TableReader.open(desc);
         Assert.assertEquals(target.getIndexSummarySize(), 1);
         Assert.assertArrayEquals(ByteBufferUtil.getArray(firstKey.getKey()), target.getIndexSummaryKey(0));
         assert target.first.equals(firstKey);
@@ -313,7 +314,7 @@ public class SSTableReaderTest
 
         ColumnFamilyStore indexCfs = store.indexManager.getIndexForColumn(ByteBufferUtil.bytes("birthdate")).getIndexCfs();
         assert indexCfs.partitioner instanceof LocalPartitioner;
-        SSTableReader sstable = indexCfs.getSSTables().iterator().next();
+        TableReader sstable = indexCfs.getSSTables().iterator().next();
         assert sstable.first.getToken() instanceof LocalToken;
 
         SegmentedFile.Builder ibuilder = SegmentedFile.getBuilder(DatabaseDescriptor.getIndexAccessMode());
@@ -322,7 +323,7 @@ public class SSTableReaderTest
                                           : SegmentedFile.getBuilder(DatabaseDescriptor.getDiskAccessMode());
         sstable.saveSummary(ibuilder, dbuilder);
 
-        SSTableReader reopened = SSTableReader.open(sstable.descriptor);
+        TableReader reopened = SSTableReader.open(sstable.descriptor);
         assert reopened.first.getToken() instanceof LocalToken;
     }
 
@@ -338,7 +339,7 @@ public class SSTableReaderTest
         rm.applyUnsafe();
         store.forceBlockingFlush();
         boolean foundScanner = false;
-        for (SSTableReader s : store.getSSTables())
+        for (TableReader s : store.getSSTables())
         {
             ICompactionScanner scanner = s.getScanner(new Range<Token>(t(0), t(1), s.partitioner), null);
             scanner.next(); // throws exception pre 5407
@@ -372,13 +373,13 @@ public class SSTableReaderTest
         List<Range<Token>> ranges = new ArrayList<Range<Token>>();
         ranges.add(new Range<Token>(t(98), t(99)));
 
-        SSTableReader sstable = store.getSSTables().iterator().next();
+        TableReader sstable = store.getSSTables().iterator().next();
         List<Pair<Long,Long>> sections = sstable.getPositionsForRanges(ranges);
         assert sections.size() == 1 : "Expected to find range in sstable" ;
 
         // re-open the same sstable as it would be during bulk loading
         Set<Component> components = Sets.newHashSet(Component.DATA, Component.PRIMARY_INDEX);
-        SSTableReader bulkLoaded = SSTableReader.openForBatch(sstable.descriptor, components, store.metadata, sstable.partitioner);
+        TableReader bulkLoaded = SSTableReader.openForBatch(sstable.descriptor, components, store.metadata, sstable.partitioner);
         sections = bulkLoaded.getPositionsForRanges(ranges);
         assert sections.size() == 1 : "Expected to find range in sstable opened for bulk loading";
     }
@@ -401,9 +402,9 @@ public class SSTableReaderTest
         store.forceBlockingFlush();
         CompactionManager.instance.performMaximal(store);
 
-        Collection<SSTableReader> sstables = store.getSSTables();
+        Collection<TableReader> sstables = store.getSSTables();
         assert sstables.size() == 1;
-        final SSTableReader sstable = sstables.iterator().next();
+        final TableReader sstable = sstables.iterator().next();
 
         ThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(5);
         List<Future> futures = new ArrayList<>(NUM_ROWS * 2);
@@ -433,7 +434,7 @@ public class SSTableReaderTest
             }));
         }
 
-        SSTableReader replacement = sstable.cloneWithNewSummarySamplingLevel(store, 1);
+        TableReader replacement = sstable.cloneWithNewSummarySamplingLevel(store, 1);
         store.getDataTracker().replaceReaders(Arrays.asList(sstable), Arrays.asList(replacement));
         for (Future future : futures)
             future.get();

@@ -28,6 +28,7 @@ import com.google.common.collect.Ordering;
 import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
 
 public class ReplayPosition implements Comparable<ReplayPosition>
@@ -45,14 +46,14 @@ public class ReplayPosition implements Comparable<ReplayPosition>
      * @param sstables
      * @return the most recent (highest) replay position
      */
-    public static ReplayPosition getReplayPosition(Iterable<? extends SSTableReader> sstables)
+    public static ReplayPosition getReplayPosition(Iterable<? extends TableReader> sstables)
     {
         if (Iterables.isEmpty(sstables))
             return NONE;
 
-        Function<SSTableReader, ReplayPosition> f = new Function<SSTableReader, ReplayPosition>()
+        Function<TableReader, ReplayPosition> f = new Function<TableReader, ReplayPosition>()
         {
-            public ReplayPosition apply(SSTableReader sstable)
+            public ReplayPosition apply(TableReader sstable)
             {
                 return sstable.getReplayPosition();
             }

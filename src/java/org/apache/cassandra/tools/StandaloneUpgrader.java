@@ -20,6 +20,7 @@ package org.apache.cassandra.tools;
 import java.io.IOException;
 import java.util.*;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.commons.cli.*;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -62,7 +63,7 @@ public class StandaloneUpgrader
             else
                 lister.includeBackups(false);
 
-            Collection<SSTableReader> readers = new ArrayList<SSTableReader>();
+            Collection<TableReader> readers = new ArrayList<>();
 
             // Upgrade sstables
             for (Map.Entry<Descriptor, Set<Component>> entry : lister.list().entrySet())
@@ -73,7 +74,7 @@ public class StandaloneUpgrader
 
                 try
                 {
-                    SSTableReader sstable = SSTableReader.openNoValidation(entry.getKey(), components, cfs.metadata);
+                    TableReader sstable = TableReader.openNoValidation(entry.getKey(), components, cfs.metadata);
                     if (sstable.descriptor.version.equals(DatabaseDescriptor.getSSTableFormat().info.getLatestVersion()))
                         continue;
                     readers.add(sstable);
@@ -91,7 +92,7 @@ public class StandaloneUpgrader
             int numSSTables = readers.size();
             handler.output("Found " + numSSTables + " sstables that need upgrading.");
 
-            for (SSTableReader sstable : readers)
+            for (TableReader sstable : readers)
             {
                 try
                 {

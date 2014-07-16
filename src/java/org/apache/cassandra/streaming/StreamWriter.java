@@ -28,6 +28,7 @@ import com.ning.compress.lzf.LZFOutputStream;
 
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.DataIntegrityMetadata;
 import org.apache.cassandra.io.util.DataIntegrityMetadata.ChecksumValidator;
 import org.apache.cassandra.io.util.FileUtils;
@@ -42,7 +43,7 @@ public class StreamWriter
 {
     private static final int DEFAULT_CHUNK_SIZE = 64 * 1024;
 
-    protected final SSTableReader sstable;
+    protected final TableReader sstable;
     protected final Collection<Pair<Long, Long>> sections;
     protected final StreamRateLimiter limiter;
     protected final StreamSession session;
@@ -52,7 +53,7 @@ public class StreamWriter
     // allocate buffer to use for transfers only once
     private byte[] transferBuffer;
 
-    public StreamWriter(SSTableReader sstable, Collection<Pair<Long, Long>> sections, StreamSession session)
+    public StreamWriter(TableReader sstable, Collection<Pair<Long, Long>> sections, StreamSession session)
     {
         this.session = session;
         this.sstable = sstable;

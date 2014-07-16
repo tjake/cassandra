@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.commons.lang3.StringUtils;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
@@ -85,12 +86,12 @@ public class NamesQueryFilter implements IDiskAtomFilter
         return new ByNameColumnIterator(columns.iterator(), key, cf);
     }
 
-    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, DecoratedKey key)
+    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, DecoratedKey key)
     {
         return new SSTableNamesIterator(sstable, key, columns);
     }
 
-    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry)
+    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry)
     {
         return new SSTableNamesIterator(sstable, file, key, columns, indexEntry);
     }
@@ -150,7 +151,7 @@ public class NamesQueryFilter implements IDiskAtomFilter
         return false;
     }
 
-    public boolean shouldInclude(SSTableReader sstable)
+    public boolean shouldInclude(TableReader sstable)
     {
         return true;
     }

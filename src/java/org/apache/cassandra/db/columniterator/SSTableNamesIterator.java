@@ -29,6 +29,7 @@ import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.io.util.FileUtils;
@@ -37,13 +38,13 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 public class SSTableNamesIterator extends AbstractIterator<OnDiskAtom> implements OnDiskAtomIterator
 {
     private ColumnFamily cf;
-    private final SSTableReader sstable;
+    private final TableReader sstable;
     private FileDataInput fileToClose;
     private Iterator<OnDiskAtom> iter;
     public final SortedSet<CellName> columns;
     public final DecoratedKey key;
 
-    public SSTableNamesIterator(SSTableReader sstable, DecoratedKey key, SortedSet<CellName> columns)
+    public SSTableNamesIterator(TableReader sstable, DecoratedKey key, SortedSet<CellName> columns)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -70,7 +71,7 @@ public class SSTableNamesIterator extends AbstractIterator<OnDiskAtom> implement
         }
     }
 
-    public SSTableNamesIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<CellName> columns, RowIndexEntry indexEntry)
+    public SSTableNamesIterator(TableReader sstable, FileDataInput file, DecoratedKey key, SortedSet<CellName> columns, RowIndexEntry indexEntry)
     {
         assert columns != null;
         this.sstable = sstable;
@@ -94,7 +95,7 @@ public class SSTableNamesIterator extends AbstractIterator<OnDiskAtom> implement
         return fileToClose;
     }
 
-    private void read(SSTableReader sstable, FileDataInput file, RowIndexEntry indexEntry)
+    private void read(TableReader sstable, FileDataInput file, RowIndexEntry indexEntry)
     throws IOException
     {
         List<IndexHelper.IndexInfo> indexList;

@@ -28,6 +28,7 @@ import java.util.TreeSet;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterators;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -362,7 +363,7 @@ public class RangeTombstoneTest
         assertEquals(1, cfs.getSSTables().size());
 
         // test the physical structure of the sstable i.e. rt & columns on disk
-        SSTableReader sstable = cfs.getSSTables().iterator().next();
+        TableReader sstable = cfs.getSSTables().iterator().next();
         OnDiskAtomIterator iter = sstable.getScanner().next();
         int cnt = 0;
         // after compaction, the first element should be an RT followed by the remaining non-deleted columns

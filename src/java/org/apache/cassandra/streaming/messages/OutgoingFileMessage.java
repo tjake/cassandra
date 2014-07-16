@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.apache.cassandra.io.compress.CompressionMetadata;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.DataOutputStreamAndChannel;
 import org.apache.cassandra.streaming.StreamSession;
 import org.apache.cassandra.streaming.StreamWriter;
@@ -46,7 +47,7 @@ public class OutgoingFileMessage extends StreamMessage
         {
             FileMessageHeader.serializer.serialize(message.header, out, version);
 
-            final SSTableReader reader = message.sstable;
+            final TableReader reader = message.sstable;
             StreamWriter writer = message.header.compressionInfo == null ?
                     new StreamWriter(reader, message.header.sections, session) :
                     new CompressedStreamWriter(reader,
@@ -58,9 +59,9 @@ public class OutgoingFileMessage extends StreamMessage
     };
 
     public FileMessageHeader header;
-    public SSTableReader sstable;
+    public TableReader sstable;
 
-    public OutgoingFileMessage(SSTableReader sstable, int sequenceNumber, long estimatedKeys, List<Pair<Long, Long>> sections, long repairedAt)
+    public OutgoingFileMessage(TableReader sstable, int sequenceNumber, long estimatedKeys, List<Pair<Long, Long>> sections, long repairedAt)
     {
         super(Type.FILE);
         this.sstable = sstable;

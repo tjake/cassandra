@@ -128,6 +128,8 @@ public class CommitLogDescriptor
                 return MessagingService.VERSION_20;
             case VERSION_21:
                 return MessagingService.VERSION_21;
+            case VERSION_30:
+                return MessagingService.VERSION_30;
             default:
                 throw new IllegalStateException("Unknown commitlog version " + version);
         }

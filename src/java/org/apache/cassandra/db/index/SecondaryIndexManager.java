@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Future;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -152,7 +153,7 @@ public class SecondaryIndexManager
      * @param sstables the data to build from
      * @param idxNames the list of columns to index, ordered by comparator
      */
-    public void maybeBuildSecondaryIndexes(Collection<SSTableReader> sstables, Set<String> idxNames)
+    public void maybeBuildSecondaryIndexes(Collection<TableReader> sstables, Set<String> idxNames)
     {
         if (idxNames.isEmpty())
             return;

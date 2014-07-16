@@ -25,6 +25,7 @@ import com.google.common.base.Throwables;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.io.sstable.*;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.utils.CloseableIterator;
@@ -33,8 +34,8 @@ import org.apache.cassandra.utils.OutputHandler;
 public class Upgrader
 {
     private final ColumnFamilyStore cfs;
-    private final SSTableReader sstable;
-    private final Set<SSTableReader> toUpgrade;
+    private final TableReader sstable;
+    private final Set<TableReader> toUpgrade;
     private final File directory;
 
     private final OperationType compactionType = OperationType.UPGRADE_SSTABLES;
@@ -44,7 +45,7 @@ public class Upgrader
 
     private final OutputHandler outputHandler;
 
-    public Upgrader(ColumnFamilyStore cfs, SSTableReader sstable, OutputHandler outputHandler)
+    public Upgrader(ColumnFamilyStore cfs, TableReader sstable, OutputHandler outputHandler)
     {
         this.cfs = cfs;
         this.sstable = sstable;
@@ -57,7 +58,7 @@ public class Upgrader
 
         this.strategy = cfs.getCompactionStrategy();
         long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), SSTableReader.getApproximateKeyCount(toUpgrade));
-        long estimatedSSTables = Math.max(1, SSTableReader.getTotalBytes(this.toUpgrade) / strategy.getMaxSSTableBytes());
+        long estimatedSSTables = Math.max(1, TableReader.getTotalBytes(this.toUpgrade) / strategy.getMaxSSTableBytes());
         this.estimatedRows = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
     }
 
@@ -68,7 +69,7 @@ public class Upgrader
         // Get the max timestamp of the precompacted sstables
         // and adds generation of live ancestors
         // -- note that we always only have one SSTable in toUpgrade here:
-        for (SSTableReader sstable : toUpgrade)
+        for (TableReader sstable : toUpgrade)
         {
             sstableMetadataCollector.addAncestor(sstable.descriptor.generation);
             for (Integer i : sstable.getAncestors())

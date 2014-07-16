@@ -24,6 +24,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,13 +43,13 @@ public class SSTableDeletingTask implements Runnable
     // will be recognized as GCable.
     private static final Set<SSTableDeletingTask> failedTasks = new CopyOnWriteArraySet<SSTableDeletingTask>();
 
-    private final SSTableReader referent;
+    private final TableReader referent;
     private final Descriptor desc;
     private final Set<Component> components;
     private DataTracker tracker;
     private final long size;
 
-    public SSTableDeletingTask(SSTableReader referent)
+    public SSTableDeletingTask(TableReader referent)
     {
         this.referent = referent;
         this.desc = referent.descriptor;

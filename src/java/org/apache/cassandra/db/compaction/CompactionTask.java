@@ -31,6 +31,7 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -55,7 +56,7 @@ public class CompactionTask extends AbstractCompactionTask
     protected static long totalBytesCompacted = 0;
     private CompactionExecutorStatsCollector collector;
 
-    public CompactionTask(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean offline)
+    public CompactionTask(ColumnFamilyStore cfs, Iterable<TableReader> sstables, int gcBefore, boolean offline)
     {
         super(cfs, Sets.newHashSet(sstables));
         this.gcBefore = gcBefore;
@@ -117,10 +118,10 @@ public class CompactionTask extends AbstractCompactionTask
             cfs.snapshotWithoutFlush(System.currentTimeMillis() + "-compact-" + cfs.name);
 
         // sanity check: all sstables must belong to the same cfs
-        assert !Iterables.any(sstables, new Predicate<SSTableReader>()
+        assert !Iterables.any(sstables, new Predicate<TableReader>()
         {
             @Override
-            public boolean apply(SSTableReader sstable)
+            public boolean apply(TableReader sstable)
             {
                 return !sstable.descriptor.cfname.equals(cfs.name);
             }
@@ -129,7 +130,7 @@ public class CompactionTask extends AbstractCompactionTask
         UUID taskId = SystemKeyspace.startCompaction(cfs, sstables);
 
         CompactionController controller = getCompactionController(sstables);
-        Set<SSTableReader> actuallyCompact = Sets.difference(sstables, controller.getFullyExpiredSSTables());
+        Set<TableReader> actuallyCompact = Sets.difference(sstables, controller.getFullyExpiredSSTables());
 
         // new sstables from flush can be added during a compaction, but only the compaction can remove them,
         // so in our single-threaded compaction world this is a valid way of determining if we're compacting
@@ -139,7 +140,7 @@ public class CompactionTask extends AbstractCompactionTask
         long start = System.nanoTime();
         long totalKeysWritten = 0;
         long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), SSTableReader.getApproximateKeyCount(actuallyCompact));
-        long estimatedSSTables = Math.max(1, SSTableReader.getTotalBytes(actuallyCompact) / strategy.getMaxSSTableBytes());
+        long estimatedSSTables = Math.max(1, TableReader.getTotalBytes(actuallyCompact) / strategy.getMaxSSTableBytes());
         long keysPerSSTable = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
         logger.debug("Expected bloom filter size : {}", keysPerSSTable);
 
@@ -215,8 +216,8 @@ public class CompactionTask extends AbstractCompactionTask
             }
         }
 
-        Collection<SSTableReader> oldSStables = this.sstables;
-        List<SSTableReader> newSStables = writer.finished();
+        Collection<TableReader> oldSStables = this.sstables;
+        List<TableReader> newSStables = writer.finished();
         if (!offline)
             cfs.getDataTracker().markCompactedSSTablesReplaced(oldSStables, newSStables, compactionType);
 
@@ -227,7 +228,7 @@ public class CompactionTask extends AbstractCompactionTask
         double ratio = (double) endsize / (double) startsize;
 
         StringBuilder newSSTableNames = new StringBuilder();
-        for (SSTableReader reader : newSStables)
+        for (TableReader reader : newSStables)
             newSSTableNames.append(reader.descriptor.baseFilename()).append(",");
 
         double mbps = dTime > 0 ? (double) endsize / (1024 * 1024) / ((double) dTime / 1000) : 0;
@@ -254,10 +255,10 @@ public class CompactionTask extends AbstractCompactionTask
         logger.debug("Actual #keys: {}, Estimated #keys:{}, Err%: {}", totalKeysWritten, estimatedTotalKeys, ((double)(totalKeysWritten - estimatedTotalKeys)/totalKeysWritten));
     }
 
-    private long getMinRepairedAt(Set<SSTableReader> actuallyCompact)
+    private long getMinRepairedAt(Set<TableReader> actuallyCompact)
     {
         long minRepairedAt= Long.MAX_VALUE;
-        for (SSTableReader sstable : actuallyCompact)
+        for (TableReader sstable : actuallyCompact)
             minRepairedAt = Math.min(minRepairedAt, sstable.getSSTableMetadata().repairedAt);
         if (minRepairedAt == Long.MAX_VALUE)
             return ActiveRepairService.UNREPAIRED_SSTABLE;
@@ -279,7 +280,7 @@ public class CompactionTask extends AbstractCompactionTask
         return 0;
     }
 
-    protected CompactionController getCompactionController(Set<SSTableReader> toCompact)
+    protected CompactionController getCompactionController(Set<TableReader> toCompact)
     {
         return new CompactionController(cfs, toCompact, gcBefore);
     }
@@ -295,10 +296,10 @@ public class CompactionTask extends AbstractCompactionTask
         return false;
     }
 
-    public static long getMaxDataAge(Collection<SSTableReader> sstables)
+    public static long getMaxDataAge(Collection<TableReader> sstables)
     {
         long max = 0;
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             if (sstable.maxDataAge > max)
                 max = sstable.maxDataAge;

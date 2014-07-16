@@ -38,6 +38,7 @@ import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -46,7 +47,7 @@ public class SSTableScanner implements ICompactionScanner
 {
     protected final RandomAccessReader dfile;
     protected final RandomAccessReader ifile;
-    public final SSTableReader sstable;
+    public final TableReader sstable;
 
     private final Iterator<AbstractBounds<RowPosition>> rangeIterator;
     private AbstractBounds<RowPosition> currentRange;
@@ -60,7 +61,7 @@ public class SSTableScanner implements ICompactionScanner
      * @param dataRange a single range to scan; must not be null
      * @param limiter background i/o RateLimiter; may be null
      */
-    SSTableScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter)
+    public SSTableScanner(TableReader sstable, DataRange dataRange, RateLimiter limiter)
     {
         assert sstable != null;
 
@@ -89,7 +90,7 @@ public class SSTableScanner implements ICompactionScanner
      * @param tokenRanges A set of token ranges to scan
      * @param limiter background i/o RateLimiter; may be null
      */
-    SSTableScanner(SSTableReader sstable, Collection<Range<Token>> tokenRanges, RateLimiter limiter)
+    public SSTableScanner(TableReader sstable, Collection<Range<Token>> tokenRanges, RateLimiter limiter)
     {
         assert sstable != null;
 

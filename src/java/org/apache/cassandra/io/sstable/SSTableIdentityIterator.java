@@ -24,6 +24,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.serializers.MarshalException;
@@ -47,7 +48,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
      * @param key Key of this row.
      * @param dataSize length of row data
      */
-    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize)
+    public SSTableIdentityIterator(TableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize)
     {
         this(sstable, file, key, dataSize, false);
     }
@@ -60,7 +61,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
      * @param dataSize length of row data
      * @param checkData if true, do its best to deserialize and check the coherence of row data
      */
-    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize, boolean checkData)
+    public SSTableIdentityIterator(TableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize, boolean checkData)
     {
         this(sstable.metadata, file, file.getPath(), key, dataSize, checkData, sstable, ColumnSerializer.Flag.LOCAL);
     }
@@ -73,7 +74,7 @@ public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterat
                                     DecoratedKey key,
                                     long dataSize,
                                     boolean checkData,
-                                    SSTableReader sstable,
+                                    TableReader sstable,
                                     ColumnSerializer.Flag flag)
     {
         assert !checkData || (sstable != null);

@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.utils.EstimatedHistogram;
 
@@ -212,7 +213,7 @@ public class ColumnFamilyMetrics
             public long[] value()
             {
                 long[] histogram = new long[90];
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     long[] rowSize = sstable.getEstimatedRowSize().getBuckets(false);
                     for (int i = 0; i < histogram.length; i++)
@@ -226,7 +227,7 @@ public class ColumnFamilyMetrics
             public long[] value()
             {
                 long[] histogram = new long[90];
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     long[] columnSize = sstable.getEstimatedColumnCount().getBuckets(false);
                     for (int i = 0; i < histogram.length; i++)
@@ -242,7 +243,7 @@ public class ColumnFamilyMetrics
             {
                 double sum = 0;
                 int total = 0;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     if (sstable.getCompressionRatio() != MetadataCollector.NO_COMPRESSION_RATIO)
                     {
@@ -260,7 +261,7 @@ public class ColumnFamilyMetrics
                 int total = 0;
                 for (Keyspace keyspace : Keyspace.all())
                 {
-                    for (SSTableReader sstable : keyspace.getAllSSTables())
+                    for (TableReader sstable : keyspace.getAllSSTables())
                     {
                         if (sstable.getCompressionRatio() != MetadataCollector.NO_COMPRESSION_RATIO)
                         {
@@ -297,7 +298,7 @@ public class ColumnFamilyMetrics
             public Long value()
             {
                 long min = 0;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     if (min == 0 || sstable.getEstimatedRowSize().min() < min)
                         min = sstable.getEstimatedRowSize().min();
@@ -321,7 +322,7 @@ public class ColumnFamilyMetrics
             public Long value()
             {
                 long max = 0;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     if (sstable.getEstimatedRowSize().max() > max)
                         max = sstable.getEstimatedRowSize().max();
@@ -346,7 +347,7 @@ public class ColumnFamilyMetrics
             {
                 long sum = 0;
                 long count = 0;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     long n = sstable.getEstimatedRowSize().count();
                     sum += sstable.getEstimatedRowSize().mean() * n;
@@ -362,7 +363,7 @@ public class ColumnFamilyMetrics
                 long count = 0;
                 for (Keyspace keyspace : Keyspace.all())
                 {
-                    for (SSTableReader sstable : keyspace.getAllSSTables())
+                    for (TableReader sstable : keyspace.getAllSSTables())
                     {
                         long n = sstable.getEstimatedRowSize().count();
                         sum += sstable.getEstimatedRowSize().mean() * n;
@@ -377,7 +378,7 @@ public class ColumnFamilyMetrics
             public Long value()
             {
                 long count = 0L;
-                for (SSTableReader sstable: cfs.getSSTables())
+                for (TableReader sstable: cfs.getSSTables())
                     count += sstable.getBloomFilterFalsePositiveCount();
                 return count;
             }
@@ -387,7 +388,7 @@ public class ColumnFamilyMetrics
             public Long value()
             {
                 long count = 0L;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                     count += sstable.getRecentBloomFilterFalsePositiveCount();
                 return count;
             }
@@ -398,7 +399,7 @@ public class ColumnFamilyMetrics
             {
                 long falseCount = 0L;
                 long trueCount = 0L;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                 {
                     falseCount += sstable.getBloomFilterFalsePositiveCount();
                     trueCount += sstable.getBloomFilterTruePositiveCount();
@@ -415,7 +416,7 @@ public class ColumnFamilyMetrics
                 long trueCount = 0L;
                 for (Keyspace keyspace : Keyspace.all())
                 {
-                    for (SSTableReader sstable : keyspace.getAllSSTables())
+                    for (TableReader sstable : keyspace.getAllSSTables())
                     {
                         falseCount += sstable.getBloomFilterFalsePositiveCount();
                         trueCount += sstable.getBloomFilterTruePositiveCount();
@@ -432,7 +433,7 @@ public class ColumnFamilyMetrics
             {
                 long falseCount = 0L;
                 long trueCount = 0L;
-                for (SSTableReader sstable: cfs.getSSTables())
+                for (TableReader sstable: cfs.getSSTables())
                 {
                     falseCount += sstable.getRecentBloomFilterFalsePositiveCount();
                     trueCount += sstable.getRecentBloomFilterTruePositiveCount();
@@ -449,7 +450,7 @@ public class ColumnFamilyMetrics
                 long trueCount = 0L;
                 for (Keyspace keyspace : Keyspace.all())
                 {
-                    for (SSTableReader sstable : keyspace.getAllSSTables())
+                    for (TableReader sstable : keyspace.getAllSSTables())
                     {
                         falseCount += sstable.getRecentBloomFilterFalsePositiveCount();
                         trueCount += sstable.getRecentBloomFilterTruePositiveCount();
@@ -465,7 +466,7 @@ public class ColumnFamilyMetrics
             public Long value()
             {
                 long total = 0;
-                for (SSTableReader sst : cfs.getSSTables())
+                for (TableReader sst : cfs.getSSTables())
                     total += sst.getBloomFilterSerializedSize();
                 return total;
             }
@@ -476,7 +477,7 @@ public class ColumnFamilyMetrics
             protected double getNumerator()
             {
                 long hits = 0L;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                     hits += sstable.getKeyCacheHit();
                 return hits;
             }
@@ -484,7 +485,7 @@ public class ColumnFamilyMetrics
             protected double getDenominator()
             {
                 long requests = 0L;
-                for (SSTableReader sstable : cfs.getSSTables())
+                for (TableReader sstable : cfs.getSSTables())
                     requests += sstable.getKeyCacheRequest();
                 return Math.max(requests, 1); // to avoid NaN.
             }

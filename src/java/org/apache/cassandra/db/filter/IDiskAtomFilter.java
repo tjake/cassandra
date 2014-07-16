@@ -29,6 +29,7 @@ import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CType;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.FileDataInput;
 
@@ -56,13 +57,13 @@ public interface IDiskAtomFilter
      * @param file Already opened file data input, saves us opening another one
      * @param key The key of the row we are about to iterate over
      */
-    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry);
+    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry);
 
     /**
      * returns an iterator that returns columns from the given SSTable
      * matching the Filter criteria in sorted order.
      */
-    public OnDiskAtomIterator getSSTableColumnIterator(SSTableReader sstable, DecoratedKey key);
+    public OnDiskAtomIterator getSSTableColumnIterator(TableReader sstable, DecoratedKey key);
 
     /**
      * collects columns from reducedColumns into returnCF.  Termination is determined
@@ -82,7 +83,7 @@ public interface IDiskAtomFilter
     public IDiskAtomFilter cloneShallow();
     public boolean maySelectPrefix(CType type, Composite prefix);
 
-    public boolean shouldInclude(SSTableReader sstable);
+    public boolean shouldInclude(TableReader sstable);
 
     public boolean countCQL3Rows(CellNameType comparator);
 

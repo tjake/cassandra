@@ -38,6 +38,7 @@ import org.apache.cassandra.io.sstable.ColumnStats;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.SSTable;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.EstimatedHistogram;
 import org.apache.cassandra.utils.MurmurHash;
@@ -109,7 +110,7 @@ public class MetadataCollector
         this.columnNameComparator = columnNameComparator;
     }
 
-    public MetadataCollector(Collection<SSTableReader> sstables, CellNameType columnNameComparator, int level)
+    public MetadataCollector(Collection<TableReader> sstables, CellNameType columnNameComparator, int level)
     {
         this(columnNameComparator);
 
@@ -117,7 +118,7 @@ public class MetadataCollector
         sstableLevel(level);
         // Get the max timestamp of the precompacted sstables
         // and adds generation of live ancestors
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
         {
             addAncestor(sstable.descriptor.generation);
             for (Integer i : sstable.getAncestors())

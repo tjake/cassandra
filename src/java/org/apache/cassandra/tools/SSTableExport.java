@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.util.*;
 
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.commons.cli.*;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -260,7 +261,7 @@ public class SSTableExport
      */
     public static void export(Descriptor desc, PrintStream outs, Collection<String> toExport, String[] excludes, CFMetaData metadata) throws IOException
     {
-        SSTableReader sstable = SSTableReader.open(desc);
+        TableReader sstable = SSTableReader.open(desc);
         RandomAccessReader dfile = sstable.openDataReader();
         try
         {
@@ -318,7 +319,7 @@ public class SSTableExport
         Set<String> excludeSet = new HashSet<String>();
 
         if (excludes != null)
-            excludeSet = new HashSet<String>(Arrays.asList(excludes));
+            excludeSet = new HashSet<>(Arrays.asList(excludes));
 
         SSTableIdentityIterator row;
         SSTableScanner scanner = reader.getScanner();
@@ -366,7 +367,7 @@ public class SSTableExport
      */
     public static void export(Descriptor desc, PrintStream outs, String[] excludes, CFMetaData metadata) throws IOException
     {
-        export(SSTableReader.open(desc), outs, excludes, metadata);
+        export(SSTableReader.open(desc), outs, excludes);
     }
 
     /**

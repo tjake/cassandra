@@ -27,6 +27,7 @@ import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.utils.CloseableIterator;
 import org.apache.cassandra.utils.MergeIterator;
 
@@ -52,7 +53,7 @@ public class RowIteratorFactory
      * @return A row iterator following all the given restrictions
      */
     public static CloseableIterator<Row> getIterator(final Iterable<Memtable> memtables,
-                                                     final Collection<SSTableReader> sstables,
+                                                     final Collection<TableReader> sstables,
                                                      final DataRange range,
                                                      final ColumnFamilyStore cfs,
                                                      final long now)
@@ -63,7 +64,7 @@ public class RowIteratorFactory
         for (Memtable memtable : memtables)
             iterators.add(new ConvertToColumnIterator(range, memtable.getEntryIterator(range.startKey(), range.stopKey())));
 
-        for (SSTableReader sstable : sstables)
+        for (TableReader sstable : sstables)
             iterators.add(sstable.getScanner(range));
 
         // reduce rows from all sources into a single row

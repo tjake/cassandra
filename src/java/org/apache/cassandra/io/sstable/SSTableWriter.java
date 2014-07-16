@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.slf4j.Logger;
@@ -324,7 +325,7 @@ public class SSTableWriter extends TableWriter
         last = lastWrittenKey = getMinimalKey(last);
     }
 
-    public SSTableReader openEarly(long maxDataAge)
+    public TableReader openEarly(long maxDataAge)
     {
         StatsMetadata sstableMetadata = (StatsMetadata) metadataCollector.finalizeMetadata(partitioner.getClass().getCanonicalName(),
                                                   metadata.getBloomFilterFpChance(),
@@ -346,11 +347,11 @@ public class SSTableWriter extends TableWriter
         // open the reader early, giving it a FINAL descriptor type so that it is indistinguishable for other consumers
         SegmentedFile ifile = iwriter.builder.openEarly(link.filenameFor(Component.PRIMARY_INDEX));
         SegmentedFile dfile = dbuilder.openEarly(link.filenameFor(Component.DATA));
-        SSTableReader sstable = SSTableReader.internalOpen(descriptor.asType(Descriptor.Type.FINAL),
-                                                           components, metadata,
-                                                           partitioner, ifile,
-                                                           dfile, iwriter.summary.build(partitioner, exclusiveUpperBoundOfReadableIndex),
-                                                           iwriter.bf, maxDataAge, sstableMetadata, true);
+        TableReader sstable = TableReader.internalOpen(descriptor.asType(Descriptor.Type.FINAL),
+                components, metadata,
+                partitioner, ifile,
+                dfile, iwriter.summary.build(partitioner, exclusiveUpperBoundOfReadableIndex),
+                iwriter.bf, maxDataAge, sstableMetadata, true);
 
         // now it's open, find the ACTUAL last readable key (i.e. for which the data file has also been flushed)
         sstable.first = getMinimalKey(first);
@@ -372,17 +373,17 @@ public class SSTableWriter extends TableWriter
         return sstable;
     }
 
-    public SSTableReader closeAndOpenReader()
+    public TableReader closeAndOpenReader()
     {
         return closeAndOpenReader(System.currentTimeMillis());
     }
 
-    public SSTableReader closeAndOpenReader(long maxDataAge)
+    public TableReader closeAndOpenReader(long maxDataAge)
     {
         return closeAndOpenReader(maxDataAge, this.repairedAt);
     }
 
-    public SSTableReader closeAndOpenReader(long maxDataAge, long repairedAt)
+    public TableReader closeAndOpenReader(long maxDataAge, long repairedAt)
     {
         Pair<Descriptor, StatsMetadata> p = close(repairedAt);
         Descriptor newdesc = p.left;
@@ -391,7 +392,7 @@ public class SSTableWriter extends TableWriter
         // finalize in-memory state for the reader
         SegmentedFile ifile = iwriter.builder.complete(newdesc.filenameFor(Component.PRIMARY_INDEX));
         SegmentedFile dfile = dbuilder.complete(newdesc.filenameFor(Component.DATA));
-        SSTableReader sstable = SSTableReader.internalOpen(newdesc,
+        TableReader sstable = TableReader.internalOpen(newdesc,
                                                            components,
                                                            metadata,
                                                            partitioner,

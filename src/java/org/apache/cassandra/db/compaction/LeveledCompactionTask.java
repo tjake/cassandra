@@ -22,6 +22,7 @@ import java.util.Collection;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableWriter;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 
 public class LeveledCompactionTask extends CompactionTask
@@ -29,7 +30,7 @@ public class LeveledCompactionTask extends CompactionTask
     private final int level;
     private final long maxSSTableBytes;
 
-    public LeveledCompactionTask(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, int level, final int gcBefore, long maxSSTableBytes)
+    public LeveledCompactionTask(ColumnFamilyStore cfs, Collection<TableReader> sstables, int level, final int gcBefore, long maxSSTableBytes)
     {
         super(cfs, sstables, gcBefore, false);
         this.level = level;

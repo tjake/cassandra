@@ -27,6 +27,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableWriter;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.io.sstable.format.TableWriter;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Pair;
@@ -100,7 +101,7 @@ public class StreamReceiveTask extends StreamTask
 
             StreamLockfile lockfile = new StreamLockfile(cfs.directories.getWriteableLocationAsFile(), UUID.randomUUID());
             lockfile.create(task.sstables);
-            List<SSTableReader> readers = new ArrayList<>();
+            List<TableReader> readers = new ArrayList<>();
             for (TableWriter writer : task.sstables)
                 readers.add(writer.closeAndOpenReader());
             lockfile.delete();

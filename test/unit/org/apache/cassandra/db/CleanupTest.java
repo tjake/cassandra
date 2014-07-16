@@ -40,6 +40,7 @@ import org.apache.cassandra.dht.BytesToken;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.SSTableReader;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.service.StorageService;
@@ -200,7 +201,7 @@ public class CleanupTest
     protected List<Long> getMaxTimestampList(ColumnFamilyStore cfs)
     {
         List<Long> list = new LinkedList<Long>();
-        for (SSTableReader sstable : cfs.getSSTables())
+        for (TableReader sstable : cfs.getSSTables())
             list.add(sstable.getMaxTimestamp());
         return list;
     }

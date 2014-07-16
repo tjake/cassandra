@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Iterator;
 
 import com.google.common.collect.AbstractIterator;
+import org.apache.cassandra.io.sstable.format.TableReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +45,7 @@ class SimpleSliceReader extends AbstractIterator<OnDiskAtom> implements OnDiskAt
     private final ColumnFamily emptyColumnFamily;
     private final Iterator<OnDiskAtom> atomIterator;
 
-    public SimpleSliceReader(SSTableReader sstable, RowIndexEntry indexEntry, FileDataInput input, Composite finishColumn)
+    public  SimpleSliceReader(TableReader sstable, RowIndexEntry indexEntry, FileDataInput input, Composite finishColumn)
     {
         Tracing.trace("Seeking to partition beginning in data file");
         this.finishColumn = finishColumn;
