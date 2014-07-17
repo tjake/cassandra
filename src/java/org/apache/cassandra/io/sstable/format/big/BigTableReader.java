@@ -36,7 +36,6 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.io.sstable.SSTableScanner;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -81,7 +80,7 @@ public class BigTableReader extends SSTableReader
      */
     public ICompactionScanner getScanner(DataRange dataRange)
     {
-        return new SSTableScanner(this, dataRange, null);
+        return new BigTableScanner(this, dataRange, null);
     }
 
     /**
@@ -95,7 +94,7 @@ public class BigTableReader extends SSTableReader
 
     public ICompactionScanner getScanner(RateLimiter limiter)
     {
-        return new SSTableScanner(this, DataRange.allData(partitioner), limiter);
+        return new BigTableScanner(this, DataRange.allData(partitioner), limiter);
     }
 
     /**
@@ -124,7 +123,7 @@ public class BigTableReader extends SSTableReader
         if (positions.isEmpty())
             return new EmptyCompactionScanner(getFilename());
         else
-            return new SSTableScanner(this, ranges, limiter);
+            return new BigTableScanner(this, ranges, limiter);
     }
 
 

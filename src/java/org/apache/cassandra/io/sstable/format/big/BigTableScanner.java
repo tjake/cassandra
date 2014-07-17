@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.io.sstable;
+package org.apache.cassandra.io.sstable.format.big;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,12 +38,14 @@ import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.io.sstable.CorruptSSTableException;
+import org.apache.cassandra.io.sstable.SSTableIdentityIterator;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
-public class SSTableScanner implements ICompactionScanner
+public class BigTableScanner implements ICompactionScanner
 {
     protected final RandomAccessReader dfile;
     protected final RandomAccessReader ifile;
@@ -61,7 +63,7 @@ public class SSTableScanner implements ICompactionScanner
      * @param dataRange a single range to scan; must not be null
      * @param limiter background i/o RateLimiter; may be null
      */
-    public SSTableScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter)
+    public BigTableScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter)
     {
         assert sstable != null;
 
@@ -90,7 +92,7 @@ public class SSTableScanner implements ICompactionScanner
      * @param tokenRanges A set of token ranges to scan
      * @param limiter background i/o RateLimiter; may be null
      */
-    public SSTableScanner(SSTableReader sstable, Collection<Range<Token>> tokenRanges, RateLimiter limiter)
+    public BigTableScanner(SSTableReader sstable, Collection<Range<Token>> tokenRanges, RateLimiter limiter)
     {
         assert sstable != null;
 
