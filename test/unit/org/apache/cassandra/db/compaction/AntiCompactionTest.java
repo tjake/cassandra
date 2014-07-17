@@ -94,7 +94,7 @@ public class AntiCompactionTest
         int nonRepairedKeys = 0;
         for (SSTableReader sstable : store.getSSTables())
         {
-            SSTableScanner scanner = sstable.getScanner();
+            ICompactionScanner scanner = sstable.getScanner();
             while (scanner.hasNext())
             {
                 SSTableIdentityIterator row = (SSTableIdentityIterator) scanner.next();

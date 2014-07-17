@@ -17,28 +17,39 @@
  */
 package org.apache.cassandra.io.sstable.format.big;
 
+import com.google.common.util.concurrent.RateLimiter;
 import org.apache.cassandra.cache.KeyCacheKey;
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.DataRange;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.RowPosition;
+import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
+import org.apache.cassandra.db.columniterator.SSTableNamesIterator;
+import org.apache.cassandra.db.columniterator.SSTableSliceIterator;
+import org.apache.cassandra.db.compaction.ICompactionScanner;
+import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.SSTableScanner;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 /**
  * SSTableReaders are open()ed by Keyspace.onStart; after that they are created by SSTableWriter.renameAndOpen.
@@ -51,6 +62,69 @@ public class BigTableReader extends SSTableReader
     public BigTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
     {
         super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+    }
+
+    public OnDiskAtomIterator iterator(DecoratedKey key, SortedSet<CellName> columns)
+    {
+        return new SSTableNamesIterator(this, key, columns);
+    }
+
+    public OnDiskAtomIterator iterator(DecoratedKey key, ColumnSlice[] slices, boolean reverse)
+    {
+        return new SSTableSliceIterator(this, key, slices, reverse);
+    }
+
+    /**
+     *
+     * @param dataRange filter to use when reading the columns
+     * @return A Scanner for seeking over the rows of the SSTable.
+     */
+    public ICompactionScanner getScanner(DataRange dataRange)
+    {
+        return new SSTableScanner(this, dataRange, null);
+    }
+
+    /**
+     * I/O SSTableScanner
+     * @return A Scanner for seeking over the rows of the SSTable.
+     */
+    public ICompactionScanner getScanner()
+    {
+        return getScanner((RateLimiter) null);
+    }
+
+    public ICompactionScanner getScanner(RateLimiter limiter)
+    {
+        return new SSTableScanner(this, DataRange.allData(partitioner), limiter);
+    }
+
+    /**
+     * Direct I/O SSTableScanner over a defined range of tokens.
+     *
+     * @param range the range of keys to cover
+     * @return A Scanner for seeking over the rows of the SSTable.
+     */
+    public ICompactionScanner getScanner(Range<Token> range, RateLimiter limiter)
+    {
+        if (range == null)
+            return getScanner(limiter);
+        return getScanner(Collections.singletonList(range), limiter);
+    }
+
+    /**
+     * Direct I/O SSTableScanner over a defined collection of ranges of tokens.
+     *
+     * @param ranges the range of keys to cover
+     * @return A Scanner for seeking over the rows of the SSTable.
+     */
+    public ICompactionScanner getScanner(Collection<Range<Token>> ranges, RateLimiter limiter)
+    {
+        // We want to avoid allocating a SSTableScanner if the range don't overlap the sstable (#5249)
+        List<Pair<Long, Long>> positions = getPositionsForRanges(Range.normalize(ranges));
+        if (positions.isEmpty())
+            return new EmptyCompactionScanner(getFilename());
+        else
+            return new SSTableScanner(this, ranges, limiter);
     }
 
 

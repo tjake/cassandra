@@ -35,6 +35,9 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
 import org.apache.cassandra.db.compaction.ICompactionScanner;
+import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.filter.ColumnSlice;
+import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.io.compress.CompressedRandomAccessReader;
@@ -1328,6 +1331,13 @@ public abstract class SSTableReader extends SSTable
      */
     public abstract RowIndexEntry getPosition(RowPosition key, Operator op, boolean updateCacheAndStats);
 
+    //Corresponds to a name column
+    public abstract OnDiskAtomIterator iterator(DecoratedKey key, SortedSet<CellName> columns);
+
+    //Corresponds to a slice query
+    public abstract OnDiskAtomIterator iterator(DecoratedKey key, ColumnSlice[] slices, boolean reverse);
+
+
 
     /**
      * Finds and returns the first key beyond a given token in this SSTable or null if no such key exists.
@@ -1446,26 +1456,17 @@ public abstract class SSTableReader extends SSTable
         return isSuspect.get();
     }
 
-    /**
-     *
-     * @param dataRange filter to use when reading the columns
-     * @return A Scanner for seeking over the rows of the SSTable.
-     */
-    public SSTableScanner getScanner(DataRange dataRange)
-    {
-        return new SSTableScanner(this, dataRange, null);
-    }
 
     /**
      * I/O SSTableScanner
      * @return A Scanner for seeking over the rows of the SSTable.
      */
-    public SSTableScanner getScanner()
+    public ICompactionScanner getScanner()
     {
         return getScanner((RateLimiter) null);
     }
 
-    public SSTableScanner getScanner(RateLimiter limiter)
+    public ICompactionScanner getScanner(RateLimiter limiter)
     {
         return new SSTableScanner(this, DataRange.allData(partitioner), limiter);
     }
@@ -1489,15 +1490,16 @@ public abstract class SSTableReader extends SSTable
      * @param ranges the range of keys to cover
      * @return A Scanner for seeking over the rows of the SSTable.
      */
-    public ICompactionScanner getScanner(Collection<Range<Token>> ranges, RateLimiter limiter)
-    {
-        // We want to avoid allocating a SSTableScanner if the range don't overlap the sstable (#5249)
-        List<Pair<Long, Long>> positions = getPositionsForRanges(Range.normalize(ranges));
-        if (positions.isEmpty())
-            return new EmptyCompactionScanner(getFilename());
-        else
-            return new SSTableScanner(this, ranges, limiter);
-    }
+    public abstract ICompactionScanner getScanner(Collection<Range<Token>> ranges, RateLimiter limiter);
+
+    /**
+     *
+     * @param dataRange filter to use when reading the columns
+     * @return A Scanner for seeking over the rows of the SSTable.
+     */
+    public abstract ICompactionScanner getScanner(DataRange dataRange);
+
+
 
     public FileDataInput getFileDataInput(long position)
     {

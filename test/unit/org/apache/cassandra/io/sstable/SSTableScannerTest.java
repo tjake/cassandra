@@ -92,7 +92,7 @@ public class SSTableScannerTest
 
     private static void assertScanMatches(SSTableReader sstable, int scanStart, int scanEnd, int expectedStart, int expectedEnd)
     {
-        SSTableScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
+        ICompactionScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
         for (int i = expectedStart; i <= expectedEnd; i++)
             assertEquals(toKey(i), new String(scanner.next().getKey().getKey().array()));
         assertFalse(scanner.hasNext());
@@ -100,7 +100,7 @@ public class SSTableScannerTest
 
     private static void assertScanEmpty(SSTableReader sstable, int scanStart, int scanEnd)
     {
-        SSTableScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
+        ICompactionScanner scanner = sstable.getScanner(new DataRange(boundsFor(scanStart, scanEnd), new IdentityQueryFilter()));
         assertFalse(String.format("scan of (%03d, %03d] should be empty", scanStart, scanEnd), scanner.hasNext());
     }
 
@@ -122,7 +122,7 @@ public class SSTableScannerTest
         SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
-        SSTableScanner scanner = sstable.getScanner();
+        ICompactionScanner scanner = sstable.getScanner();
         for (int i = 2; i < 10; i++)
             assertEquals(toKey(i), new String(scanner.next().getKey().getKey().array()));
 
@@ -186,7 +186,7 @@ public class SSTableScannerTest
         SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
-        SSTableScanner fullScanner = sstable.getScanner();
+        ICompactionScanner fullScanner = sstable.getScanner();
         assertScanContainsRanges(fullScanner,
                                  2, 9,
                                  102, 109,
@@ -316,7 +316,7 @@ public class SSTableScannerTest
         SSTableReader sstable = store.getSSTables().iterator().next();
 
         // full range scan
-        SSTableScanner fullScanner = sstable.getScanner();
+        ICompactionScanner fullScanner = sstable.getScanner();
         assertScanContainsRanges(fullScanner, 205, 205);
 
         // scan three ranges separately
