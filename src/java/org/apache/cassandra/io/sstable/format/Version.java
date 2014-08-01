@@ -36,6 +36,8 @@ public abstract class Version
 
     public abstract boolean hasNewFileName();
 
+    public abstract boolean isSequential();
+
     public String getVersion()
     {
         return version;

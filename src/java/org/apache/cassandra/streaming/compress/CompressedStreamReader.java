@@ -67,7 +67,7 @@ public class CompressedStreamReader extends StreamReader
         Pair<String, String> kscf = Schema.instance.getCF(cfId);
         ColumnFamilyStore cfs = Keyspace.open(kscf.left).getColumnFamilyStore(kscf.right);
 
-        SSTableWriter writer = createWriter(cfs, totalSize, repairedAt);
+        SSTableWriter writer = createWriter(cfs, totalSize, repairedAt, format);
 
         CompressedInputStream cis = new CompressedInputStream(Channels.newInputStream(channel), compressionInfo, inputVersion.hasPostCompressionAdlerChecksums());
         BytesReadTracker in = new BytesReadTracker(new DataInputStream(cis));

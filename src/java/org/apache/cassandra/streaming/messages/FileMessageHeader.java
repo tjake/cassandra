@@ -26,8 +26,7 @@ import java.util.UUID;
 import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.compress.CompressionMetadata;
-import org.apache.cassandra.io.sstable.SSTable;
-import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.streaming.compress.CompressionInfo;
@@ -47,7 +46,7 @@ public class FileMessageHeader
     public final String version;
 
     /** SSTable format **/
-    public final TableFormat.Type format;
+    public final SSTableFormat.Type format;
     public final long estimatedKeys;
     public final List<Pair<Long, Long>> sections;
     public final CompressionInfo compressionInfo;
@@ -56,7 +55,7 @@ public class FileMessageHeader
     public FileMessageHeader(UUID cfId,
                              int sequenceNumber,
                              String version,
-                             TableFormat.Type format,
+                             SSTableFormat.Type format,
                              long estimatedKeys,
                              List<Pair<Long, Long>> sections,
                              CompressionInfo compressionInfo,
@@ -134,10 +133,10 @@ public class FileMessageHeader
             out.writeUTF(header.version);
 
             //We can't stream to a node that doesn't understand a new sstable format
-            if (version < MessagingService.VERSION_30 && header.format != TableFormat.Type.LEGACY && header.format != TableFormat.Type.BIG)
+            if (version < StreamMessage.VERSION_30 && header.format != SSTableFormat.Type.LEGACY && header.format != SSTableFormat.Type.BIG)
                 throw new UnsupportedOperationException("Can't stream non-legacy sstables to nodes < 3.0");
 
-            if (version >= MessagingService.VERSION_30)
+            if (version >= StreamMessage.VERSION_30)
                 out.writeUTF(header.format.name);
 
             out.writeLong(header.estimatedKeys);
@@ -157,9 +156,9 @@ public class FileMessageHeader
             int sequenceNumber = in.readInt();
             String sstableVersion = in.readUTF();
 
-            TableFormat.Type format = TableFormat.Type.LEGACY;
-            if (version >= MessagingService.VERSION_30)
-                format = TableFormat.Type.validate(in.readUTF());
+            SSTableFormat.Type format = SSTableFormat.Type.LEGACY;
+            if (version >= StreamMessage.VERSION_30)
+                format = SSTableFormat.Type.validate(in.readUTF());
 
             long estimatedKeys = in.readLong();
             int count = in.readInt();
@@ -176,6 +175,10 @@ public class FileMessageHeader
             long size = UUIDSerializer.serializer.serializedSize(header.cfId, version);
             size += TypeSizes.NATIVE.sizeof(header.sequenceNumber);
             size += TypeSizes.NATIVE.sizeof(header.version);
+
+            if (version >= StreamMessage.VERSION_30)
+                size += TypeSizes.NATIVE.sizeof(header.format.name);
+
             size += TypeSizes.NATIVE.sizeof(header.estimatedKeys);
 
             size += TypeSizes.NATIVE.sizeof(header.sections.size());

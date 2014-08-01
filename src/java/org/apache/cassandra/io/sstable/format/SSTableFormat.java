@@ -1,12 +1,13 @@
 package org.apache.cassandra.io.sstable.format;
 
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
+import org.apache.cassandra.io.sstable.format.test.TestFormat;
 import org.apache.commons.lang.StringUtils;
 
 /**
  * Created by jake on 7/3/14.
  */
-public interface TableFormat
+public interface SSTableFormat
 {
     Version getLatestVersion();
     Version getVersion(String version);
@@ -24,11 +25,11 @@ public interface TableFormat
         BIG("big", BigFormat.instance),
 
         //The new sstable format
-        TEST("test",  BigFormat.instance);
+        TEST("test",  TestFormat.instance);
 
-        public final TableFormat info;
+        public final SSTableFormat info;
         public final String name;
-        private Type(String name, TableFormat info)
+        private Type(String name, SSTableFormat info)
         {
             //Since format comes right after generation
             //we disallow formats with numeric names

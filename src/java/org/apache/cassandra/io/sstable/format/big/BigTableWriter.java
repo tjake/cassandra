@@ -278,10 +278,6 @@ public class BigTableWriter extends SSTableWriter
     /**
      * After failure, attempt to close the index writer and data file before deleting all temp components for the sstable
      */
-    public void abort()
-    {
-        abort(true);
-    }
     public void abort(boolean closeBf)
     {
         assert descriptor.type.isTemporary;
@@ -367,16 +363,6 @@ public class BigTableWriter extends SSTableWriter
         }
         sstable.last = getMinimalKey(inclusiveUpperBoundOfReadableData);
         return sstable;
-    }
-
-    public SSTableReader closeAndOpenReader()
-    {
-        return closeAndOpenReader(System.currentTimeMillis());
-    }
-
-    public SSTableReader closeAndOpenReader(long maxDataAge)
-    {
-        return closeAndOpenReader(maxDataAge, this.repairedAt);
     }
 
     public SSTableReader closeAndOpenReader(long maxDataAge, long repairedAt)
@@ -553,12 +539,6 @@ public class BigTableWriter extends SSTableWriter
             // we can't reset dbuilder either, but that is the last thing called in afterappend so
             // we assume that if that worked then we won't be trying to reset.
             indexFile.resetAndTruncate(mark);
-        }
-
-        @Override
-        public String toString()
-        {
-            return "IndexWriter(" + descriptor + ")";
         }
     }
 }

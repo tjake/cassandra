@@ -38,7 +38,7 @@ import java.util.UUID;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Longs;
-import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.cassandra.auth.AllowAllAuthenticator;
@@ -99,7 +99,7 @@ public class DatabaseDescriptor
 
     private static Config conf;
 
-    private static TableFormat.Type sstable_format;
+    private static SSTableFormat.Type sstable_format;
 
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
     private static IAuthorizer authorizer = new AllowAllAuthorizer();
@@ -1563,11 +1563,11 @@ public class DatabaseDescriptor
     }
 
 
-    public static TableFormat.Type getSSTableFormat()
+    public static SSTableFormat.Type getSSTableFormat()
     {
         //We don't care if this is racy
         if (sstable_format == null)
-            sstable_format = TableFormat.Type.validate(conf.sstable_format_type);
+            sstable_format = SSTableFormat.Type.validate(conf.sstable_format_type);
 
         return sstable_format;
     }

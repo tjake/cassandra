@@ -17,18 +17,19 @@
  */
 package org.apache.cassandra.streaming;
 
-import java.io.DataInput;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Collection;
 import java.util.UUID;
 
 import com.google.common.base.Throwables;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
+import org.apache.cassandra.io.util.FileDataInput;
+import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.io.util.RandomAccessReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +46,8 @@ import org.apache.cassandra.streaming.messages.FileMessageHeader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.BytesReadTracker;
 import org.apache.cassandra.utils.Pair;
+import sun.misc.IOUtils;
+
 
 /**
  * StreamReader reads from stream and writes to SSTable.
@@ -58,6 +61,7 @@ public class StreamReader
     protected final StreamSession session;
     protected final Version inputVersion;
     protected final long repairedAt;
+    protected final SSTableFormat.Type format;
 
     protected Descriptor desc;
 
@@ -69,6 +73,7 @@ public class StreamReader
         this.sections = header.sections;
         this.inputVersion = header.format.info.getVersion(header.version);
         this.repairedAt = header.repairedAt;
+        this.format = header.format;
     }
 
     /**
@@ -84,21 +89,51 @@ public class StreamReader
         Pair<String, String> kscf = Schema.instance.getCF(cfId);
         ColumnFamilyStore cfs = Keyspace.open(kscf.left).getColumnFamilyStore(kscf.right);
 
-        SSTableWriter writer = createWriter(cfs, totalSize, repairedAt);
+        SSTableWriter writer = createWriter(cfs, totalSize, repairedAt, format);
+
         DataInputStream dis = new DataInputStream(new LZFInputStream(Channels.newInputStream(channel)));
         BytesReadTracker in = new BytesReadTracker(dis);
+        File tmpFile = null;
         try
         {
-            while (in.getBytesRead() < totalSize)
+            int sectionBytesRead = 0;
+            for (Pair<Long,Long> section : sections)
             {
-                writeRow(writer, in, cfs);
+                assert in.getBytesRead() < totalSize;
+                long sectionLength = section.right - section.left;
+
+
+                //For non sequential formats, flush row to file then send to writer
+                //TODO: write/use MemoryDataInput for small partitions
+                if (!inputVersion.isSequential())
+                {
+                    File f = FileUtils.createTempFile("stream-", ".tmp");
+                    FileOutputStream out = new FileOutputStream(f);
+                    FileUtils.copyTo(in, out, sectionBytesRead);
+                    FileUtils.close(out);
+
+                    try ( FileDataInput fileInput = RandomAccessReader.open(f) )
+                    {
+                      writeRow(writer, fileInput, cfs);
+                    }
+                }
+                else
+                {
+                    writeRow(writer, in, cfs);
+                }
+
+
+
+
                 // TODO move this to BytesReadTracker
                 session.progress(desc, ProgressInfo.Direction.IN, in.getBytesRead(), totalSize);
             }
             return writer;
-        }
-        catch (Throwable e)
+        } catch (Throwable e)
         {
+            if (tmpFile != null)
+                FileUtils.deleteWithConfirm(tmpFile);
+
             writer.abort();
             drain(dis, in.getBytesRead());
             if (e instanceof IOException)
@@ -108,12 +143,12 @@ public class StreamReader
         }
     }
 
-    protected SSTableWriter createWriter(ColumnFamilyStore cfs, long totalSize, long repairedAt) throws IOException
+    protected SSTableWriter createWriter(ColumnFamilyStore cfs, long totalSize, long repairedAt, SSTableFormat.Type format) throws IOException
     {
         Directories.DataDirectory localDir = cfs.directories.getWriteableLocation();
         if (localDir == null)
             throw new IOException("Insufficient disk space to store " + totalSize + " bytes");
-        desc = Descriptor.fromFilename(cfs.getTempSSTablePath(cfs.directories.getLocationForDisk(localDir)));
+        desc = Descriptor.fromFilename(cfs.getTempSSTablePath(cfs.directories.getLocationForDisk(localDir), format));
 
         return SSTableWriter.create(desc, estimatedKeys, repairedAt);
     }

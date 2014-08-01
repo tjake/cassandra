@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.*;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.cassandra.io.FSWriteError;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
@@ -785,10 +786,15 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
     public String getTempSSTablePath(File directory)
     {
-        return getTempSSTablePath(directory, DatabaseDescriptor.getSSTableFormat().info.getLatestVersion());
+        return getTempSSTablePath(directory, DatabaseDescriptor.getSSTableFormat().info.getLatestVersion(), DatabaseDescriptor.getSSTableFormat());
     }
 
-    private String getTempSSTablePath(File directory, Version version)
+    public String getTempSSTablePath(File directory, SSTableFormat.Type format)
+    {
+        return getTempSSTablePath(directory, format.info.getLatestVersion(), format);
+    }
+
+    private String getTempSSTablePath(File directory, Version version, SSTableFormat.Type format)
     {
         Descriptor desc = new Descriptor(version,
                                          directory,
@@ -796,7 +802,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                          name,
                                          fileIndexGenerator.incrementAndGet(),
                                          Descriptor.Type.TEMP,
-                                         DatabaseDescriptor.getSSTableFormat());
+                                         format);
         return desc.filenameFor(Component.DATA);
     }
 

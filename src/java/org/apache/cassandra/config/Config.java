@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
-import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.supercsv.io.CsvListReader;
 import org.supercsv.prefs.CsvPreference;
 

@@ -1,14 +1,14 @@
 package org.apache.cassandra.io.sstable.format.big;
 
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
-import org.apache.cassandra.io.sstable.format.TableFormat;
 import org.apache.cassandra.io.sstable.format.Version;
 
 /**
  * Legacy bigtable format C* used till
  */
-public class BigFormat implements TableFormat
+public class BigFormat implements SSTableFormat
 {
     public static BigFormat instance = new BigFormat();
     public static BigVersion latestVersion = new BigVersion(BigVersion.current_version);
@@ -145,5 +145,12 @@ public class BigFormat implements TableFormat
         {
             return version.compareTo(earliest_supported_version) >= 0 && version.charAt(0) <= current_version.charAt(0);
         }
+
+        @Override
+        public boolean isSequential()
+        {
+            return true;
+        }
+
     }
 }

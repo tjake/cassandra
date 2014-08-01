@@ -26,7 +26,7 @@ import com.google.common.base.Objects;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Directories;
-import org.apache.cassandra.io.sstable.format.TableFormat;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.sstable.metadata.IMetadataSerializer;
 import org.apache.cassandra.io.sstable.metadata.LegacyMetadataSerializer;
@@ -66,7 +66,7 @@ public class Descriptor
     public final String cfname;
     public final int generation;
     public final Type type;
-    public final TableFormat.Type fmt;
+    public final SSTableFormat.Type fmt;
     private final int hashCode;
 
     /**
@@ -77,12 +77,17 @@ public class Descriptor
         this(DatabaseDescriptor.getSSTableFormat().info.getLatestVersion(), directory, ksname, cfname, generation, temp, DatabaseDescriptor.getSSTableFormat());
     }
 
-    public Descriptor(String version, File directory, String ksname, String cfname, int generation, Type temp, TableFormat.Type fmt)
+    public Descriptor(File directory, String ksname, String cfname, int generation, Type temp, SSTableFormat.Type fmt)
+    {
+        this(fmt.info.getLatestVersion(), directory, ksname, cfname, generation, temp, fmt);
+    }
+
+    public Descriptor(String version, File directory, String ksname, String cfname, int generation, Type temp, SSTableFormat.Type fmt)
     {
         this(fmt.info.getVersion(version), directory, ksname, cfname, generation, temp, fmt);
     }
 
-    public Descriptor(Version version, File directory, String ksname, String cfname, int generation, Type temp, TableFormat.Type fmt)
+    public Descriptor(Version version, File directory, String ksname, String cfname, int generation, Type temp, SSTableFormat.Type fmt)
     {
         assert version != null && directory != null && ksname != null && cfname != null && fmt.info.getLatestVersion().getClass().equals(version.getClass());
         this.version = version;
@@ -125,7 +130,7 @@ public class Descriptor
             buff.append(type.marker).append(separator);
         buff.append(version).append(separator);
         buff.append(generation);
-        if (fmt != TableFormat.Type.LEGACY)
+        if (fmt != SSTableFormat.Type.LEGACY)
             buff.append(separator).append(fmt.name);
     }
 
@@ -204,10 +209,10 @@ public class Descriptor
 
         nexttok = tokenStack.pop();
         // generation OR Type
-        TableFormat.Type fmt = TableFormat.Type.LEGACY;
+        SSTableFormat.Type fmt = SSTableFormat.Type.LEGACY;
         if (!StringUtils.isNumeric(nexttok))
         {
-            fmt = TableFormat.Type.validate(nexttok);
+            fmt = SSTableFormat.Type.validate(nexttok);
             nexttok = tokenStack.pop();
         }
 
