@@ -12,8 +12,9 @@ public interface SSTableFormat
     Version getLatestVersion();
     Version getVersion(String version);
 
-    Class<? extends SSTableWriter> getWriter();
-    Class<? extends SSTableReader> getReader();
+    SSTableWriter.Factory getWriterFactory();
+    SSTableReader.Factory getReaderFactory();
+
 
     static enum Type
     {

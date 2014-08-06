@@ -1,17 +1,27 @@
 package org.apache.cassandra.io.sstable.format.big;
 
+import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.io.sstable.Component;
+import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
+import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
+import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
+
+import java.util.Set;
 
 /**
  * Legacy bigtable format C* used till
  */
 public class BigFormat implements SSTableFormat
 {
-    public static BigFormat instance = new BigFormat();
-    public static BigVersion latestVersion = new BigVersion(BigVersion.current_version);
+    public static final BigFormat instance = new BigFormat();
+    public static final BigVersion latestVersion = new BigVersion(BigVersion.current_version);
+    private static final SSTableReader.Factory readerFactory = new ReaderFactory();
+    private static final SSTableWriter.Factory writerFactory = new WriterFactory();
 
     private BigFormat()
     {
@@ -31,15 +41,34 @@ public class BigFormat implements SSTableFormat
     }
 
     @Override
-    public Class<? extends SSTableWriter> getWriter()
+    public SSTableWriter.Factory getWriterFactory()
     {
-        return BigTableWriter.class;
+        return writerFactory;
     }
 
     @Override
-    public Class<? extends SSTableReader> getReader()
+    public SSTableReader.Factory getReaderFactory()
     {
-        return BigTableReader.class;
+        return readerFactory;
+    }
+
+
+    static class WriterFactory extends SSTableWriter.Factory
+    {
+        @Override
+        public SSTableWriter open(Descriptor descriptor, long keyCount, long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
+        {
+            return new BigTableWriter(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
+        }
+    }
+
+    static class ReaderFactory extends SSTableReader.Factory
+    {
+        @Override
+        public SSTableReader open(Descriptor descriptor, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
+        {
+            return new BigTableReader(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+        }
     }
 
     // versions are denoted as [major][minor].  Minor versions must be forward-compatible:

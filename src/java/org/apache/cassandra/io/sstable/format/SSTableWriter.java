@@ -49,26 +49,10 @@ public abstract class SSTableWriter extends SSTable
         this.metadataCollector = metadataCollector;
     }
 
-
     public static SSTableWriter create(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata,  IPartitioner partitioner, MetadataCollector metadataCollector)
     {
-        Class<? extends SSTableWriter> writerClass = descriptor.fmt.info.getWriter();
-
-        try
-        {
-            Constructor<? extends SSTableWriter> constructor = writerClass.getConstructor(Descriptor.class, Long.class, Long.class, CFMetaData.class, IPartitioner.class, MetadataCollector.class);
-
-            return constructor.newInstance(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
-        }
-        catch (NoSuchMethodException e)
-        {
-            logger.error("No valid writer constructor found for {} file format", descriptor.fmt);
-            throw new RuntimeException(e);
-        }
-        catch (InvocationTargetException | InstantiationException | IllegalAccessException e)
-        {
-            throw new RuntimeException(e);
-        }
+        Factory writerFactory = descriptor.fmt.info.getWriterFactory();
+        return writerFactory.open(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
     }
 
     public static SSTableWriter create(Descriptor descriptor, long keyCount, long repairedAt)
@@ -182,4 +166,9 @@ public abstract class SSTableWriter extends SSTable
 
     public abstract void abort(boolean closeBf);
 
+
+    public static abstract class Factory
+    {
+        public abstract SSTableWriter open(Descriptor descriptor, long keyCount, long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector);
+    }
 }

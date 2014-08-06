@@ -436,23 +436,9 @@ public abstract class SSTableReader extends SSTable
                                             StatsMetadata sstableMetadata,
                                             Boolean isOpenEarly)
     {
-        Class<? extends SSTableReader> readerClass = descriptor.fmt.info.getReader();
+        Factory readerFactory = descriptor.fmt.info.getReaderFactory();
 
-        try
-        {
-            Constructor<? extends SSTableReader> constructor = readerClass.getConstructor(Descriptor.class, Set.class, CFMetaData.class, IPartitioner.class, Long.class, StatsMetadata.class, Boolean.class);
-
-            return constructor.newInstance(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
-        }
-        catch (NoSuchMethodException e)
-        {
-            logger.error("No valid reader constructor found for {} file format", descriptor.fmt);
-            throw new RuntimeException(e);
-        }
-        catch (InvocationTargetException | InstantiationException | IllegalAccessException e)
-        {
-            throw new RuntimeException(e);
-        }
+        return readerFactory.open(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
     }
 
     protected SSTableReader(final Descriptor desc,
@@ -1850,5 +1836,17 @@ public abstract class SSTableReader extends SSTable
         {
             return Longs.compare(o1.onDiskLength(), o2.onDiskLength());
         }
+    }
+
+    public static abstract class Factory
+    {
+        public abstract SSTableReader open(final Descriptor descriptor,
+                                           Set<Component> components,
+                                           CFMetaData metadata,
+                                           IPartitioner partitioner,
+                                           Long maxDataAge,
+                                           StatsMetadata sstableMetadata,
+                                           Boolean isOpenEarly);
+
     }
 }
