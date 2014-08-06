@@ -96,12 +96,10 @@ public class StreamReader
         File tmpFile = null;
         try
         {
-            int sectionBytesRead = 0;
             for (Pair<Long,Long> section : sections)
             {
                 assert in.getBytesRead() < totalSize;
-                long sectionLength = section.right - section.left;
-
+                int sectionLength = (int) (section.right - section.left);
 
                 //For non sequential formats, flush row to file then send to writer
                 //TODO: write/use MemoryDataInput for small partitions
@@ -109,21 +107,18 @@ public class StreamReader
                 {
                     File f = FileUtils.createTempFile("stream-", ".tmp");
                     FileOutputStream out = new FileOutputStream(f);
-                    FileUtils.copyTo(in, out, sectionBytesRead);
+                    FileUtils.copyTo(in, out, sectionLength);
                     FileUtils.close(out);
 
                     try ( FileDataInput fileInput = RandomAccessReader.open(f) )
                     {
-                      writeRow(writer, fileInput, cfs);
+                      writeRow(writer, fileInput, true, cfs);
                     }
                 }
                 else
                 {
-                    writeRow(writer, in, cfs);
+                    writeRow(writer, in, false, cfs);
                 }
-
-
-
 
                 // TODO move this to BytesReadTracker
                 session.progress(desc, ProgressInfo.Direction.IN, in.getBytesRead(), totalSize);
@@ -180,10 +175,10 @@ public class StreamReader
         return size;
     }
 
-    protected void writeRow(SSTableWriter writer, DataInput in, ColumnFamilyStore cfs) throws IOException
+    protected void writeRow(SSTableWriter writer, DataInput in, boolean isFileInput, ColumnFamilyStore cfs) throws IOException
     {
         DecoratedKey key = StorageService.getPartitioner().decorateKey(ByteBufferUtil.readWithShortLength(in));
-        writer.appendFromStream(key, cfs.metadata, in, inputVersion);
+        writer.appendFromStream(key, cfs.metadata, in, inputVersion, isFileInput);
         cfs.invalidateCachedRow(key);
     }
 }

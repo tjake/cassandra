@@ -205,6 +205,6 @@ public class TestTableReader extends SSTableReader
     @Override
     public ICompactionScanner getScanner(DataRange dataRange)
     {
-        throw new UnsupportedOperationException();
+        return new TestTableScanner(this, dataRange, null);
     }
 }

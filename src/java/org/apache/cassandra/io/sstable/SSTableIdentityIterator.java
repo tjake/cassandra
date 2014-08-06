@@ -29,7 +29,7 @@ import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.serializers.MarshalException;
 
-public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterator>, OnDiskAtomIterator
+    public class SSTableIdentityIterator implements Comparable<SSTableIdentityIterator>, OnDiskAtomIterator
 {
     private final DecoratedKey key;
     private final DataInput in;

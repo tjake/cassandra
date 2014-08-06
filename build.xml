@@ -394,7 +394,7 @@
           <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
 	      <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" version="1.2.0" />
           <dependency groupId="com.twitter" artifactId="parquet-column" version="1.5.0" />
-          <dependency groupId="com.twitter" artifactId="parquet-format" version="2.1." />
+          <dependency groupId="com.twitter" artifactId="parquet-format" version="2.1.0" />
         </dependencyManagement>
         <developer id="alakshman" name="Avinash Lakshman"/>
         <developer id="aleksey" name="Aleksey Yeschenko"/>

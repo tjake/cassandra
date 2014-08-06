@@ -4,7 +4,6 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.CQL3Type;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.compaction.AbstractCompactedRow;
 import org.apache.cassandra.db.composites.Composite;
@@ -20,15 +19,12 @@ import org.apache.cassandra.io.sstable.metadata.MetadataComponent;
 import org.apache.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.*;
-import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.FilterFactory;
-import org.apache.cassandra.utils.IFilter;
-import org.apache.cassandra.utils.Pair;
+import org.apache.cassandra.utils.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import parquet.column.ParquetProperties;
-import parquet.column.impl.ColumnReadStoreImpl;
 import parquet.column.impl.ColumnWriteStoreImpl;
+import parquet.column.page.PageReadStore;
 import parquet.example.data.Group;
 import parquet.example.data.GroupWriter;
 import parquet.example.data.simple.SimpleGroup;
@@ -45,6 +41,7 @@ import parquet.schema.PrimitiveType;
 import parquet.schema.Type;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 
 
@@ -219,13 +216,14 @@ public class TestTableWriter extends SSTableWriter
         //Write the row level deletion info
         DeletionTime.serializer.serialize(cf.deletionInfo().getTopLevelDeletion(), out.stream);
 
-        TestPageStore store  = new TestPageStore();
+        //Setup Parquet writer
+        ParquetPageWriter store = new ParquetPageWriter();
+        MessageColumnIO io  = new ColumnIOFactory().getColumnIO(schema);
 
-        MessageColumnIO w  = new ColumnIOFactory().getColumnIO(schema);
         ColumnWriteStoreImpl writer = new ColumnWriteStoreImpl(store, 800, 800, 800, false, ParquetProperties.WriterVersion.PARQUET_1_0);
-        RecordConsumer colw = w.getRecordWriter(writer);
+        RecordConsumer columnWriter = io.getRecordWriter(writer);
 
-        GroupWriter gw = new GroupWriter(colw, schema);
+        GroupWriter gw = new GroupWriter(columnWriter, schema);
 
         // cf has disentangled the columns and range tombstones, we need to re-interleave them in comparator order
         Comparator<Composite> comparator = cf.getComparator();
@@ -233,14 +231,19 @@ public class TestTableWriter extends SSTableWriter
         Iterator<RangeTombstone> rangeIter = cf.deletionInfo().rangeIterator();
         RangeTombstone tombstone = rangeIter.hasNext() ? rangeIter.next() : null;
         Group g = new SimpleGroup(schema);
+        long rowsWritten = 0;
 
+        //TODO Manage clustered cells
         for (Cell c : cf)
         {
             while (tombstone != null && comparator.compare(c.name(), tombstone.min) >= 0)
             {
                 // skip range tombstones that are shadowed by partition tombstones
                 if (!cf.deletionInfo().getTopLevelDeletion().isDeleted(tombstone))
+                {
                     gw.write(add(tombstone, new SimpleGroup(schema)));
+                    rowsWritten++;
+                }
 
                 tombstone = rangeIter.hasNext() ? rangeIter.next() : null;
             }
@@ -252,17 +255,23 @@ public class TestTableWriter extends SSTableWriter
         }
 
         gw.write(g);
+        rowsWritten++;
 
         while (tombstone != null)
         {
             gw.write(add(tombstone, new SimpleGroup(schema)));
+            rowsWritten++;
             tombstone = rangeIter.hasNext() ? rangeIter.next() : null;
         }
 
+        //This writes the pages to memory
         writer.flush();
 
         //Store values in the outputStream
-        store.write(out.stream);
+        store.write(out, rowsWritten);
+
+        //Output the footer at the end of the row.
+        store.writeFooter(out);
 
         return new RowIndexEntry(startPosition);
     }
@@ -309,28 +318,85 @@ public class TestTableWriter extends SSTableWriter
     }
 
     @Override
-    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version) throws IOException
+    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version, boolean fileInput) throws IOException
     {
+        assert fileInput;
+        AbstractDataInput fin = (AbstractDataInput)in;
 
-        long currentPosition = beforeAppend(key);
-        DeletionTime deletionInfo = DeletionTime.serializer.deserialize(in);
+        // deserialize each column to obtain maxTimestamp and immediately serialize it.
+        long minTimestamp = Long.MAX_VALUE;
+        long maxTimestamp = Long.MIN_VALUE;
+        int maxLocalDeletionTime = Integer.MIN_VALUE;
+        List<ByteBuffer> minColumnNames = Collections.emptyList();
+        List<ByteBuffer> maxColumnNames = Collections.emptyList();
+        StreamingHistogram tombstones = new StreamingHistogram(TOMBSTONE_HISTOGRAM_BIN_SIZE);
+        boolean hasLegacyCounterShards = false;
+
+        long startPosition = beforeAppend(key);
+        DeletionTime deletionInfo = DeletionTime.serializer.deserialize(fin);
+
+        if (deletionInfo.localDeletionTime < Integer.MAX_VALUE)
+            tombstones.update(deletionInfo.localDeletionTime);
+
+        //Write the row key
+        dataFile.write(key.getKey());
+
+        //Write the row level deletion info
+        DeletionTime.serializer.serialize(deletionInfo, dataFile.stream);
+
+        //Setup Parquet writer
+        ParquetPageWriter store = new ParquetPageWriter();
+        MessageColumnIO io  = new ColumnIOFactory().getColumnIO(schema);
+
+        ColumnWriteStoreImpl writer = new ColumnWriteStoreImpl(store, 800, 800, 800, false, ParquetProperties.WriterVersion.PARQUET_1_0);
+        RecordConsumer columnWriter = io.getRecordWriter(writer);
+
+        GroupWriter gw = new GroupWriter(columnWriter, schema);
 
 
-        TestPageStore store  = new TestPageStore(version, in);
+        ParquetRowGroupReader rowGroupReader  = new ParquetRowGroupReader(version, fin);
 
         MessageColumnIO w  = new ColumnIOFactory().getColumnIO(schema);
 
         RecordMaterializer<Group> recordConverter = new GroupRecordConverter(schema);
+        int rowsWritten = 0;
 
-        RecordReader<Group> reader = w.getRecordReader(store, recordConverter);
-
-        while(true)
+        for (PageReadStore readStore : rowGroupReader)
         {
-            Group g = reader.read();
+            RecordReader<Group> reader = w.getRecordReader(readStore, recordConverter);
 
-
+            for (int i = 0; i < readStore.getRowCount(); i++)
+            {
+                Group g = reader.read();
+                gw.write(g);
+                rowsWritten++;
+            }
         }
 
+
+        //This writes the pages to memory
+        writer.flush();
+
+        //Store values in the outputStream
+        store.write(dataFile, rowsWritten);
+
+        //Output the footer at the end of the row.
+        store.writeFooter(dataFile);
+
+        afterAppend(key, startPosition, new RowIndexEntry(startPosition));
+
+
+        metadataCollector.updateMinTimestamp(minTimestamp)
+                .updateMaxTimestamp(maxTimestamp)
+                .updateMaxLocalDeletionTime(maxLocalDeletionTime)
+                .addRowSize(dataFile.getFilePointer() - startPosition)
+                .addColumnCount(rowsWritten)
+                .mergeTombstoneHistogram(tombstones)
+                .updateMinColumnNames(minColumnNames)
+                .updateMaxColumnNames(maxColumnNames)
+                .updateHasLegacyCounterShards(hasLegacyCounterShards);
+
+        return startPosition;
     }
 
     @Override

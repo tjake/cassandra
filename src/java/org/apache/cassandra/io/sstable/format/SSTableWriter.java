@@ -121,7 +121,7 @@ public abstract class SSTableWriter extends SSTable
 
     public abstract void append(DecoratedKey decoratedKey, ColumnFamily cf);
 
-    public abstract long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version) throws IOException;
+    public abstract long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version, boolean fileInput) throws IOException;
 
     public abstract long getFilePointer();
 

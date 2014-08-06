@@ -192,7 +192,7 @@ public class BigTableWriter extends SSTableWriter
      * @throws IOException if a read from the DataInput fails
      * @throws FSWriteError if a write to the dataFile fails
      */
-    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version) throws IOException
+    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version, boolean fileInput) throws IOException
     {
         long currentPosition = beforeAppend(key);
 

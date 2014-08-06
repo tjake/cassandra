@@ -82,9 +82,9 @@ public class SSTableTestFormatTest
                 .using(insert).build();
 
         writer.addRow(0, "test1", 24);
-        writer.addRow(1, "test2", null);
+        writer.addRow(1, "test2", 77);
         writer.addRow(2, "test3", 42);
-        writer.addRow(ImmutableMap.<String, Object>of("k", 3, "v2", 12));
+       // writer.addRow(ImmutableMap.<String, Object>of("k", 3, "v2", 12));
         writer.close();
 
         SSTableLoader loader = new SSTableLoader(dataDir, new SSTableLoader.Client()

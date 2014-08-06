@@ -18,6 +18,8 @@
 package org.apache.cassandra.streaming.compress;
 
 import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
@@ -25,6 +27,9 @@ import java.nio.channels.ReadableByteChannel;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
+import org.apache.cassandra.io.util.FileDataInput;
+import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.io.util.RandomAccessReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,16 +80,39 @@ public class CompressedStreamReader extends StreamReader
         {
             for (Pair<Long, Long> section : sections)
             {
-                long length = section.right - section.left;
+
+                assert in.getBytesRead() < totalSize;
+                int sectionLength = (int) (section.right - section.left);
+
                 // skip to beginning of section inside chunk
                 cis.position(section.left);
                 in.reset(0);
-                while (in.getBytesRead() < length)
+
+                //For non sequential formats, flush row to file then send to writer
+                //TODO: write/use MemoryDataInput for small partitions
+                if (!inputVersion.isSequential())
                 {
-                    writeRow(writer, in, cfs);
-                    // when compressed, report total bytes of compressed chunks read since remoteFile.size is the sum of chunks transferred
-                    session.progress(desc, ProgressInfo.Direction.IN, cis.getTotalCompressedBytesRead(), totalSize);
+                    File f = FileUtils.createTempFile("stream-", ".tmp");
+                    FileOutputStream out = new FileOutputStream(f);
+                    FileUtils.copyTo(in, out, sectionLength);
+                    FileUtils.close(out);
+
+                    try ( FileDataInput fileInput = RandomAccessReader.open(f) )
+                    {
+                        writeRow(writer, fileInput, true, cfs);
+                    }
                 }
+                else
+                {
+                    writeRow(writer, in, false, cfs);
+
+                    assert in.getBytesRead() == sectionLength;
+                }
+
+
+                // when compressed, report total bytes of compressed chunks read since remoteFile.size is the sum of chunks transferred
+                session.progress(desc, ProgressInfo.Direction.IN, cis.getTotalCompressedBytesRead(), totalSize);
+
             }
             return writer;
         }
