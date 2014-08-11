@@ -386,7 +386,7 @@ public class SSTableExportTest
     {
         File tempSS = tempSSTableFile("Keyspace1", "AsciiKeys");
         ColumnFamily cfamily = ArrayBackedSortedColumns.factory.create("Keyspace1", "AsciiKeys");
-        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, ActiveRepairService.UNREPAIRED_SSTABLE);
+        SSTableWriter writer = SSTableWriter.create(tempSS.getPath(), 2, ActiveRepairService.UNREPAIRED_SSTABLE);
 
         // Add a row
         cfamily.addColumn(column("column", "value", 1L));

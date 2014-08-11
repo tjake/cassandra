@@ -323,7 +323,7 @@ public class SSTableExport
             excludeSet = new HashSet<>(Arrays.asList(excludes));
 
         SSTableIdentityIterator row;
-        SSTableScanner scanner = reader.getScanner();
+        ICompactionScanner scanner = reader.getScanner();
         try
         {
             outs.println("[");
@@ -368,7 +368,7 @@ public class SSTableExport
      */
     public static void export(Descriptor desc, PrintStream outs, String[] excludes, CFMetaData metadata) throws IOException
     {
-        export(SSTableReader.open(desc), outs, excludes);
+        export(SSTableReader.open(desc), outs, excludes, metadata);
     }
 
     /**
