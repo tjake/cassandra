@@ -126,7 +126,7 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
                 {
                     try
                     {
-                        input.seek(chunk.file_offset);
+                        input.seek(chunk.getMeta_data().getData_page_offset());
                     }
                     catch (IOException e)
                     {
@@ -189,7 +189,6 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 
             try
             {
-
                 //Deserialize page header
                 PageHeader header = new PageHeader();
 

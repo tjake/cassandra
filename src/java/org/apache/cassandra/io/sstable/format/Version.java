@@ -14,9 +14,10 @@ package org.apache.cassandra.io.sstable.format;
 public abstract class Version
 {
     protected final String version;
-
-    protected Version(String version)
+    protected final SSTableFormat format;
+    protected Version(SSTableFormat format, String version)
     {
+        this.format = format;
         this.version = version;
     }
 
@@ -43,6 +44,10 @@ public abstract class Version
         return version;
     }
 
+    public SSTableFormat getSSTableFormat()
+    {
+        return format;
+    }
 
     /**
      * @param ver SSTable version

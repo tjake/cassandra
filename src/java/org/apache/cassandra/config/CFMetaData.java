@@ -1433,7 +1433,7 @@ public final class CFMetaData
 
     public Iterator<OnDiskAtom> getOnDiskIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, Version version)
     {
-        return AbstractCell.onDiskIterator(in, flag, expireBefore, version, comparator);
+        return version.getSSTableFormat().getOnDiskIterator(in, flag, expireBefore, this, version);
     }
 
     public AtomDeserializer getOnDiskDeserializer(DataInput in, Version version)

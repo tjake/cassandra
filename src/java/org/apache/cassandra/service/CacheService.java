@@ -461,7 +461,8 @@ public class CacheService implements CacheServiceMBean
             out.writeInt(desc.generation);
             out.writeBoolean(true);
             CFMetaData cfm = Schema.instance.getCFMetaData(key.desc.ksname, key.desc.cfname);
-            cfm.comparator.rowIndexEntrySerializer().serialize(entry, out);
+
+            key.desc.fmt.info.getIndexSerializer(cfm).serialize(entry, out);
         }
 
         public Future<Pair<KeyCacheKey, RowIndexEntry>> deserialize(DataInputStream input, ColumnFamilyStore cfs) throws IOException
@@ -481,7 +482,7 @@ public class CacheService implements CacheServiceMBean
                 RowIndexEntry.Serializer.skipPromotedIndex(input);
                 return null;
             }
-            RowIndexEntry entry = reader.metadata.comparator.rowIndexEntrySerializer().deserialize(input, reader.descriptor.version);
+            RowIndexEntry entry = reader.descriptor.fmt.info.getIndexSerializer(reader.metadata).deserialize(input, reader.descriptor.version);
             return Futures.immediateFuture(Pair.create(new KeyCacheKey(cfs.metadata.cfId, reader.descriptor, key), entry));
         }
 

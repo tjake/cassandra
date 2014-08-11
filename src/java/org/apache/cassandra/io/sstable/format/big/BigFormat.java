@@ -1,6 +1,11 @@
 package org.apache.cassandra.io.sstable.format.big;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.AbstractCell;
+import org.apache.cassandra.db.ColumnSerializer;
+import org.apache.cassandra.db.OnDiskAtom;
+import org.apache.cassandra.db.RowIndexEntry;
+import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -11,6 +16,8 @@ import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 
+import java.io.DataInput;
+import java.util.Iterator;
 import java.util.Set;
 
 /**
@@ -50,6 +57,18 @@ public class BigFormat implements SSTableFormat
     public SSTableReader.Factory getReaderFactory()
     {
         return readerFactory;
+    }
+
+    @Override
+    public Iterator<OnDiskAtom> getOnDiskIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
+    {
+        return AbstractCell.onDiskIterator(in, flag, expireBefore, version, cfm.comparator);
+    }
+
+    @Override
+    public RowIndexEntry.IndexSerializer getIndexSerializer(CFMetaData cfMetaData)
+    {
+        return cfMetaData.comparator.rowIndexEntrySerializer();
     }
 
 
@@ -109,7 +128,7 @@ public class BigFormat implements SSTableFormat
 
         public BigVersion(String version)
         {
-            super(version);
+            super(instance,version);
 
             isLatestVersion = version.compareTo(current_version) == 0;
             hasPostCompressionAdlerChecksums = version.compareTo("jb") >= 0;

@@ -80,7 +80,6 @@ public class CompressedStreamReader extends StreamReader
         {
             for (Pair<Long, Long> section : sections)
             {
-
                 assert in.getBytesRead() < totalSize;
                 int sectionLength = (int) (section.right - section.left);
 
@@ -104,9 +103,8 @@ public class CompressedStreamReader extends StreamReader
                 }
                 else
                 {
-                    writeRow(writer, in, false, cfs);
-
-                    assert in.getBytesRead() == sectionLength;
+                    while (in.getBytesRead() < sectionLength)
+                        writeRow(writer, in, false, cfs);
                 }
 
 

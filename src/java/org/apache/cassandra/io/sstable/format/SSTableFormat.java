@@ -1,8 +1,17 @@
 package org.apache.cassandra.io.sstable.format;
 
+import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.ColumnSerializer;
+import org.apache.cassandra.db.OnDiskAtom;
+import org.apache.cassandra.db.RowIndexEntry;
+import org.apache.cassandra.db.composites.CType;
+import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
 import org.apache.cassandra.io.sstable.format.test.TestFormat;
 import org.apache.commons.lang.StringUtils;
+
+import java.io.DataInput;
+import java.util.Iterator;
 
 /**
  * Created by jake on 7/3/14.
@@ -15,6 +24,9 @@ public interface SSTableFormat
     SSTableWriter.Factory getWriterFactory();
     SSTableReader.Factory getReaderFactory();
 
+    Iterator<OnDiskAtom> getOnDiskIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version);
+
+    RowIndexEntry.IndexSerializer  getIndexSerializer(CFMetaData cfm);
 
     static enum Type
     {

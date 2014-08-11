@@ -1,6 +1,10 @@
 package org.apache.cassandra.io.sstable.format.test;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.ColumnSerializer;
+import org.apache.cassandra.db.OnDiskAtom;
+import org.apache.cassandra.db.RowIndexEntry;
+import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -11,10 +15,13 @@ import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 
+import java.io.DataInput;
+import java.util.Iterator;
 import java.util.Set;
 
 /**
- * Created by jake on 7/18/14.
+ * A Testable format based on Parquet.  This format is very different from the
+ *
  */
 public class TestFormat implements SSTableFormat
 {
@@ -22,6 +29,7 @@ public class TestFormat implements SSTableFormat
     public static final TestFormat instance = new TestFormat();
     private static final SSTableReader.Factory readerFactory = new ReaderFactory();
     private static final SSTableWriter.Factory writerFactory = new WriterFactory();
+    private static final TestRowIndexEntrySerializer indexSerializer = new TestRowIndexEntrySerializer();
 
 
     private TestFormat()
@@ -53,9 +61,20 @@ public class TestFormat implements SSTableFormat
         return readerFactory;
     }
 
+    @Override
+    public Iterator<OnDiskAtom> getOnDiskIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
+    {
+        return new TestTablePartitionIterator(in, flag, expireBefore, cfm, version);
+    }
+
+    @Override
+    public RowIndexEntry.IndexSerializer getIndexSerializer(CFMetaData cfm)
+    {
+        return indexSerializer;
+    }
+
     private static class WriterFactory extends SSTableWriter.Factory
     {
-
         @Override
         public SSTableWriter open(Descriptor descriptor, long keyCount, long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
         {
@@ -78,7 +97,7 @@ public class TestFormat implements SSTableFormat
 
         protected TestVersion(String version)
         {
-            super(version);
+            super(instance, version);
         }
 
         @Override

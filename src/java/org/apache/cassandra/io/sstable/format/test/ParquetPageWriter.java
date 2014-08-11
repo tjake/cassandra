@@ -118,7 +118,7 @@ public class ParquetPageWriter implements PageWriteStore
         for (Map.Entry<ColumnDescriptor, TestPageWriter> entry : pageWriters.entrySet())
         {
 
-            ColumnChunk chunk = new ColumnChunk(out.getFilePointer());
+
             ColumnDescriptor desc = entry.getKey();
 
             Set<parquet.format.Encoding> encodings = new HashSet<>(3);
@@ -129,6 +129,10 @@ public class ParquetPageWriter implements PageWriteStore
             //Write each page
             for (Page p : entry.getValue().getPages())
             {
+                //First data page offset
+                if (dataPageOffset == -1L)
+                    dataPageOffset = out.getFilePointer();
+
                 //Write the header
                 PageHeader pageHeader = new PageHeader(PageType.DATA_PAGE, p.getUncompressedSize(), p.getUncompressedSize());
 
@@ -155,8 +159,6 @@ public class ParquetPageWriter implements PageWriteStore
                     throw new IOException(e);
                 }
 
-                if (dataPageOffset == -1L)
-                    dataPageOffset = out.getOnDiskFilePointer();
 
                 //Write encoded page
                 p.getBytes().writeAllTo(out);
@@ -164,7 +166,20 @@ public class ParquetPageWriter implements PageWriteStore
 
             ColumnMetaData cm = new ColumnMetaData(getType(desc.getType()), Lists.newArrayList(encodings), Arrays.asList(desc.getPath()),
                     CompressionCodec.UNCOMPRESSED, numValues, totalUncompressedSize, totalUncompressedSize, dataPageOffset);
+
+            //Write the column metadata
+            try
+            {
+                out.write(ser.serialize(cm));
+            }
+            catch (TException e)
+            {
+                throw new IOException(e);
+            }
+
+            ColumnChunk chunk = new ColumnChunk(out.getFilePointer());
             chunk.setMeta_data(cm);
+
 
             rowGroup.addToColumns(chunk);
         }

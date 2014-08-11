@@ -36,7 +36,7 @@ import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.ObjectSizes;
 
-public class RowIndexEntry implements IMeasurableMemory
+public class RowIndexEntry<T> implements IMeasurableMemory
 {
     private static final long EMPTY_SIZE = ObjectSizes.measure(new RowIndexEntry(0));
 
@@ -80,7 +80,7 @@ public class RowIndexEntry implements IMeasurableMemory
         throw new UnsupportedOperationException();
     }
 
-    public List<IndexHelper.IndexInfo> columnsIndex()
+    public List<T> columnsIndex()
     {
         return Collections.emptyList();
     }
@@ -90,7 +90,14 @@ public class RowIndexEntry implements IMeasurableMemory
         return EMPTY_SIZE;
     }
 
-    public static class Serializer
+    public static interface IndexSerializer<T>
+    {
+        void serialize(RowIndexEntry<T> rie, DataOutputPlus out) throws IOException;
+        RowIndexEntry<T> deserialize(DataInput in, Version version) throws IOException;
+        public int serializedSize(RowIndexEntry rie);
+    }
+
+    public static class Serializer implements IndexSerializer<IndexHelper.IndexInfo>
     {
         private final CType type;
 
@@ -99,7 +106,7 @@ public class RowIndexEntry implements IMeasurableMemory
             this.type = type;
         }
 
-        public void serialize(RowIndexEntry rie, DataOutputPlus out) throws IOException
+        public void serialize(RowIndexEntry<IndexHelper.IndexInfo> rie, DataOutputPlus out) throws IOException
         {
             out.writeLong(rie.position);
             out.writeInt(rie.promotedSize(type));
@@ -114,7 +121,7 @@ public class RowIndexEntry implements IMeasurableMemory
             }
         }
 
-        public RowIndexEntry deserialize(DataInput in, Version version) throws IOException
+        public RowIndexEntry<IndexHelper.IndexInfo> deserialize(DataInput in, Version version) throws IOException
         {
             long position = in.readLong();
 
@@ -161,7 +168,7 @@ public class RowIndexEntry implements IMeasurableMemory
     /**
      * An entry in the row index for a row whose columns are indexed.
      */
-    private static class IndexedEntry extends RowIndexEntry
+    private static class IndexedEntry extends RowIndexEntry<IndexHelper.IndexInfo>
     {
         private final DeletionTime deletionTime;
         private final List<IndexHelper.IndexInfo> columnsIndex;
