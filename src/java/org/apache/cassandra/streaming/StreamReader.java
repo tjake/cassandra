@@ -27,6 +27,7 @@ import com.google.common.base.Throwables;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
+import org.apache.cassandra.io.util.FakeFileDataInput;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
@@ -112,12 +113,12 @@ public class StreamReader
 
                     try ( FileDataInput fileInput = RandomAccessReader.open(f) )
                     {
-                      writeRow(writer, fileInput, true, cfs);
+                      writeRow(writer, fileInput, cfs);
                     }
                 }
                 else
                 {
-                    writeRow(writer, in, false, cfs);
+                    writeRow(writer, new FakeFileDataInput(in), cfs);
                 }
 
                 // TODO move this to BytesReadTracker
@@ -175,10 +176,10 @@ public class StreamReader
         return size;
     }
 
-    protected void writeRow(SSTableWriter writer, DataInput in, boolean isFileInput, ColumnFamilyStore cfs) throws IOException
+    protected void writeRow(SSTableWriter writer, FileDataInput in, ColumnFamilyStore cfs) throws IOException
     {
         DecoratedKey key = StorageService.getPartitioner().decorateKey(ByteBufferUtil.readWithShortLength(in));
-        writer.appendFromStream(key, cfs.metadata, in, inputVersion, isFileInput);
+        writer.appendFromStream(key, cfs.metadata, in, inputVersion);
         cfs.invalidateCachedRow(key);
     }
 }

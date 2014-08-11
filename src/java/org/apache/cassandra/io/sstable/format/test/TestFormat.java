@@ -14,6 +14,7 @@ import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
+import org.apache.cassandra.io.util.FileDataInput;
 
 import java.io.DataInput;
 import java.util.Iterator;
@@ -62,7 +63,7 @@ public class TestFormat implements SSTableFormat
     }
 
     @Override
-    public Iterator<OnDiskAtom> getOnDiskIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
+    public Iterator<OnDiskAtom> getOnDiskIterator(FileDataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
     {
         return new TestTablePartitionIterator(in, flag, expireBefore, cfm, version);
     }

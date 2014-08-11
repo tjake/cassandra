@@ -27,6 +27,7 @@ import java.nio.channels.ReadableByteChannel;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
+import org.apache.cassandra.io.util.FakeFileDataInput;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.RandomAccessReader;
@@ -98,13 +99,13 @@ public class CompressedStreamReader extends StreamReader
 
                     try ( FileDataInput fileInput = RandomAccessReader.open(f) )
                     {
-                        writeRow(writer, fileInput, true, cfs);
+                        writeRow(writer, fileInput, cfs);
                     }
                 }
                 else
                 {
                     while (in.getBytesRead() < sectionLength)
-                        writeRow(writer, in, false, cfs);
+                        writeRow(writer, new FakeFileDataInput(in), cfs);
                 }
 
 

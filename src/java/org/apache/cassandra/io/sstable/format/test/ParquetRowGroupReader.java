@@ -3,6 +3,7 @@ package org.apache.cassandra.io.sstable.format.test;
 import com.google.common.primitives.Longs;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.AbstractDataInput;
+import org.apache.cassandra.io.util.FileDataInput;
 import parquet.bytes.BytesInput;
 import parquet.column.ColumnDescriptor;
 import parquet.column.page.DictionaryPage;
@@ -18,8 +19,10 @@ import parquet.org.apache.thrift.TException;
 import parquet.org.apache.thrift.protocol.TCompactProtocol;
 import parquet.org.apache.thrift.protocol.TProtocol;
 import parquet.org.apache.thrift.transport.TIOStreamTransport;
+import parquet.org.apache.thrift.transport.TTransport;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,10 +37,10 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
     public static final byte[] MAGIC = "PAR1".getBytes(Charset.forName("ASCII"));
 
     private final Version version;
-    private final AbstractDataInput input;
+    private final FileDataInput input;
     private long totalRowCount = 0;
 
-    public ParquetRowGroupReader(Version version, AbstractDataInput input)
+    public ParquetRowGroupReader(Version version, FileDataInput input)
     {
         assert version != null && input != null;
         this.version = version;
@@ -52,24 +55,23 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 
         try
         {
-            input.seek(input.getPositionLimit() - MAGIC.length);
+            input.seek(input.getFilePointer() + input.bytesRemaining() - MAGIC.length);
             byte[] magic = new byte[MAGIC.length];
             input.readFully(magic);
-
 
             if (!Arrays.equals(magic, MAGIC))
                 throw new ParquetDecodingException("Not able to find the magic format token");
 
-            input.seek(input.getPositionLimit() - MAGIC.length - Longs.BYTES);
+            input.seek(input.getFilePointer() - MAGIC.length - Longs.BYTES);
             long footerSize = input.readLong();
             assert footerSize > 0;
 
-            input.seek(input.getPositionLimit() - MAGIC.length - Longs.BYTES - footerSize);
+            input.seek(input.getFilePointer() - Longs.BYTES - footerSize);
 
             int numRowGroups = input.readInt();
             assert numRowGroups > 0;
 
-            TProtocol protocol = new TCompactProtocol(new TIOStreamTransport(input));
+            TProtocol protocol = new TCompactProtocol(new TFileDataInputTransport(input));
             for (int i = 0; i < numRowGroups; i++)
             {
                 RowGroup rg = new RowGroup();
@@ -192,11 +194,11 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
                 //Deserialize page header
                 PageHeader header = new PageHeader();
 
-                TIOStreamTransport in = new TIOStreamTransport(input);
+                TTransport in = new TFileDataInputTransport(input);
                 TCompactProtocol protocol = new TCompactProtocol(in);
                 header.read(protocol);
 
-                BytesInput bytes = BytesInput.from(input, header.getUncompressed_page_size());
+                BytesInput bytes = new ByteBufferBytesInput(input.readBytes(header.getUncompressed_page_size()));
 
                 Page p = new Page(bytes, header.data_page_header.num_values, header.uncompressed_page_size, null,
                         getEncoding(header.data_page_header.repetition_level_encoding),
@@ -207,7 +209,7 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 
                 return p;
             }
-            catch (TException e)
+            catch (TException | IOException e)
             {
                 throw new ParquetDecodingException(e);
             }

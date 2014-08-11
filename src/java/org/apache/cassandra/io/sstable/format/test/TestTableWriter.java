@@ -318,11 +318,8 @@ public class TestTableWriter extends SSTableWriter
     }
 
     @Override
-    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput in, Version version, boolean fileInput) throws IOException
+    public long appendFromStream(DecoratedKey key, CFMetaData metadata, FileDataInput fin, Version version) throws IOException
     {
-        assert fileInput;
-        AbstractDataInput fin = (AbstractDataInput)in;
-
         // deserialize each column to obtain maxTimestamp and immediately serialize it.
         long minTimestamp = Long.MAX_VALUE;
         long maxTimestamp = Long.MIN_VALUE;

@@ -8,6 +8,7 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.OnDiskAtom;
 import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.io.sstable.format.Version;
+import org.apache.cassandra.io.util.FileDataInput;
 import parquet.column.ColumnDescriptor;
 import parquet.column.page.Page;
 
@@ -20,20 +21,19 @@ import java.util.Map;
 
 public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
 {
-    private final DataInput in;
+    private final FileDataInput in;
     private final ColumnSerializer.Flag flag;
     private final int expireBefore;
     private final CFMetaData cfm;
     private final Version version;
 
-    public TestTablePartitionIterator(DataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
+    public TestTablePartitionIterator(FileDataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
     {
         this.in = in;
         this.flag = flag;
         this.expireBefore = expireBefore;
         this.cfm = cfm;
         this.version = version;
-
      }
 
 
@@ -46,7 +46,7 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
     public boolean hasNext()
     {
 
-
+        return false;
     }
 
     @Override
