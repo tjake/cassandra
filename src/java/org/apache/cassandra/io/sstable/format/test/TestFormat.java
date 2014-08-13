@@ -30,7 +30,7 @@ public class TestFormat implements SSTableFormat
     public static final TestFormat instance = new TestFormat();
     private static final SSTableReader.Factory readerFactory = new ReaderFactory();
     private static final SSTableWriter.Factory writerFactory = new WriterFactory();
-    private static final TestRowIndexEntrySerializer indexSerializer = new TestRowIndexEntrySerializer();
+    private static final TestRowIndexEntry.TestRowIndexEntrySerializer indexSerializer = new TestRowIndexEntry.TestRowIndexEntrySerializer();
 
 
     private TestFormat()

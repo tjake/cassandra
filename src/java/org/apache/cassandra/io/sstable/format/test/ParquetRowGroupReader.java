@@ -39,12 +39,14 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
     private final Version version;
     private final FileDataInput input;
     private long totalRowCount = 0;
+    private final boolean isStream;
 
-    public ParquetRowGroupReader(Version version, FileDataInput input)
+    public ParquetRowGroupReader(Version version, FileDataInput input, boolean isStream)
     {
         assert version != null && input != null;
         this.version = version;
         this.input = input;
+        this.isStream = isStream;
         readFooter();
     }
 
@@ -55,18 +57,26 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 
         try
         {
-            input.seek(input.getFilePointer() + input.bytesRemaining() - MAGIC.length);
-            byte[] magic = new byte[MAGIC.length];
-            input.readFully(magic);
+            //When we stream we have a single file per row so we jump to the end of the file
+            //And process the Parquet footer
 
-            if (!Arrays.equals(magic, MAGIC))
-                throw new ParquetDecodingException("Not able to find the magic format token");
+            long offset = input.getFilePointer();
 
-            input.seek(input.getFilePointer() - MAGIC.length - Longs.BYTES);
-            long footerSize = input.readLong();
-            assert footerSize > 0;
+            if (isStream)
+            {
+                input.seek(input.getFilePointer() + input.bytesRemaining() - MAGIC.length);
+                byte[] magic = new byte[MAGIC.length];
+                input.readFully(magic);
 
-            input.seek(input.getFilePointer() - Longs.BYTES - footerSize);
+                if (!Arrays.equals(magic, MAGIC))
+                    throw new ParquetDecodingException("Not able to find the magic format token");
+
+                input.seek(input.getFilePointer() - MAGIC.length - Longs.BYTES);
+                long footerSize = input.readLong();
+                assert footerSize > 0;
+
+                input.seek(input.getFilePointer() - Longs.BYTES - footerSize);
+            }
 
             int numRowGroups = input.readInt();
             assert numRowGroups > 0;

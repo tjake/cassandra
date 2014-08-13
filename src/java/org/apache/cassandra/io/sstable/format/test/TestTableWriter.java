@@ -270,10 +270,12 @@ public class TestTableWriter extends SSTableWriter
         //Store values in the outputStream
         store.write(out, rowsWritten);
 
+        long footerOffset = out.getFilePointer() - startPosition;
+
         //Output the footer at the end of the row.
         store.writeFooter(out);
 
-        return new RowIndexEntry(startPosition);
+        return new TestRowIndexEntry(startPosition, cf.deletionInfo().getTopLevelDeletion(), new TestRowIndexEntry.ParquetInfo(footerOffset));
     }
 
     private Group add(OnDiskAtom c, Group g) throws IOException
@@ -350,8 +352,7 @@ public class TestTableWriter extends SSTableWriter
 
         GroupWriter gw = new GroupWriter(columnWriter, schema);
 
-
-        ParquetRowGroupReader rowGroupReader  = new ParquetRowGroupReader(version, fin);
+        ParquetRowGroupReader rowGroupReader  = new ParquetRowGroupReader(version, fin, true);
 
         MessageColumnIO w  = new ColumnIOFactory().getColumnIO(schema);
 
@@ -377,10 +378,12 @@ public class TestTableWriter extends SSTableWriter
         //Store values in the outputStream
         store.write(dataFile, rowsWritten);
 
+        long footerOffset = dataFile.getFilePointer() - startPosition;
+
         //Output the footer at the end of the row.
         store.writeFooter(dataFile);
 
-        afterAppend(key, startPosition, new RowIndexEntry(startPosition));
+        afterAppend(key, startPosition, new TestRowIndexEntry(startPosition, deletionInfo, new TestRowIndexEntry.ParquetInfo(footerOffset)));
 
 
         metadataCollector.updateMinTimestamp(minTimestamp)
@@ -570,7 +573,7 @@ public class TestTableWriter extends SSTableWriter
             try
             {
                 ByteBufferUtil.writeWithShortLength(key.getKey(), indexFile.stream);
-                metadata.comparator.rowIndexEntrySerializer().serialize(indexEntry, indexFile.stream);
+                rowIndexEntrySerializer.serialize(indexEntry, indexFile.stream);
             }
             catch (IOException e)
             {

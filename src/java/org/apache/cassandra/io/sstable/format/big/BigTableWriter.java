@@ -479,7 +479,7 @@ public class BigTableWriter extends SSTableWriter
             try
             {
                 ByteBufferUtil.writeWithShortLength(key.getKey(), indexFile.stream);
-                metadata.comparator.rowIndexEntrySerializer().serialize(indexEntry, indexFile.stream);
+                rowIndexEntrySerializer.serialize(indexEntry, indexFile.stream);
             }
             catch (IOException e)
             {

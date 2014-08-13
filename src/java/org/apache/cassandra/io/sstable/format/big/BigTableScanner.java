@@ -55,6 +55,7 @@ public class BigTableScanner implements ICompactionScanner
     private AbstractBounds<RowPosition> currentRange;
 
     private final DataRange dataRange;
+    private final RowIndexEntry.IndexSerializer rowIndexEntrySerializer;
 
     protected Iterator<OnDiskAtomIterator> iterator;
 
@@ -71,6 +72,7 @@ public class BigTableScanner implements ICompactionScanner
         this.ifile = sstable.openIndexReader();
         this.sstable = sstable;
         this.dataRange = dataRange;
+        this.rowIndexEntrySerializer = sstable.descriptor.version.getSSTableFormat().getIndexSerializer(sstable.metadata);
 
         List<AbstractBounds<RowPosition>> boundsList = new ArrayList<>(2);
         if (dataRange.isWrapAround() && !dataRange.stopKey().isMinimum(sstable.partitioner))
@@ -100,6 +102,7 @@ public class BigTableScanner implements ICompactionScanner
         this.ifile = sstable.openIndexReader();
         this.sstable = sstable;
         this.dataRange = null;
+        this.rowIndexEntrySerializer = sstable.descriptor.version.getSSTableFormat().getIndexSerializer(sstable.metadata);
 
         List<Range<Token>> normalized = Range.normalize(tokenRanges);
         List<AbstractBounds<RowPosition>> boundsList = new ArrayList<>(normalized.size());
@@ -229,7 +232,7 @@ public class BigTableScanner implements ICompactionScanner
                             return endOfData();
 
                         currentKey = sstable.partitioner.decorateKey(ByteBufferUtil.readWithShortLength(ifile));
-                        currentEntry = sstable.metadata.comparator.rowIndexEntrySerializer().deserialize(ifile, sstable.descriptor.version);
+                        currentEntry = rowIndexEntrySerializer.deserialize(ifile, sstable.descriptor.version);
                     } while (!currentRange.contains(currentKey));
                 }
                 else
@@ -250,7 +253,7 @@ public class BigTableScanner implements ICompactionScanner
                 {
                     // we need the position of the start of the next key, regardless of whether it falls in the current range
                     nextKey = sstable.partitioner.decorateKey(ByteBufferUtil.readWithShortLength(ifile));
-                    nextEntry = sstable.metadata.comparator.rowIndexEntrySerializer().deserialize(ifile, sstable.descriptor.version);
+                    nextEntry = rowIndexEntrySerializer.deserialize(ifile, sstable.descriptor.version);
                     readEnd = nextEntry.position;
 
                     if (!currentRange.contains(nextKey))
@@ -262,10 +265,9 @@ public class BigTableScanner implements ICompactionScanner
 
                 if (dataRange == null || dataRange.selectsFullRowFor(currentKey.getKey()))
                 {
-                    dfile.seek(currentEntry.position);
+                    dfile.seek(currentEntry.position + currentEntry.headerOffset());
                     ByteBufferUtil.readWithShortLength(dfile); // key
-                    long dataSize = readEnd - dfile.getFilePointer();
-                    return new SSTableIdentityIterator(sstable, dfile, currentKey, dataSize);
+                    return new SSTableIdentityIterator(sstable, dfile, currentKey);
                 }
 
                 return new LazyColumnIterator(currentKey, new IColumnIteratorFactory()

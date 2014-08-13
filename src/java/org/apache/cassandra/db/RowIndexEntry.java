@@ -47,7 +47,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         this.position = position;
     }
 
-    protected int promotedSize(CType type)
+    public int promotedSize(ISerializer<T> idxSerializer)
     {
         return 0;
     }
@@ -80,6 +80,15 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * @return the offset to the start of the header information for this row.
+     * For some formats this may not be the start of the row.
+     */
+    public long headerOffset()
+    {
+        return 0;
+    }
+
     public List<T> columnsIndex()
     {
         return Collections.emptyList();
@@ -99,23 +108,22 @@ public class RowIndexEntry<T> implements IMeasurableMemory
 
     public static class Serializer implements IndexSerializer<IndexHelper.IndexInfo>
     {
-        private final CType type;
+        private final ISerializer<IndexHelper.IndexInfo> idxSerializer;
 
-        public Serializer(CType type)
+        public Serializer(ISerializer<IndexHelper.IndexInfo> idxSerializer)
         {
-            this.type = type;
+            this.idxSerializer = idxSerializer;
         }
 
         public void serialize(RowIndexEntry<IndexHelper.IndexInfo> rie, DataOutputPlus out) throws IOException
         {
             out.writeLong(rie.position);
-            out.writeInt(rie.promotedSize(type));
+            out.writeInt(rie.promotedSize(idxSerializer));
 
             if (rie.isIndexed())
             {
                 DeletionTime.serializer.serialize(rie.deletionTime(), out);
                 out.writeInt(rie.columnsIndex().size());
-                ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
                 for (IndexHelper.IndexInfo info : rie.columnsIndex())
                     idxSerializer.serialize(info, out);
             }
@@ -131,8 +139,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
                 DeletionTime deletionTime = DeletionTime.serializer.deserialize(in);
 
                 int entries = in.readInt();
-                ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
-                List<IndexHelper.IndexInfo> columnsIndex = new ArrayList<IndexHelper.IndexInfo>(entries);
+                List<IndexHelper.IndexInfo> columnsIndex = new ArrayList<>(entries);
                 for (int i = 0; i < entries; i++)
                     columnsIndex.add(idxSerializer.deserialize(in));
 
@@ -161,7 +168,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
 
         public int serializedSize(RowIndexEntry rie)
         {
-            return TypeSizes.NATIVE.sizeof(rie.position) + rie.promotedSize(type);
+            return TypeSizes.NATIVE.sizeof(rie.position) + rie.promotedSize(idxSerializer);
         }
     }
 
@@ -198,12 +205,11 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         }
 
         @Override
-        public int promotedSize(CType type)
+        public int promotedSize(ISerializer idxSerializer)
         {
             TypeSizes typeSizes = TypeSizes.NATIVE;
             long size = DeletionTime.serializer.serializedSize(deletionTime, typeSizes);
             size += typeSizes.sizeof(columnsIndex.size()); // number of entries
-            ISerializer<IndexHelper.IndexInfo> idxSerializer = type.indexSerializer();
             for (IndexHelper.IndexInfo info : columnsIndex)
                 size += idxSerializer.serializedSize(info, typeSizes);
 

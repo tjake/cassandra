@@ -122,6 +122,8 @@ public abstract class SSTableReader extends SSTable
     protected IndexSummary indexSummary;
     protected IFilter bf;
 
+    protected final RowIndexEntry.IndexSerializer rowIndexEntrySerializer;
+
     protected InstrumentingCache<KeyCacheKey, RowIndexEntry> keyCache;
 
     protected final BloomFilterTracker bloomFilterTracker = new BloomFilterTracker();
@@ -454,6 +456,8 @@ public abstract class SSTableReader extends SSTable
         this.maxDataAge = maxDataAge;
         this.isOpenEarly = isOpenEarly;
 
+        this.rowIndexEntrySerializer = descriptor.version.getSSTableFormat().getIndexSerializer(metadata);
+
         deletingTask = new SSTableDeletingTask(this);
 
         // Don't track read rates for tables in the system keyspace and don't bother trying to load or persist
@@ -727,10 +731,12 @@ public abstract class SSTableReader extends SSTable
                 summaryBuilder = new IndexSummaryBuilder(estimatedKeys, metadata.getMinIndexInterval(), samplingLevel);
 
             long indexPosition;
+            RowIndexEntry.IndexSerializer rowIndexSerializer = descriptor.fmt.info.getIndexSerializer(metadata);
+
             while ((indexPosition = primaryIndex.getFilePointer()) != indexSize)
             {
                 ByteBuffer key = ByteBufferUtil.readWithShortLength(primaryIndex);
-                RowIndexEntry indexEntry = metadata.comparator.rowIndexEntrySerializer().deserialize(primaryIndex, descriptor.version);
+                RowIndexEntry indexEntry = rowIndexSerializer.deserialize(primaryIndex, descriptor.version);
                 DecoratedKey decoratedKey = partitioner.decorateKey(key);
                 if (first == null)
                     first = decoratedKey;

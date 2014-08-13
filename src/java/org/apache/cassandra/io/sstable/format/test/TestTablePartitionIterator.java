@@ -26,6 +26,7 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
     private final int expireBefore;
     private final CFMetaData cfm;
     private final Version version;
+    private final ParquetRowGroupReader reader;
 
     public TestTablePartitionIterator(FileDataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
     {
@@ -34,13 +35,9 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
         this.expireBefore = expireBefore;
         this.cfm = cfm;
         this.version = version;
+
+        this.reader = new ParquetRowGroupReader(version, in, false);
      }
-
-
-    private void maybeLoadRowGroup()
-    {
-
-    }
 
     @Override
     public boolean hasNext()

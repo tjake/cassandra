@@ -41,6 +41,7 @@ public abstract class SSTableWriter extends SSTable
     protected final long repairedAt;
     protected final long keyCount;
     protected final MetadataCollector metadataCollector;
+    protected final RowIndexEntry.IndexSerializer rowIndexEntrySerializer;
 
     protected SSTableWriter(Descriptor descriptor, long keyCount, long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
     {
@@ -48,6 +49,7 @@ public abstract class SSTableWriter extends SSTable
         this.keyCount = keyCount;
         this.repairedAt = repairedAt;
         this.metadataCollector = metadataCollector;
+        this.rowIndexEntrySerializer = descriptor.version.getSSTableFormat().getIndexSerializer(metadata);
     }
 
     public static SSTableWriter create(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata,  IPartitioner partitioner, MetadataCollector metadataCollector)

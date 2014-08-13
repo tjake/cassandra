@@ -34,7 +34,6 @@ import org.apache.cassandra.serializers.MarshalException;
 {
     private final DecoratedKey key;
     private final DataInput in;
-    public final long dataSize; // we [still] require this so compaction can tell if it's safe to read the row into memory
     public final ColumnSerializer.Flag flag;
 
     private final ColumnFamily columnFamily;
@@ -47,11 +46,10 @@ import org.apache.cassandra.serializers.MarshalException;
      * @param sstable SSTable we are reading ffrom.
      * @param file Reading using this file.
      * @param key Key of this row.
-     * @param dataSize length of row data
      */
-    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize)
+    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key)
     {
-        this(sstable, file, key, dataSize, false);
+        this(sstable, file, key, false);
     }
 
     /**
@@ -59,12 +57,11 @@ import org.apache.cassandra.serializers.MarshalException;
      * @param sstable SSTable we are reading ffrom.
      * @param file Reading using this file.
      * @param key Key of this row.
-     * @param dataSize length of row data
      * @param checkData if true, do its best to deserialize and check the coherence of row data
      */
-    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key, long dataSize, boolean checkData)
+    public SSTableIdentityIterator(SSTableReader sstable, RandomAccessReader file, DecoratedKey key, boolean checkData)
     {
-        this(sstable.metadata, file, file.getPath(), key, dataSize, checkData, sstable, ColumnSerializer.Flag.LOCAL);
+        this(sstable.metadata, file, file.getPath(), key, checkData, sstable, ColumnSerializer.Flag.LOCAL);
     }
 
     // sstable may be null *if* checkData is false
@@ -73,7 +70,6 @@ import org.apache.cassandra.serializers.MarshalException;
                                     FileDataInput in,
                                     String filename,
                                     DecoratedKey key,
-                                    long dataSize,
                                     boolean checkData,
                                     SSTableReader sstable,
                                     ColumnSerializer.Flag flag)
@@ -82,7 +78,6 @@ import org.apache.cassandra.serializers.MarshalException;
         this.in = in;
         this.filename = filename;
         this.key = key;
-        this.dataSize = dataSize;
         this.flag = flag;
         this.validateColumns = checkData;
 
