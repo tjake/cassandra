@@ -27,6 +27,7 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
     private final CFMetaData cfm;
     private final Version version;
     private final ParquetRowGroupReader reader;
+    private int numberRead;
 
     public TestTablePartitionIterator(FileDataInput in, ColumnSerializer.Flag flag, int expireBefore, CFMetaData cfm, Version version)
     {
@@ -37,13 +38,15 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
         this.version = version;
 
         this.reader = new ParquetRowGroupReader(version, in, false);
+
+        numberRead = 0;
+
      }
 
     @Override
     public boolean hasNext()
     {
-
-        return false;
+        return numberRead < reader.getTotalRowCount();
     }
 
     @Override
@@ -53,6 +56,7 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
             return null;
 
 
+        
         return null;
     }
 

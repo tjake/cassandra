@@ -62,7 +62,7 @@ public class TestTableWriter extends SSTableWriter
     {
         super(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
 
-        if (metadata.regularColumns().isEmpty())
+        if (!metadata.isCQL3Table())
             throw new UnsupportedOperationException("Only Cql3 tables supported");
 
         iwriter = new IndexWriter(keyCount);
@@ -213,9 +213,6 @@ public class TestTableWriter extends SSTableWriter
         //Write the row key
         out.write(decoratedKey.getKey());
 
-        //Write the row level deletion info
-        DeletionTime.serializer.serialize(cf.deletionInfo().getTopLevelDeletion(), out.stream);
-
         //Setup Parquet writer
         ParquetPageWriter store = new ParquetPageWriter();
         MessageColumnIO io  = new ColumnIOFactory().getColumnIO(schema);
@@ -271,6 +268,9 @@ public class TestTableWriter extends SSTableWriter
         store.write(out, rowsWritten);
 
         long footerOffset = out.getFilePointer() - startPosition;
+
+        //Write the row level deletion info
+        DeletionTime.serializer.serialize(cf.deletionInfo().getTopLevelDeletion(), out.stream);
 
         //Output the footer at the end of the row.
         store.writeFooter(out);
@@ -332,16 +332,10 @@ public class TestTableWriter extends SSTableWriter
         boolean hasLegacyCounterShards = false;
 
         long startPosition = beforeAppend(key);
-        DeletionTime deletionInfo = DeletionTime.serializer.deserialize(fin);
-
-        if (deletionInfo.localDeletionTime < Integer.MAX_VALUE)
-            tombstones.update(deletionInfo.localDeletionTime);
 
         //Write the row key
         dataFile.write(key.getKey());
 
-        //Write the row level deletion info
-        DeletionTime.serializer.serialize(deletionInfo, dataFile.stream);
 
         //Setup Parquet writer
         ParquetPageWriter store = new ParquetPageWriter();
@@ -379,6 +373,15 @@ public class TestTableWriter extends SSTableWriter
         store.write(dataFile, rowsWritten);
 
         long footerOffset = dataFile.getFilePointer() - startPosition;
+
+        //Read in the deletion info
+        DeletionTime deletionInfo = DeletionTime.serializer.deserialize(fin);
+
+        if (deletionInfo.localDeletionTime < Integer.MAX_VALUE)
+            tombstones.update(deletionInfo.localDeletionTime);
+
+        //Write the row level deletion info
+        DeletionTime.serializer.serialize(deletionInfo, dataFile.stream);
 
         //Output the footer at the end of the row.
         store.writeFooter(dataFile);
