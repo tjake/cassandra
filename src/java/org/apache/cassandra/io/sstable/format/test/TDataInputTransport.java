@@ -4,15 +4,16 @@ import org.apache.cassandra.io.util.FileDataInput;
 import parquet.org.apache.thrift.transport.TTransport;
 import parquet.org.apache.thrift.transport.TTransportException;
 
+import java.io.DataInput;
 import java.io.IOException;
 
 
-public class TFileDataInputTransport extends TTransport
+public class TDataInputTransport extends TTransport
 {
 
-    final FileDataInput fin;
+    final DataInput fin;
 
-    public TFileDataInputTransport(FileDataInput fin)
+    public TDataInputTransport(DataInput fin)
     {
         this.fin = fin;
     }

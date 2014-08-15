@@ -1,9 +1,7 @@
 package org.apache.cassandra.io.sstable.format.test;
 
-import com.google.common.primitives.Longs;
 import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.io.sstable.format.Version;
-import org.apache.cassandra.io.util.AbstractDataInput;
 import org.apache.cassandra.io.util.FileDataInput;
 import parquet.bytes.BytesInput;
 import parquet.column.ColumnDescriptor;
@@ -19,11 +17,9 @@ import parquet.io.ParquetDecodingException;
 import parquet.org.apache.thrift.TException;
 import parquet.org.apache.thrift.protocol.TCompactProtocol;
 import parquet.org.apache.thrift.protocol.TProtocol;
-import parquet.org.apache.thrift.transport.TIOStreamTransport;
 import parquet.org.apache.thrift.transport.TTransport;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,20 +31,20 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 {
     private List<PageReadStore> rowGroups = new ArrayList<>();
 
-    public static final byte[] MAGIC = "PAR1".getBytes(Charset.forName("ASCII"));
+    public static final byte[] START_OF_FOOTER_MAGIC = "PAR1STAR".getBytes(Charset.forName("ASCII"));
+
+    public static final byte[] END_OF_FOOTER_MAGIC = "PAR1".getBytes(Charset.forName("ASCII"));
 
     private final Version version;
     private final FileDataInput input;
     private long totalRowCount = 0;
-    private final boolean isStream;
     private final DeletionTime deletionTime;
 
-    public ParquetRowGroupReader(Version version, FileDataInput input, boolean isStream)
+    public ParquetRowGroupReader(Version version, FileDataInput input)
     {
         assert version != null && input != null;
         this.version = version;
         this.input = input;
-        this.isStream = isStream;
         deletionTime = readFooter();
     }
 
@@ -61,32 +57,10 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
 
         try
         {
-            //When we stream we have a single file per row so we jump to the end of the file
-            //And process the Parquet footer
-            if (isStream)
-            {
-                input.seek(input.getFilePointer() + input.bytesRemaining() - MAGIC.length);
-                byte[] magic = new byte[MAGIC.length];
-                input.readFully(magic);
-
-                if (!Arrays.equals(magic, MAGIC))
-                    throw new ParquetDecodingException("Not able to find the magic format token");
-
-                input.seek(input.getFilePointer() - MAGIC.length - Longs.BYTES);
-                long footerSize = input.readLong();
-                assert footerSize > 0;
-
-                input.seek(input.getFilePointer() - Longs.BYTES - footerSize);
-
-                //Before the parquet footer is our deletion time
-                dtime = DeletionTime.serializer.deserialize(input);
-
-            }
-
             int numRowGroups = input.readInt();
             assert numRowGroups > 0;
 
-            TProtocol protocol = new TCompactProtocol(new TFileDataInputTransport(input));
+            TProtocol protocol = new TCompactProtocol(new TDataInputTransport(input));
             for (int i = 0; i < numRowGroups; i++)
             {
                 RowGroup rg = new RowGroup();
@@ -216,7 +190,7 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
                 //Deserialize page header
                 PageHeader header = new PageHeader();
 
-                TTransport in = new TFileDataInputTransport(input);
+                TTransport in = new TDataInputTransport(input);
                 TCompactProtocol protocol = new TCompactProtocol(in);
                 header.read(protocol);
 

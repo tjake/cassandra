@@ -61,7 +61,7 @@ public class TestTablePartitionIterator implements Iterator<OnDiskAtom>
         this.cfm = cfm;
         this.version = version;
 
-        reader = new ParquetRowGroupReader(version, in, false);
+        reader = new ParquetRowGroupReader(version, in);
         pageStoreIterator = reader.iterator();
 
         assert pageStoreIterator.hasNext();

@@ -81,6 +81,8 @@ public class ParquetPageWriter implements PageWriteStore
 
         assert !rowGroups.isEmpty();
 
+        out.write(ParquetRowGroupReader.START_OF_FOOTER_MAGIC);
+
         long footerOffset = out.getFilePointer();
 
         //Write the row level deletion info
@@ -104,7 +106,7 @@ public class ParquetPageWriter implements PageWriteStore
 
         long len = out.getFilePointer() - footerOffset;
         out.stream.writeLong(len);
-        out.write(ParquetRowGroupReader.MAGIC);
+        out.write(ParquetRowGroupReader.END_OF_FOOTER_MAGIC);
     }
 
     /**

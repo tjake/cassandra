@@ -102,24 +102,8 @@ public class StreamReader
                 assert in.getBytesRead() < totalSize;
                 int sectionLength = (int) (section.right - section.left);
 
-                //For non sequential formats, flush row to file then send to writer
-                //TODO: write/use MemoryDataInput for small partitions
-                if (!inputVersion.isSequential())
-                {
-                    File f = FileUtils.createTempFile("stream-", ".tmp");
-                    FileOutputStream out = new FileOutputStream(f);
-                    FileUtils.copyTo(in, out, sectionLength);
-                    FileUtils.close(out);
-
-                    try ( FileDataInput fileInput = RandomAccessReader.open(f) )
-                    {
-                      writeRow(writer, fileInput, cfs);
-                    }
-                }
-                else
-                {
+                while (in.getBytesRead() < sectionLength)
                     writeRow(writer, new FakeFileDataInput(in), cfs);
-                }
 
                 // TODO move this to BytesReadTracker
                 session.progress(desc, ProgressInfo.Direction.IN, in.getBytesRead(), totalSize);

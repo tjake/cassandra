@@ -62,8 +62,6 @@ public class TestTableWriter extends SSTableWriter
     private final MessageType schema;
 
 
-
-
     TestTableWriter(Descriptor descriptor, Long keyCount, Long repairedAt, CFMetaData metadata, IPartitioner partitioner, MetadataCollector metadataCollector)
     {
         super(descriptor, keyCount, repairedAt, metadata, partitioner, metadataCollector);
@@ -286,7 +284,8 @@ public class TestTableWriter extends SSTableWriter
         //Store values in the outputStream
         store.write(out, rowsWritten);
 
-        long footerOffset = out.getFilePointer() - startPosition;
+        //We want to point to the start of the footer, ignoring the start magic value
+        long footerOffset = out.getFilePointer() - startPosition + ParquetRowGroupReader.START_OF_FOOTER_MAGIC.length;
 
         //Output the footer at the end of the row.
         store.writeFooter(out, cf.deletionInfo().getTopLevelDeletion());
@@ -362,15 +361,18 @@ public class TestTableWriter extends SSTableWriter
 
         TestGroupWriter gw = new TestGroupWriter(columnWriter, schema);
 
-        ParquetRowGroupReader rowGroupReader  = new ParquetRowGroupReader(version, fin, true);
+        ParquetSequentialRowGroupReader rowGroupReader  = new ParquetSequentialRowGroupReader(version, fin);
+
 
         MessageColumnIO w  = new ColumnIOFactory().getColumnIO(schema);
 
         RecordMaterializer<TestGroup> recordConverter = new TestRecordMaterializer(schema);
         int rowsWritten = 0;
 
-        for (PageReadStore readStore : rowGroupReader)
+        while (rowGroupReader.hasNext())
         {
+            PageReadStore readStore = rowGroupReader.next();
+
             RecordReader<TestGroup> reader = w.getRecordReader(readStore, recordConverter);
 
             for (int i = 0; i < readStore.getRowCount(); i++)
@@ -388,7 +390,8 @@ public class TestTableWriter extends SSTableWriter
         //Store values in the outputStream
         store.write(dataFile, rowsWritten);
 
-        long footerOffset = dataFile.getFilePointer() - startPosition;
+        //We want to point to the start of the footer, ignoring the start magic value
+        long footerOffset = dataFile.getFilePointer() - startPosition + ParquetRowGroupReader.START_OF_FOOTER_MAGIC.length;
 
         DeletionTime deletionInfo = rowGroupReader.getDeletionTime();
 
