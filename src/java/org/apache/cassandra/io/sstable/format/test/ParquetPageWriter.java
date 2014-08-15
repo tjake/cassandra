@@ -2,6 +2,7 @@ package org.apache.cassandra.io.sstable.format.test;
 
 
 import com.google.common.collect.Lists;
+import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.io.util.SequentialWriter;
 import parquet.bytes.BytesInput;
 import parquet.column.ColumnDescriptor;
@@ -73,7 +74,7 @@ public class ParquetPageWriter implements PageWriteStore
         return parquet.format.Encoding.valueOf(encoding.name());
     }
 
-    public void writeFooter(SequentialWriter out) throws IOException
+    public void writeFooter(SequentialWriter out, DeletionTime deletionTime) throws IOException
     {
         //We don't write the actual parquet footer since we don't need the
         //schema written for every partition
@@ -81,6 +82,11 @@ public class ParquetPageWriter implements PageWriteStore
         assert !rowGroups.isEmpty();
 
         long footerOffset = out.getFilePointer();
+
+        //Write the row level deletion info
+        DeletionTime.serializer.serialize(deletionTime, out.stream);
+
+
         out.stream.writeInt(rowGroups.size());
 
         for (RowGroup rg : rowGroups)
@@ -113,18 +119,29 @@ public class ParquetPageWriter implements PageWriteStore
         if (pageWriters.isEmpty())
             return;
 
+        //We need to write some preamble so we can support
+        //things like streaming.  Most reads will go through
+        //the footer
+
+        //Hint how many rows will be in this row group
+        out.stream.writeLong(numRows);
+
+        //Hint how many column chunks we will be writing
+        out.stream.writeInt(pageWriters.size());
+
         RowGroup rowGroup = new RowGroup();
 
         for (Map.Entry<ColumnDescriptor, TestPageWriter> entry : pageWriters.entrySet())
         {
-
-
             ColumnDescriptor desc = entry.getKey();
 
             Set<parquet.format.Encoding> encodings = new HashSet<>(3);
             long numValues = 0;
             long totalUncompressedSize = 0;
             long dataPageOffset = -1L;
+
+            //Write the number of pages in this column chunk
+            out.stream.writeInt(entry.getValue().getPages().size());
 
             //Write each page
             for (Page p : entry.getValue().getPages())

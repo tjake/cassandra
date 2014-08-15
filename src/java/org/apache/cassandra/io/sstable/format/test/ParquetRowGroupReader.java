@@ -1,6 +1,7 @@
 package org.apache.cassandra.io.sstable.format.test;
 
 import com.google.common.primitives.Longs;
+import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.AbstractDataInput;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -40,6 +41,7 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
     private final FileDataInput input;
     private long totalRowCount = 0;
     private final boolean isStream;
+    private final DeletionTime deletionTime;
 
     public ParquetRowGroupReader(Version version, FileDataInput input, boolean isStream)
     {
@@ -47,21 +49,20 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
         this.version = version;
         this.input = input;
         this.isStream = isStream;
-        readFooter();
+        deletionTime = readFooter();
     }
 
 
-    private void readFooter()
+    private DeletionTime readFooter()
     {
         assert rowGroups.isEmpty(); //only call once
+
+        DeletionTime dtime = null;
 
         try
         {
             //When we stream we have a single file per row so we jump to the end of the file
             //And process the Parquet footer
-
-            long offset = input.getFilePointer();
-
             if (isStream)
             {
                 input.seek(input.getFilePointer() + input.bytesRemaining() - MAGIC.length);
@@ -76,6 +77,10 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
                 assert footerSize > 0;
 
                 input.seek(input.getFilePointer() - Longs.BYTES - footerSize);
+
+                //Before the parquet footer is our deletion time
+                dtime = DeletionTime.serializer.deserialize(input);
+
             }
 
             int numRowGroups = input.readInt();
@@ -99,6 +104,13 @@ public class ParquetRowGroupReader implements Iterable<PageReadStore>
         {
             throw new ParquetDecodingException(e);
         }
+
+        return dtime;
+    }
+
+    public DeletionTime getDeletionTime()
+    {
+        return deletionTime;
     }
 
     //Rows across all row groups
