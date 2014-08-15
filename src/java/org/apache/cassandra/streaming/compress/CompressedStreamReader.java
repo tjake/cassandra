@@ -18,8 +18,7 @@
 package org.apache.cassandra.streaming.compress;
 
 import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
@@ -27,10 +26,7 @@ import java.nio.channels.ReadableByteChannel;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
-import org.apache.cassandra.io.util.FakeFileDataInput;
-import org.apache.cassandra.io.util.FileDataInput;
-import org.apache.cassandra.io.util.FileUtils;
-import org.apache.cassandra.io.util.RandomAccessReader;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,11 +85,12 @@ public class CompressedStreamReader extends StreamReader
                 in.reset(0);
 
                 while (in.getBytesRead() < sectionLength)
-                    writeRow(writer, new FakeFileDataInput(in), cfs);
+                {
+                    writeRow(writer, in, cfs);
 
-                // when compressed, report total bytes of compressed chunks read since remoteFile.size is the sum of chunks transferred
-                session.progress(desc, ProgressInfo.Direction.IN, cis.getTotalCompressedBytesRead(), totalSize);
-
+                    // when compressed, report total bytes of compressed chunks read since remoteFile.size is the sum of chunks transferred
+                    session.progress(desc, ProgressInfo.Direction.IN, cis.getTotalCompressedBytesRead(), totalSize);
+                }
             }
             return writer;
         }

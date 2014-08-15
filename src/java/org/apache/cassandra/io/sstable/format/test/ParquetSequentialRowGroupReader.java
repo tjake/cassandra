@@ -10,10 +10,7 @@ import parquet.column.page.DictionaryPage;
 import parquet.column.page.Page;
 import parquet.column.page.PageReadStore;
 import parquet.column.page.PageReader;
-import parquet.format.ColumnChunk;
-import parquet.format.ColumnMetaData;
-import parquet.format.PageHeader;
-import parquet.format.Type;
+import parquet.format.*;
 import parquet.io.ParquetDecodingException;
 import parquet.org.apache.thrift.TException;
 import parquet.org.apache.thrift.protocol.TCompactProtocol;
@@ -63,7 +60,7 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
         try
         {
             next = new SequentialPageReadStore();
-        } catch (StartOfFooterException e)
+        } catch (FoundFooterException e)
         {
             finished = true;
             return false;
@@ -81,7 +78,7 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
         SequentialPageReadStore tmp = next;
         next = null;
 
-        return next;
+        return tmp;
     }
 
 
@@ -96,7 +93,7 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
         return deletionTime;
     }
 
-    class StartOfFooterException extends Exception
+    class FoundFooterException extends Exception
     {
 
     }
@@ -106,7 +103,7 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
         private final Map<ColumnDescriptor, PageReader> rowGroup = new HashMap<>();
         private final long numberOfRows;
 
-        SequentialPageReadStore() throws StartOfFooterException
+        SequentialPageReadStore() throws FoundFooterException
         {
             try
             {
@@ -116,8 +113,16 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
 
                 in.readFully(magic);
 
+                //No more row groups to read, so read the deletion info and return
                 if (Arrays.equals(magic, ParquetRowGroupReader.START_OF_FOOTER_MAGIC))
-                    throw new StartOfFooterException();
+                {
+                    deletionTime = DeletionTime.serializer.deserialize(in);
+
+                    //Skip the footer
+                    skipFooter();
+
+                    throw new FoundFooterException();
+                }
 
                 ///Read the next Row group
                 numberOfRows = LongType.instance.compose(ByteBuffer.wrap(magic));
@@ -133,6 +138,32 @@ public class ParquetSequentialRowGroupReader implements Iterator<PageReadStore>
             {
                 throw new IOError(e);
             }
+        }
+
+        private void skipFooter() throws IOException
+        {
+            int numRowGroups = in.readInt();
+
+            try
+            {
+                for (int i = 0; i < numRowGroups; i++)
+                {
+                    RowGroup rg = new RowGroup();
+                    TTransport t = new TDataInputTransport(in);
+                    TCompactProtocol protocol = new TCompactProtocol(t);
+                    rg.read(protocol);
+                }
+            } catch (TException e)
+            {
+                throw new ParquetDecodingException(e);
+            }
+
+            long offset = in.readLong();
+            byte[] magic = new byte[ParquetRowGroupReader.END_OF_FOOTER_MAGIC.length];
+
+            in.readFully(magic);
+
+            assert Arrays.equals(magic, ParquetRowGroupReader.END_OF_FOOTER_MAGIC);
         }
 
         @Override

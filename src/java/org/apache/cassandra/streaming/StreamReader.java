@@ -27,10 +27,8 @@ import com.google.common.base.Throwables;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
-import org.apache.cassandra.io.util.FakeFileDataInput;
-import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileUtils;
-import org.apache.cassandra.io.util.RandomAccessReader;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +45,6 @@ import org.apache.cassandra.streaming.messages.FileMessageHeader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.BytesReadTracker;
 import org.apache.cassandra.utils.Pair;
-import sun.misc.IOUtils;
 
 
 /**
@@ -94,7 +91,6 @@ public class StreamReader
 
         DataInputStream dis = new DataInputStream(new LZFInputStream(Channels.newInputStream(channel)));
         BytesReadTracker in = new BytesReadTracker(dis);
-        File tmpFile = null;
         try
         {
             for (Pair<Long,Long> section : sections)
@@ -103,7 +99,7 @@ public class StreamReader
                 int sectionLength = (int) (section.right - section.left);
 
                 while (in.getBytesRead() < sectionLength)
-                    writeRow(writer, new FakeFileDataInput(in), cfs);
+                    writeRow(writer, in, cfs);
 
                 // TODO move this to BytesReadTracker
                 session.progress(desc, ProgressInfo.Direction.IN, in.getBytesRead(), totalSize);
@@ -111,9 +107,6 @@ public class StreamReader
             return writer;
         } catch (Throwable e)
         {
-            if (tmpFile != null)
-                FileUtils.deleteWithConfirm(tmpFile);
-
             writer.abort();
             drain(dis, in.getBytesRead());
             if (e instanceof IOException)
@@ -160,7 +153,7 @@ public class StreamReader
         return size;
     }
 
-    protected void writeRow(SSTableWriter writer, FileDataInput in, ColumnFamilyStore cfs) throws IOException
+    protected void writeRow(SSTableWriter writer, DataInput in, ColumnFamilyStore cfs) throws IOException
     {
         DecoratedKey key = StorageService.getPartitioner().decorateKey(ByteBufferUtil.readWithShortLength(in));
         writer.appendFromStream(key, cfs.metadata, in, inputVersion);

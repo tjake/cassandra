@@ -225,7 +225,8 @@ public class TestTableWriter extends SSTableWriter
     private RowIndexEntry rawAppend(ColumnFamily cf, long startPosition, DecoratedKey decoratedKey, SequentialWriter out) throws IOException
     {
         //Write the row key
-        out.write(decoratedKey.getKey());
+        ByteBufferUtil.writeWithShortLength(decoratedKey.getKey(), out.stream);
+
 
         //Setup Parquet writer
         ParquetPageWriter store = new ParquetPageWriter();
@@ -335,7 +336,7 @@ public class TestTableWriter extends SSTableWriter
     }
 
     @Override
-    public long appendFromStream(DecoratedKey key, CFMetaData metadata, FileDataInput fin, Version version) throws IOException
+    public long appendFromStream(DecoratedKey key, CFMetaData metadata, DataInput fin, Version version) throws IOException
     {
         // deserialize each column to obtain maxTimestamp and immediately serialize it.
         long minTimestamp = Long.MAX_VALUE;
@@ -349,8 +350,7 @@ public class TestTableWriter extends SSTableWriter
         long startPosition = beforeAppend(key);
 
         //Write the row key
-        dataFile.write(key.getKey());
-
+        ByteBufferUtil.writeWithShortLength(key.getKey(), dataFile.stream);
 
         //Setup Parquet writer
         ParquetPageWriter store = new ParquetPageWriter();
