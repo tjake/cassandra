@@ -291,7 +291,7 @@ public abstract class Functions
     public static void addFunction(AbstractFunction fun)
     {
         // We shouldn't get there unless that function don't exist
-        assert find(fun.name(), fun.argTypes()) == null;
+        assert find(fun.name(), fun.argTypes()) == null : fun.name() + " already exists";
         declare(fun);
     }
 

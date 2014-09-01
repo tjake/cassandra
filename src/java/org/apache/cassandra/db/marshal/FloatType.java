@@ -91,4 +91,10 @@ public class FloatType extends AbstractType<Float>
     {
         return FloatSerializer.instance;
     }
+
+    @Override
+    protected int valueLengthIfFixed()
+    {
+        return 4;
+    }
 }

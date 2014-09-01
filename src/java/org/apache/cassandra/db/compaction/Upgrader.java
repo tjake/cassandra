@@ -26,6 +26,7 @@ import com.google.common.collect.Sets;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.SerializationHeader;
 import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
@@ -74,7 +75,13 @@ public class Upgrader
                 sstableMetadataCollector.addAncestor(i);
         }
         sstableMetadataCollector.sstableLevel(sstable.getSSTableLevel());
-        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(directory)), estimatedRows, repairedAt, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
+        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(directory)),
+                                    estimatedRows,
+                                    repairedAt,
+                                    cfs.metadata,
+                                    cfs.partitioner,
+                                    sstableMetadataCollector,
+                                    SerializationHeader.make(cfs.metadata, Sets.newHashSet(sstable)));
     }
 
     public void upgrade()
@@ -83,15 +90,12 @@ public class Upgrader
         Set<SSTableReader> toUpgrade = Sets.newHashSet(sstable);
 
         try (SSTableRewriter writer = new SSTableRewriter(cfs, toUpgrade, CompactionTask.getMaxDataAge(toUpgrade), true);
-             AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(toUpgrade))
+             AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(toUpgrade);
+             CompactionIterable iter = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat()))
         {
-            Iterator<AbstractCompactedRow> iter = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat()).iterator();
             writer.switchWriter(createCompactionWriter(sstable.getSSTableMetadata().repairedAt));
             while (iter.hasNext())
-            {
-                AbstractCompactedRow row = iter.next();
-                writer.append(row);
-            }
+                writer.append(iter.next());
 
             writer.finish();
             outputHandler.output("Upgrade of " + sstable + " complete.");

@@ -24,8 +24,6 @@ import com.datastax.driver.core.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.ColumnFamilyType;
 import org.apache.cassandra.db.SystemKeyspace;
-import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.dht.*;
@@ -115,9 +113,8 @@ public class NativeSSTableLoaderClient extends SSTableLoader.Client
                                        ? null
                                        : TypeParser.parse(row.getString("subcomparator"));
             boolean isDense = row.getBool("is_dense");
-            CellNameType comparator = CellNames.fromAbstractType(CFMetaData.makeRawAbstractType(rawComparator, subComparator),
-                                                                 isDense);
 
+            ClusteringComparator comparator = CFMetaData.makeComparator(rawComparator, subComparator, isDense);
             tables.put(name, new CFMetaData(keyspace, name, type, comparator, id));
         }
 

@@ -20,11 +20,10 @@ package org.apache.cassandra.db.index;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 
-import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.utils.concurrent.OpOrder;
-import org.apache.cassandra.db.Cell;
-import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 /**
@@ -33,19 +32,22 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 public abstract class PerRowSecondaryIndex extends SecondaryIndex
 {
     /**
-     * Index the given row.
+     * Index the given partition.
      *
-     * @param rowKey the row key
-     * @param cf the cf data to be indexed
+     * @param atom the row key
      */
-    public abstract void index(ByteBuffer rowKey, ColumnFamily cf);
+    // TODO: we probably want just one: see if we can get easily an AtomIterator from
+    // a PartitionUpdate. Though we should fix that damn secondary index API once and
+    // for all.
+    public abstract void index(ByteBuffer key, PartitionUpdate atoms);
+    public abstract void index(ByteBuffer key, AtomIterator atoms);
 
     /**
      * cleans up deleted columns from cassandra cleanup compaction
      *
      * @param key
      */
-    public abstract void delete(DecoratedKey key, OpOrder.Group opGroup);
+    public abstract void delete(ByteBuffer key, OpOrder.Group opGroup);
 
     public String getNameForSystemKeyspace(ByteBuffer columnName)
     {
@@ -57,16 +59,5 @@ public abstract class PerRowSecondaryIndex extends SecondaryIndex
         {
             throw new RuntimeException(e);
         }
-    }
-
-
-    public boolean validate(ByteBuffer rowKey, Cell cell)
-    {
-        return validate(cell);
-    }
-
-    public boolean validate(Cell cell)
-    {
-        return true;
     }
 }
