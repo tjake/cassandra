@@ -122,4 +122,10 @@ public class TimeUUIDType extends AbstractType<UUID>
     {
         return TimeUUIDSerializer.instance;
     }
+
+    @Override
+    protected int valueLengthIfFixed()
+    {
+        return 16;
+    }
 }

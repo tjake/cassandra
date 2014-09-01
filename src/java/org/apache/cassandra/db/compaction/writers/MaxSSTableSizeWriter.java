@@ -23,7 +23,8 @@ import java.util.Set;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowIndexEntry;
-import org.apache.cassandra.db.compaction.AbstractCompactedRow;
+import org.apache.cassandra.db.SerializationHeader;
+import org.apache.cassandra.db.atoms.AtomIterator;
 import org.apache.cassandra.db.compaction.CompactionTask;
 import org.apache.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -59,14 +60,15 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
                                                     minRepairedAt,
                                                     cfs.metadata,
                                                     cfs.partitioner,
-                                                    new MetadataCollector(allSSTables, cfs.metadata.comparator, level));
+                                                    new MetadataCollector(allSSTables, cfs.metadata.comparator, level),
+                                                    SerializationHeader.make(cfs.metadata, nonExpiredSSTables));
         sstableWriter.switchWriter(writer);
     }
 
     @Override
-    public boolean append(AbstractCompactedRow row)
+    public boolean append(AtomIterator partition)
     {
-        RowIndexEntry rie = sstableWriter.append(row);
+        RowIndexEntry rie = sstableWriter.append(partition);
         if (sstableWriter.currentWriter().getOnDiskFilePointer() > maxSSTableSize)
         {
             File sstableDirectory = cfs.directories.getLocationForDisk(getWriteDirectory(expectedWriteSize));
@@ -75,7 +77,8 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
                                                                 minRepairedAt,
                                                                 cfs.metadata,
                                                                 cfs.partitioner,
-                                                                new MetadataCollector(allSSTables, cfs.metadata.comparator, level));
+                                                                new MetadataCollector(allSSTables, cfs.metadata.comparator, level),
+                                                                SerializationHeader.make(cfs.metadata, nonExpiredSSTables));
 
             sstableWriter.switchWriter(writer);
         }

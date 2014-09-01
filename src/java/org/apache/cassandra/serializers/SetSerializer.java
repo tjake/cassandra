@@ -94,7 +94,7 @@ public class SetSerializer<T> extends CollectionSerializer<Set<T>>
         }
         catch (BufferUnderflowException e)
         {
-            throw new MarshalException("Not enough bytes to read a list");
+            throw new MarshalException("Not enough bytes to read a set");
         }
     }
 
@@ -114,6 +114,7 @@ public class SetSerializer<T> extends CollectionSerializer<Set<T>>
     public String toString(Set<T> value)
     {
         StringBuilder sb = new StringBuilder();
+        sb.append('{');
         boolean isFirst = true;
         for (T element : value)
         {
@@ -123,10 +124,11 @@ public class SetSerializer<T> extends CollectionSerializer<Set<T>>
             }
             else
             {
-                sb.append("; ");
+                sb.append(", ");
             }
             sb.append(elements.toString(element));
         }
+        sb.append('}');
         return sb.toString();
     }
 

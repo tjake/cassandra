@@ -28,9 +28,8 @@ import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.Term.Terminal;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
-
-import org.apache.cassandra.db.IndexExpression;
-import org.apache.cassandra.db.composites.CompositesBuilder;
+import org.apache.cassandra.db.MultiCBuilder;
+import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -76,7 +75,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
     @Override
     public boolean hasSupportingIndex(SecondaryIndexManager indexManager)
     {
-        SecondaryIndex index = indexManager.getIndexForColumn(columnDef.name.bytes);
+        SecondaryIndex index = indexManager.getIndexForColumn(columnDef);
         return index != null && isSupportedBy(index);
     }
 
@@ -129,16 +128,15 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
-                                         QueryOptions options) throws InvalidRequestException
+        public void addColumnFilterTo(ColumnFilter filter,
+                                      SecondaryIndexManager indexManager,
+                                      QueryOptions options) throws InvalidRequestException
         {
-            ByteBuffer buffer = validateIndexedValue(columnDef, value.bindAndGet(options));
-            expressions.add(new IndexExpression(columnDef.name.bytes, Operator.EQ, buffer));
+            filter.add(columnDef, Operator.EQ, value.bindAndGet(options));
         }
 
         @Override
-        public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
+        public MultiCBuilder appendTo(MultiCBuilder builder, QueryOptions options)
         {
             builder.addElementToAll(value.bindAndGet(options));
             checkFalse(builder.containsNull(), "Invalid null value in condition for column %s", columnDef.name);
@@ -185,7 +183,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
+        public MultiCBuilder appendTo(MultiCBuilder builder, QueryOptions options)
         {
             builder.addEachElementToAll(getValues(options));
             checkFalse(builder.containsNull(), "Invalid null value in condition for column %s", columnDef.name);
@@ -194,15 +192,14 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
-                                         QueryOptions options) throws InvalidRequestException
+        public void addColumnFilterTo(ColumnFilter filter,
+                                      SecondaryIndexManager indexManager,
+                                      QueryOptions options) throws InvalidRequestException
         {
             List<ByteBuffer> values = getValues(options);
             checkTrue(values.size() == 1, "IN restrictions are not supported on indexed columns");
 
-            ByteBuffer value = validateIndexedValue(columnDef, values.get(0));
-            expressions.add(new IndexExpression(columnDef.name.bytes, Operator.EQ, value));
+            filter.add(columnDef, Operator.EQ, values.get(0));
         }
 
         @Override
@@ -291,11 +288,11 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
     }
 
-    public static class Slice extends SingleColumnRestriction
+    public static class SliceRestriction extends SingleColumnRestriction
     {
         private final TermSlice slice;
 
-        public Slice(ColumnDefinition columnDef, Bound bound, boolean inclusive, Term term)
+        public SliceRestriction(ColumnDefinition columnDef, Bound bound, boolean inclusive, Term term)
         {
             super(columnDef);
             slice = TermSlice.newInstance(bound, inclusive, term);
@@ -321,7 +318,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
+        public MultiCBuilder appendTo(MultiCBuilder builder, QueryOptions options)
         {
             throw new UnsupportedOperationException();
         }
@@ -333,7 +330,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public CompositesBuilder appendBoundTo(CompositesBuilder builder, Bound bound, QueryOptions options)
+        public MultiCBuilder appendBoundTo(MultiCBuilder builder, Bound bound, QueryOptions options)
         {
             ByteBuffer value = slice.bound(bound).bindAndGet(options);
             checkBindValueSet(value, "Invalid unset value for column %s", columnDef.name);
@@ -354,7 +351,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
                       "Column \"%s\" cannot be restricted by both an equality and an inequality relation",
                       columnDef.name);
 
-            SingleColumnRestriction.Slice otherSlice = (SingleColumnRestriction.Slice) otherRestriction;
+            SingleColumnRestriction.SliceRestriction otherSlice = (SingleColumnRestriction.SliceRestriction) otherRestriction;
 
             checkFalse(hasBound(Bound.START) && otherSlice.hasBound(Bound.START),
                        "More than one restriction was found for the start bound on %s", columnDef.name);
@@ -362,27 +359,15 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
             checkFalse(hasBound(Bound.END) && otherSlice.hasBound(Bound.END),
                        "More than one restriction was found for the end bound on %s", columnDef.name);
 
-            return new Slice(columnDef,  slice.merge(otherSlice.slice));
+            return new SliceRestriction(columnDef,  slice.merge(otherSlice.slice));
         }
 
         @Override
-        public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
-                                         QueryOptions options) throws InvalidRequestException
+        public void addColumnFilterTo(ColumnFilter filter, SecondaryIndexManager indexManager, QueryOptions options) throws InvalidRequestException
         {
             for (Bound b : Bound.values())
-            {
                 if (hasBound(b))
-                {
-                    ByteBuffer value = validateIndexedValue(columnDef, slice.bound(b).bindAndGet(options));
-                    Operator op = slice.getIndexOperator(b);
-                    // If the underlying comparator for name is reversed, we need to reverse the IndexOperator: user operation
-                    // always refer to the "forward" sorting even if the clustering order is reversed, but the 2ndary code does
-                    // use the underlying comparator as is.
-                    op = columnDef.isReversedType() ? op.reverse() : op;
-                    expressions.add(new IndexExpression(columnDef.name.bytes, op, value));
-                }
-            }
+                    filter.add(columnDef, slice.getIndexOperator(b), slice.bound(b).bindAndGet(options));
         }
 
         @Override
@@ -397,7 +382,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
             return String.format("SLICE%s", slice);
         }
 
-        private Slice(ColumnDefinition columnDef, TermSlice slice)
+        private SliceRestriction(ColumnDefinition columnDef, TermSlice slice)
         {
             super(columnDef);
             this.slice = slice;
@@ -429,7 +414,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
+        public MultiCBuilder appendTo(MultiCBuilder builder, QueryOptions options)
         {
             throw new UnsupportedOperationException();
         }
@@ -456,24 +441,18 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
-                                         QueryOptions options)
-                                         throws InvalidRequestException
+        public void addColumnFilterTo(ColumnFilter filter, SecondaryIndexManager indexManager, QueryOptions options) throws InvalidRequestException
         {
-            addExpressionsFor(expressions, bindAndGet(values, options), Operator.CONTAINS);
-            addExpressionsFor(expressions, bindAndGet(keys, options), Operator.CONTAINS_KEY);
-            addExpressionsFor(expressions, entries(options), Operator.EQ);
-        }
+            for (ByteBuffer value : bindAndGet(values, options))
+                filter.add(columnDef, Operator.CONTAINS, value);
+            for (ByteBuffer key : bindAndGet(keys, options))
+                filter.add(columnDef, Operator.CONTAINS_KEY, key);
 
-        private void addExpressionsFor(List<IndexExpression> target, List<ByteBuffer> values,
-                                       Operator op) throws InvalidRequestException
-        {
-            for (ByteBuffer value : values)
-            {
-                validateIndexedValue(columnDef, value);
-                target.add(new IndexExpression(columnDef.name.bytes, op, value));
-            }
+            List<ByteBuffer> eks = bindAndGet(entryKeys, options);
+            List<ByteBuffer> evs = bindAndGet(entryValues, options);
+            assert eks.size() == evs.size();
+            for (int i = 0; i < eks.size(); i++)
+                filter.addMapEquality(columnDef, eks.get(i), Operator.EQ, evs.get(i));
         }
 
         @Override
@@ -537,7 +516,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        public CompositesBuilder appendBoundTo(CompositesBuilder builder, Bound bound, QueryOptions options)
+        public MultiCBuilder appendBoundTo(MultiCBuilder builder, Bound bound, QueryOptions options)
         {
             throw new UnsupportedOperationException();
         }
@@ -546,20 +525,6 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         public boolean isInclusive(Bound b)
         {
             throw new UnsupportedOperationException();
-        }
-
-        private List<ByteBuffer> entries(QueryOptions options) throws InvalidRequestException
-        {
-            List<ByteBuffer> entryBuffers = new ArrayList<>(entryKeys.size());
-            List<ByteBuffer> keyBuffers = bindAndGet(entryKeys, options);
-            List<ByteBuffer> valueBuffers = bindAndGet(entryValues, options);
-            for (int i = 0; i < entryKeys.size(); i++)
-            {
-                if (valueBuffers.get(i) == null)
-                    throw new InvalidRequestException("Unsupported null value for map-entry equality");
-                entryBuffers.add(CompositeType.build(keyBuffers.get(i), valueBuffers.get(i)));
-            }
-            return entryBuffers;
         }
 
         /**
