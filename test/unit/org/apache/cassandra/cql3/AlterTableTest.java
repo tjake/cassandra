@@ -40,6 +40,7 @@ public class AlterTableTest extends CQLTester
 
         assertRows(execute("SELECT * FROM %s;"), row("test", "first test"));
     }
+
     @Test
     public void testAddMap() throws Throwable
     {
@@ -72,6 +73,7 @@ public class AlterTableTest extends CQLTester
         execute("UPDATE %s set myCollection = ['second element'] WHERE id = 'test';");
         assertRows(execute("SELECT * FROM %s;"), row("test", "first test", list("second element")));
     }
+
     @Test
     public void testDropListAndAddMapWithSameName() throws Throwable
     {
