@@ -21,16 +21,18 @@ import java.io.File;
 import java.util.*;
 
 import com.google.common.base.Throwables;
+import com.google.common.collect.Sets;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
+import org.apache.cassandra.db.SerializationHeader;
 import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
-import org.apache.cassandra.utils.CloseableIterator;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.OutputHandler;
 import org.apache.cassandra.utils.UUIDGen;
 
@@ -78,7 +80,13 @@ public class Upgrader
                 sstableMetadataCollector.addAncestor(i);
         }
         sstableMetadataCollector.sstableLevel(sstable.getSSTableLevel());
-        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(directory)), estimatedRows, repairedAt, cfs.metadata, cfs.partitioner, sstableMetadataCollector);
+        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(directory)),
+                                    estimatedRows,
+                                    repairedAt,
+                                    cfs.metadata,
+                                    cfs.partitioner,
+                                    sstableMetadataCollector,
+                                    SerializationHeader.make(cfs.metadata, Sets.newHashSet(sstable)));
     }
 
     public void upgrade()
@@ -86,16 +94,12 @@ public class Upgrader
         outputHandler.output("Upgrading " + sstable);
 
         try (SSTableRewriter writer = new SSTableRewriter(cfs, transaction, CompactionTask.getMaxDataAge(transaction.originals()), true);
-             AbstractCompactionStrategy.ScannerList scanners = strategyManager.getScanners(transaction.originals());
-             CloseableIterator<AbstractCompactedRow> iter = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), UUIDGen.getTimeUUID()).iterator())
+             AbstractCompactionStrategy.ScannerList scanners = strategyManager.getScanners(transaction.originals(), FBUtilities.nowInSeconds());
+             CompactionIterator iter = new CompactionIterator(compactionType, scanners.scanners, controller, UUIDGen.getTimeUUID()))
         {
             writer.switchWriter(createCompactionWriter(sstable.getSSTableMetadata().repairedAt));
             while (iter.hasNext())
-            {
-                @SuppressWarnings("resource")
-                AbstractCompactedRow row = iter.next();
-                writer.append(row);
-            }
+                writer.append(iter.next());
 
             writer.finish();
             outputHandler.output("Upgrade of " + sstable + " complete.");

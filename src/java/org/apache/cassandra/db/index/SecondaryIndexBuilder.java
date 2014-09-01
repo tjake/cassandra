@@ -59,21 +59,26 @@ public class SecondaryIndexBuilder extends CompactionInfo.Holder
 
     public void build()
     {
-        while (iter.hasNext())
-        {
-            if (isStopRequested())
-                throw new CompactionInterruptedException(getCompactionInfo());
-            DecoratedKey key = iter.next();
-            Keyspace.indexRow(key, cfs, idxNames);
-        }
-
         try
         {
-            iter.close();
+            while (iter.hasNext())
+            {
+                if (isStopRequested())
+                    throw new CompactionInterruptedException(getCompactionInfo());
+                DecoratedKey key = iter.next();
+                Keyspace.indexPartition(key, cfs, idxNames);
+            }
         }
-        catch (IOException e)
+        finally
         {
-            throw new RuntimeException(e);
+            try
+            {
+                iter.close();
+            }
+            catch (IOException e)
+            {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

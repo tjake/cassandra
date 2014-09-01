@@ -20,35 +20,37 @@ package org.apache.cassandra;
  *
  */
 
-import java.io.*;
+import java.io.EOFException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
+import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Iterators;
+import org.apache.commons.lang3.StringUtils;
 
-import org.apache.cassandra.cache.CachingOptions;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.KSMetaData;
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.composites.*;
+import org.apache.cassandra.db.Slice.Bound;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.compaction.AbstractCompactionTask;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
-import org.apache.cassandra.db.filter.IDiskAtomFilter;
-import org.apache.cassandra.db.filter.QueryFilter;
-import org.apache.cassandra.db.filter.SliceQueryFilter;
-import org.apache.cassandra.db.filter.NamesQueryFilter;
+import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.UTF8Type;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.dht.RandomPartitioner.BigIntegerToken;
+import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.gms.VersionedValue;
@@ -56,24 +58,44 @@ import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.IndexSummary;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
-import org.apache.cassandra.io.sstable.format.big.BigTableReader;
-import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
-import org.apache.cassandra.io.sstable.metadata.MetadataType;
-import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
-import org.apache.cassandra.io.util.*;
-import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.AlwaysPresentFilter;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.CounterId;
-import org.apache.hadoop.fs.FileUtil;
+import org.apache.cassandra.utils.FBUtilities;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class Util
 {
     private static List<UUID> hostIdPool = new ArrayList<UUID>();
+
+    public static class OnlyRow implements AutoCloseable
+    {
+        private final PartitionIterator iterator;
+        public final Row row;
+
+        public OnlyRow(PartitionIterator iter)
+        {
+            iterator = iter;
+            while (iterator.hasNext())
+            {
+                RowIterator ri = iterator.next();
+                assert !iterator.hasNext() : "Expected single row result, have more than 1.";
+                row = ri.next();
+                assert !ri.hasNext() : "Expected single row result, have more than 1.";
+                return;
+            }
+            throw new RuntimeException("Attempted to query single row but no results were in result set.");
+        }
+
+        public void close()
+        {
+            iterator.close();
+        }
+    }
 
     public static DecoratedKey dk(String key)
     {
@@ -90,24 +112,29 @@ public class Util
         return StorageService.getPartitioner().decorateKey(key);
     }
 
-    public static RowPosition rp(String key)
+    public static PartitionPosition rp(String key)
     {
         return rp(key, StorageService.getPartitioner());
     }
 
-    public static RowPosition rp(String key, IPartitioner partitioner)
+    public static PartitionPosition rp(String key, IPartitioner partitioner)
     {
-        return RowPosition.ForKey.get(ByteBufferUtil.bytes(key), partitioner);
+        return PartitionPosition.ForKey.get(ByteBufferUtil.bytes(key), partitioner);
     }
 
-    public static CellName cellname(ByteBuffer... bbs)
+    public static Cell getRegularCell(CFMetaData metadata, Row row, String name)
     {
-        if (bbs.length == 1)
-            return CellNames.simpleDense(bbs[0]);
-        else
-            return CellNames.compositeDense(bbs);
+        ColumnDefinition column = metadata.getColumnDefinition(ByteBufferUtil.bytes(name));
+        assert column != null;
+        return row.getCell(column);
     }
 
+    public static ClusteringPrefix clustering(ClusteringComparator comparator, Object... o)
+    {
+        return comparator.make(o).clustering();
+    }
+
+    /*
     public static CellName cellname(String... strs)
     {
         ByteBuffer[] bbs = new ByteBuffer[strs.length];
@@ -131,39 +158,46 @@ public class Util
         return new BufferCell(cellname(name), ByteBufferUtil.bytes(value), timestamp);
     }
 
-    public static Cell column(String name, long value, long timestamp)
-    {
-        return new BufferCell(cellname(name), ByteBufferUtil.bytes(value), timestamp);
-    }
-
-    public static Cell column(String clusterKey, String name, long value, long timestamp)
-    {
-        return new BufferCell(cellname(clusterKey, name), ByteBufferUtil.bytes(value), timestamp);
-    }
-
     public static Cell expiringColumn(String name, String value, long timestamp, int ttl)
     {
         return new BufferExpiringCell(cellname(name), ByteBufferUtil.bytes(value), timestamp, ttl);
     }
+    */
 
     public static Token token(String key)
     {
         return StorageService.getPartitioner().getToken(ByteBufferUtil.bytes(key));
     }
 
-    public static Range<RowPosition> range(String left, String right)
+
+    public static Range<PartitionPosition> range(String left, String right)
     {
-        return new Range<RowPosition>(rp(left), rp(right));
+        return new Range<>(rp(left), rp(right));
     }
 
-    public static Range<RowPosition> range(IPartitioner p, String left, String right)
+    public static Range<PartitionPosition> range(IPartitioner p, String left, String right)
     {
-        return new Range<RowPosition>(rp(left, p), rp(right, p));
+        return new Range<>(rp(left, p), rp(right, p));
     }
 
-    public static Bounds<RowPosition> bounds(String left, String right)
+    //Test helper to make an iterator iterable once
+    public static <T> Iterable<T> once(final Iterator<T> source)
     {
-        return new Bounds<RowPosition>(rp(left), rp(right));
+        return new Iterable<T>()
+        {
+            private AtomicBoolean exhausted = new AtomicBoolean();
+            public Iterator<T> iterator()
+            {
+                Preconditions.checkState(!exhausted.getAndSet(true));
+                return source;
+            }
+        };
+    }
+
+    /*
+    public static Bounds<PartitionPosition> bounds(String left, String right)
+    {
+        return new Bounds<PartitionPosition>(rp(left), rp(right));
     }
 
     public static void addMutation(Mutation rm, String columnFamilyName, String superColumnName, long columnName, String value, long timestamp)
@@ -173,6 +207,7 @@ public class Util
                        : CellNames.compositeDense(ByteBufferUtil.bytes(superColumnName), getBytes(columnName));
         rm.add(columnFamilyName, cname, ByteBufferUtil.bytes(value), timestamp);
     }
+    */
 
     public static ByteBuffer getBytes(long v)
     {
@@ -192,37 +227,48 @@ public class Util
         return bb;
     }
 
-    public static ByteBuffer getBytes(short v)
-    {
-        byte[] bytes = new byte[2];
-        ByteBuffer bb = ByteBuffer.wrap(bytes);
-        bb.putShort(v);
-        bb.rewind();
-        return bb;
-    }
-
-    public static ByteBuffer getBytes(byte v)
-    {
-        byte[] bytes = new byte[1];
-        ByteBuffer bb = ByteBuffer.wrap(bytes);
-        bb.put(v);
-        bb.rewind();
-        return bb;
-    }
-
-    public static List<Row> getRangeSlice(ColumnFamilyStore cfs)
+    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs)
     {
         return getRangeSlice(cfs, null);
     }
-
-    public static List<Row> getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
+    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
     {
-        IDiskAtomFilter filter = superColumn == null
-                               ? new IdentityQueryFilter()
-                               : new SliceQueryFilter(SuperColumns.startOf(superColumn), SuperColumns.endOf(superColumn), false, Integer.MAX_VALUE);
+        ColumnFilter filter = ColumnFilter.create();
+        if (superColumn != null)
+            filter.add(cfs.metadata.compactValueColumn(), Operator.EQ, superColumn);
+        
+        ReadCommand command = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), filter, DataLimits.cqlLimits(100000), DataRange.allData(cfs.metadata, cfs.partitioner));
 
-        Token min = StorageService.getPartitioner().getMinimumToken();
-        return cfs.getRangeSlice(Bounds.makeRowBounds(min, min), null, filter, 10000);
+        return command.executeLocally();
+    }
+    public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs,
+                                             ByteBuffer startKey,
+                                             ByteBuffer endKey,
+                                             ByteBuffer superColumn,
+                                             ColumnFilter filter,
+                                             ByteBuffer... columns)
+    {
+        return makeReadCommand(cfs, startKey, endKey, superColumn, filter, columns).executeInternal();
+    }
+
+    public static ReadCommand makeReadCommand(ColumnFamilyStore cfs,
+                                              ByteBuffer startKey,
+                                              ByteBuffer endKey,
+                                              ByteBuffer superColumn,
+                                              ColumnFilter filter,
+                                              ByteBuffer... columns)
+    {
+        AbstractReadCommandBuilder builder = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+                .setKeyBounds(startKey, endKey)
+                .replaceFilter(filter);
+
+        for (ByteBuffer bb : columns)
+            builder.addColumn(bb);
+
+        if (superColumn != null)
+            builder.setSuper(superColumn);
+
+        return builder.build();
     }
 
     /**
@@ -245,22 +291,26 @@ public class Util
         return store;
     }
 
+    /*
     public static ColumnFamily getColumnFamily(Keyspace keyspace, DecoratedKey key, String cfName)
     {
         ColumnFamilyStore cfStore = keyspace.getColumnFamilyStore(cfName);
         assert cfStore != null : "Table " + cfName + " has not been defined";
         return cfStore.getColumnFamily(QueryFilter.getIdentityFilter(key, cfName, System.currentTimeMillis()));
     }
+    */
 
     public static boolean equalsCounterId(CounterId n, ByteBuffer context, int offset)
     {
         return CounterId.wrap(context, context.position() + offset).equals(n);
     }
 
+    /*
     public static ColumnFamily cloneAndRemoveDeleted(ColumnFamily cf, int gcBefore)
     {
         return ColumnFamilyStore.removeDeleted(cf.cloneMe(), gcBefore);
     }
+    */
 
     /**
      * Creates initial set of nodes and tokens. Nodes are added to StorageService as 'normal'
@@ -306,7 +356,7 @@ public class Util
 
     public static void compact(ColumnFamilyStore cfs, Collection<SSTableReader> sstables)
     {
-        int gcBefore = cfs.gcBefore(System.currentTimeMillis());
+        int gcBefore = cfs.gcBefore(FBUtilities.nowInSeconds());
         AbstractCompactionTask task = cfs.getCompactionStrategyManager().getUserDefinedTask(sstables, gcBefore);
         task.execute(null);
     }
@@ -333,7 +383,90 @@ public class Util
         assert thrown : exception.getName() + " not received";
     }
 
-    public static QueryFilter namesQueryFilter(ColumnFamilyStore cfs, DecoratedKey key)
+    @SuppressWarnings("rawtypes")
+    public static UnfilteredRowIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
+    {
+        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static UnfilteredRowIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
+    {
+        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), Slices.ALL, false);
+        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.cqlLimits(limit), key, filter);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static UnfilteredRowIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
+    {
+        Slices.Builder sb = new Slices.Builder(cfs.getComparator());
+        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), sb.build(), false);
+        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, key, filter);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+    }
+
+    public static PartitionIterator readAll(ColumnFamilyStore cfs)
+    {
+        PartitionRangeReadCommand cmd = PartitionRangeReadCommand.allDataRead(cfs.metadata, FBUtilities.nowInSeconds());
+        return cmd.executeInternal();
+    }
+
+    public static List<FilteredPartition> readAllAndMaterialize(ColumnFamilyStore cfs)
+    {
+        List<FilteredPartition> partitions = new ArrayList<>();
+        try (PartitionIterator iter = readAll(cfs))
+        {
+            try (RowIterator partition = iter.next())
+            {
+                partitions.add(FilteredPartition.create(partition));
+            }
+        }
+        return partitions;
+    }
+
+    public static ArrayBackedPartition materializePartition(ColumnFamilyStore cfs, DecoratedKey key)
+    {
+        try (UnfilteredRowIterator iter = readFullPartition(cfs, key))
+        {
+            return ArrayBackedPartition.create(iter);
+        }
+    }
+
+    public static UnfilteredRowIterator apply(Mutation mutation)
+    {
+        mutation.apply();
+        assert mutation.getPartitionUpdates().size() == 1;
+        return mutation.getPartitionUpdates().iterator().next().unfilteredIterator();
+    }
+
+    public static Row getSingleRow(ColumnFamilyStore cfs, DecoratedKey dk)
+    {
+        return materializePartition(cfs, dk).lastRow();
+    }
+
+    public static void consume(UnfilteredRowIterator iter)
+    {
+        try (UnfilteredRowIterator iterator = iter)
+        {
+            while (iter.hasNext())
+                iter.next();
+        }
+    }
+
+    public static int size(PartitionIterator iter)
+    {
+        int size = 0;
+        while (iter.hasNext())
+        {
+            ++size;
+            iter.next().close();
+        }
+        return size;
+    }
+
+   /* public static QueryFilter namesQueryFilter(ColumnFamilyStore cfs, DecoratedKey key)
     {
         SortedSet<CellName> s = new TreeSet<CellName>(cfs.getComparator());
         return QueryFilter.getNamesFilter(key, cfs.name, s, System.currentTimeMillis());
@@ -380,6 +513,52 @@ public class Util
         Composite startName = CellNames.simpleDense(ByteBufferUtil.bytes(start));
         Composite endName = CellNames.simpleDense(ByteBufferUtil.bytes(finish));
         return new RangeTombstone(startName, endName, timestamp , localtime);
+    } */
+
+    public static CBuilder getCBuilderForCFM(CFMetaData cfm)
+    {
+        List<ColumnDefinition> clusteringColumns = cfm.clusteringColumns();
+        List<AbstractType<?>> types = new ArrayList<>(clusteringColumns.size());
+        for (ColumnDefinition def : clusteringColumns)
+            types.add(def.type);
+        return CBuilder.create(new ClusteringComparator(types));
+    }
+
+    // moved & refactored from KeyspaceTest in < 3.0
+    public static void assertColumns(Row row, String... expectedColumnNames)
+    {
+        Iterator<Cell> cells = row == null ? Iterators.<Cell>emptyIterator() : row.iterator();
+        String[] actual = Iterators.toArray(Iterators.transform(cells, new Function<Cell, String>()
+        {
+            public String apply(Cell cell)
+            {
+                return cell.column().name.toString();
+            }
+        }), String.class);
+
+        assert Arrays.equals(actual, expectedColumnNames)
+        : String.format("Columns [%s])] is not expected [%s]",
+                        ((row == null) ? "" : row.columns().toString()),
+                        StringUtils.join(expectedColumnNames, ","));
+    }
+
+    public static void assertColumn(CFMetaData cfm, Row row, String name, String value, long timestamp)
+    {
+        Cell cell = row.getCell(cfm.getColumnDefinition(new ColumnIdentifier(name, true)));
+        assertColumn(cell, value, timestamp);
+    }
+
+    public static void assertColumn(Cell cell, String value, long timestamp)
+    {
+        assertNotNull(cell);
+        assertEquals(0, ByteBufferUtil.compareUnsigned(cell.value(), ByteBufferUtil.bytes(value)));
+        assertEquals(timestamp, cell.livenessInfo().timestamp());
+    }
+
+    public static void assertClustering(CFMetaData cfm, Row row, Object... clusteringValue)
+    {
+        assertEquals(row.clustering().size(), clusteringValue.length);
+        assertEquals(0, cfm.comparator.compare(row.clustering(), cfm.comparator.make(clusteringValue)));
     }
 
 

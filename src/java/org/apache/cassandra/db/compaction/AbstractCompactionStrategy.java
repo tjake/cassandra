@@ -36,6 +36,7 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 
 /**
@@ -261,14 +262,14 @@ public abstract class AbstractCompactionStrategy
      * LeveledCompactionStrategy for instance).
      */
     @SuppressWarnings("resource")
-    public ScannerList getScanners(Collection<SSTableReader> sstables, Range<Token> range)
+    public ScannerList getScanners(Collection<SSTableReader> sstables, Range<Token> range, int nowInSec)
     {
         RateLimiter limiter = CompactionManager.instance.getRateLimiter();
         ArrayList<ISSTableScanner> scanners = new ArrayList<ISSTableScanner>();
         try
         {
             for (SSTableReader sstable : sstables)
-                scanners.add(sstable.getScanner(range, limiter));
+                scanners.add(sstable.getScanner(range, limiter, nowInSec));
         }
         catch (Throwable t)
         {
@@ -338,9 +339,9 @@ public abstract class AbstractCompactionStrategy
         }
     }
 
-    public ScannerList getScanners(Collection<SSTableReader> toCompact)
+    public ScannerList getScanners(Collection<SSTableReader> toCompact, int nowInSec)
     {
-        return getScanners(toCompact, null);
+        return getScanners(toCompact, null, nowInSec);
     }
 
     /**

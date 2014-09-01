@@ -24,14 +24,15 @@ import com.google.common.base.Charsets;
 import org.apache.cassandra.OrderedJUnit4ClassRunner;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
+import org.apache.cassandra.UpdateBuilder;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.compaction.Verifier;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.CounterColumnType;
 import org.apache.cassandra.db.marshal.UUIDType;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.io.FSWriteError;
@@ -54,8 +55,6 @@ import java.util.List;
 import java.util.zip.Adler32;
 import java.util.zip.CheckedInputStream;
 
-import static org.apache.cassandra.Util.cellname;
-import static org.apache.cassandra.Util.column;
 import static org.junit.Assert.fail;
 
 @RunWith(OrderedJUnit4ClassRunner.class)
@@ -92,13 +91,13 @@ public class VerifyTest
                                     SchemaLoader.standardCFMD(KEYSPACE, CF4),
                                     SchemaLoader.standardCFMD(KEYSPACE, CORRUPT_CF),
                                     SchemaLoader.standardCFMD(KEYSPACE, CORRUPT_CF2),
-                                    SchemaLoader.standardCFMD(KEYSPACE, COUNTER_CF, BytesType.instance).defaultValidator(CounterColumnType.instance).compressionParameters(compressionParameters),
-                                    SchemaLoader.standardCFMD(KEYSPACE, COUNTER_CF2, BytesType.instance).defaultValidator(CounterColumnType.instance).compressionParameters(compressionParameters),
-                                    SchemaLoader.standardCFMD(KEYSPACE, COUNTER_CF3, BytesType.instance).defaultValidator(CounterColumnType.instance),
-                                    SchemaLoader.standardCFMD(KEYSPACE, COUNTER_CF4, BytesType.instance).defaultValidator(CounterColumnType.instance),
-                                    SchemaLoader.standardCFMD(KEYSPACE, CORRUPTCOUNTER_CF, BytesType.instance).defaultValidator(CounterColumnType.instance),
-                                    SchemaLoader.standardCFMD(KEYSPACE, CORRUPTCOUNTER_CF2, BytesType.instance).defaultValidator(CounterColumnType.instance),
-                                    SchemaLoader.standardCFMD(KEYSPACE, CF_UUID).keyValidator(UUIDType.instance));
+                                    SchemaLoader.counterCFMD(KEYSPACE, COUNTER_CF).compressionParameters(compressionParameters),
+                                    SchemaLoader.counterCFMD(KEYSPACE, COUNTER_CF2).compressionParameters(compressionParameters),
+                                    SchemaLoader.counterCFMD(KEYSPACE, COUNTER_CF3),
+                                    SchemaLoader.counterCFMD(KEYSPACE, COUNTER_CF4),
+                                    SchemaLoader.counterCFMD(KEYSPACE, CORRUPTCOUNTER_CF),
+                                    SchemaLoader.counterCFMD(KEYSPACE, CORRUPTCOUNTER_CF2),
+                                    SchemaLoader.standardCFMD(KEYSPACE, CF_UUID, 0, UUIDType.instance));
     }
 
 
@@ -109,7 +108,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF);
 
-        fillCF(cfs, KEYSPACE, CF, 2);
+        fillCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -130,7 +129,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(COUNTER_CF);
 
-        fillCounterCF(cfs, KEYSPACE, COUNTER_CF, 2);
+        fillCounterCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -152,7 +151,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF2);
 
-        fillCF(cfs, KEYSPACE, CF2, 2);
+        fillCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -174,7 +173,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(COUNTER_CF2);
 
-        fillCounterCF(cfs, KEYSPACE, COUNTER_CF2, 2);
+        fillCounterCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -196,7 +195,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF3);
 
-        fillCF(cfs, KEYSPACE, CF3, 2);
+        fillCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -218,7 +217,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(COUNTER_CF3);
 
-        fillCounterCF(cfs, KEYSPACE, COUNTER_CF3, 2);
+        fillCounterCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -240,7 +239,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF4);
 
-        fillCF(cfs, KEYSPACE, CF4, 2);
+        fillCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -262,7 +261,7 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(COUNTER_CF4);
 
-        fillCounterCF(cfs, KEYSPACE, COUNTER_CF4, 2);
+        fillCounterCF(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -285,9 +284,11 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CORRUPT_CF);
 
-        fillCF(cfs, KEYSPACE, CORRUPT_CF, 2);
+        fillCF(cfs, 2);
 
-        List<Row> rows = cfs.getRangeSlice(Util.range("", ""), null, new IdentityQueryFilter(), 1000);
+        try (PartitionIterator iter = Util.readAll(cfs))
+        {
+        }
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -315,15 +316,17 @@ public class VerifyTest
         Keyspace keyspace = Keyspace.open(KEYSPACE);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CORRUPT_CF2);
 
-        fillCF(cfs, KEYSPACE, CORRUPT_CF2, 2);
+        fillCF(cfs, 2);
 
-        List<Row> rows = cfs.getRangeSlice(Util.range("", ""), null, new IdentityQueryFilter(), 1000);
+        try (PartitionIterator iter = Util.readAll(cfs))
+        {
+        }
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
         // overwrite one row with garbage
-        long row0Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), SSTableReader.Operator.EQ).position;
-        long row1Start = sstable.getPosition(RowPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), SSTableReader.Operator.EQ).position;
+        long row0Start = sstable.getPosition(PartitionPosition.ForKey.get(ByteBufferUtil.bytes("0"), sstable.partitioner), SSTableReader.Operator.EQ).position;
+        long row1Start = sstable.getPosition(PartitionPosition.ForKey.get(ByteBufferUtil.bytes("1"), sstable.partitioner), SSTableReader.Operator.EQ).position;
         long startPosition = row0Start < row1Start ? row0Start : row1Start;
         long endPosition = row0Start < row1Start ? row1Start : row0Start;
 
@@ -361,31 +364,26 @@ public class VerifyTest
 
     }
 
-    protected void fillCF(ColumnFamilyStore cfs, String keyspace, String columnFamily, int rowsPerSSTable)
+    protected void fillCF(ColumnFamilyStore cfs, int partitionsPerSSTable)
     {
-        for (int i = 0; i < rowsPerSSTable; i++)
+        for (int i = 0; i < partitionsPerSSTable; i++)
         {
-            String key = String.valueOf(i);
-            ColumnFamily cf = ArrayBackedSortedColumns.factory.create(keyspace, columnFamily);
-            cf.addColumn(column("c1", "1", 1L));
-            cf.addColumn(column("c2", "2", 1L));
-            Mutation rm = new Mutation(keyspace, ByteBufferUtil.bytes(key), cf);
-            rm.apply();
+            UpdateBuilder.create(cfs.metadata, String.valueOf(i))
+                         .newRow("c1").add("val", "1")
+                         .newRow("c2").add("val", "2")
+                         .apply();
         }
 
         cfs.forceBlockingFlush();
     }
 
-    protected void fillCounterCF(ColumnFamilyStore cfs, String keyspace, String columnFamily, int rowsPerSSTable) throws WriteTimeoutException
+    protected void fillCounterCF(ColumnFamilyStore cfs, int partitionsPerSSTable) throws WriteTimeoutException
     {
-        for (int i = 0; i < rowsPerSSTable; i++)
+        for (int i = 0; i < partitionsPerSSTable; i++)
         {
-            String key = String.valueOf(i);
-            ColumnFamily cf = ArrayBackedSortedColumns.factory.create(keyspace, columnFamily);
-            Mutation rm = new Mutation(keyspace, ByteBufferUtil.bytes(key), cf);
-            rm.addCounter(columnFamily, cellname("Column1"), 100);
-            CounterMutation cm = new CounterMutation(rm, ConsistencyLevel.ONE);
-            cm.apply();
+            UpdateBuilder.create(cfs.metadata, String.valueOf(i))
+                         .newRow("c1").add("val", 100L)
+                         .apply();
         }
 
         cfs.forceBlockingFlush();

@@ -19,15 +19,71 @@ package org.apache.cassandra.service.pager;
 
 import java.nio.ByteBuffer;
 
-import org.apache.cassandra.db.filter.ColumnCounter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.filter.*;
+import org.apache.cassandra.exceptions.RequestValidationException;
+import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.service.ClientState;
 
 /**
  * Common interface to single partition queries (by slice and by name).
  *
  * For use by MultiPartitionPager.
  */
-public interface SinglePartitionPager extends QueryPager
+public class SinglePartitionPager extends AbstractQueryPager
 {
-    public ByteBuffer key();
-    public ColumnCounter columnCounter();
+    private static final Logger logger = LoggerFactory.getLogger(SinglePartitionPager.class);
+
+    private final SinglePartitionReadCommand<?> command;
+    private final ClientState cstate;
+
+    private volatile Clustering lastReturned;
+
+    public SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
+    {
+        super(consistencyLevel, localQuery, command.metadata(), command.limits());
+        this.command = command;
+        this.cstate = cstate;
+
+        if (state != null)
+        {
+            lastReturned = LegacyLayout.decodeClustering(cfm, state.cellName);
+            restoreState(command.partitionKey(), state.remaining, state.remainingInPartition);
+        }
+    }
+
+    public ByteBuffer key()
+    {
+        return command.partitionKey().getKey();
+    }
+
+    public DataLimits limits()
+    {
+        return command.limits();
+    }
+
+    public PagingState state()
+    {
+        return lastReturned == null
+             ? null
+             : new PagingState(null, LegacyLayout.encodeClustering(command.metadata(), lastReturned), maxRemaining(), remainingInPartition());
+    }
+
+    protected PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    throws RequestValidationException, RequestExecutionException
+    {
+        SinglePartitionReadCommand pageCmd = command.forPaging(lastReturned, pageSize);
+        return localQuery ? pageCmd.executeInternal() : pageCmd.execute(consistencyLevel, cstate);
+    }
+
+    protected void recordLast(DecoratedKey key, Row last)
+    {
+        if (last != null)
+            lastReturned = last.clustering().takeAlias();
+    }
 }

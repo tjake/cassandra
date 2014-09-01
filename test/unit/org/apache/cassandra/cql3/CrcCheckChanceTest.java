@@ -68,8 +68,6 @@ public class CrcCheckChanceTest extends CQLTester
                 row("p1", "k1", "sv1", "v1")
         );
 
-
-
         //Write a few SSTables then Compact
 
         execute("INSERT INTO %s(p, c, v, s) values (?, ?, ?, ?)", "p1", "k1", "v1", "sv1");
@@ -142,7 +140,7 @@ public class CrcCheckChanceTest extends CQLTester
         }
 
         DatabaseDescriptor.setCompactionThroughputMbPerSec(1);
-        List<Future<?>> futures = CompactionManager.instance.submitMaximal(cfs, CompactionManager.getDefaultGcBefore(cfs), false); 
+        List<Future<?>> futures = CompactionManager.instance.submitMaximal(cfs, CompactionManager.getDefaultGcBefore(cfs, FBUtilities.nowInSeconds()), false); 
         execute("DROP TABLE %s");
 
         try
