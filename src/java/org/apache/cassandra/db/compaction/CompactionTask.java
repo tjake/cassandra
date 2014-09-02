@@ -31,6 +31,10 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,9 +43,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionManager.CompactionExecutorStatsCollector;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableRewriter;
-import org.apache.cassandra.io.sstable.SSTableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.UUIDGen;
@@ -53,6 +55,7 @@ public class CompactionTask extends AbstractCompactionTask
     private final boolean offline;
     protected static long totalBytesCompacted = 0;
     private CompactionExecutorStatsCollector collector;
+    private static boolean keepExistingFormat = Boolean.valueOf(System.getProperty("cassandra.test.keepexistingformat","false"));
 
     public CompactionTask(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean offline)
     {
@@ -271,14 +274,14 @@ public class CompactionTask extends AbstractCompactionTask
         return minRepairedAt;
     }
 
-    private SSTableWriter createCompactionWriter(File sstableDirectory, long keysPerSSTable, long repairedAt)
+    private SSTableWriter createCompactionWriter(File sstableDirectory, long keysPerSSTable, long repairedAt, SSTableFormat.Type type)
     {
-        return new SSTableWriter(cfs.getTempSSTablePath(sstableDirectory),
-                                 keysPerSSTable,
-                                 repairedAt,
-                                 cfs.metadata,
-                                 cfs.partitioner,
-                                 new MetadataCollector(sstables, cfs.metadata.comparator, getLevel()));
+        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory), type),
+                keysPerSSTable,
+                repairedAt,
+                cfs.metadata,
+                cfs.partitioner,
+                new MetadataCollector(sstables, cfs.metadata.comparator, getLevel()));
     }
 
     protected int getLevel()
@@ -311,5 +314,14 @@ public class CompactionTask extends AbstractCompactionTask
                 max = sstable.maxDataAge;
         }
         return max;
+    }
+
+    public static SSTableFormat.Type getFormatType(Collection<SSTableReader> sstables)
+    {
+        if (sstables.isEmpty() || keepExistingFormat)
+            return DatabaseDescriptor.getSSTableFormat();
+
+        //Allows us to test compaction of non-default formats
+        return sstables.iterator().next().descriptor.formatType;
     }
 }

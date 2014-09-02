@@ -39,6 +39,7 @@ import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.RequestValidationException;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.utils.Pair;
@@ -272,6 +273,8 @@ public class CQLSSTableWriter implements Closeable
         private File directory;
         private IPartitioner partitioner = new Murmur3Partitioner();
 
+        private SSTableFormat.Type formatType = SSTableFormat.Type.BIG;
+
         private CFMetaData schema;
         private UpdateStatement insert;
         private List<ColumnSpecification> boundNames;
@@ -374,6 +377,20 @@ public class CQLSSTableWriter implements Closeable
         public Builder withPartitioner(IPartitioner partitioner)
         {
             this.partitioner = partitioner;
+            return this;
+        }
+
+        /**
+         * The SSTable format to use.
+         * <p>
+         * By default, the BigTable format will be used.
+         *
+         * @param formatType the format to use.
+         * @return this builder.
+         */
+        public Builder withSSTableFormat(SSTableFormat.Type formatType)
+        {
+            this.formatType = formatType;
             return this;
         }
 
@@ -484,6 +501,9 @@ public class CQLSSTableWriter implements Closeable
             AbstractSSTableSimpleWriter writer = sorted
                                                ? new SSTableSimpleWriter(directory, schema, partitioner)
                                                : new BufferedWriter(directory, schema, partitioner, bufferSizeInMB);
+
+            writer.setSSTableFormatType(formatType);
+
             return new CQLSSTableWriter(writer, insert, boundNames);
         }
     }

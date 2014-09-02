@@ -413,8 +413,8 @@
       	<dependency groupId="com.google.code.findbugs" artifactId="jsr305"/>
         <dependency groupId="org.antlr" artifactId="antlr"/>
         <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core"/>
-        <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
         <dependency groupId="org.javassist" artifactId="javassist"/>
+	    <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
       </artifact:pom>
 
       <artifact:pom id="coverage-deps-pom"
@@ -484,6 +484,7 @@
         <dependency groupId="org.apache.hadoop" artifactId="hadoop-minicluster" optional="true"/>
         <dependency groupId="org.apache.pig" artifactId="pig" optional="true"/>
       	<dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core" optional="true"/>
+
 
         <!-- don't need jna to run, but nice to have -->
         <dependency groupId="net.java.dev.jna" artifactId="jna" version="4.0.0"/>
@@ -1102,7 +1103,8 @@
         <jvmarg value="-Xss256k"/>
         <jvmarg value="-Dcassandra.memtable_row_overhead_computation_step=100"/>
         <jvmarg value="-Dcassandra.test.use_prepared=${cassandra.test.use_prepared}"/>
-	<jvmarg value="-Dcassandra.test.offsetseed=@{poffset}"/>        
+	<jvmarg value="-Dcassandra.test.offsetseed=@{poffset}"/> 
+        <jvmarg value="-Dcassandra.test.keepexistingformat=true"/>       
 	<optjvmargs/>
         <classpath>
           <path refid="cassandra.classpath" />
