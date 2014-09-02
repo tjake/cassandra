@@ -27,6 +27,7 @@ import java.util.concurrent.SynchronousQueue;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ArrayBackedSortedColumns;
 import org.apache.cassandra.db.Cell;
 import org.apache.cassandra.db.ColumnFamily;
@@ -35,6 +36,8 @@ import org.apache.cassandra.db.TypeSizes;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.compress.CompressionParameters;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.net.MessagingService;
 
 /**
@@ -95,8 +98,8 @@ public class SSTableSimpleUnsortedWriter extends AbstractSSTableSimpleWriter
     public SSTableSimpleUnsortedWriter(File directory, CFMetaData metadata, IPartitioner partitioner, long bufferSizeInMB)
     {
         super(directory, metadata, partitioner);
-        this.bufferSize = bufferSizeInMB * 1024L * 1024L;
-        this.diskWriter.start();
+        bufferSize = bufferSizeInMB * 1024L * 1024L;
+        diskWriter.start();
     }
 
     protected void writeRow(DecoratedKey key, ColumnFamily columnFamily) throws IOException
@@ -217,6 +220,7 @@ public class SSTableSimpleUnsortedWriter extends AbstractSSTableSimpleWriter
             }
             catch (Throwable e)
             {
+                e.printStackTrace();
                 if (writer != null)
                     writer.abort();
                 exception = e;

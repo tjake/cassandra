@@ -52,7 +52,9 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.RateLimiter;
-
+import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.format.SSTableWriter;
+import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,10 +78,7 @@ import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.SSTableIdentityIterator;
-import org.apache.cassandra.io.sstable.SSTableReader;
 import org.apache.cassandra.io.sstable.SSTableRewriter;
-import org.apache.cassandra.io.sstable.SSTableWriter;
-import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.metrics.CompactionMetrics;
 import org.apache.cassandra.repair.Validator;
@@ -330,7 +329,7 @@ public class CompactionManager implements CompactionManagerMBean
                     @Override
                     public boolean apply(SSTableReader sstable)
                     {
-                        return !(excludeCurrentVersion && sstable.descriptor.version.equals(Descriptor.Version.CURRENT));
+                        return !(excludeCurrentVersion && sstable.descriptor.version.equals(sstable.descriptor.getFormat().getLatestVersion()));
                     }
                 });
             }
@@ -505,7 +504,7 @@ public class CompactionManager implements CompactionManagerMBean
             {
                 // look up the sstables now that we're on the compaction executor, so we don't try to re-compact
                 // something that was already being compacted earlier.
-                Collection<SSTableReader> sstables = new ArrayList<SSTableReader>(dataFiles.size());
+                Collection<SSTableReader> sstables = new ArrayList<>(dataFiles.size());
                 for (Descriptor desc : dataFiles)
                 {
                     // inefficient but not in a performance sensitive path
@@ -848,12 +847,8 @@ public class CompactionManager implements CompactionManagerMBean
                                              SSTableReader sstable)
     {
         FileUtils.createDirectory(compactionFileLocation);
-        return new SSTableWriter(cfs.getTempSSTablePath(compactionFileLocation),
-                                 expectedBloomFilterSize,
-                                 repairedAt,
-                                 cfs.metadata,
-                                 cfs.partitioner,
-                                 new MetadataCollector(Collections.singleton(sstable), cfs.metadata.comparator, sstable.getSSTableLevel()));
+
+        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(compactionFileLocation)), expectedBloomFilterSize, repairedAt);
     }
 
     public static SSTableWriter createWriterForAntiCompaction(ColumnFamilyStore cfs,
@@ -878,8 +873,8 @@ public class CompactionManager implements CompactionManagerMBean
                 break;
             }
         }
-        return new SSTableWriter(cfs.getTempSSTablePath(compactionFileLocation),
-                                 expectedBloomFilterSize,
+        return SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(compactionFileLocation)),
+                                 (long)expectedBloomFilterSize,
                                  repairedAt,
                                  cfs.metadata,
                                  cfs.partitioner,
@@ -1001,6 +996,7 @@ public class CompactionManager implements CompactionManagerMBean
     private void doAntiCompaction(ColumnFamilyStore cfs, Collection<Range<Token>> ranges,
                                                        Collection<SSTableReader> repairedSSTables, long repairedAt)
     {
+
         // TODO(5351): we can do better here:
         logger.info("Performing anticompaction on {} sstables", repairedSSTables.size());
 
@@ -1038,6 +1034,7 @@ public class CompactionManager implements CompactionManagerMBean
                 groupMaxDataAge = sstable.maxDataAge;
         }
 
+     
         if (anticompactionGroup.size() == 0)
         {
             logger.info("No valid anticompactions for this group, All sstables were compacted and are no longer available");
@@ -1063,7 +1060,7 @@ public class CompactionManager implements CompactionManagerMBean
             repairedSSTableWriter.switchWriter(CompactionManager.createWriterForAntiCompaction(cfs, destination, expectedBloomFilterSize, repairedAt, sstableAsSet));
             unRepairedSSTableWriter.switchWriter(CompactionManager.createWriterForAntiCompaction(cfs, destination, expectedBloomFilterSize, ActiveRepairService.UNREPAIRED_SSTABLE, sstableAsSet));
 
-            CompactionIterable ci = new CompactionIterable(OperationType.ANTICOMPACTION, scanners, controller);
+            CompactionIterable ci = new CompactionIterable(OperationType.ANTICOMPACTION, scanners, controller, DatabaseDescriptor.getSSTableFormat());
 
             try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator())
             {
@@ -1174,7 +1171,7 @@ public class CompactionManager implements CompactionManagerMBean
         {
             super(OperationType.VALIDATION,
                   cfs.getCompactionStrategy().getScanners(sstables, range),
-                  new ValidationCompactionController(cfs, gcBefore));
+                  new ValidationCompactionController(cfs, gcBefore), DatabaseDescriptor.getSSTableFormat());
         }
     }
 
