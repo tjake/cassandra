@@ -332,7 +332,7 @@
           <dependency groupId="com.googlecode.json-simple" artifactId="json-simple" version="1.1"/>
           <dependency groupId="com.boundary" artifactId="high-scale-lib" version="1.0.6"/>
           <dependency groupId="com.github.jbellis" artifactId="jamm" version="0.2.6"/>
-          <dependency groupId="com.thinkaurelius.thrift" artifactId="thrift-server" version="0.3.7">
+          <dependency groupId="com.thinkaurelius.thrift" artifactId="thrift-server" version="0.3.5">
 	      	<exclusion groupId="org.slf4j" artifactId="slf4j-log4j12"/>
           </dependency>
           <dependency groupId="org.yaml" artifactId="snakeyaml" version="1.11"/>
@@ -370,6 +370,8 @@
           <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
 	      <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" version="1.2.0" />
           <dependency groupId="org.fusesource" artifactId="sigar" version="1.6.4" />
+          <dependency groupId="com.twitter" artifactId="parquet-column" version="1.6.0rc1" />
+          <dependency groupId="com.twitter" artifactId="parquet-format" version="2.1.0" />
         </dependencyManagement>
         <developer id="alakshman" name="Avinash Lakshman"/>
         <developer id="aleksey" name="Aleksey Yeschenko"/>
@@ -413,8 +415,10 @@
       	<dependency groupId="com.google.code.findbugs" artifactId="jsr305"/>
         <dependency groupId="org.antlr" artifactId="antlr"/>
         <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core"/>
-        <dependency groupId="org.javassist" artifactId="javassist"/>
 	    <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
+        <dependency groupId="org.javassist" artifactId="javassist" />
+        <dependency groupId="com.twitter" artifactId="parquet-column"  />
+        <dependency groupId="com.twitter" artifactId="parquet-format"  />
       </artifact:pom>
 
       <artifact:pom id="coverage-deps-pom"
@@ -468,10 +472,9 @@
         <dependency groupId="org.mindrot" artifactId="jbcrypt"/>
         <dependency groupId="com.yammer.metrics" artifactId="metrics-core"/>
         <dependency groupId="com.addthis.metrics" artifactId="reporter-config"/>
-        <dependency groupId="com.thinkaurelius.thrift" artifactId="thrift-server" version="0.3.7"/>
+        <dependency groupId="com.thinkaurelius.thrift" artifactId="thrift-server" version="0.3.5"/>
         <dependency groupId="com.clearspring.analytics" artifactId="stream" version="2.5.2" />
         <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
-        <dependency groupId="org.javassist" artifactId="javassist"/>
 
         <dependency groupId="ch.qos.logback" artifactId="logback-core"/>
         <dependency groupId="ch.qos.logback" artifactId="logback-classic"/>
