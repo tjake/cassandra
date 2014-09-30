@@ -23,10 +23,19 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.EnumMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufHolder;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollChannelOption;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.nio.NioEventLoop;
 import io.netty.util.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,7 +86,6 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
-    private EventExecutor eventExecutorGroup;
 
     public Server(InetSocketAddress socket)
     {
@@ -135,12 +143,24 @@ public class Server implements CassandraDaemon.Server
         }
 
         // Configure the server.
-        eventExecutorGroup = new RequestThreadPoolExecutor();
-        workerGroup = new NioEventLoopGroup();
+        boolean hasEpoll = Epoll.isAvailable();
+        if (hasEpoll)
+        {
+            logger.info("Netty using EPoll event loop");
+            workerGroup = new EpollEventLoopGroup(DatabaseDescriptor.getNativeTransportMaxThreads(), null, 256);
+            ((EpollEventLoopGroup) workerGroup).setIoRatio(10);
+        }
+        else
+        {
+            logger.info("Netty using Java NIO event loop");
+            workerGroup = new NioEventLoopGroup(DatabaseDescriptor.getNativeTransportMaxThreads());
+            ((NioEventLoopGroup) workerGroup).setIoRatio(10);
+        }
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                                     .group(workerGroup)
-                                    .channel(NioServerSocketChannel.class)
+                                    .channel(hasEpoll ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
+                                    .option(ChannelOption.ALLOCATOR, CBUtil.allocator)
                                     .childOption(ChannelOption.TCP_NODELAY, true)
                                     .childOption(ChannelOption.SO_KEEPALIVE, DatabaseDescriptor.getRpcKeepAlive())
                                     .childOption(ChannelOption.ALLOCATOR, CBUtil.allocator)
@@ -185,8 +205,6 @@ public class Server implements CassandraDaemon.Server
         workerGroup.shutdownGracefully();
         workerGroup = null;
 
-        eventExecutorGroup.shutdown();
-        eventExecutorGroup = null;
         logger.info("Stop listening for CQL clients");
     }
 
@@ -232,7 +250,7 @@ public class Server implements CassandraDaemon.Server
         public int getConnectedClients()
         {
             /*
-              - When server is running: allChannels contains all clients' connections (channels) 
+              - When server is running: allChannels contains all clients' connections (channels)
                 plus one additional channel used for the server's own bootstrap.
                - When server is stopped: the size is 0
             */
@@ -272,7 +290,7 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast(server.eventExecutorGroup, "executor", dispatcher);
+            pipeline.addLast("executor", dispatcher);
         }
     }
 

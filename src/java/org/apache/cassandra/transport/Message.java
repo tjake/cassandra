@@ -24,14 +24,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
+import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 
@@ -334,87 +332,6 @@ public abstract class Message
     @ChannelHandler.Sharable
     public static class Dispatcher extends SimpleChannelInboundHandler<Request>
     {
-        private static class FlushItem
-        {
-            final ChannelHandlerContext ctx;
-            final Object response;
-            final Frame sourceFrame;
-            private FlushItem(ChannelHandlerContext ctx, Object response, Frame sourceFrame)
-            {
-                this.ctx = ctx;
-                this.sourceFrame = sourceFrame;
-                this.response = response;
-            }
-        }
-
-        private final class Flusher implements Runnable
-        {
-            final EventLoop eventLoop;
-            final ConcurrentLinkedQueue<FlushItem> queued = new ConcurrentLinkedQueue<>();
-            final AtomicBoolean running = new AtomicBoolean(false);
-            final HashSet<ChannelHandlerContext> channels = new HashSet<>();
-            final List<FlushItem> flushed = new ArrayList<>();
-            int runsSinceFlush = 0;
-            int runsWithNoWork = 0;
-            private Flusher(EventLoop eventLoop)
-            {
-                this.eventLoop = eventLoop;
-            }
-            void start()
-            {
-                if (!running.get() && running.compareAndSet(false, true))
-                {
-                    this.eventLoop.execute(this);
-                }
-            }
-            public void run()
-            {
-
-                boolean doneWork = false;
-                FlushItem flush;
-                while ( null != (flush = queued.poll()) )
-                {
-                    channels.add(flush.ctx);
-                    flush.ctx.write(flush.response, flush.ctx.voidPromise());
-                    flushed.add(flush);
-                    doneWork = true;
-                }
-
-                runsSinceFlush++;
-
-                if (!doneWork || runsSinceFlush > 2 || flushed.size() > 50)
-                {
-                    for (ChannelHandlerContext channel : channels)
-                        channel.flush();
-                    for (FlushItem item : flushed)
-                        item.sourceFrame.release();
-
-                    channels.clear();
-                    flushed.clear();
-                    runsSinceFlush = 0;
-                }
-
-                if (doneWork)
-                {
-                    runsWithNoWork = 0;
-                }
-                else
-                {
-                    // either reschedule or cancel
-                    if (++runsWithNoWork > 5)
-                    {
-                        running.set(false);
-                        if (queued.isEmpty() || !running.compareAndSet(false, true))
-                            return;
-                    }
-                }
-
-                eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
-            }
-        }
-
-        private static final ConcurrentMap<EventLoop, Flusher> flusherLookup = new ConcurrentHashMap<>();
-
         public Dispatcher()
         {
             super(false);
@@ -434,36 +351,31 @@ public abstract class Message
                 QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
                 logger.debug("Received: {}, v={}", request, connection.getVersion());
-
                 response = request.execute(qstate);
+
                 response.setStreamId(request.getStreamId());
                 response.attach(connection);
+
                 connection.applyStateTransition(request.type, response.type);
             }
             catch (Throwable ex)
             {
                 UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                flush(new FlushItem(ctx, ErrorMessage.fromException(ex, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                ctx.write(ErrorMessage.fromException(ex, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
+                request.getSourceFrame().release();
                 return;
             }
 
             logger.debug("Responding: {}, v={}", response, connection.getVersion());
-            flush(new FlushItem(ctx, response, request.getSourceFrame()));
+
+            ctx.write(response, ctx.voidPromise());
+            request.getSourceFrame().release();
         }
 
-        private void flush(FlushItem item)
+        @Override
+        public void channelReadComplete(ChannelHandlerContext ctx) throws Exception
         {
-            EventLoop loop = item.ctx.channel().eventLoop();
-            Flusher flusher = flusherLookup.get(loop);
-            if (flusher == null)
-            {
-                Flusher alt = flusherLookup.putIfAbsent(loop, flusher = new Flusher(loop));
-                if (alt != null)
-                    flusher = alt;
-            }
-
-            flusher.queued.add(item);
-            flusher.start();
+            ctx.flush();
         }
 
         @Override
