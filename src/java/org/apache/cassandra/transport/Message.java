@@ -330,6 +330,22 @@ public abstract class Message
     }
 
     @ChannelHandler.Sharable
+    public static class Flusher extends SimpleChannelInboundHandler
+    {
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, Object msg) throws Exception
+        {
+
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object frame) throws Exception
+        {
+            ctx.flush();
+        }
+    }
+
+    @ChannelHandler.Sharable
     public static class Dispatcher extends SimpleChannelInboundHandler<Request>
     {
         public Dispatcher()
@@ -361,7 +377,7 @@ public abstract class Message
             catch (Throwable ex)
             {
                 UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                ctx.write(ErrorMessage.fromException(ex, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
+                ctx.writeAndFlush(ErrorMessage.fromException(ex, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
                 request.getSourceFrame().release();
                 return;
             }
@@ -370,12 +386,8 @@ public abstract class Message
 
             ctx.write(response, ctx.voidPromise());
             request.getSourceFrame().release();
-        }
 
-        @Override
-        public void channelReadComplete(ChannelHandlerContext ctx) throws Exception
-        {
-            ctx.flush();
+            ctx.fireUserEventTriggered(response); //Trigger a flush
         }
 
         @Override

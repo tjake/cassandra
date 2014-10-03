@@ -37,6 +37,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoop;
 import io.netty.util.Version;
+import io.netty.util.concurrent.EventExecutorGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,6 +87,7 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
+    private EventExecutorGroup requestGroup = new RequestThreadPoolExecutor();
 
     public Server(InetSocketAddress socket)
     {
@@ -147,13 +149,13 @@ public class Server implements CassandraDaemon.Server
         if (hasEpoll)
         {
             logger.info("Netty using EPoll event loop");
-            workerGroup = new EpollEventLoopGroup(DatabaseDescriptor.getNativeTransportMaxThreads(), null, 256);
-            ((EpollEventLoopGroup) workerGroup).setIoRatio(10);
+            workerGroup = new EpollEventLoopGroup();
+            //((EpollEventLoopGroup) workerGroup).setIoRatio(10);
         }
         else
         {
             logger.info("Netty using Java NIO event loop");
-            workerGroup = new NioEventLoopGroup(DatabaseDescriptor.getNativeTransportMaxThreads());
+            workerGroup = new NioEventLoopGroup();
             ((NioEventLoopGroup) workerGroup).setIoRatio(10);
         }
 
@@ -267,6 +269,7 @@ public class Server implements CassandraDaemon.Server
         private static final Frame.Compressor frameCompressor = new Frame.Compressor();
         private static final Frame.Encoder frameEncoder = new Frame.Encoder();
         private static final Message.Dispatcher dispatcher = new Message.Dispatcher();
+        private static final Message.Flusher flusher = new Message.Flusher();
 
         private final Server server;
 
@@ -290,7 +293,8 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast(server.workerGroup, "executor", dispatcher);
+            pipeline.addLast(server.requestGroup, "executor", dispatcher);
+            pipeline.addLast("flusher", flusher);
         }
     }
 
