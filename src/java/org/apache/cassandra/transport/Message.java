@@ -26,7 +26,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
+import com.lmax.disruptor.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.epoll.EpollChannelOption;
@@ -342,6 +344,157 @@ public abstract class Message
         public void userEventTriggered(ChannelHandlerContext ctx, Object frame) throws Exception
         {
             ctx.flush();
+        }
+    }
+
+    public static class DisruptorDispatcher extends ChannelInboundHandlerAdapter
+    {
+        public class InvocationHandler implements WorkHandler<RequestItem.Invocation>
+        {
+            @Override
+            public void onEvent(RequestItem.Invocation invocation) throws Exception
+            {
+                invocation.execute();
+            }
+        }
+
+
+        public static class RequestItem
+        {
+
+            volatile Request request;
+            volatile ChannelHandlerContext ctx;
+
+            public RequestItem(Request request, ChannelHandlerContext ctx)
+            {
+                assert request != null;
+                this.request = request;
+                this.ctx = ctx;
+            }
+
+            public static class Invocation
+            {
+                public static final EventFactory<Invocation> FACTORY = new EventFactory<Invocation>()
+                {
+                    @Override
+                    public Invocation newInstance()
+                    {
+                        return new Invocation();
+                    }
+                };
+
+                volatile RequestItem request;
+
+                public void setRequest(RequestItem request)
+                {
+                    this.request = request;
+                }
+
+                public boolean isReady()
+                {
+                    return request != null;
+                }
+
+                public void execute()
+                {
+                    if (isReady())
+                        request.run();
+                    request = null;
+                }
+            }
+
+            void run()
+            {
+                final Response response;
+                final ServerConnection connection;
+
+                try
+                {
+                    assert request.connection() instanceof ServerConnection;
+                    connection = (ServerConnection)request.connection();
+                    QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+
+                    logger.debug("Received: {}, v={}", request, connection.getVersion());
+                    response = request.execute(qstate);
+
+                    response.setStreamId(request.getStreamId());
+                    response.attach(connection);
+
+                    connection.applyStateTransition(request.type, response.type);
+                }
+                catch (Throwable ex)
+                {
+                    UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
+                    ctx.writeAndFlush(ErrorMessage.fromException(ex, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
+                    request.getSourceFrame().release();
+                    return;
+                }
+
+                logger.debug("Responding: {}, v={}", response, connection.getVersion());
+
+                ctx.write(response, ctx.voidPromise());
+                request.getSourceFrame().release();
+
+
+                ctx.fireUserEventTriggered(response); //Trigger a flush
+            }
+
+        }
+
+        RingBuffer<RequestItem.Invocation> ringBuffer;
+        WorkerPool<RequestItem.Invocation> workerPool;
+
+        public DisruptorDispatcher(ExecutorService executorService)
+        {
+            InvocationHandler handlers[] = new InvocationHandler[4];
+
+            for (int i = 0; i < handlers.length; i++)
+                handlers[i] = new InvocationHandler();
+
+            ringBuffer = RingBuffer.createSingleProducer(RequestItem.Invocation.FACTORY, 2048, new BlockingWaitStrategy());
+            workerPool = new WorkerPool<>(ringBuffer, ringBuffer.newBarrier(), new FatalExceptionHandler(), handlers);
+            workerPool.start(executorService);
+        }
+
+        @Override
+        public void channelRead(final ChannelHandlerContext ctx, final Object msg) throws Exception
+        {
+            boolean success = ringBuffer.tryPublishEvent(new EventTranslator<RequestItem.Invocation>()
+            {
+                @Override
+                public void translateTo(RequestItem.Invocation invocation, long sequence)
+                {
+
+                    //logger.info("Sequence "+sequence+" for "+msg);
+                    invocation.setRequest(new RequestItem((Request) msg, ctx));
+                }
+            });
+
+            if (!success)
+            {   // looks like we are overloaded, let's cancel this request (connection) and drop warn in the log
+                throw new RuntimeException("ring buffer is full, dropping client message.");
+            }
+        }
+
+
+        @Override
+        public void exceptionCaught(final ChannelHandlerContext ctx, Throwable cause)
+                throws Exception
+        {
+            if (ctx.channel().isOpen())
+            {
+                UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), false);
+                ChannelFuture future = ctx.writeAndFlush(ErrorMessage.fromException(cause, handler));
+                // On protocol exception, close the channel as soon as the message have been sent
+                if (cause instanceof ProtocolException)
+                {
+                    future.addListener(new ChannelFutureListener() {
+                        public void operationComplete(ChannelFuture future) {
+                            ctx.close();
+                        }
+                    });
+                }
+            }
         }
     }
 

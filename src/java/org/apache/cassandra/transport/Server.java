@@ -150,7 +150,7 @@ public class Server implements CassandraDaemon.Server
         {
             logger.info("Netty using EPoll event loop");
             workerGroup = new EpollEventLoopGroup();
-            ((EpollEventLoopGroup) workerGroup).setIoRatio(100);
+            //((EpollEventLoopGroup) workerGroup).setIoRatio(10);
         }
         else
         {
@@ -293,7 +293,8 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast(server.requestGroup, "executor", dispatcher);
+            pipeline.addLast("dispatch",  new Message.DisruptorDispatcher(server.requestGroup));
+            //pipeline.addLast(server.requestGroup, "executor", dispatcher);
             pipeline.addLast("flusher", flusher);
         }
     }
