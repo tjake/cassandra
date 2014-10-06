@@ -358,7 +358,6 @@ public abstract class Message
             }
         }
 
-
         public static class RequestItem
         {
 
@@ -403,6 +402,88 @@ public abstract class Message
                 }
             }
 
+            private static class FlushItem
+            {
+                final ChannelHandlerContext ctx;
+                final Object response;
+                final Frame sourceFrame;
+                private FlushItem(ChannelHandlerContext ctx, Object response, Frame sourceFrame)
+                {
+                    this.ctx = ctx;
+                    this.sourceFrame = sourceFrame;
+                    this.response = response;
+                }
+            }
+
+            private final class Flusher implements Runnable
+            {
+                final EventLoop eventLoop;
+                final ConcurrentLinkedQueue<FlushItem> queued = new ConcurrentLinkedQueue<>();
+                final AtomicBoolean running = new AtomicBoolean(false);
+                final HashSet<ChannelHandlerContext> channels = new HashSet<>();
+                final List<FlushItem> flushed = new ArrayList<>();
+                int runsSinceFlush = 0;
+                int runsWithNoWork = 0;
+                private Flusher(EventLoop eventLoop)
+                {
+                    this.eventLoop = eventLoop;
+                }
+                void start()
+                {
+                    if (!running.get() && running.compareAndSet(false, true))
+                    {
+                        this.eventLoop.execute(this);
+                    }
+                }
+                public void run()
+                {
+
+                    boolean doneWork = false;
+                    FlushItem flush;
+                    while ( null != (flush = queued.poll()) )
+                    {
+                        channels.add(flush.ctx);
+                        flush.ctx.write(flush.response, flush.ctx.voidPromise());
+                        flushed.add(flush);
+                        doneWork = true;
+                    }
+
+                    runsSinceFlush++;
+
+                    if (!doneWork || runsSinceFlush > 2 || flushed.size() > 50)
+                    {
+                        for (ChannelHandlerContext channel : channels)
+                            channel.flush();
+                        for (FlushItem item : flushed)
+                            item.sourceFrame.release();
+
+                        channels.clear();
+                        flushed.clear();
+                        runsSinceFlush = 0;
+                    }
+
+                    if (doneWork)
+                    {
+                        runsWithNoWork = 0;
+                    }
+                    else
+                    {
+                        // either reschedule or cancel
+                        if (++runsWithNoWork > 5)
+                        {
+                            running.set(false);
+                            if (queued.isEmpty() || !running.compareAndSet(false, true))
+                                return;
+                        }
+                    }
+
+                    eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
+                }
+            }
+
+            private static final ConcurrentMap<EventLoop, Flusher> flusherLookup = new ConcurrentHashMap<>();
+
+
             void run()
             {
                 final Response response;
@@ -432,13 +513,24 @@ public abstract class Message
 
                 logger.debug("Responding: {}, v={}", response, connection.getVersion());
 
-                ctx.write(response, ctx.voidPromise());
-                request.getSourceFrame().release();
 
-
-                ctx.fireUserEventTriggered(response); //Trigger a flush
+                flush(new FlushItem(ctx, response, request.getSourceFrame()));
             }
 
+            private void flush(FlushItem item)
+            {
+                EventLoop loop = item.ctx.channel().eventLoop();
+                Flusher flusher = flusherLookup.get(loop);
+                if (flusher == null)
+                {
+                    Flusher alt = flusherLookup.putIfAbsent(loop, flusher = new Flusher(loop));
+                    if (alt != null)
+                        flusher = alt;
+                }
+
+                flusher.queued.add(item);
+                flusher.start();
+            }
         }
 
         RingBuffer<RequestItem.Invocation> ringBuffer;
@@ -451,7 +543,7 @@ public abstract class Message
             for (int i = 0; i < handlers.length; i++)
                 handlers[i] = new InvocationHandler();
 
-            ringBuffer = RingBuffer.createSingleProducer(RequestItem.Invocation.FACTORY, 2048, new YieldingWaitStrategy());
+            ringBuffer = RingBuffer.createSingleProducer(RequestItem.Invocation.FACTORY, 2048, new BlockingWaitStrategy());
             workerPool = new WorkerPool<>(ringBuffer, ringBuffer.newBarrier(), new FatalExceptionHandler(), handlers);
             workerPool.start(executorService);
         }

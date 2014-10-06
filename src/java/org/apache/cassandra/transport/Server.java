@@ -87,7 +87,7 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
-    private EventExecutorGroup requestGroup = new RequestThreadPoolExecutor();
+    private ExecutorService requestGroup = Executors.newFixedThreadPool(DatabaseDescriptor.getNativeTransportMaxThreads());
 
     public Server(InetSocketAddress socket)
     {
