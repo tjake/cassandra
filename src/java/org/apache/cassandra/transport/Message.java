@@ -362,8 +362,8 @@ public abstract class Message
         public static class RequestItem
         {
 
-            volatile Request request;
-            volatile ChannelHandlerContext ctx;
+            Request request;
+            ChannelHandlerContext ctx;
 
             public RequestItem(Request request, ChannelHandlerContext ctx)
             {
@@ -446,12 +446,12 @@ public abstract class Message
 
         public DisruptorDispatcher(ExecutorService executorService)
         {
-            InvocationHandler handlers[] = new InvocationHandler[4];
+            InvocationHandler handlers[] = new InvocationHandler[Runtime.getRuntime().availableProcessors()];
 
             for (int i = 0; i < handlers.length; i++)
                 handlers[i] = new InvocationHandler();
 
-            ringBuffer = RingBuffer.createSingleProducer(RequestItem.Invocation.FACTORY, 2048, new BlockingWaitStrategy());
+            ringBuffer = RingBuffer.createSingleProducer(RequestItem.Invocation.FACTORY, 2048, new YieldingWaitStrategy());
             workerPool = new WorkerPool<>(ringBuffer, ringBuffer.newBarrier(), new FatalExceptionHandler(), handlers);
             workerPool.start(executorService);
         }
@@ -464,15 +464,13 @@ public abstract class Message
                 @Override
                 public void translateTo(RequestItem.Invocation invocation, long sequence)
                 {
-
-                    //logger.info("Sequence "+sequence+" for "+msg);
                     invocation.setRequest(new RequestItem((Request) msg, ctx));
                 }
             });
 
             if (!success)
-            {   // looks like we are overloaded, let's cancel this request (connection) and drop warn in the log
-                throw new RuntimeException("ring buffer is full, dropping client message.");
+            {
+                exceptionCaught(ctx, new RuntimeException("ring buffer is full, dropping client message."));
             }
         }
 
