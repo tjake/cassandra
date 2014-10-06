@@ -150,7 +150,7 @@ public class Server implements CassandraDaemon.Server
         {
             logger.info("Netty using EPoll event loop");
             workerGroup = new EpollEventLoopGroup();
-            //((EpollEventLoopGroup) workerGroup).setIoRatio(10);
+            ((EpollEventLoopGroup) workerGroup).setIoRatio(100);
         }
         else
         {
