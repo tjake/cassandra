@@ -29,6 +29,9 @@ import javax.net.ssl.SSLEngine;
 
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.util.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -138,11 +141,21 @@ public class Server implements CassandraDaemon.Server
 
         // Configure the server.
         eventExecutorGroup = new RequestThreadPoolExecutor();
-        workerGroup = new NioEventLoopGroup();
+
+
+        boolean hasEpoll = Epoll.isAvailable();
+        if (hasEpoll)
+        {
+            workerGroup = new EpollEventLoopGroup();
+        }
+        else
+        {
+            workerGroup = new NioEventLoopGroup();
+        }
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                                     .group(workerGroup)
-                                    .channel(NioServerSocketChannel.class)
+                                    .channel(hasEpoll ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
                                     .childOption(ChannelOption.TCP_NODELAY, true)
                                     .childOption(ChannelOption.SO_KEEPALIVE, DatabaseDescriptor.getRpcKeepAlive())
                                     .childOption(ChannelOption.ALLOCATOR, CBUtil.allocator)
