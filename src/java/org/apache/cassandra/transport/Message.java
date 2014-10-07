@@ -48,6 +48,8 @@ import org.apache.cassandra.service.QueryState;
  */
 public abstract class Message
 {
+
+    static ResultMessage.Rows cachedResponse = null;
     protected static final Logger logger = LoggerFactory.getLogger(Message.class);
 
     /**
@@ -435,7 +437,21 @@ public abstract class Message
 
                 logger.debug("Received: {}, v={}", request, connection.getVersion());
 
-                response = request.execute(qstate);
+                if (request.type.equals(Type.EXECUTE) && qstate.getClientState().getKeyspace().equals("stresscql"))
+                {
+                    if (cachedResponse == null)
+                    {
+                        cachedResponse = (ResultMessage.Rows) request.execute(qstate);
+                        logger.info("Caching response.");
+                    }
+
+                    response = new ResultMessage.Rows(cachedResponse.result);
+                }
+                else
+                {
+                    response = request.execute(qstate);
+                }
+
                 response.setStreamId(request.getStreamId());
                 response.attach(connection);
                 connection.applyStateTransition(request.type, response.type);
