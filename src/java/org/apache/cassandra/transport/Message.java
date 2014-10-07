@@ -415,7 +415,7 @@ public abstract class Message
                 }
             }
 
-            private final class Flusher implements Runnable
+            private final static class Flusher implements Runnable
             {
                 final EventLoop eventLoop;
                 final ConcurrentLinkedQueue<FlushItem> queued = new ConcurrentLinkedQueue<>();
@@ -517,7 +517,7 @@ public abstract class Message
                 flush(new FlushItem(ctx, response, request.getSourceFrame()));
             }
 
-            private void flush(FlushItem item)
+            public static void flush(FlushItem item)
             {
                 EventLoop loop = item.ctx.channel().eventLoop();
                 Flusher flusher = flusherLookup.get(loop);
@@ -627,10 +627,7 @@ public abstract class Message
 
             logger.debug("Responding: {}, v={}", response, connection.getVersion());
 
-            ctx.write(response, ctx.voidPromise());
-            request.getSourceFrame().release();
-
-            ctx.fireUserEventTriggered(response); //Trigger a flush
+            DisruptorDispatcher.RequestItem.flush(new DisruptorDispatcher.RequestItem.FlushItem(ctx, response, request.getSourceFrame()));
         }
 
         @Override

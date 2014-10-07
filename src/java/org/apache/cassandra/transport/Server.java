@@ -87,7 +87,7 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
-    private ExecutorService requestGroup = Executors.newFixedThreadPool(DatabaseDescriptor.getNativeTransportMaxThreads());
+    private EventExecutor requestGroup;
 
     public Server(InetSocketAddress socket)
     {
@@ -143,6 +143,8 @@ public class Server implements CassandraDaemon.Server
             isRunning.compareAndSet(true, false);
             return;
         }
+
+        requestGroup = new RequestThreadPoolExecutor();
 
         // Configure the server.
         boolean hasEpoll = Epoll.isAvailable();
@@ -293,9 +295,9 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast("dispatch",  new Message.DisruptorDispatcher(server.requestGroup));
-            //pipeline.addLast(server.requestGroup, "executor", dispatcher);
-            pipeline.addLast("flusher", flusher);
+            //pipeline.addLast("dispatch",  new Message.DisruptorDispatcher(server.requestGroup));
+            pipeline.addLast(server.requestGroup, "executor", dispatcher);
+            //pipeline.addLast("flusher", flusher);
         }
     }
 
