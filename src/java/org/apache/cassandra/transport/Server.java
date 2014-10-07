@@ -64,6 +64,7 @@ public class Server implements CassandraDaemon.Server
     }
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
+    private static final boolean enableEpoll = Boolean.valueOf(System.getProperty("cassandra.native.epoll.enabled", "true"));
 
     public static final int VERSION_3 = 3;
     public static final int CURRENT_VERSION = VERSION_3;
@@ -143,14 +144,16 @@ public class Server implements CassandraDaemon.Server
         eventExecutorGroup = new RequestThreadPoolExecutor();
 
 
-        boolean hasEpoll = Epoll.isAvailable();
+        boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
         if (hasEpoll)
         {
             workerGroup = new EpollEventLoopGroup();
+            logger.info("Netty using native Epoll event loop");
         }
         else
         {
             workerGroup = new NioEventLoopGroup();
+            logger.info("Netty using Java NIO event loop");
         }
 
         ServerBootstrap bootstrap = new ServerBootstrap()
