@@ -441,11 +441,22 @@ public abstract class Message
                 {
                     if (cachedResponse == null)
                     {
-                        cachedResponse = (ResultMessage.Rows) request.execute(qstate);
-                        logger.info("Caching response.");
+                        Response r = request.execute(qstate);
+                        if (r instanceof ResultMessage.Rows)
+                        {
+                            cachedResponse = (ResultMessage.Rows) r;
+                            logger.info("Caching response.");
+                            response = new ResultMessage.Rows(cachedResponse.result);
+                        }
+                        else
+                        {
+                            response = r;
+                        }
                     }
-
-                    response = new ResultMessage.Rows(cachedResponse.result);
+                    else
+                    {
+                        response = new ResultMessage.Rows(cachedResponse.result);
+                    }
                 }
                 else
                 {
