@@ -47,7 +47,7 @@ public class StageManager
     {
         stages.put(Stage.MUTATION, multiThreadedLowSignalStage(Stage.MUTATION, getConcurrentWriters()));
         stages.put(Stage.COUNTER_MUTATION, multiThreadedLowSignalStage(Stage.COUNTER_MUTATION, getConcurrentCounterWriters()));
-        stages.put(Stage.READ, multiThreadedLowSignalStage(Stage.READ, getConcurrentReaders()));
+        stages.put(Stage.READ, multiThreadedDisruptorStage(Stage.READ, getConcurrentReaders()));
         stages.put(Stage.REQUEST_RESPONSE, multiThreadedLowSignalStage(Stage.REQUEST_RESPONSE, FBUtilities.getAvailableProcessors()));
         stages.put(Stage.INTERNAL_RESPONSE, multiThreadedStage(Stage.INTERNAL_RESPONSE, FBUtilities.getAvailableProcessors()));
         // the rest are all single-threaded
@@ -90,6 +90,11 @@ public class StageManager
     private static TracingAwareExecutorService multiThreadedLowSignalStage(Stage stage, int numThreads)
     {
         return JMXEnabledSharedExecutorPool.SHARED.newExecutor(numThreads, Integer.MAX_VALUE, stage.getJmxName(), stage.getJmxType());
+    }
+
+    private static TracingAwareExecutorService multiThreadedDisruptorStage(Stage stage, int numThreads)
+    {
+        return new DisruptorExecutorService(numThreads, 2048, false);
     }
 
     /**
