@@ -94,7 +94,9 @@ public class StageManager
 
     private static TracingAwareExecutorService multiThreadedDisruptorStage(Stage stage, int numThreads)
     {
-        return new DisruptorExecutorService(numThreads, 2048, false);
+        //return multiThreadedStage(stage, numThreads);
+        return multiThreadedLowSignalStage(stage, numThreads);
+        //return new DisruptorExecutorService2(numThreads, 2048, false);
     }
 
     /**

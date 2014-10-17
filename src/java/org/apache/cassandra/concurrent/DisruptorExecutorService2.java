@@ -11,12 +11,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.apache.cassandra.concurrent.DisruptorExecutorService.TaskEvent;
+
 /**
  * Executor service that uses a Disruptor for message passing
  */
 public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorService
 {
-    
+
 
 
 
@@ -37,9 +39,8 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
         private final RingBuffer<TaskEvent> ringBuffer;
         private final SequenceBarrier sequenceBarrier;
         private final Sequence sequence = new Sequence(Sequencer.INITIAL_CURSOR_VALUE);
-        private final int ordinal;
         private final int totalProcessors;
-        private Disruptor<DisruptorExecutorService.TaskEvent>
+        private Disruptor<TaskEvent> disruptors[];
 
         /**
          * Construct a {@link com.lmax.disruptor.EventProcessor} that will automatically track the progress by updating its sequence when
@@ -50,17 +51,31 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
          */
         public TaskEventProcessor(final RingBuffer<TaskEvent> ringBuffer,
                                   final SequenceBarrier sequenceBarrier,
-                                  final int ordinal,
                                   final int totalProcessors)
         {
             this.ringBuffer = ringBuffer;
             this.sequenceBarrier = sequenceBarrier;
 
 
-            //
+            //The theory is all threads are notified from the ringbuffer
+            //So it's better to have a to have a singe thread per pool
+            //dispatch to other threads with single ring buffer
+            disruptors = new Disruptor[totalProcessors];
+            for (int i = 0; i < totalProcessors; i++)
+            {
+                disruptors[i] = new Disruptor<>(TaskEvent.factory, ringBuffer.getBufferSize(),  Executors.newSingleThreadExecutor(), ProducerType.SINGLE, new BlockingWaitStrategy());
+                disruptors[i].handleEventsWith(new EventHandler<TaskEvent>()
+                {
+                    @Override
+                    public void onEvent(TaskEvent taskEvent, long l, boolean b) throws Exception
+                    {
+                        taskEvent.execute();
+                    }
+                });
 
+                disruptors[i].start();
+            }
 
-            this.ordinal = ordinal;
             this.totalProcessors = totalProcessors;
         }
 
@@ -109,8 +124,7 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
 
             notifyStart();
 
-            TaskEvent event = null;
-            long nextSequence = sequence.get() + 1 + ordinal; //Start at processor offset in barrier
+            long nextSequence = sequence.get() + 1;
             try
             {
                 while (true)
@@ -118,13 +132,22 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
                     try
                     {
                         long availableSequence = sequenceBarrier.waitFor(nextSequence);
-                        for (; nextSequence <= availableSequence; nextSequence += totalProcessors )
+                        while (nextSequence <= availableSequence)
                         {
-                            event = dataProvider.get(nextSequence);
-                            event.execute();
+                            final TaskEvent event = ringBuffer.get(nextSequence);
+                            disruptors[(int)(nextSequence % totalProcessors)].getRingBuffer().publishEvent(new EventTranslator<TaskEvent>()
+                            {
+                                @Override
+                                public void translateTo(TaskEvent taskEvent, long l)
+                                {
+                                    taskEvent.setTask(event.getTask());
+                                }
+                            });
+
+                            nextSequence++;
                         }
 
-                        sequence.set(nextSequence - 1);
+                        sequence.set(availableSequence);
                     }
                     catch (final TimeoutException e)
                     {
@@ -139,7 +162,7 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
                     }
                     catch (final Throwable ex)
                     {
-                        exceptionHandler.handleEventException(ex, nextSequence, event);
+                        exceptionHandler.handleEventException(ex, nextSequence, null);
                         sequence.set(nextSequence);
                         nextSequence++;
                     }
@@ -176,7 +199,6 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
     final Executor executor;
     final Disruptor<TaskEvent> disruptor;
     final RingBuffer ringBuffer;
-    //final AtomicInteger activeWorkers = new AtomicInteger(0);
 
     public DisruptorExecutorService2(final int workerPoolSize, int disruptorRingSize, boolean isSingleProducer)
     {
@@ -186,14 +208,9 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
 
         ringBuffer = disruptor.getRingBuffer();
 
-        TaskEventProcessor processors[] = new TaskEventProcessor[workerPoolSize];
-        for (int i = 0; i < workerPoolSize; i++)
-        {
-            final int ordinal = i;
-            processors[i] = new TaskEventProcessor(ringBuffer, ringBuffer.newBarrier(), ordinal, workerPoolSize);
-        }
+        TaskEventProcessor processor =  new TaskEventProcessor(ringBuffer, ringBuffer.newBarrier(), workerPoolSize);
 
-        disruptor.handleEventsWith(processors);
+        disruptor.handleEventsWith(processor);
         disruptor.start();
     }
 

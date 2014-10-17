@@ -16,13 +16,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class DisruptorExecutorService extends AbstractTracingAwareExecutorService
 {
-    static class TaskEvent
+    public static class TaskEvent
     {
         private Runnable task;
 
         public void setTask(Runnable task)
         {
             this.task = task;
+        }
+
+        public Runnable getTask()
+        {
+            return task;
         }
 
         public void execute()
@@ -242,8 +247,7 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
     {
         executor = Executors.newFixedThreadPool(workerPoolSize);
 
-        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI,
-                 isSingleProducer ? new BlockingWaitStrategy() : new MySleepingWaitStrategy());
+        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new BlockingWaitStrategy());
 
         ringBuffer = disruptor.getRingBuffer();
 

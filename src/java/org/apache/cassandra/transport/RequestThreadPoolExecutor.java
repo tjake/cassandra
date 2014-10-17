@@ -24,6 +24,7 @@ import io.netty.util.concurrent.AbstractEventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.Future;
 import org.apache.cassandra.concurrent.DisruptorExecutorService;
+import org.apache.cassandra.concurrent.DisruptorExecutorService2;
 import org.apache.cassandra.concurrent.TracingAwareExecutorService;
 import org.apache.cassandra.config.DatabaseDescriptor;
 
