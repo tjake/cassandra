@@ -34,7 +34,7 @@ public class RequestThreadPoolExecutor extends AbstractEventExecutor
 {
     private final static int MAX_QUEUED_REQUESTS = 128;
     private final static String THREAD_FACTORY_ID = "Native-Transport-Requests";
-    private final TracingAwareExecutorService wrapped = new DisruptorExecutorService(4, 2048, true);
+    private final TracingAwareExecutorService wrapped = new DisruptorExecutorService(Runtime.getRuntime().availableProcessors(), 2048, true);
 
      /*SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(),
                                                                            MAX_QUEUED_REQUESTS,

@@ -92,6 +92,11 @@ public class StageManager
         return JMXEnabledSharedExecutorPool.SHARED.newExecutor(numThreads, Integer.MAX_VALUE, stage.getJmxName(), stage.getJmxType());
     }
 
+    private static ExecutorService multiThreadedForkJoinStage(Stage stage, int numThreads)
+    {
+        return new ForkJoinPool(numThreads);
+    }
+
     private static TracingAwareExecutorService multiThreadedDisruptorStage(Stage stage, int numThreads)
     {
         //return multiThreadedStage(stage, numThreads);
