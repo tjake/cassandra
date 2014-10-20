@@ -109,7 +109,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
         if (sstablesWithTombstones.isEmpty())
             return Collections.emptyList();
 
-        Collections.sort(sstablesWithTombstones, new BigTableReader.SizeComparator());
+        Collections.sort(sstablesWithTombstones, new SSTableReader.SizeComparator());
         return Collections.singletonList(sstablesWithTombstones.get(0));
     }
 

@@ -27,7 +27,6 @@ import org.apache.cassandra.db.columniterator.OnDiskAtomIterator;
 import org.apache.cassandra.db.compaction.AbstractCompactedRow;
 import org.apache.cassandra.db.compaction.CompactionController;
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
-import org.apache.cassandra.io.sstable.format.test.TestFormat;
 import org.apache.cassandra.io.util.FileDataInput;
 
 import java.util.Iterator;
@@ -59,10 +58,7 @@ public interface SSTableFormat
         LEGACY("big", BigFormat.instance),
 
         //The original sstable format
-        BIG("big", BigFormat.instance),
-
-        //Test format
-        TEST("test", TestFormat.instance);
+        BIG("big", BigFormat.instance);
 
         public final SSTableFormat info;
         public final String name;

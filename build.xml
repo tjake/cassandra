@@ -370,8 +370,6 @@
           <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
 	      <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" version="1.2.0" />
           <dependency groupId="org.fusesource" artifactId="sigar" version="1.6.4" />
-          <dependency groupId="com.twitter" artifactId="parquet-column" version="1.6.0rc1" />
-          <dependency groupId="com.twitter" artifactId="parquet-format" version="2.1.0" />
         </dependencyManagement>
         <developer id="alakshman" name="Avinash Lakshman"/>
         <developer id="aleksey" name="Aleksey Yeschenko"/>
@@ -417,8 +415,6 @@
         <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core"/>
 	    <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
         <dependency groupId="org.javassist" artifactId="javassist" />
-        <dependency groupId="com.twitter" artifactId="parquet-column"  />
-        <dependency groupId="com.twitter" artifactId="parquet-format"  />
       </artifact:pom>
 
       <artifact:pom id="coverage-deps-pom"
