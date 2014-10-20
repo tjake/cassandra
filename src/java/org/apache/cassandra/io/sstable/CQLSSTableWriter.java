@@ -273,7 +273,7 @@ public class CQLSSTableWriter implements Closeable
         private File directory;
         private IPartitioner partitioner = new Murmur3Partitioner();
 
-        private SSTableFormat.Type formatType = SSTableFormat.Type.BIG;
+        protected SSTableFormat.Type formatType = null;
 
         private CFMetaData schema;
         private UpdateStatement insert;
@@ -282,7 +282,7 @@ public class CQLSSTableWriter implements Closeable
         private boolean sorted = false;
         private long bufferSizeInMB = 128;
 
-        private Builder() {}
+        protected Builder() {}
 
         /**
          * The directory where to write the sstables.
@@ -377,20 +377,6 @@ public class CQLSSTableWriter implements Closeable
         public Builder withPartitioner(IPartitioner partitioner)
         {
             this.partitioner = partitioner;
-            return this;
-        }
-
-        /**
-         * The SSTable format to use.
-         * <p>
-         * By default, the BigTable format will be used.
-         *
-         * @param formatType the format to use.
-         * @return this builder.
-         */
-        public Builder withSSTableFormat(SSTableFormat.Type formatType)
-        {
-            this.formatType = formatType;
             return this;
         }
 
@@ -502,7 +488,8 @@ public class CQLSSTableWriter implements Closeable
                                                ? new SSTableSimpleWriter(directory, schema, partitioner)
                                                : new BufferedWriter(directory, schema, partitioner, bufferSizeInMB);
 
-            writer.setSSTableFormatType(formatType);
+            if (formatType != null)
+                writer.setSSTableFormatType(formatType);
 
             return new CQLSSTableWriter(writer, insert, boundNames);
         }

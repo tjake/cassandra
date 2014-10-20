@@ -99,7 +99,7 @@ public class DatabaseDescriptor
 
     private static Config conf;
 
-    private static SSTableFormat.Type sstable_format;
+    private static SSTableFormat.Type sstable_format = SSTableFormat.Type.BIG;
 
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
     private static IAuthorizer authorizer = new AllowAllAuthorizer();
@@ -1550,10 +1550,6 @@ public class DatabaseDescriptor
 
     public static SSTableFormat.Type getSSTableFormat()
     {
-        //We don't care if this is racy
-        if (sstable_format == null)
-            sstable_format = SSTableFormat.Type.validate(conf.sstable_format_type);
-
         return sstable_format;
     }
 

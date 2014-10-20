@@ -1106,8 +1106,8 @@
         <jvmarg value="-Xss256k"/>
         <jvmarg value="-Dcassandra.memtable_row_overhead_computation_step=100"/>
         <jvmarg value="-Dcassandra.test.use_prepared=${cassandra.test.use_prepared}"/>
-	<jvmarg value="-Dcassandra.test.offsetseed=@{poffset}"/> 
-        <jvmarg value="-Dcassandra.test.keepexistingformat=true"/>       
+	    <jvmarg value="-Dcassandra.test.offsetseed=@{poffset}"/>
+        <jvmarg value="-Dcassandra.test.sstableformatdevelopment=true"/>
 	<optjvmargs/>
         <classpath>
           <path refid="cassandra.classpath" />

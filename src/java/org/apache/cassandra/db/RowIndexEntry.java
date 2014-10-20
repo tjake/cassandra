@@ -27,9 +27,7 @@ import java.util.List;
 import com.google.common.primitives.Ints;
 
 import org.apache.cassandra.cache.IMeasurableMemory;
-import org.apache.cassandra.db.composites.CType;
 import org.apache.cassandra.io.ISerializer;
-import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.DataOutputPlus;
@@ -52,7 +50,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         return 0;
     }
 
-    public static RowIndexEntry create(long position, DeletionTime deletionTime, ColumnIndex index)
+    public static RowIndexEntry<IndexHelper.IndexInfo> create(long position, DeletionTime deletionTime, ColumnIndex index)
     {
         assert index != null;
         assert deletionTime != null;
@@ -63,7 +61,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         if (index.columnsIndex.size() > 1)
             return new IndexedEntry(position, deletionTime, index.columnsIndex);
         else
-            return new RowIndexEntry(position);
+            return new RowIndexEntry<>(position);
     }
 
     /**
@@ -103,7 +101,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
     {
         void serialize(RowIndexEntry<T> rie, DataOutputPlus out) throws IOException;
         RowIndexEntry<T> deserialize(DataInput in, Version version) throws IOException;
-        public int serializedSize(RowIndexEntry rie);
+        public int serializedSize(RowIndexEntry<T> rie);
     }
 
     public static class Serializer implements IndexSerializer<IndexHelper.IndexInfo>
@@ -147,7 +145,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
             }
             else
             {
-                return new RowIndexEntry(position);
+                return new RowIndexEntry<>(position);
             }
         }
 
@@ -166,9 +164,22 @@ public class RowIndexEntry<T> implements IMeasurableMemory
             FileUtils.skipBytesFully(in, size);
         }
 
-        public int serializedSize(RowIndexEntry rie)
+        public int serializedSize(RowIndexEntry<IndexHelper.IndexInfo> rie)
         {
             int size = TypeSizes.NATIVE.sizeof(rie.position) + TypeSizes.NATIVE.sizeof(rie.promotedSize(idxSerializer));
+
+            if (rie.isIndexed())
+            {
+                List<IndexHelper.IndexInfo> index = rie.columnsIndex();
+
+                size += DeletionTime.serializer.serializedSize(rie.deletionTime(), TypeSizes.NATIVE);
+                size += TypeSizes.NATIVE.sizeof(index.size());
+
+                for (IndexHelper.IndexInfo info : index)
+                    size += idxSerializer.serializedSize(info, TypeSizes.NATIVE);
+            }
+
+
             return size;
         }
     }
@@ -206,7 +217,7 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         }
 
         @Override
-        public int promotedSize(ISerializer idxSerializer)
+        public int promotedSize(ISerializer<IndexHelper.IndexInfo> idxSerializer)
         {
             TypeSizes typeSizes = TypeSizes.NATIVE;
             long size = DeletionTime.serializer.serializedSize(deletionTime, typeSizes);

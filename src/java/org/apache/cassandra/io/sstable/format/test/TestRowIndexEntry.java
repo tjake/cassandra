@@ -155,12 +155,12 @@ public class TestRowIndexEntry extends RowIndexEntry<TestRowIndexEntry.ParquetIn
             }
             else
             {
-                return new RowIndexEntry(position);
+                return new RowIndexEntry<>(position);
             }
         }
 
         @Override
-        public int  serializedSize(RowIndexEntry rie)
+        public int  serializedSize(RowIndexEntry<ParquetInfo> rie)
         {
             return TypeSizes.NATIVE.sizeof(rie.position) + rie.promotedSize(idxSerializer);
         }

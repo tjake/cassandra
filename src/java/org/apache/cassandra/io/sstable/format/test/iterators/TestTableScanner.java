@@ -191,9 +191,9 @@ public class TestTableScanner implements ICompactionScanner
     protected class KeyScanningIterator extends AbstractIterator<OnDiskAtomIterator>
     {
         private DecoratedKey nextKey;
-        private RowIndexEntry nextEntry;
+        private RowIndexEntry<?> nextEntry;
         private DecoratedKey currentKey;
-        private RowIndexEntry currentEntry;
+        private RowIndexEntry<?> currentEntry;
 
         protected OnDiskAtomIterator computeNext()
         {

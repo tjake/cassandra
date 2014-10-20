@@ -40,7 +40,7 @@ public class RowIndexEntryTest extends SchemaLoader
     @Test
     public void testSerializedSize() throws IOException
     {
-        final RowIndexEntry simple = new RowIndexEntry(123);
+        final RowIndexEntry<IndexHelper.IndexInfo> simple = new RowIndexEntry<>(123);
 
         DataOutputBuffer buffer = new DataOutputBuffer();
         RowIndexEntry.Serializer serializer = new RowIndexEntry.Serializer(new IndexHelper.IndexInfo.Serializer(new SimpleDenseCellNameType(UTF8Type.instance)));
@@ -71,7 +71,7 @@ public class RowIndexEntryTest extends SchemaLoader
 
         }}.build();
 
-        RowIndexEntry withIndex = RowIndexEntry.create(0xdeadbeef, DeletionTime.LIVE, columnIndex);
+        RowIndexEntry<IndexHelper.IndexInfo> withIndex = RowIndexEntry.create(0xdeadbeef, DeletionTime.LIVE, columnIndex);
 
         serializer.serialize(withIndex, buffer);
         Assert.assertEquals(buffer.getLength(), serializer.serializedSize(withIndex));

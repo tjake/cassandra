@@ -54,14 +54,14 @@ public abstract class AbstractSSTableSimpleWriter implements Closeable
         DatabaseDescriptor.setPartitioner(partitioner);
     }
 
-    public void setSSTableFormatType(SSTableFormat.Type type)
+    protected void setSSTableFormatType(SSTableFormat.Type type)
     {
         this.formatType = type;
     }
 
     protected SSTableWriter getWriter()
     {
-        return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName, formatType)), 0, ActiveRepairService.UNREPAIRED_SSTABLE, 0);
+        return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName, formatType)), 0, ActiveRepairService.UNREPAIRED_SSTABLE);
     }
 
     // find available generation and pick up filename from that

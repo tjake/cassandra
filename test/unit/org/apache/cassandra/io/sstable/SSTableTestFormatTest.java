@@ -18,42 +18,43 @@
  */
 package org.apache.cassandra.io.sstable;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Files;
-import com.google.common.util.concurrent.Uninterruptibles;
-import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.Util;
+import org.apache.cassandra.OrderedJUnit4ClassRunner;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
-import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.OutputHandler;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 
 import java.io.File;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.cassandra.utils.ByteBufferUtil.bytes;
-import static org.apache.cassandra.utils.ByteBufferUtil.toInt;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
+
+@RunWith(OrderedJUnit4ClassRunner.class)
 public class SSTableTestFormatTest
 {
+
+    static class TestBuilder extends CQLSSTableWriter.Builder
+    {
+        public  TestBuilder withSSTableFormat(SSTableFormat.Type formatType)
+        {
+            this.formatType = formatType;
+            return this;
+        }
+    }
 
     @BeforeClass
     public static void defineSchema() throws Exception
@@ -78,12 +79,14 @@ public class SSTableTestFormatTest
                 + "  v2 int"
                 + ")";
         String insert = "INSERT INTO cql_keyspace.table1 (k, v1, v2) VALUES (?, ?, ?)";
-        CQLSSTableWriter writer = CQLSSTableWriter.builder()
+
+        TestBuilder builder = (TestBuilder) new TestBuilder()
                 .inDirectory(dataDir)
                 .forTable(schema)
                 .withPartitioner(StorageService.instance.getPartitioner())
-                .withSSTableFormat(SSTableFormat.Type.TEST)
-                .using(insert).build();
+                .using(insert);
+
+        CQLSSTableWriter writer = builder.withSSTableFormat(SSTableFormat.Type.TEST).build();
 
         writer.addRow(0, "test1", 24);
         writer.addRow(1, "test2", 77);
@@ -160,12 +163,13 @@ public class SSTableTestFormatTest
         for (int i=0; i < 4; i++)
         {
 
-            CQLSSTableWriter writer = CQLSSTableWriter.builder()
+            TestBuilder builder = (TestBuilder) new TestBuilder()
                     .inDirectory(dataDir)
                     .forTable(schema)
                     .withPartitioner(StorageService.instance.getPartitioner())
-                    .withSSTableFormat(SSTableFormat.Type.TEST)
-                    .using(insert).build();
+                    .using(insert);
+
+            CQLSSTableWriter writer = builder.withSSTableFormat(SSTableFormat.Type.TEST).build();
 
             for (int j = 0; j < 1024; j++)
                 writer.addRow((10000*i) + j, "test" + j, j);
@@ -208,6 +212,8 @@ public class SSTableTestFormatTest
 
         // and sstable with ttl should be compacted
         assertEquals(1, store.getSSTables().size());
+        assertEquals(SSTableFormat.Type.TEST, store.getSSTables().iterator().next().descriptor.formatType);
+
         long size = store.getSSTables().iterator().next().uncompressedLength();
 
         rs = QueryProcessor.executeInternal("SELECT * FROM cql_keyspace.table1;");

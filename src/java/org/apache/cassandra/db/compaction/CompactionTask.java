@@ -55,7 +55,6 @@ public class CompactionTask extends AbstractCompactionTask
     private final boolean offline;
     protected static long totalBytesCompacted = 0;
     private CompactionExecutorStatsCollector collector;
-    private static boolean keepExistingFormat = Boolean.valueOf(System.getProperty("cassandra.test.keepexistingformat","false"));
 
     public CompactionTask(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean offline)
     {
@@ -153,11 +152,13 @@ public class CompactionTask extends AbstractCompactionTask
             long estimatedTotalKeys = Math.max(cfs.metadata.getMinIndexInterval(), SSTableReader.getApproximateKeyCount(actuallyCompact));
             long estimatedSSTables = Math.max(1, SSTableReader.getTotalBytes(actuallyCompact) / strategy.getMaxSSTableBytes());
             long keysPerSSTable = (long) Math.ceil((double) estimatedTotalKeys / estimatedSSTables);
+            SSTableFormat.Type sstableFormat = getFormatType(sstables);
+
             logger.debug("Expected bloom filter size : {}", keysPerSSTable);
 
             try (AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(actuallyCompact))
             {
-                AbstractCompactionIterable ci = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat());
+                AbstractCompactionIterable ci = new CompactionIterable(compactionType, scanners.scanners, controller, sstableFormat);
                 Iterator<AbstractCompactedRow> iter = ci.iterator();
 
                 // we can't preheat until the tracker has been set. This doesn't happen until we tell the cfs to
@@ -180,7 +181,7 @@ public class CompactionTask extends AbstractCompactionTask
                         return;
                     }
 
-                    writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, DatabaseDescriptor.getSSTableFormat()));
+                    writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, sstableFormat));
                     while (iter.hasNext())
                     {
                         if (ci.isStopRequested())
@@ -192,7 +193,7 @@ public class CompactionTask extends AbstractCompactionTask
                             totalKeysWritten++;
                             if (newSSTableSegmentThresholdReached(writer.currentWriter()))
                             {
-                                writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, DatabaseDescriptor.getSSTableFormat()));
+                                writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, sstableFormat));
                             }
                         }
 
@@ -318,7 +319,7 @@ public class CompactionTask extends AbstractCompactionTask
 
     public static SSTableFormat.Type getFormatType(Collection<SSTableReader> sstables)
     {
-        if (sstables.isEmpty() || keepExistingFormat)
+        if (sstables.isEmpty() || !SSTableFormat.enableSSTableDevelopmentTestMode)
             return DatabaseDescriptor.getSSTableFormat();
 
         //Allows us to test compaction of non-default formats

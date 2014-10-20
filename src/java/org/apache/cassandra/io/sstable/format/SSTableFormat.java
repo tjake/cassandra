@@ -37,6 +37,9 @@ import java.util.Iterator;
  */
 public interface SSTableFormat
 {
+    static boolean enableSSTableDevelopmentTestMode = Boolean.valueOf(System.getProperty("cassandra.test.sstableformatdevelopment","false"));
+
+
     Version getLatestVersion();
     Version getVersion(String version);
 
@@ -47,7 +50,7 @@ public interface SSTableFormat
 
     AbstractCompactedRow getCompactedRowWriter(CompactionController controller, ImmutableList<OnDiskAtomIterator> onDiskAtomIterators);
 
-    RowIndexEntry.IndexSerializer getIndexSerializer(CFMetaData cfm);
+    RowIndexEntry.IndexSerializer<?> getIndexSerializer(CFMetaData cfm);
 
     public static enum Type
     {
