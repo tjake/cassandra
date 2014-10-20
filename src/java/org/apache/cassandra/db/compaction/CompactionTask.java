@@ -157,7 +157,7 @@ public class CompactionTask extends AbstractCompactionTask
 
             try (AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(actuallyCompact))
             {
-                AbstractCompactionIterable ci = new CompactionIterable(compactionType, scanners.scanners, controller);
+                AbstractCompactionIterable ci = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat());
                 Iterator<AbstractCompactedRow> iter = ci.iterator();
 
                 // we can't preheat until the tracker has been set. This doesn't happen until we tell the cfs to
@@ -180,7 +180,7 @@ public class CompactionTask extends AbstractCompactionTask
                         return;
                     }
 
-                    writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt));
+                    writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, DatabaseDescriptor.getSSTableFormat()));
                     while (iter.hasNext())
                     {
                         if (ci.isStopRequested())
@@ -192,7 +192,7 @@ public class CompactionTask extends AbstractCompactionTask
                             totalKeysWritten++;
                             if (newSSTableSegmentThresholdReached(writer.currentWriter()))
                             {
-                                writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt));
+                                writer.switchWriter(createCompactionWriter(sstableDirectory, keysPerSSTable, minRepairedAt, DatabaseDescriptor.getSSTableFormat()));
                             }
                         }
 

@@ -56,9 +56,9 @@ public class BigTableReader extends SSTableReader
 {
     private static final Logger logger = LoggerFactory.getLogger(BigTableReader.class);
 
-    BigTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
+    BigTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, OpenReason openReason)
     {
-        super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+        super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, openReason);
     }
 
     public OnDiskAtomIterator iterator(DecoratedKey key, SortedSet<CellName> columns)

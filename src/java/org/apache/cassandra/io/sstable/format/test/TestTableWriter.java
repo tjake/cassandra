@@ -495,7 +495,7 @@ public class TestTableWriter extends SSTableWriter
                 iwriter.bf,
                 maxDataAge,
                 sstableMetadata,
-                false);
+                SSTableReader.OpenReason.NORMAL);
         sstable.first = getMinimalKey(first);
         sstable.last = getMinimalKey(last);
         // try to save the summaries to disk
@@ -649,9 +649,9 @@ public class TestTableWriter extends SSTableWriter
 
             // reach into the reducer (created during iteration) to get column count, size, max column timestamp
             columnStats = new ColumnStats(reducer.columns,
-                    reducer.minTimestampSeen,
-                    Math.max(emptyColumnFamily.deletionInfo().maxTimestamp(), reducer.maxTimestampSeen),
-                    reducer.maxLocalDeletionTimeSeen,
+                    reducer.minTimestampTracker.get(),
+                    Math.max(emptyColumnFamily.deletionInfo().maxTimestamp(), reducer.maxTimestampTracker.get()),
+                    reducer.maxDeletionTimeTracker.get(),
                     reducer.tombstones,
                     reducer.minColumnNameSeen,
                     reducer.maxColumnNameSeen,

@@ -22,6 +22,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.StringTokenizer;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Objects;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -225,7 +226,7 @@ public class Descriptor
         nexttok = tokenStack.pop();
         // generation OR Type
         SSTableFormat.Type fmt = SSTableFormat.Type.LEGACY;
-        if (!StringUtils.isNumeric(nexttok))
+        if (!CharMatcher.DIGIT.matchesAllOf(nexttok))
         {
             fmt = SSTableFormat.Type.validate(nexttok);
             nexttok = tokenStack.pop();

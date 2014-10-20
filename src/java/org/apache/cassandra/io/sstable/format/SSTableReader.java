@@ -161,6 +161,68 @@ public abstract class SSTableReader extends SSTable
     public RestorableMeter readMeter;
     protected ScheduledFuture readMeterSyncFuture;
 
+    /**
+     * Calculate approximate key count.
+     * If cardinality estimator is available on all given sstables, then this method use them to estimate
+     * key count.
+     * If not, then this uses index summaries.
+     *
+     * @param sstables SSTables to calculate key count
+     * @return estimated key count
+     */
+    public static long getApproximateKeyCount(Collection<SSTableReader> sstables)
+    {
+        long count = -1;
+
+        // check if cardinality estimator is available for all SSTables
+        boolean cardinalityAvailable = !sstables.isEmpty() && Iterators.all(sstables.iterator(), new Predicate<SSTableReader>()
+        {
+            public boolean apply(SSTableReader sstable)
+            {
+                return sstable.descriptor.version.hasNewStatsFile();
+            }
+        });
+
+        // if it is, load them to estimate key count
+        if (cardinalityAvailable)
+        {
+            boolean failed = false;
+            ICardinality cardinality = null;
+            for (SSTableReader sstable : sstables)
+            {
+                try
+                {
+                    CompactionMetadata metadata = (CompactionMetadata) sstable.descriptor.getMetadataSerializer().deserialize(sstable.descriptor, MetadataType.COMPACTION);
+                    if (cardinality == null)
+                        cardinality = metadata.cardinalityEstimator;
+                    else
+                        cardinality = cardinality.merge(metadata.cardinalityEstimator);
+                }
+                catch (IOException e)
+                {
+                    logger.warn("Reading cardinality from Statistics.db failed.", e);
+                    failed = true;
+                    break;
+                }
+                catch (CardinalityMergeException e)
+                {
+                    logger.warn("Cardinality merge failed.", e);
+                    failed = true;
+                    break;
+                }
+            }
+            if (cardinality != null && !failed)
+                count = cardinality.cardinality();
+        }
+
+        // if something went wrong above or cardinality is not available, calculate using index summary
+        if (count < 0)
+        {
+            for (SSTableReader sstable : sstables)
+                count += sstable.estimatedKeys();
+        }
+        return count;
+    }
 
     public static SSTableReader open(Descriptor descriptor) throws IOException
     {
@@ -371,78 +433,17 @@ public abstract class SSTableReader extends SSTable
     }
 
 
-    private SSTableReader(final Descriptor desc,
-                          Set<Component> components,
-                          CFMetaData metadata,
-                          IPartitioner partitioner,
-                          long maxDataAge,
-                          StatsMetadata sstableMetadata,
-                          boolean isOpenEarly)
-    {
-        long count = -1;
-
-        // check if cardinality estimator is available for all SSTables
-        boolean cardinalityAvailable = !sstables.isEmpty() && Iterators.all(sstables.iterator(), new Predicate<SSTableReader>()
-        {
-            public boolean apply(SSTableReader sstable)
-            {
-                return sstable.descriptor.version.hasNewStatsFile();
-            }
-        });
-
-        // if it is, load them to estimate key count
-        if (cardinalityAvailable)
-        {
-            boolean failed = false;
-            ICardinality cardinality = null;
-            for (SSTableReader sstable : sstables)
-            {
-                try
-                {
-                    CompactionMetadata metadata = (CompactionMetadata) sstable.descriptor.getMetadataSerializer().deserialize(sstable.descriptor, MetadataType.COMPACTION);
-                    if (cardinality == null)
-                        cardinality = metadata.cardinalityEstimator;
-                    else
-                        cardinality = cardinality.merge(metadata.cardinalityEstimator);
-                }
-                catch (IOException e)
-                {
-                    logger.warn("Reading cardinality from Statistics.db failed.", e);
-                    failed = true;
-                    break;
-                }
-                catch (CardinalityMergeException e)
-                {
-                    logger.warn("Cardinality merge failed.", e);
-                    failed = true;
-                    break;
-                }
-            }
-            if (cardinality != null && !failed)
-                count = cardinality.cardinality();
-        }
-
-        // if something went wrong above or cardinality is not available, calculate using index summary
-        if (count < 0)
-        {
-            for (SSTableReader sstable : sstables)
-                count += sstable.estimatedKeys();
-        }
-        return count;
-    }
-
-
     private static SSTableReader internalOpen(final Descriptor descriptor,
                                             Set<Component> components,
                                             CFMetaData metadata,
                                             IPartitioner partitioner,
                                             Long maxDataAge,
                                             StatsMetadata sstableMetadata,
-                                            Boolean isOpenEarly)
+                                            OpenReason openReason)
     {
         Factory readerFactory = descriptor.getFormat().getReaderFactory();
 
-        return readerFactory.open(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+        return readerFactory.open(descriptor, components, metadata, partitioner, maxDataAge, sstableMetadata, openReason);
     }
 
     protected SSTableReader(final Descriptor desc,
@@ -484,26 +485,6 @@ public abstract class SSTableReader extends SSTable
                 }
             }
         }, 1, 5, TimeUnit.MINUTES);
-    }
-
-    private void openInternal(Descriptor desc,
-                          Set<Component> components,
-                          CFMetaData metadata,
-                          IPartitioner partitioner,
-                          SegmentedFile ifile,
-                          SegmentedFile dfile,
-                          IndexSummary indexSummary,
-                          IFilter bloomFilter,
-                          long maxDataAge,
-                          StatsMetadata sstableMetadata,
-                          OpenReason openReason)
-    {
-        openInternal(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, openReason);
-
-        this.ifile = ifile;
-        this.dfile = dfile;
-        this.indexSummary = indexSummary;
-        this.bf = bloomFilter;
     }
 
     public static long getTotalBytes(Iterable<SSTableReader> sstables)
@@ -919,7 +900,7 @@ public abstract class SSTableReader extends SSTable
                 }
             }
 
-            SSTableReader replacement = openInternal(descriptor, components, metadata, partitioner, ifile, dfile, indexSummary.readOnlyClone(), bf, maxDataAge, sstableMetadata,
+            SSTableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, indexSummary.readOnlyClone(), bf, maxDataAge, sstableMetadata,
                     openReason == OpenReason.EARLY ? openReason : OpenReason.METADATA_CHANGE);
             replacement.readMeterSyncFuture = this.readMeterSyncFuture;
             replacement.readMeter = this.readMeter;
@@ -981,7 +962,7 @@ public abstract class SSTableReader extends SSTable
             StorageMetrics.load.inc(newSize - oldSize);
             parent.metric.liveDiskSpaceUsed.inc(newSize - oldSize);
 
-            SSTableReader replacement = openInternal(descriptor, components, metadata, partitioner, ifile, dfile, newSummary, bf, maxDataAge, sstableMetadata,
+            SSTableReader replacement = internalOpen(descriptor, components, metadata, partitioner, ifile, dfile, newSummary, bf, maxDataAge, sstableMetadata,
                     openReason == OpenReason.EARLY ? openReason : OpenReason.METADATA_CHANGE);
             replacement.readMeterSyncFuture = this.readMeterSyncFuture;
             replacement.readMeter = this.readMeter;
@@ -1894,7 +1875,7 @@ public abstract class SSTableReader extends SSTable
                                            IPartitioner partitioner,
                                            Long maxDataAge,
                                            StatsMetadata sstableMetadata,
-                                           Boolean isOpenEarly);
+                                           OpenReason openReason);
 
     }
 }

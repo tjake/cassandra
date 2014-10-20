@@ -42,9 +42,9 @@ public class TestTableReader extends SSTableReader
 
     private static final Logger logger = LoggerFactory.getLogger(TestTableReader.class);
 
-    TestTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, Boolean isOpenEarly)
+    TestTableReader(Descriptor desc, Set<Component> components, CFMetaData metadata, IPartitioner partitioner, Long maxDataAge, StatsMetadata sstableMetadata, OpenReason openReason)
     {
-        super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, isOpenEarly);
+        super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, openReason);
     }
 
     @Override

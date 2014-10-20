@@ -75,15 +75,25 @@ public abstract class SSTableWriter extends SSTable
 
     public static SSTableWriter create(Descriptor descriptor, long keyCount, long repairedAt)
     {
+        return create(descriptor, keyCount, repairedAt, 0);
+    }
+
+    public static SSTableWriter create(Descriptor descriptor, long keyCount, long repairedAt, int sstableLevel)
+    {
         CFMetaData metadata = Schema.instance.getCFMetaData(descriptor);
-        MetadataCollector collector = new MetadataCollector(metadata.comparator);
+        MetadataCollector collector = new MetadataCollector(metadata.comparator).sstableLevel(sstableLevel);
 
         return create(descriptor, keyCount, repairedAt, metadata, DatabaseDescriptor.getPartitioner(), collector);
     }
 
+    public static SSTableWriter create(String filename, long keyCount, long repairedAt, int sstableLevel)
+    {
+        return create(Descriptor.fromFilename(filename), keyCount, repairedAt, sstableLevel);
+    }
+
     public static SSTableWriter create(String filename, long keyCount, long repairedAt)
     {
-        return create(Descriptor.fromFilename(filename), keyCount, repairedAt);
+        return create(Descriptor.fromFilename(filename), keyCount, repairedAt, 0);
     }
 
     private static Set<Component> components(CFMetaData metadata)

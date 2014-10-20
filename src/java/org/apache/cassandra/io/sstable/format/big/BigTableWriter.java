@@ -258,15 +258,16 @@ public class BigTableWriter extends SSTableWriter
             throw new FSWriteError(e, dataFile.getPath());
         }
 
-        sstableMetadataCollector.updateMinTimestamp(minTimestampTracker.get())
-                                .updateMaxTimestamp(maxTimestampTracker.get())
-                                .updateMaxLocalDeletionTime(maxDeletionTimeTracker.get())
-                                .addRowSize(dataFile.getFilePointer() - currentPosition)
-                                .addColumnCount(columnIndexer.writtenAtomCount())
-                                .mergeTombstoneHistogram(tombstones)
-                                .updateMinColumnNames(minColumnNames)
-                                .updateMaxColumnNames(maxColumnNames)
-                                .updateHasLegacyCounterShards(hasLegacyCounterShards);
+        metadataCollector.updateMinTimestamp(minTimestampTracker.get())
+                         .updateMaxTimestamp(maxTimestampTracker.get())
+                         .updateMaxLocalDeletionTime(maxDeletionTimeTracker.get())
+                         .addRowSize(dataFile.getFilePointer() - currentPosition)
+                         .addColumnCount(columnIndexer.writtenAtomCount())
+                         .mergeTombstoneHistogram(tombstones)
+                         .updateMinColumnNames(minColumnNames)
+                         .updateMaxColumnNames(maxColumnNames)
+                         .updateHasLegacyCounterShards(hasLegacyCounterShards);
+
         afterAppend(key, currentPosition, RowIndexEntry.create(currentPosition, cf.deletionInfo().getTopLevelDeletion(), columnIndexer.build()));
         return currentPosition;
     }

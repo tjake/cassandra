@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.io.sstable.format;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.collect.ImmutableList;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.ColumnSerializer;
@@ -28,7 +29,6 @@ import org.apache.cassandra.db.compaction.CompactionController;
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
 import org.apache.cassandra.io.sstable.format.test.TestFormat;
 import org.apache.cassandra.io.util.FileDataInput;
-import org.apache.commons.lang.StringUtils;
 
 import java.util.Iterator;
 
@@ -67,7 +67,7 @@ public interface SSTableFormat
         {
             //Since format comes right after generation
             //we disallow formats with numeric names
-            assert !StringUtils.isNumeric(name);
+            assert !CharMatcher.DIGIT.matchesAllOf(name);
 
             this.name = name;
             this.info = info;

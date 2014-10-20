@@ -61,7 +61,7 @@ public abstract class AbstractSSTableSimpleWriter implements Closeable
 
     protected SSTableWriter getWriter()
     {
-        return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName, formatType)), 0, ActiveRepairService.UNREPAIRED_SSTABLE);
+        return SSTableWriter.create(Descriptor.fromFilename(makeFilename(directory, metadata.ksName, metadata.cfName, formatType)), 0, ActiveRepairService.UNREPAIRED_SSTABLE, 0);
     }
 
     // find available generation and pick up filename from that
