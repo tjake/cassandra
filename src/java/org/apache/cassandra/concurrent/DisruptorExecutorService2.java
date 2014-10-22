@@ -7,6 +7,7 @@ import com.lmax.disruptor.dsl.ProducerType;
 
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,11 +19,6 @@ import static org.apache.cassandra.concurrent.DisruptorExecutorService.TaskEvent
  */
 public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorService
 {
-
-
-
-
-
     /**
      * Convenience class for handling the batching semantics of consuming entries from a {@link com.lmax.disruptor.RingBuffer}
      * and delegating the available events to an {@link com.lmax.disruptor.EventHandler}.
@@ -41,6 +37,7 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
         private final Sequence sequence = new Sequence(Sequencer.INITIAL_CURSOR_VALUE);
         private final int totalProcessors;
         private Disruptor<TaskEvent> disruptors[];
+        private ExecutorService executors[];
 
         /**
          * Construct a {@link com.lmax.disruptor.EventProcessor} that will automatically track the progress by updating its sequence when
@@ -57,13 +54,16 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
             this.sequenceBarrier = sequenceBarrier;
 
 
+
             //The theory is all threads are notified from the ringbuffer
             //So it's better to have a to have a singe thread per pool
             //dispatch to other threads with single ring buffer
             disruptors = new Disruptor[totalProcessors];
+            executors = new ExecutorService[totalProcessors];
             for (int i = 0; i < totalProcessors; i++)
             {
-                disruptors[i] = new Disruptor<>(TaskEvent.factory, ringBuffer.getBufferSize(),  Executors.newSingleThreadExecutor(), ProducerType.SINGLE, new BlockingWaitStrategy());
+                executors[i] = Executors.newSingleThreadExecutor();
+                disruptors[i] = new Disruptor<>(TaskEvent.factory, ringBuffer.getBufferSize(), executors[i] , ProducerType.SINGLE, new YieldingWaitStrategy());
                 disruptors[i].handleEventsWith(new EventHandler<TaskEvent>()
                 {
                     @Override
@@ -90,6 +90,14 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
         {
             running.set(false);
             sequenceBarrier.alert();
+            executor.shutdown();
+
+            for ( int i = 0; i < totalProcessors; i++)
+            {
+                disruptors[i].halt();
+                executors[i].shutdown();
+            }
+
         }
 
 
@@ -196,15 +204,15 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
         }
     }
 
-    final Executor executor;
+    final ExecutorService executor;
     final Disruptor<TaskEvent> disruptor;
     final RingBuffer ringBuffer;
 
     public DisruptorExecutorService2(final int workerPoolSize, int disruptorRingSize, boolean isSingleProducer)
     {
-        executor = Executors.newFixedThreadPool(workerPoolSize);
+        executor = Executors.newFixedThreadPool(workerPoolSize, new NamedThreadFactory("disruptor-2"));
 
-        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new BlockingWaitStrategy());
+        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new YieldingWaitStrategy());
 
         ringBuffer = disruptor.getRingBuffer();
 
@@ -261,13 +269,22 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
     @Override
     public void shutdown()
     {
-        disruptor.shutdown();
+        if (isShutdown())
+            return;
+
+        disruptor.halt();
+
+        executor.shutdown();
+
     }
 
     @Override
     public List<Runnable> shutdownNow()
     {
+
         disruptor.halt();
+
+        executor.shutdownNow();
 
         return null;
     }
@@ -275,7 +292,7 @@ public class DisruptorExecutorService2 extends AbstractTracingAwareExecutorServi
     @Override
     public boolean isShutdown()
     {
-        return false;
+        return executor.isShutdown();
     }
 
     @Override

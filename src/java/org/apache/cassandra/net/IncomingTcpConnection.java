@@ -47,6 +47,8 @@ public class IncomingTcpConnection extends Thread
 
     public IncomingTcpConnection(int version, boolean compressed, Socket socket)
     {
+        super("tcp-connection");
+
         assert socket != null;
         this.version = version;
         this.compressed = compressed;

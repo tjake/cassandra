@@ -7,6 +7,7 @@ import com.lmax.disruptor.dsl.ProducerType;
 
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,53 +45,6 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
         };
     }
 
-
-    /**
-     * Sleeping strategy that initially spins, then uses a Thread.yield(), and
-     * eventually sleep (<code>LockSupport.parkNanos(1)</code>) for the minimum
-     * number of nanos the OS and JVM will allow while the
-     * {@link com.lmax.disruptor.EventProcessor}s are waiting on a barrier.
-     *
-     * This strategy is a good compromise between performance and CPU resource.
-     * Latency spikes can occur after quiet periods.
-     */
-    public final class MySleepingWaitStrategy implements WaitStrategy
-    {
-        private static final int DEFAULT_RETRIES = 200;
-
-        private final int retries;
-
-        public MySleepingWaitStrategy()
-        {
-            this(DEFAULT_RETRIES);
-        }
-
-        public MySleepingWaitStrategy(int retries)
-        {
-            this.retries = retries;
-        }
-
-        @Override
-        public long waitFor(final long sequence, Sequence cursor, final Sequence dependentSequence, final SequenceBarrier barrier)
-                throws AlertException, InterruptedException
-        {
-            long availableSequence;
-
-            while ((availableSequence = dependentSequence.get()) < sequence)
-            {
-                barrier.checkAlert();
-                Uninterruptibles.sleepUninterruptibly(10000, TimeUnit.NANOSECONDS);
-            }
-
-            return availableSequence;
-        }
-
-        @Override
-        public void signalAllWhenBlocking()
-        {
-        }
-    }
-
     /**
      * Convenience class for handling the batching semantics of consuming entries from a {@link RingBuffer}
      * and delegating the available events to an {@link EventHandler}.
@@ -124,7 +78,6 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
         {
             this.dataProvider = dataProvider;
             this.sequenceBarrier = sequenceBarrier;
-
             this.ordinal = ordinal;
             this.totalProcessors = totalProcessors;
         }
@@ -238,16 +191,15 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
         }
     }
 
-    final Executor executor;
+    final ExecutorService executor;
     final Disruptor<TaskEvent> disruptor;
     final RingBuffer ringBuffer;
-    //final AtomicInteger activeWorkers = new AtomicInteger(0);
 
     public DisruptorExecutorService(final int workerPoolSize, int disruptorRingSize, boolean isSingleProducer)
     {
-        executor = Executors.newFixedThreadPool(workerPoolSize);
+        executor = Executors.newFixedThreadPool(workerPoolSize, new NamedThreadFactory("disruptor1"));
 
-        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new BlockingWaitStrategy());
+        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new YieldingWaitStrategy());
 
         ringBuffer = disruptor.getRingBuffer();
 
@@ -309,13 +261,24 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
     @Override
     public void shutdown()
     {
-        disruptor.shutdown();
+
+        if(isShutdown())
+            return;
+
+        disruptor.halt();
+
+        executor.shutdownNow();
+
     }
 
     @Override
     public List<Runnable> shutdownNow()
     {
+
+        executor.shutdownNow();
+
         disruptor.halt();
+
 
         return null;
     }
@@ -323,7 +286,7 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
     @Override
     public boolean isShutdown()
     {
-        return false;
+        return executor.isShutdown();
     }
 
     @Override

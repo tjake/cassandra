@@ -50,6 +50,7 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.Ordering;
 import com.google.common.primitives.Longs;
 import com.google.common.util.concurrent.RateLimiter;
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,7 +124,7 @@ public class SSTableReader extends SSTable
 {
     private static final Logger logger = LoggerFactory.getLogger(SSTableReader.class);
 
-    private static final ScheduledThreadPoolExecutor syncExecutor = new ScheduledThreadPoolExecutor(1);
+    private static final ScheduledThreadPoolExecutor syncExecutor = new ScheduledThreadPoolExecutor(1, new NamedThreadFactory("test"));
     private static final RateLimiter meterSyncThrottle = RateLimiter.create(100.0);
 
     public static final Comparator<SSTableReader> maxTimestampComparator = new Comparator<SSTableReader>()

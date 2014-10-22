@@ -59,7 +59,7 @@ public class SharedExecutorPool
     final AtomicLong workerId = new AtomicLong();
 
     // the collection of executors serviced by this pool; periodically ordered by traffic volume
-    final List<SEPExecutor> executors = new CopyOnWriteArrayList<>();
+    public final List<SEPExecutor> executors = new CopyOnWriteArrayList<>();
 
     // the number of workers currently in a spinning state
     final AtomicInteger spinningCount = new AtomicInteger();

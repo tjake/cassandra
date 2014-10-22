@@ -53,7 +53,7 @@ public class SEPExecutor extends AbstractTracingAwareExecutorService
     // TODO: see if other queue implementations might improve throughput
     protected final ConcurrentLinkedQueue<FutureTask<?>> tasks = new ConcurrentLinkedQueue<>();
 
-    SEPExecutor(SharedExecutorPool pool, int maxWorkers, int maxTasksQueued)
+    public SEPExecutor(SharedExecutorPool pool, int maxWorkers, int maxTasksQueued)
     {
         this.pool = pool;
         this.maxWorkers = maxWorkers;

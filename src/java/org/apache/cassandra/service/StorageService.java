@@ -135,7 +135,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
     public static final DebuggableScheduledThreadPoolExecutor optionalTasks = new DebuggableScheduledThreadPoolExecutor("OptionalTasks");
     static
     {
-        tasks.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        //tasks.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
     }
 
     /* This abstraction maintains the token/endpoint metadata information */
@@ -194,7 +194,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
     private final List<IEndpointLifecycleSubscriber> lifecycleSubscribers = new CopyOnWriteArrayList<>();
 
-    private static final BackgroundActivityMonitor bgMonitor = new BackgroundActivityMonitor();
+    public static final BackgroundActivityMonitor bgMonitor = new BackgroundActivityMonitor();
 
     private final ObjectName jmxObjectName;
 

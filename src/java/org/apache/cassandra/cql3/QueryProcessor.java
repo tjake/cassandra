@@ -29,6 +29,7 @@ import com.googlecode.concurrentlinkedhashmap.EntryWeigher;
 import com.googlecode.concurrentlinkedhashmap.EvictionListener;
 
 import org.antlr.runtime.*;
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.github.jamm.MemoryMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +89,7 @@ public class QueryProcessor implements QueryHandler
     public static final CQLMetrics metrics = new CQLMetrics();
 
     private static final AtomicInteger lastMinuteEvictionsCount = new AtomicInteger(0);
-    private static final ScheduledExecutorService evictionCheckTimer = Executors.newScheduledThreadPool(1);
+    public static final ScheduledExecutorService evictionCheckTimer = Executors.newScheduledThreadPool(1, new NamedThreadFactory("prepared-statement-eviction-checker"));
 
     static
     {
