@@ -27,6 +27,7 @@ import org.apache.cassandra.transport.ProtocolException;
 import org.apache.cassandra.transport.ServerConnection;
 
 import io.netty.buffer.ByteBuf;
+import rx.Observable;
 
 import java.nio.ByteBuffer;
 
@@ -70,7 +71,7 @@ public class AuthResponse extends Message.Request
     }
 
     @Override
-    public Response execute(QueryState queryState)
+    public Observable<? extends Response> execute(QueryState queryState)
     {
         try
         {
@@ -81,16 +82,16 @@ public class AuthResponse extends Message.Request
                 AuthenticatedUser user = authenticator.getAuthenticatedUser();
                 queryState.getClientState().login(user);
                 // authentication is complete, send a ready message to the client
-                return new AuthSuccess(challenge);
+                return Observable.just(new AuthSuccess(challenge));
             }
             else
             {
-                return new AuthChallenge(challenge);
+                return Observable.just(new AuthChallenge(challenge));
             }
         }
         catch (AuthenticationException e)
         {
-            return ErrorMessage.fromException(e);
+            return Observable.just(ErrorMessage.fromException(e));
         }
     }
 }

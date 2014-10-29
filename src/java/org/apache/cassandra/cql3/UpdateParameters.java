@@ -28,6 +28,7 @@ import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.FBUtilities;
+import rx.Observable;
 
 /**
  * A simple container that simplify passing parameters for collections methods.
@@ -41,9 +42,9 @@ public class UpdateParameters
     public final int localDeletionTime;
 
     // For lists operation that require a read-before-write. Will be null otherwise.
-    private final Map<ByteBuffer, CQL3Row> prefetchedLists;
+    private final Observable<Map<ByteBuffer, CQL3Row>> prefetchedLists;
 
-    public UpdateParameters(CFMetaData metadata, QueryOptions options, long timestamp, int ttl, Map<ByteBuffer, CQL3Row> prefetchedLists)
+    public UpdateParameters(CFMetaData metadata, QueryOptions options, long timestamp, int ttl, Observable<Map<ByteBuffer, CQL3Row>> prefetchedLists)
     {
         this.metadata = metadata;
         this.options = options;
@@ -90,7 +91,7 @@ public class UpdateParameters
         if (prefetchedLists == null)
             return Collections.emptyList();
 
-        CQL3Row row = prefetchedLists.get(rowKey);
+        CQL3Row row = prefetchedLists.toBlocking().first().get(rowKey);
         return row == null ? Collections.<Cell>emptyList() : row.getCollection(cql3ColumnName);
     }
 }

@@ -31,6 +31,9 @@ import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.UUIDGen;
+import rx.Observable;
+import rx.functions.Func0;
+import rx.functions.Func1;
 
 /**
  * A CQL query
@@ -88,7 +91,7 @@ public class QueryMessage extends Message.Request
         this.options = options;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -114,20 +117,45 @@ public class QueryMessage extends Message.Request
                 Tracing.instance.begin("Execute CQL3 query", builder.build());
             }
 
-            Message.Response response = state.getClientState().getCQLQueryHandler().process(query, state, options);
-            if (options.skipMetadata() && response instanceof ResultMessage.Rows)
-                ((ResultMessage.Rows)response).result.metadata.setSkipMetadata();
+            Observable<? extends ResultMessage> response = state.getClientState().getCQLQueryHandler().process(query, state, options);
 
-            if (tracingId != null)
-                response.setTracingId(tracingId);
+            final UUID finalTracingId = tracingId;
 
-            return response;
+            return response.flatMap(new Func1<ResultMessage, Observable<Response>>()
+            {
+                @Override
+                public Observable<Response> call(ResultMessage resultMessage)
+                {
+                    if (finalTracingId != null)
+                        resultMessage.setTracingId(finalTracingId);
+
+                    return Observable.just((Response) resultMessage);
+                }
+            }, new Func1<Throwable, Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call(Throwable throwable)
+                {
+
+                    if (!((throwable instanceof RequestValidationException) || (throwable instanceof RequestExecutionException)))
+                        logger.error("Unexpected error during query", throwable);
+
+                    return Observable.just(ErrorMessage.fromException(throwable));
+                }
+            }, new Func0<Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call()
+                {
+                    return null;
+                }
+            });
+
+
         }
         catch (Exception e)
         {
-            if (!((e instanceof RequestValidationException) || (e instanceof RequestExecutionException)))
-                logger.error("Unexpected error during query", e);
-            return ErrorMessage.fromException(e);
+            throw new RuntimeException(e);
         }
         finally
         {

@@ -25,6 +25,7 @@ import org.apache.cassandra.dht.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
+import rx.Observable;
 
 /**
  * Pages a RangeSliceCommand whose predicate is a name query.
@@ -66,7 +67,7 @@ public class RangeNamesQueryPager extends AbstractQueryPager
              : new PagingState(lastReturnedKey.getKey(), null, maxRemaining());
     }
 
-    protected List<Row> queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    protected Observable<Row> queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
     throws RequestExecutionException
     {
         AbstractRangeCommand pageCmd = command.withUpdatedLimit(pageSize);
@@ -74,8 +75,8 @@ public class RangeNamesQueryPager extends AbstractQueryPager
             pageCmd = pageCmd.forSubRange(makeExcludingKeyBounds(lastReturnedKey));
 
         return localQuery
-             ? pageCmd.executeLocally()
-             : StorageProxy.getRangeSlice(pageCmd, consistencyLevel);
+             ? Observable.from(pageCmd.executeLocally())
+             : Observable.from(StorageProxy.getRangeSlice(pageCmd, consistencyLevel));
     }
 
     protected boolean containsPreviousLast(Row first)

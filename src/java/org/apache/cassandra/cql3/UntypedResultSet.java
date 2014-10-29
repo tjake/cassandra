@@ -180,7 +180,7 @@ public abstract class UntypedResultSet implements Iterable<UntypedResultSet.Row>
                         {
                             if (pager.isExhausted())
                                 return endOfData();
-                            currentPage = select.process(pager.fetchPage(pageSize)).rows.iterator();
+                            currentPage = select.process(pager.fetchPage(pageSize)).toBlocking().first().rows.iterator();
                         }
                         return new Row(metadata, currentPage.next());
                     } catch (RequestValidationException | RequestExecutionException e) {

@@ -59,6 +59,10 @@ import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.thrift.ThriftServer;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.*;
+import rx.plugins.DebugHook;
+import rx.plugins.DebugNotification;
+import rx.plugins.DebugNotificationListener;
+import rx.plugins.RxJavaPlugins;
 
 /**
  * The <code>CassandraDaemon</code> is an abstraction for a Cassandra daemon
@@ -87,6 +91,48 @@ public class CassandraDaemon
         this.runManaged = runManaged;
     }
 
+
+    private void rxJavaDebugSetup()
+    {
+        RxJavaPlugins.getInstance().registerObservableExecutionHook(new DebugHook<>(new DebugNotificationListener<Object>() {
+            @Override
+            public <T> T onNext(DebugNotification<T> n) {
+               // if (n == null)
+               //     return null;
+
+                logger.warn("onNext on "+n.getValue());
+                return n.getValue();
+            }
+
+
+            @Override
+            public <T> Object start(DebugNotification<T> n)
+            {
+ //               if (n == null)
+ //                   return null;
+
+                Object context = new Object();
+                logger.warn("start on " + Integer.toHexString(context.hashCode()));
+
+                return context;
+            }
+
+            @Override
+            public void complete(Object context) {
+//                if (context == null)
+  //                  return;
+                logger.warn("complete on "+ Integer.toHexString(context.hashCode()));
+            }
+
+            @Override
+            public void error(Object context, Throwable e) {
+  //              if (context == null)
+  //                  return;
+                logger.warn("error on "+Integer.toHexString(context.hashCode()));
+            }
+        }));
+    }
+
     /**
      * This is a hook for concrete daemons to initialize themselves suitably.
      *
@@ -96,6 +142,8 @@ public class CassandraDaemon
      */
     protected void setup()
     {
+        //rxJavaDebugSetup();
+
         try
         {
             logger.info("Hostname: {}", InetAddress.getLocalHost().getHostName());

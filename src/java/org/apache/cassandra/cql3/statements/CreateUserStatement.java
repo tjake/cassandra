@@ -26,6 +26,7 @@ import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.exceptions.UnauthorizedException;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class CreateUserStatement extends AuthenticationStatement
 {
@@ -62,7 +63,7 @@ public class CreateUserStatement extends AuthenticationStatement
             throw new UnauthorizedException("Only superusers are allowed to perform CREATE USER queries");
     }
 
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         // not rejected in validate()
         if (ifNotExists && Auth.isExistingUser(username))

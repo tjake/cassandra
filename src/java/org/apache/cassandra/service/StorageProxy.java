@@ -64,6 +64,9 @@ import org.apache.cassandra.sink.SinkManager;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.triggers.TriggerExecutor;
 import org.apache.cassandra.utils.*;
+import rx.*;
+import rx.Observable;
+import rx.functions.*;
 
 public class StorageProxy implements StorageProxyMBean
 {
@@ -228,8 +231,8 @@ public class StorageProxy implements StorageProxyMBean
                 Tracing.trace("Reading existing values for CAS precondition");
                 long timestamp = System.currentTimeMillis();
                 ReadCommand readCommand = ReadCommand.create(keyspaceName, key, cfName, timestamp, request.readFilter());
-                List<Row> rows = read(Arrays.asList(readCommand), consistencyForPaxos == ConsistencyLevel.LOCAL_SERIAL ? ConsistencyLevel.LOCAL_QUORUM : ConsistencyLevel.QUORUM);
-                ColumnFamily current = rows.get(0).cf;
+                Observable<Row> rows = read(Arrays.asList(readCommand), consistencyForPaxos == ConsistencyLevel.LOCAL_SERIAL ? ConsistencyLevel.LOCAL_QUORUM : ConsistencyLevel.QUORUM);
+                ColumnFamily current = rows.toBlocking().first().cf;
                 if (!request.appliesTo(current))
                 {
                     Tracing.trace("CAS precondition does not match current values {}", current);
@@ -1138,7 +1141,7 @@ public class StorageProxy implements StorageProxyMBean
      * Performs the actual reading of a row out of the StorageService, fetching
      * a specific set of column names from a given column family.
      */
-    public static List<Row> read(List<ReadCommand> commands, ConsistencyLevel consistency_level)
+    public static Observable<Row> read(List<ReadCommand> commands, ConsistencyLevel consistency_level)
     throws UnavailableException, IsBootstrappingException, ReadTimeoutException, InvalidRequestException
     {
         if (StorageService.instance.isBootstrapMode() && !systemKeyspaceQuery(commands))
@@ -1149,7 +1152,7 @@ public class StorageProxy implements StorageProxyMBean
         }
 
         long start = System.nanoTime();
-        List<Row> rows = null;
+        Observable<Row> rows = null;
         try
         {
             if (consistency_level.isSerialConsistency())
@@ -1213,33 +1216,159 @@ public class StorageProxy implements StorageProxyMBean
         return rows;
     }
 
-    /**
-     * This function executes local and remote reads, and blocks for the results:
-     *
-     * 1. Get the replica locations, sorted by response time according to the snitch
-     * 2. Send a data request to the closest replica, and digest requests to either
-     *    a) all the replicas, if read repair is enabled
-     *    b) the closest R-1 replicas, where R is the number required to satisfy the ConsistencyLevel
-     * 3. Wait for a response from R replicas
-     * 4. If the digests (if any) match the data return the data
-     * 5. else carry out read repair by getting data from all the nodes.
-     */
-    private static List<Row> fetchRows(List<ReadCommand> initialCommands, ConsistencyLevel consistencyLevel)
-    throws UnavailableException, ReadTimeoutException
+    private static class RepairObservable implements Observable.OnSubscribe<Row>
     {
-        List<Row> rows = new ArrayList<>(initialCommands.size());
-        // (avoid allocating a new list in the common case of nothing-to-retry)
-        List<ReadCommand> commandsToRetry = Collections.emptyList();
 
-        do
+        final ReadCommand command;
+        final ReadCallback<ReadResponse, Row> handler;
+        final ConsistencyLevel consistencyLevel;
+
+
+        RowDataResolver resolver = null;
+        Iterator<AsyncOneResponse> writeResponses = null;
+        AsyncOneResponse currentWriteResponse = null;
+
+
+        ReadCommand retryCommand;
+        Row row = null;
+        Throwable err = null;
+        boolean done = false;
+
+        RepairObservable(ReadCommand command, ReadCallback<ReadResponse, Row> handler, ConsistencyLevel consistencyLevel)
         {
-            List<ReadCommand> commands = commandsToRetry.isEmpty() ? initialCommands : commandsToRetry;
-            AbstractReadExecutor[] readExecutors = new AbstractReadExecutor[commands.size()];
+            this.command = command;
+            this.handler = handler;
+            this.consistencyLevel = consistencyLevel;
+        }
 
-            if (!commandsToRetry.isEmpty())
-                Tracing.trace("Retrying {} commands", commandsToRetry.size());
+        boolean allWriteResponsesRecieved() throws ReadTimeoutException
+        {
+            if (writeResponses == null)
+            {
+                throw new AssertionError("no write response handlers yet");
+            }
 
-            // send out read requests
+            if (currentWriteResponse != null)
+            {
+                try
+                {
+                    currentWriteResponse.isReady(DatabaseDescriptor.getWriteRpcTimeout(), TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e)
+                {
+                    Tracing.trace("Timed out on digest mismatch retries");
+                    int blockFor = consistencyLevel.blockFor(Keyspace.open(command.getKeyspace()));
+                    throw new ReadTimeoutException(consistencyLevel, blockFor - 1, blockFor, true);
+                }
+
+                currentWriteResponse = null;
+            }
+
+            if (writeResponses.hasNext())
+                currentWriteResponse = writeResponses.next();
+
+            return currentWriteResponse == null;
+        }
+
+        @Override
+        public void call(Subscriber<? super Row> subscriber)
+        {
+            try
+            {
+                //Wait for RR to show run
+                if (writeResponses == null)
+                {
+                    if (handler.isReady())
+                    {
+                        row = handler.get();
+
+                        resolver = (RowDataResolver) handler.resolver;
+                        writeResponses = resolver.repairResults.iterator();
+                    }
+
+                    if (row != null)
+                        done = true;
+                }
+
+
+                if (allWriteResponsesRecieved())
+                {
+                    // retry any potential short reads
+                    retryCommand = command.maybeGenerateRetryCommand(resolver, row);
+                    if (retryCommand != null)
+                    {
+                        Tracing.trace("Issuing retry for read command");
+                    }
+
+                    return;
+                }
+
+                if (retryCommand != null)
+                {
+                    subscriber.onError(new RuntimeException("Not implemented"));
+
+                    return;
+                }
+
+
+                if (row != null)
+                {
+                    command.maybeTrim(row);
+                    subscriber.onNext(row);
+                }
+
+                if (err != null)
+                {
+                    subscriber.onError(err);
+                }
+
+                if (done)
+                {
+                    subscriber.onCompleted();
+                }
+            } catch (ReadTimeoutException e)
+            {
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onError(e);
+
+            } catch (DigestMismatchException e)
+            {
+                subscriber.onError(new AssertionError(e)); // full data requested from each node here, no digests should be sent
+            }
+        }
+    }
+
+
+    private static class RowObservable implements Observable.OnSubscribe<Row>
+    {
+        final List<ReadCommand> initialCommands;
+        final ConsistencyLevel consistencyLevel;
+
+        List<ReadCommand> commands;
+        AbstractReadExecutor[] readExecutors;
+        int commandOffset = 0;
+
+        RowObservable(List<ReadCommand> initialCommands, ConsistencyLevel consistencyLevel)
+        {
+            this.initialCommands = initialCommands;
+            this.consistencyLevel = consistencyLevel;
+            this.commands = initialCommands;
+        }
+
+        boolean maybeFetchMore() throws UnavailableException
+        {
+
+            //More work todo
+            if (readExecutors != null)
+            {
+                if (commandOffset < readExecutors.length)
+                    return true;
+
+                return false;
+            }
+
+            readExecutors = new AbstractReadExecutor[commands.size()];
+
+            // send out read initial requests
             for (int i = 0; i < commands.size(); i++)
             {
                 ReadCommand command = commands.get(i);
@@ -1253,129 +1382,168 @@ public class StorageProxy implements StorageProxyMBean
             for (AbstractReadExecutor exec : readExecutors)
                 exec.maybeTryAdditionalReplicas();
 
-            // read results and make a second pass for any digest mismatches
-            List<ReadCommand> repairCommands = null;
-            List<ReadCallback<ReadResponse, Row>> repairResponseHandlers = null;
-            for (AbstractReadExecutor exec: readExecutors)
+
+            commandOffset = 0;
+            return readExecutors.length > 0;
+        }
+
+
+        @Override
+        public void call(Subscriber<? super Row> subscriber)
+        {
+            //We can disregard the rest.
+            if (subscriber.isUnsubscribed())
+                return;
+
+            try
             {
-                try
+                while (maybeFetchMore())
                 {
-                    Row row = exec.get();
-                    if (row != null)
-                    {
-                        exec.command.maybeTrim(row);
-                        rows.add(row);
-                    }
+                    final AbstractReadExecutor exec = readExecutors[commandOffset];
 
-                    if (logger.isDebugEnabled())
-                        logger.debug("Read: {} ms.", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - exec.handler.start));
-                }
-                catch (ReadTimeoutException ex)
-                {
-                    int blockFor = consistencyLevel.blockFor(Keyspace.open(exec.command.getKeyspace()));
-                    int responseCount = exec.handler.getReceivedCount();
-                    String gotData = responseCount > 0
-                                   ? exec.resolver.isDataPresent() ? " (including data)" : " (only digests)"
-                                   : "";
-
-                    if (Tracing.isTracing())
-                    {
-                        Tracing.trace("Timed out; received {} of {} responses{}",
-                                      new Object[]{ responseCount, blockFor, gotData });
-                    }
-                    else if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Read timeout; received {} of {} responses{}", responseCount, blockFor, gotData);
-                    }
-                    throw ex;
-                }
-                catch (DigestMismatchException ex)
-                {
-                    Tracing.trace("Digest mismatch: {}", ex);
-
-                    ReadRepairMetrics.repairedBlocking.mark();
-
-                    // Do a full data read to resolve the correct response (and repair node that need be)
-                    RowDataResolver resolver = new RowDataResolver(exec.command.ksName, exec.command.key, exec.command.filter(), exec.command.timestamp, exec.handler.endpoints.size());
-                    ReadCallback<ReadResponse, Row> repairHandler = new ReadCallback<>(resolver,
-                                                                                       ConsistencyLevel.ALL,
-                                                                                       exec.getContactedReplicas().size(),
-                                                                                       exec.command,
-                                                                                       Keyspace.open(exec.command.getKeyspace()),
-                                                                                       exec.handler.endpoints);
-
-                    if (repairCommands == null)
-                    {
-                        repairCommands = new ArrayList<>();
-                        repairResponseHandlers = new ArrayList<>();
-                    }
-                    repairCommands.add(exec.command);
-                    repairResponseHandlers.add(repairHandler);
-
-                    MessageOut<ReadCommand> message = exec.command.createMessage();
-                    for (InetAddress endpoint : exec.getContactedReplicas())
-                    {
-                        Tracing.trace("Enqueuing full data read to {}", endpoint);
-                        MessagingService.instance().sendRR(message, endpoint, repairHandler);
-                    }
-                }
-            }
-
-            commandsToRetry.clear();
-
-            // read the results for the digest mismatch retries
-            if (repairResponseHandlers != null)
-            {
-                for (int i = 0; i < repairCommands.size(); i++)
-                {
-                    ReadCommand command = repairCommands.get(i);
-                    ReadCallback<ReadResponse, Row> handler = repairResponseHandlers.get(i);
-
-                    Row row;
                     try
                     {
-                        row = handler.get();
-                    }
-                    catch (DigestMismatchException e)
-                    {
-                        throw new AssertionError(e); // full data requested from each node here, no digests should be sent
-                    }
+                        //if (exec.isReady())
+                        //{
+                        commandOffset++;
 
-                    RowDataResolver resolver = (RowDataResolver)handler.resolver;
-                    try
-                    {
-                        // wait for the repair writes to be acknowledged, to minimize impact on any replica that's
-                        // behind on writes in case the out-of-sync row is read multiple times in quick succession
-                        FBUtilities.waitOnFutures(resolver.repairResults, DatabaseDescriptor.getWriteRpcTimeout());
-                    }
-                    catch (TimeoutException e)
-                    {
-                        Tracing.trace("Timed out on digest mismatch retries");
-                        int blockFor = consistencyLevel.blockFor(Keyspace.open(command.getKeyspace()));
-                        throw new ReadTimeoutException(consistencyLevel, blockFor-1, blockFor, true);
-                    }
+                        Row row = exec.get();
+                        if (row != null)
+                        {
+                            exec.command.maybeTrim(row);
+                            subscriber.onNext(row);
+                        }
+                        //}
 
-                    // retry any potential short reads
-                    ReadCommand retryCommand = command.maybeGenerateRetryCommand(resolver, row);
-                    if (retryCommand != null)
+                    } catch (ReadTimeoutException e)
                     {
-                        Tracing.trace("Issuing retry for read command");
-                        if (commandsToRetry == Collections.EMPTY_LIST)
-                            commandsToRetry = new ArrayList<>();
-                        commandsToRetry.add(retryCommand);
-                        continue;
-                    }
+                        int blockFor = consistencyLevel.blockFor(Keyspace.open(exec.command.getKeyspace()));
+                        int responseCount = exec.handler.getReceivedCount();
+                        String gotData = responseCount > 0
+                                ? exec.resolver.isDataPresent() ? " (including data)" : " (only digests)"
+                                : "";
 
-                    if (row != null)
+                        if (Tracing.isTracing())
+                        {
+                            Tracing.trace("Timed out; received {} of {} responses{}",
+                                    new Object[]{responseCount, blockFor, gotData});
+                        } else if (logger.isDebugEnabled())
+                        {
+                            logger.debug("Read timeout; received {} of {} responses{}", responseCount, blockFor, gotData);
+                        }
+
+                        if (!subscriber.isUnsubscribed())
+                        {
+                            subscriber.onError(e);
+                            subscriber.onCompleted();
+                        }
+
+                    } catch (DigestMismatchException e)
                     {
-                        command.maybeTrim(row);
-                        rows.add(row);
+                        commandOffset++;
+
+                        if (!subscriber.isUnsubscribed())
+                            subscriber.onError(new WrappedDigestMismatchException(e, exec));
+
+                        return;
                     }
                 }
-            }
-        } while (!commandsToRetry.isEmpty());
+            } catch (UnavailableException e)
+            {
+                if (!subscriber.isUnsubscribed())
+                {
+                    subscriber.onError(e);
+                }
 
-        return rows;
+                return;
+            }
+
+            if (!subscriber.isUnsubscribed())
+                subscriber.onCompleted();
+        }
+    }
+
+    static class WrappedDigestMismatchException extends Exception
+    {
+        public final DigestMismatchException exception;
+        public final AbstractReadExecutor readHandler;
+        public WrappedDigestMismatchException(DigestMismatchException digestException, AbstractReadExecutor readHandler)
+        {
+            super(digestException.toString());
+
+            this.exception = digestException;
+            this.readHandler = readHandler;
+        }
+
+    }
+
+    /**
+     * This function executes local and remote reads, and blocks for the results:
+     *
+     * 1. Get the replica locations, sorted by response time according to the snitch
+     * 2. Send a data request to the closest replica, and digest requests to either
+     *    a) all the replicas, if read repair is enabled
+     *    b) the closest R-1 replicas, where R is the number required to satisfy the ConsistencyLevel
+     * 3. Wait for a response from R replicas
+     * 4. If the digests (if any) match the data return the data
+     * 5. else carry out read repair by getting data from all the nodes.
+     */
+    private static Observable<Row> fetchRows(final List<ReadCommand> initialCommands, final ConsistencyLevel consistencyLevel)
+    throws UnavailableException, ReadTimeoutException
+    {
+        return Observable.create(new RowObservable(initialCommands, consistencyLevel))
+                .flatMap(new Func1<Row, Observable<Row>>()
+                {
+                    @Override
+                    public Observable<Row> call(Row row)
+                    {
+                        return Observable.just(row);
+                    }
+                },
+                new Func1<Throwable, Observable<Row>>()
+                {
+                    @Override
+                    public Observable<Row> call(Throwable throwable)
+                    {
+                        if (throwable instanceof WrappedDigestMismatchException)
+                        {
+
+                            AbstractReadExecutor exec = ((WrappedDigestMismatchException)throwable).readHandler;
+
+                            Tracing.trace("Digest mismatch: {}", throwable);
+
+                            ReadRepairMetrics.repairedBlocking.mark();
+
+                            // Do a full data read to resolve the correct response (and repair node that need be)
+                            RowDataResolver resolver = new RowDataResolver(exec.command.ksName, exec.command.key, exec.command.filter(), exec.command.timestamp, exec.handler.endpoints.size());
+                            ReadCallback<ReadResponse, Row> repairHandler = new ReadCallback<>(resolver,
+                                    ConsistencyLevel.ALL,
+                                    exec.getContactedReplicas().size(),
+                                    exec.command,
+                                    Keyspace.open(exec.command.getKeyspace()),
+                                    exec.handler.endpoints);
+
+                            MessageOut<ReadCommand> message = exec.command.createMessage();
+                            for (InetAddress endpoint : exec.getContactedReplicas())
+                            {
+                                Tracing.trace("Enqueuing full data read to {}", endpoint);
+                                MessagingService.instance().sendRR(message, endpoint, repairHandler);
+                            }
+
+                            return Observable.create(new RepairObservable(exec.command, exec.handler, consistencyLevel));
+                        }
+
+                        return null;
+                    }
+                },
+                new Func0<Observable<Row>>()
+                {
+                    @Override
+                    public Observable<Row> call()
+                    {
+                        return null;
+                    }
+                });
     }
 
     static class LocalReadRunnable extends DroppableRunnable

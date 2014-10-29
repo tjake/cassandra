@@ -29,6 +29,7 @@ import org.apache.cassandra.exceptions.AuthenticationException;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.CBUtil;
 import org.apache.cassandra.transport.Message;
+import rx.Observable;
 
 /**
  * Message to indicate that the server is ready to receive requests.
@@ -71,17 +72,17 @@ public class CredentialsMessage extends Message.Request
         this.credentials = credentials;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<? extends Response> execute(QueryState state)
     {
         try
         {
             AuthenticatedUser user = DatabaseDescriptor.getAuthenticator().authenticate(credentials);
             state.getClientState().login(user);
-            return new ReadyMessage();
+            return Observable.just(new ReadyMessage());
         }
         catch (AuthenticationException e)
         {
-            return ErrorMessage.fromException(e);
+            return Observable.just(ErrorMessage.fromException(e));
         }
     }
 

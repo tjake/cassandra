@@ -371,7 +371,10 @@
           <dependency groupId="com.google.code.findbugs" artifactId="jsr305" version="2.0.2" />
           <dependency groupId="com.clearspring.analytics" artifactId="stream" version="2.5.2" />
           <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core" version="2.1.2" />
-          <dependency groupId="org.javassist" artifactId="javassist" version="3.18.2-GA" />
+          <dependency groupId="com.netflix.rxjava" artifactId="rxjava-core" version="0.20.6" />
+            <dependency groupId="com.netflix.rxjava" artifactId="rxjava-math" version="0.20.6" />
+            <dependency groupId="com.netflix.rxjava" artifactId="rxjava-debug" version="0.20.6" />
+            <dependency groupId="org.javassist" artifactId="javassist" version="3.18.2-GA" />
           <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
 	      <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" version="1.2.0" />
           <dependency groupId="org.fusesource" artifactId="sigar" version="1.6.4" />
@@ -415,7 +418,10 @@
         <dependency groupId="org.apache.hadoop" artifactId="hadoop-core"/>
       	<dependency groupId="org.apache.hadoop" artifactId="hadoop-minicluster"/>
         <dependency groupId="org.apache.pig" artifactId="pig"/>
-      	<dependency groupId="com.google.code.findbugs" artifactId="jsr305"/>
+        <dependency groupId="com.netflix.rxjava" artifactId="rxjava-core" />
+        <dependency groupId="com.netflix.rxjava" artifactId="rxjava-math" />
+          <dependency groupId="com.netflix.rxjava" artifactId="rxjava-debug" />
+        <dependency groupId="com.google.code.findbugs" artifactId="jsr305"/>
         <dependency groupId="org.antlr" artifactId="antlr"/>
         <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core"/>
         <dependency groupId="org.javassist" artifactId="javassist"/>
@@ -476,6 +482,7 @@
         <dependency groupId="org.mindrot" artifactId="jbcrypt"/>
         <dependency groupId="com.yammer.metrics" artifactId="metrics-core"/>
         <dependency groupId="com.addthis.metrics" artifactId="reporter-config"/>
+        <dependency groupId="com.netflix.rxjava" artifactId="rxjava-core" />
         <dependency groupId="com.thinkaurelius.thrift" artifactId="thrift-server" version="0.3.5"/>
         <dependency groupId="com.clearspring.analytics" artifactId="stream" version="2.5.2" />
         <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />

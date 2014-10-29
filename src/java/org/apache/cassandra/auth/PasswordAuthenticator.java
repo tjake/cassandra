@@ -41,6 +41,7 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.mindrot.jbcrypt.BCrypt;
+import rx.Observable;
 
 /**
  * PasswordAuthenticator is an IAuthenticator implementation
@@ -103,10 +104,10 @@ public class PasswordAuthenticator implements ISaslAwareAuthenticator
         UntypedResultSet result;
         try
         {
-            ResultMessage.Rows rows = authenticateStatement.execute(QueryState.forInternalCalls(),
+            Observable<ResultMessage.Rows> rows = authenticateStatement.execute(QueryState.forInternalCalls(),
                                                                     QueryOptions.forInternalCalls(consistencyForUser(username),
                                                                                                   Lists.newArrayList(ByteBufferUtil.bytes(username))));
-            result = UntypedResultSet.create(rows.result);
+            result = UntypedResultSet.create(rows.toBlocking().first().result);
         }
         catch (RequestValidationException e)
         {
@@ -226,9 +227,9 @@ public class PasswordAuthenticator implements ISaslAwareAuthenticator
         // Try looking up the 'cassandra' default user first, to avoid the range query if possible.
         String defaultSUQuery = String.format("SELECT * FROM %s.%s WHERE username = '%s'", Auth.AUTH_KS, CREDENTIALS_CF, DEFAULT_USER_NAME);
         String allUsersQuery = String.format("SELECT * FROM %s.%s LIMIT 1", Auth.AUTH_KS, CREDENTIALS_CF);
-        return !process(defaultSUQuery, ConsistencyLevel.ONE).isEmpty()
-            || !process(defaultSUQuery, ConsistencyLevel.QUORUM).isEmpty()
-            || !process(allUsersQuery, ConsistencyLevel.QUORUM).isEmpty();
+        return !process(defaultSUQuery, ConsistencyLevel.ONE).toList().toBlocking().first().isEmpty()
+            || !process(defaultSUQuery, ConsistencyLevel.QUORUM).toList().toBlocking().first().isEmpty()
+            || !process(allUsersQuery, ConsistencyLevel.QUORUM).toList().toBlocking().first().isEmpty();
     }
 
     private static String hashpw(String password)
@@ -241,7 +242,7 @@ public class PasswordAuthenticator implements ISaslAwareAuthenticator
         return StringUtils.replace(name, "'", "''");
     }
 
-    private static UntypedResultSet process(String query, ConsistencyLevel cl) throws RequestExecutionException
+    private static Observable<UntypedResultSet> process(String query, ConsistencyLevel cl) throws RequestExecutionException
     {
         return QueryProcessor.process(query, cl);
     }

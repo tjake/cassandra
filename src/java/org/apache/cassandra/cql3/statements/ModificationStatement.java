@@ -42,6 +42,11 @@ import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.thrift.ThriftValidation;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.Pair;
+import rx.*;
+import rx.Observable;
+import rx.functions.Action2;
+import rx.functions.Func1;
+import rx.functions.Func2;
 
 /*
  * Abstract parent class of individual modifications, i.e. INSERT, UPDATE and DELETE.
@@ -418,7 +423,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
         return false;
     }
 
-    protected Map<ByteBuffer, CQL3Row> readRequiredRows(Collection<ByteBuffer> partitionKeys, Composite clusteringPrefix, boolean local, ConsistencyLevel cl)
+    protected Observable<Map<ByteBuffer, CQL3Row>> readRequiredRows(Collection<ByteBuffer> partitionKeys, Composite clusteringPrefix, boolean local, ConsistencyLevel cl)
     throws RequestExecutionException, RequestValidationException
     {
         if (!requiresRead())
@@ -435,7 +440,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
 
         ColumnSlice[] slices = new ColumnSlice[]{ clusteringPrefix.slice() };
         List<ReadCommand> commands = new ArrayList<ReadCommand>(partitionKeys.size());
-        long now = System.currentTimeMillis();
+        final long now = System.currentTimeMillis();
         for (ByteBuffer key : partitionKeys)
             commands.add(new SliceFromReadCommand(keyspace(),
                                                   key,
@@ -443,25 +448,30 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
                                                   now,
                                                   new SliceQueryFilter(slices, false, Integer.MAX_VALUE)));
 
-        List<Row> rows = local
-                       ? SelectStatement.readLocally(keyspace(), commands)
+        Observable<Row> rows = local
+                       ? Observable.from(SelectStatement.readLocally(keyspace(), commands))
                        : StorageProxy.read(commands, cl);
 
-        Map<ByteBuffer, CQL3Row> map = new HashMap<ByteBuffer, CQL3Row>();
-        for (Row row : rows)
-        {
-            if (row.cf == null || row.cf.isEmpty())
-                continue;
 
-            Iterator<CQL3Row> iter = cfm.comparator.CQL3RowBuilder(cfm, now).group(row.cf.getSortedColumns().iterator());
-            if (iter.hasNext())
+        return rows.reduce(new HashMap<ByteBuffer, CQL3Row>(),new Func2<Map<ByteBuffer, CQL3Row>, Row, Map<ByteBuffer, CQL3Row>>()
+        {
+            @Override
+            public Map<ByteBuffer, CQL3Row> call(Map<ByteBuffer, CQL3Row> state, Row row)
             {
-                map.put(row.key.getKey(), iter.next());
-                // We can only update one CQ3Row per partition key at a time (we don't allow IN for clustering key)
-                assert !iter.hasNext();
+                if (row.cf == null || row.cf.isEmpty())
+                    return state;
+
+                Iterator<CQL3Row> iter = cfm.comparator.CQL3RowBuilder(cfm, now).group(row.cf.getSortedColumns().iterator());
+                if (iter.hasNext())
+                {
+                    state.put(row.key.getKey(), iter.next());
+                    // We can only update one CQ3Row per partition key at a time (we don't allow IN for clustering key)
+                    assert !iter.hasNext();
+                }
+
+                return state;
             }
-        }
-        return map;
+        });
     }
 
     public boolean hasConditions()
@@ -472,7 +482,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
             || (staticConditions != null && !staticConditions.isEmpty());
     }
 
-    public ResultMessage execute(QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> execute(QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         if (options.getConsistency() == null)
@@ -486,7 +496,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
              : executeWithoutCondition(queryState, options);
     }
 
-    private ResultMessage executeWithoutCondition(QueryState queryState, QueryOptions options)
+    private Observable<ResultMessage> executeWithoutCondition(QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         ConsistencyLevel cl = options.getConsistency();
@@ -502,7 +512,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
         return null;
     }
 
-    public ResultMessage executeWithCondition(QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> executeWithCondition(QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         List<ByteBuffer> keys = buildPartitionKeyNames(options);
@@ -524,7 +534,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
                                                request,
                                                options.getSerialConsistency(),
                                                options.getConsistency());
-        return new ResultMessage.Rows(buildCasResultSet(key, result, options));
+        return Observable.just(new ResultMessage.Rows(buildCasResultSet(key, result, options)));
     }
 
     public void addConditions(Composite clusteringPrefix, CQL3CasRequest request, QueryOptions options) throws InvalidRequestException
@@ -623,7 +633,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
         return builder.build();
     }
 
-    public ResultMessage executeInternal(QueryState queryState, QueryOptions options) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> executeInternal(QueryState queryState, QueryOptions options) throws RequestValidationException, RequestExecutionException
     {
         if (hasConditions())
             throw new UnsupportedOperationException();
@@ -635,7 +645,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
 
             ((Mutation) mutation).apply();
         }
-        return null;
+        return Observable.empty();
     }
 
     /**
@@ -677,7 +687,7 @@ public abstract class ModificationStatement implements CQLStatement, MeasurableF
     throws RequestExecutionException, RequestValidationException
     {
         // Some lists operation requires reading
-        Map<ByteBuffer, CQL3Row> rows = readRequiredRows(keys, prefix, local, options.getConsistency());
+        Observable<Map<ByteBuffer, CQL3Row>> rows = readRequiredRows(keys, prefix, local, options.getConsistency());
         return new UpdateParameters(cfm, options, getTimestamp(now, options), getTimeToLive(options), rows);
     }
 

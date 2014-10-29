@@ -43,6 +43,7 @@ import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.utils.Pair;
+import rx.Observable;
 
 /**
  * Utility to write SSTables.
@@ -207,7 +208,7 @@ public class CQLSSTableWriter implements Closeable
                                                        options,
                                                        insert.getTimestamp(now, options),
                                                        insert.getTimeToLive(options),
-                                                       Collections.<ByteBuffer, CQL3Row>emptyMap());
+                                                       Observable.<Map<ByteBuffer, CQL3Row>>empty());
 
         try
         {

@@ -24,6 +24,7 @@ import java.util.Iterator;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import com.google.common.collect.Lists;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
@@ -33,6 +34,10 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.Observable;
+import rx.functions.Func1;
+import rx.observables.BlockingObservable;
+import rx.observables.MathObservable;
 
 abstract class AbstractQueryPager implements QueryPager
 {
@@ -78,19 +83,30 @@ abstract class AbstractQueryPager implements QueryPager
     }
 
 
-    public List<Row> fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public Observable<Row> fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
     {
         if (isExhausted())
-            return Collections.emptyList();
+            return Observable.empty();
 
         int currentPageSize = nextPageSize(pageSize);
-        List<Row> rows = filterEmpty(queryNextPage(currentPageSize, consistencyLevel, localQuery));
+        List<Row> rows = Lists.newArrayList(queryNextPage(currentPageSize, consistencyLevel, localQuery)
+                .filter(new Func1<Row, Boolean>()
+                {
+                    @Override
+                    public Boolean call(Row row)
+                    {
+                        return row.cf == null || !row.cf.hasColumns();
+                    }
+                })
+                .toBlocking()
+                .toIterable());
+
 
         if (rows.isEmpty())
         {
             logger.debug("Got empty set of rows, considering pager exhausted");
             exhausted = true;
-            return Collections.emptyList();
+            return Observable.empty();
         }
 
         int liveCount = getPageLiveCount(rows);
@@ -137,27 +153,7 @@ abstract class AbstractQueryPager implements QueryPager
         if (!isExhausted())
             shouldFetchExtraRow = recordLast(rows.get(rows.size() - 1));
 
-        return rows;
-    }
-
-    private List<Row> filterEmpty(List<Row> result)
-    {
-        for (Row row : result)
-        {
-            if (row.cf == null || !row.cf.hasColumns())
-            {
-                List<Row> newResult = new ArrayList<Row>(result.size() - 1);
-                for (Row row2 : result)
-                {
-                    if (row2.cf == null || !row2.cf.hasColumns())
-                        continue;
-
-                    newResult.add(row2);
-                }
-                return newResult;
-            }
-        }
-        return result;
+        return Observable.from(rows);
     }
 
     protected void restoreState(int remaining, boolean shouldFetchExtraRow)
@@ -191,7 +187,7 @@ abstract class AbstractQueryPager implements QueryPager
         return columnFilter.columnCounter(cfm.comparator, timestamp);
     }
 
-    protected abstract List<Row> queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery) throws RequestValidationException, RequestExecutionException;
+    protected abstract Observable<Row> queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery) throws RequestValidationException, RequestExecutionException;
 
     /**
      * Checks to see if the first row of a new page contains the last row from the previous page.

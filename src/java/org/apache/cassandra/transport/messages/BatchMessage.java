@@ -31,12 +31,17 @@ import org.apache.cassandra.cql3.statements.ModificationStatement;
 import org.apache.cassandra.cql3.statements.ParsedStatement;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.PreparedQueryNotFoundException;
+import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.MD5Digest;
 import org.apache.cassandra.utils.UUIDGen;
+import rx.Observable;
+import rx.functions.Func0;
+import rx.functions.Func1;
 
 public class BatchMessage extends Message.Request
 {
@@ -151,7 +156,7 @@ public class BatchMessage extends Message.Request
         this.options = options;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -211,16 +216,39 @@ public class BatchMessage extends Message.Request
             // Note: It's ok at this point to pass a bogus value for the number of bound terms in the BatchState ctor
             // (and no value would be really correct, so we prefer passing a clearly wrong one).
             BatchStatement batch = new BatchStatement(-1, batchType, statements, Attributes.none());
-            Message.Response response = handler.processBatch(batch, state, batchOptions);
+            Observable<? extends ResultMessage> response = handler.processBatch(batch, state, batchOptions);
 
-            if (tracingId != null)
-                response.setTracingId(tracingId);
+            final UUID finalTracingId = tracingId;
 
-            return response;
+            return response.flatMap(new Func1<ResultMessage, Observable<Response>>()
+            {
+                @Override
+                public Observable<Response> call(ResultMessage resultMessage)
+                {
+                    if (finalTracingId != null)
+                        resultMessage.setTracingId(finalTracingId);
+
+                    return Observable.just((Response) resultMessage);
+                }
+            }, new Func1<Throwable, Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call(Throwable throwable)
+                {
+                     return Observable.just(ErrorMessage.fromException(throwable));
+                }
+            }, new Func0<Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call()
+                {
+                    return null;
+                }
+            });
         }
         catch (Exception e)
         {
-            return ErrorMessage.fromException(e);
+            throw new RuntimeException(e);
         }
         finally
         {

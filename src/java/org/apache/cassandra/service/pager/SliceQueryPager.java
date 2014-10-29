@@ -30,6 +30,7 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.service.StorageProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.Observable;
 
 /**
  * Pager over a SliceFromReadCommand.
@@ -72,7 +73,7 @@ public class SliceQueryPager extends AbstractQueryPager implements SinglePartiti
              : new PagingState(null, lastReturned.toByteBuffer(), maxRemaining());
     }
 
-    protected List<Row> queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    protected Observable<Row> queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
     throws RequestValidationException, RequestExecutionException
     {
         // For some queries, such as a DISTINCT query on static columns, the limit for slice queries will be lower
@@ -85,7 +86,7 @@ public class SliceQueryPager extends AbstractQueryPager implements SinglePartiti
         logger.debug("Querying next page of slice query; new filter: {}", filter);
         ReadCommand pageCmd = command.withUpdatedFilter(filter);
         return localQuery
-             ? Collections.singletonList(pageCmd.getRow(Keyspace.open(command.ksName)))
+             ? Observable.just(pageCmd.getRow(Keyspace.open(command.ksName)))
              : StorageProxy.read(Collections.singletonList(pageCmd), consistencyLevel);
     }
 

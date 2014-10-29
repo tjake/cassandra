@@ -241,13 +241,13 @@ public abstract class CQLTester
             if (usePrepared)
             {
                 logger.info("Executing: {} with values {}", query, formatAllValues(values));
-                rs = QueryProcessor.executeOnceInternal(query, transformValues(values));
+                rs = QueryProcessor.executeOnceInternal(query, transformValues(values)).toBlocking().firstOrDefault(null);
             }
             else
             {
                 query = replaceValues(query, values);
                 logger.info("Executing: {}", query);
-                rs = QueryProcessor.executeOnceInternal(query);
+                rs = QueryProcessor.executeOnceInternal(query).toBlocking().firstOrDefault(null);
             }
             if (rs != null)
                 logger.info("Got {} rows", rs.size());

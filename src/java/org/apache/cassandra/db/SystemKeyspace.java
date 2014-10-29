@@ -148,7 +148,7 @@ public class SystemKeyspace
     /** Migrates index_interval values to min_index_interval and sets index_interval to null */
     private static void migrateIndexInterval()
     {
-        for (UntypedResultSet.Row row : executeOnceInternal(String.format("SELECT * FROM system.%s", SCHEMA_COLUMNFAMILIES_CF)))
+        for (UntypedResultSet.Row row : executeOnceInternal(String.format("SELECT * FROM system.%s", SCHEMA_COLUMNFAMILIES_CF)).toBlocking().first())
         {
             if (!row.has("index_interval"))
                 continue;
@@ -157,7 +157,7 @@ public class SystemKeyspace
 
             CFMetaData table = CFMetaData.fromSchema(row);
             String query = String.format("SELECT writetime(type) FROM system.%s WHERE keyspace_name = ? AND columnfamily_name = ?", SCHEMA_COLUMNFAMILIES_CF);
-            long timestamp = executeOnceInternal(query, table.ksName, table.cfName).one().getLong("writetime(type)");
+            long timestamp = executeOnceInternal(query, table.ksName, table.cfName).toBlocking().first().one().getLong("writetime(type)");
             try
             {
                 table.toSchema(timestamp).apply();
@@ -171,7 +171,7 @@ public class SystemKeyspace
 
     private static void migrateCachingOption()
     {
-        for (UntypedResultSet.Row row : executeOnceInternal(String.format("SELECT * FROM system.%s", SCHEMA_COLUMNFAMILIES_CF)))
+        for (UntypedResultSet.Row row : executeOnceInternal(String.format("SELECT * FROM system.%s", SCHEMA_COLUMNFAMILIES_CF)).toBlocking().first())
         {
             if (!row.has("caching"))
                 continue;
@@ -184,7 +184,7 @@ public class SystemKeyspace
                 CFMetaData table = CFMetaData.fromSchema(row);
                 logger.info("Migrating caching option {} to {} for {}.{}", row.getString("caching"), caching.toString(), table.ksName, table.cfName);
                 String query = String.format("SELECT writetime(type) FROM system.%s WHERE keyspace_name = ? AND columnfamily_name = ?", SCHEMA_COLUMNFAMILIES_CF);
-                long timestamp = executeOnceInternal(query, table.ksName, table.cfName).one().getLong("writetime(type)");
+                long timestamp = executeOnceInternal(query, table.ksName, table.cfName).toBlocking().first().one().getLong("writetime(type)");
                 table.toSchema(timestamp).apply();
             }
             catch (ConfigurationException e)
@@ -240,7 +240,7 @@ public class SystemKeyspace
     public static Map<Pair<String, String>, Map<Integer, UUID>> getUnfinishedCompactions()
     {
         String req = "SELECT * FROM system.%s";
-        UntypedResultSet resultSet = executeInternal(String.format(req, COMPACTION_LOG));
+        UntypedResultSet resultSet = executeInternal(String.format(req, COMPACTION_LOG)).toBlocking().first();
 
         Map<Pair<String, String>, Map<Integer, UUID>> unfinishedCompactions = new HashMap<>();
         for (UntypedResultSet.Row row : resultSet)
@@ -285,7 +285,7 @@ public class SystemKeyspace
 
     public static TabularData getCompactionHistory() throws OpenDataException
     {
-        UntypedResultSet queryResultSet = executeInternal(String.format("SELECT * from system.%s", COMPACTION_HISTORY_CF));
+        UntypedResultSet queryResultSet = executeInternal(String.format("SELECT * from system.%s", COMPACTION_HISTORY_CF)).toBlocking().first();
         return CompactionHistoryTabularData.from(queryResultSet);
     }
 
@@ -344,7 +344,7 @@ public class SystemKeyspace
 
     private static Map<UUID, Pair<ReplayPosition, Long>> readTruncationRecords()
     {
-        UntypedResultSet rows = executeInternal(String.format("SELECT truncated_at FROM system.%s WHERE key = '%s'", LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet rows = executeInternal(String.format("SELECT truncated_at FROM system.%s WHERE key = '%s'", LOCAL_CF, LOCAL_KEY)).toBlocking().first();
 
         Map<UUID, Pair<ReplayPosition, Long>> records = new HashMap<>();
 
@@ -482,7 +482,7 @@ public class SystemKeyspace
     public static SetMultimap<InetAddress, Token> loadTokens()
     {
         SetMultimap<InetAddress, Token> tokenMap = HashMultimap.create();
-        for (UntypedResultSet.Row row : executeInternal("SELECT peer, tokens FROM system." + PEERS_CF))
+        for (UntypedResultSet.Row row : executeInternal("SELECT peer, tokens FROM system." + PEERS_CF).toBlocking().first())
         {
             InetAddress peer = row.getInetAddress("peer");
             if (row.has("tokens"))
@@ -499,7 +499,7 @@ public class SystemKeyspace
     public static Map<InetAddress, UUID> loadHostIds()
     {
         Map<InetAddress, UUID> hostIdMap = new HashMap<InetAddress, UUID>();
-        for (UntypedResultSet.Row row : executeInternal("SELECT peer, host_id FROM system." + PEERS_CF))
+        for (UntypedResultSet.Row row : executeInternal("SELECT peer, host_id FROM system." + PEERS_CF).toBlocking().first())
         {
             InetAddress peer = row.getInetAddress("peer");
             if (row.has("host_id"))
@@ -519,7 +519,7 @@ public class SystemKeyspace
     public static InetAddress getPreferredIP(InetAddress ep)
     {
         String req = "SELECT preferred_ip FROM system.%s WHERE peer=?";
-        UntypedResultSet result = executeInternal(String.format(req, PEERS_CF), ep);
+        UntypedResultSet result = executeInternal(String.format(req, PEERS_CF), ep).toBlocking().first();
         if (!result.isEmpty() && result.one().has("preferred_ip"))
             return result.one().getInetAddress("preferred_ip");
         return ep;
@@ -531,7 +531,7 @@ public class SystemKeyspace
     public static Map<InetAddress, Map<String,String>> loadDcRackInfo()
     {
         Map<InetAddress, Map<String, String>> result = new HashMap<InetAddress, Map<String, String>>();
-        for (UntypedResultSet.Row row : executeInternal("SELECT peer, data_center, rack from system." + PEERS_CF))
+        for (UntypedResultSet.Row row : executeInternal("SELECT peer, data_center, rack from system." + PEERS_CF).toBlocking().first())
         {
             InetAddress peer = row.getInetAddress("peer");
             if (row.has("data_center") && row.has("rack"))
@@ -569,7 +569,7 @@ public class SystemKeyspace
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(LOCAL_CF);
 
         String req = "SELECT cluster_name FROM system.%s WHERE key='%s'";
-        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY)).toBlocking().first();
 
         if (result.isEmpty() || !result.one().has("cluster_name"))
         {
@@ -591,7 +591,7 @@ public class SystemKeyspace
     public static Collection<Token> getSavedTokens()
     {
         String req = "SELECT tokens FROM system.%s WHERE key='%s'";
-        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY)).toBlocking().first();
         return result.isEmpty() || !result.one().has("tokens")
              ? Collections.<Token>emptyList()
              : deserializeTokens(result.one().<String>getSet("tokens", UTF8Type.instance));
@@ -600,7 +600,7 @@ public class SystemKeyspace
     public static int incrementAndGetGeneration()
     {
         String req = "SELECT gossip_generation FROM system.%s WHERE key='%s'";
-        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY)).toBlocking().first();
 
         int generation;
         if (result.isEmpty() || !result.one().has("gossip_generation"))
@@ -637,7 +637,7 @@ public class SystemKeyspace
     public static BootstrapState getBootstrapState()
     {
         String req = "SELECT bootstrapped FROM system.%s WHERE key='%s'";
-        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY)).toBlocking().first();
 
         if (result.isEmpty() || !result.one().has("bootstrapped"))
             return BootstrapState.NEEDS_BOOTSTRAP;
@@ -693,7 +693,7 @@ public class SystemKeyspace
     public static UUID getLocalHostId()
     {
         String req = "SELECT host_id FROM system.%s WHERE key='%s'";
-        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY));
+        UntypedResultSet result = executeInternal(String.format(req, LOCAL_CF, LOCAL_KEY)).toBlocking().first();
 
         // Look up the Host UUID (return it if found)
         if (!result.isEmpty() && result.one().has("host_id"))
@@ -848,7 +848,7 @@ public class SystemKeyspace
     public static PaxosState loadPaxosState(ByteBuffer key, CFMetaData metadata)
     {
         String req = "SELECT * FROM system.%s WHERE row_key = ? AND cf_id = ?";
-        UntypedResultSet results = executeInternal(String.format(req, PAXOS_CF), key, metadata.cfId);
+        UntypedResultSet results = executeInternal(String.format(req, PAXOS_CF), key, metadata.cfId).toBlocking().first();
         if (results.isEmpty())
             return new PaxosState(key, metadata);
         UntypedResultSet.Row row = results.one();
@@ -869,7 +869,7 @@ public class SystemKeyspace
     public static Commit loadPaxosPromise(ByteBuffer key, CFMetaData metadata)
     {
         String req = "SELECT in_progress_ballot FROM system.%s WHERE row_key = ? AND cf_id = ?";
-        UntypedResultSet results = executeInternal(String.format(req, PAXOS_CF), key, metadata.cfId);
+        UntypedResultSet results = executeInternal(String.format(req, PAXOS_CF), key, metadata.cfId).toBlocking().first();
         if (results.isEmpty())
             return Commit.emptyCommit(key, metadata);
         UntypedResultSet.Row row = results.one();
@@ -931,7 +931,7 @@ public class SystemKeyspace
     public static RestorableMeter getSSTableReadMeter(String keyspace, String table, int generation)
     {
         String cql = "SELECT * FROM system.%s WHERE keyspace_name=? and columnfamily_name=? and generation=?";
-        UntypedResultSet results = executeInternal(String.format(cql, SSTABLE_ACTIVITY_CF), keyspace, table, generation);
+        UntypedResultSet results = executeInternal(String.format(cql, SSTABLE_ACTIVITY_CF), keyspace, table, generation).toBlocking().first();
 
         if (results.isEmpty())
             return new RestorableMeter();

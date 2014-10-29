@@ -27,6 +27,7 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class GrantStatement extends PermissionAlteringStatement
 {
@@ -35,9 +36,9 @@ public class GrantStatement extends PermissionAlteringStatement
         super(permissions, resource, username);
     }
 
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         DatabaseDescriptor.getAuthorizer().grant(state.getUser(), permissions, resource, username);
-        return null;
+        return Observable.empty();
     }
 }

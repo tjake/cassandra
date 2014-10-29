@@ -25,6 +25,7 @@ import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public abstract class AuthorizationStatement extends ParsedStatement implements CQLStatement
 {
@@ -39,15 +40,15 @@ public abstract class AuthorizationStatement extends ParsedStatement implements 
         return 0;
     }
 
-    public ResultMessage execute(QueryState state, QueryOptions options)
+    public Observable<? extends ResultMessage> execute(QueryState state, QueryOptions options)
     throws RequestValidationException, RequestExecutionException
     {
         return execute(state.getClientState());
     }
 
-    public abstract ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException;
+    public abstract Observable<? extends ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException;
 
-    public ResultMessage executeInternal(QueryState state, QueryOptions options)
+    public Observable<? extends ResultMessage> executeInternal(QueryState state, QueryOptions options)
     {
         // executeInternal is for local query only, thus altering permission doesn't make sense and is not supported
         throw new UnsupportedOperationException();

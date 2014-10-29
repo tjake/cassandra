@@ -30,11 +30,16 @@ import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.statements.ParsedStatement;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.exceptions.PreparedQueryNotFoundException;
+import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.MD5Digest;
 import org.apache.cassandra.utils.UUIDGen;
+import rx.Observable;
+import rx.functions.Func0;
+import rx.functions.Func1;
 
 public class ExecuteMessage extends Message.Request
 {
@@ -96,7 +101,7 @@ public class ExecuteMessage extends Message.Request
         this.options = options;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -130,21 +135,49 @@ public class ExecuteMessage extends Message.Request
                 Tracing.instance.begin("Execute CQL3 prepared query", builder.build());
             }
 
-            Message.Response response = handler.processPrepared(statement, state, options);
-            if (options.skipMetadata() && response instanceof ResultMessage.Rows)
-                ((ResultMessage.Rows)response).result.metadata.setSkipMetadata();
 
-            if (tracingId != null)
-                response.setTracingId(tracingId);
+            Observable<? extends ResultMessage> response = handler.processPrepared(statement, state, options);
 
-            return response;
+            final UUID finalTracingId = tracingId;
+
+            return response.flatMap(new Func1<ResultMessage, Observable<Response>>()
+            {
+                @Override
+                public Observable<Response> call(ResultMessage resultMessage)
+                {
+
+                    if (options.skipMetadata() && resultMessage instanceof ResultMessage.Rows)
+                        ((ResultMessage.Rows) resultMessage).result.metadata.setSkipMetadata();
+
+                    if (finalTracingId != null)
+                        resultMessage.setTracingId(finalTracingId);
+                    return Observable.just((Response) resultMessage);
+                }
+            }, new Func1<Throwable, Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call(Throwable throwable)
+                {
+                    return Observable.just(ErrorMessage.fromException(throwable));
+                }
+            }, new Func0<Observable<? extends Response>>()
+            {
+                @Override
+                public Observable<? extends Response> call()
+                {
+                    return null;
+                }
+            });
         }
         catch (Exception e)
         {
-            return ErrorMessage.fromException(e);
+            //need to cleanup api since these are now part of observables
+            throw new RuntimeException(e);
+
         }
         finally
         {
+            //Sessions are messed up
             Tracing.instance.stopSession();
         }
     }

@@ -47,6 +47,7 @@ import org.apache.cassandra.service.*;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Pair;
+import rx.Observable;
 
 public class Auth implements AuthMBean
 {
@@ -288,9 +289,9 @@ public class Auth implements AuthMBean
         // Try looking up the 'cassandra' default super user first, to avoid the range query if possible.
         String defaultSUQuery = String.format("SELECT * FROM %s.%s WHERE name = '%s'", AUTH_KS, USERS_CF, DEFAULT_SUPERUSER_NAME);
         String allUsersQuery = String.format("SELECT * FROM %s.%s LIMIT 1", AUTH_KS, USERS_CF);
-        return !QueryProcessor.process(defaultSUQuery, ConsistencyLevel.ONE).isEmpty()
-            || !QueryProcessor.process(defaultSUQuery, ConsistencyLevel.QUORUM).isEmpty()
-            || !QueryProcessor.process(allUsersQuery, ConsistencyLevel.QUORUM).isEmpty();
+        return !QueryProcessor.process(defaultSUQuery, ConsistencyLevel.ONE).toList().toBlocking().first().isEmpty()
+            || !QueryProcessor.process(defaultSUQuery, ConsistencyLevel.QUORUM).toList().toBlocking().first().isEmpty()
+            || !QueryProcessor.process(allUsersQuery, ConsistencyLevel.QUORUM).toList().toBlocking().first().isEmpty();
     }
 
     // we only worry about one character ('). Make sure it's properly escaped.
@@ -303,10 +304,10 @@ public class Auth implements AuthMBean
     {
         try
         {
-            ResultMessage.Rows rows = selectUserStatement.execute(QueryState.forInternalCalls(),
+            Observable<ResultMessage.Rows> rows = selectUserStatement.execute(QueryState.forInternalCalls(),
                                                                   QueryOptions.forInternalCalls(consistencyForUser(username),
                                                                                                 Lists.newArrayList(ByteBufferUtil.bytes(username))));
-            return UntypedResultSet.create(rows.result);
+            return UntypedResultSet.create(rows.toBlocking().first().result);
         }
         catch (RequestValidationException e)
         {

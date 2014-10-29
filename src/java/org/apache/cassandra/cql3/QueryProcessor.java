@@ -47,6 +47,9 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.MD5Digest;
 import org.apache.cassandra.utils.SemanticVersion;
+import rx.*;
+import rx.Observable;
+import rx.functions.Func1;
 
 public class QueryProcessor implements QueryHandler
 {
@@ -214,7 +217,7 @@ public class QueryProcessor implements QueryHandler
                                                             Cell.MAX_NAME_LENGTH));
     }
 
-    public ResultMessage processStatement(CQLStatement statement, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> processStatement(CQLStatement statement, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         logger.trace("Process {} @CL.{}", statement, options.getConsistency());
@@ -222,17 +225,17 @@ public class QueryProcessor implements QueryHandler
         statement.checkAccess(clientState);
         statement.validate(clientState);
 
-        ResultMessage result = statement.execute(queryState, options);
-        return result == null ? new ResultMessage.Void() : result;
+        Observable<? extends ResultMessage> result = statement.execute(queryState, options);
+        return result == null ? Observable.just(new ResultMessage.Void()) : result;
     }
 
-    public static ResultMessage process(String queryString, ConsistencyLevel cl, QueryState queryState)
+    public static Observable<? extends ResultMessage> process(String queryString, ConsistencyLevel cl, QueryState queryState)
     throws RequestExecutionException, RequestValidationException
     {
         return instance.process(queryString, queryState, QueryOptions.forInternalCalls(cl, Collections.<ByteBuffer>emptyList()));
     }
 
-    public ResultMessage process(String queryString, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> process(String queryString, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         ParsedStatement.Prepared p = getStatement(queryString, queryState.getClientState());
@@ -252,15 +255,22 @@ public class QueryProcessor implements QueryHandler
         return getStatement(queryStr, queryState.getClientState());
     }
 
-    public static UntypedResultSet process(String query, ConsistencyLevel cl) throws RequestExecutionException
+    public static Observable<UntypedResultSet> process(String query, ConsistencyLevel cl) throws RequestExecutionException
     {
         try
         {
-            ResultMessage result = instance.process(query, QueryState.forInternalCalls(), QueryOptions.forInternalCalls(cl, Collections.<ByteBuffer>emptyList()));
-            if (result instanceof ResultMessage.Rows)
-                return UntypedResultSet.create(((ResultMessage.Rows)result).result);
-            else
-                return null;
+            Observable<? extends ResultMessage> result = instance.process(query, QueryState.forInternalCalls(), QueryOptions.forInternalCalls(cl, Collections.<ByteBuffer>emptyList()));
+            return result.flatMap(new Func1<ResultMessage, Observable<UntypedResultSet>>()
+            {
+                @Override
+                public Observable<UntypedResultSet> call(ResultMessage result)
+                {
+                    if (result instanceof ResultMessage.Rows)
+                        return Observable.just(UntypedResultSet.create(((ResultMessage.Rows)result).result));
+                    else
+                        return null;
+                }
+            });
         }
         catch (RequestValidationException e)
         {
@@ -296,16 +306,25 @@ public class QueryProcessor implements QueryHandler
         return prepared;
     }
 
-    public static UntypedResultSet executeInternal(String query, Object... values)
+    public static Observable<UntypedResultSet> executeInternal(String query, Object... values)
     {
         try
         {
             ParsedStatement.Prepared prepared = prepareInternal(query);
-            ResultMessage result = prepared.statement.executeInternal(internalQueryState(), makeInternalOptions(prepared, values));
-            if (result instanceof ResultMessage.Rows)
-                return UntypedResultSet.create(((ResultMessage.Rows)result).result);
-            else
-                return null;
+            Observable<? extends ResultMessage> result = prepared.statement.executeInternal(internalQueryState(), makeInternalOptions(prepared, values));
+
+            return result.flatMap(new Func1<ResultMessage, Observable<UntypedResultSet>>()
+            {
+                @Override
+                public Observable<UntypedResultSet> call(ResultMessage result)
+                {
+                    if (result instanceof ResultMessage.Rows)
+                        return Observable.just(UntypedResultSet.create(((ResultMessage.Rows)result).result));
+                    else
+                        return null;
+                }
+            });
+
         }
         catch (RequestExecutionException e)
         {
@@ -339,17 +358,26 @@ public class QueryProcessor implements QueryHandler
      * Same than executeInternal, but to use for queries we know are only executed once so that the
      * created statement object is not cached.
      */
-    public static UntypedResultSet executeOnceInternal(String query, Object... values)
+    public static Observable<UntypedResultSet> executeOnceInternal(String query, Object... values)
     {
         try
         {
             ParsedStatement.Prepared prepared = parseStatement(query, internalQueryState());
             prepared.statement.validate(internalQueryState().getClientState());
-            ResultMessage result = prepared.statement.executeInternal(internalQueryState(), makeInternalOptions(prepared, values));
-            if (result instanceof ResultMessage.Rows)
-                return UntypedResultSet.create(((ResultMessage.Rows)result).result);
-            else
-                return null;
+            Observable<? extends ResultMessage> result = prepared.statement.executeInternal(internalQueryState(), makeInternalOptions(prepared, values));
+
+            return result.flatMap(new Func1<ResultMessage, Observable<UntypedResultSet>>()
+            {
+                @Override
+                public Observable<UntypedResultSet> call(ResultMessage result)
+                {
+                    if (result instanceof ResultMessage.Rows)
+                        return Observable.just(UntypedResultSet.create(((ResultMessage.Rows)result).result));
+                    else
+                        return null;
+                }
+            });
+
         }
         catch (RequestExecutionException e)
         {
@@ -361,18 +389,26 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
-    public static UntypedResultSet resultify(String query, Row row)
+    public static Observable<UntypedResultSet> resultify(String query, Row row)
     {
-        return resultify(query, Collections.singletonList(row));
+        return resultify(query, Observable.just(row));
     }
 
-    public static UntypedResultSet resultify(String query, List<Row> rows)
+    public static Observable<UntypedResultSet> resultify(String query, Observable<Row> rows)
     {
         try
         {
             SelectStatement ss = (SelectStatement) getStatement(query, null).statement;
-            ResultSet cqlRows = ss.process(rows);
-            return UntypedResultSet.create(cqlRows);
+            Observable<ResultSet> cqlRows = ss.process(rows);
+
+            return cqlRows.flatMap(new Func1<ResultSet, Observable<UntypedResultSet>>()
+            {
+                @Override
+                public Observable<UntypedResultSet> call(ResultSet resultSet)
+                {
+                    return Observable.just(UntypedResultSet.create(resultSet));
+                }
+            });
         }
         catch (RequestValidationException e)
         {
@@ -457,7 +493,7 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
-    public ResultMessage processPrepared(CQLStatement statement, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> processPrepared(CQLStatement statement, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         List<ByteBuffer> variables = options.getValues();
@@ -480,7 +516,7 @@ public class QueryProcessor implements QueryHandler
         return processStatement(statement, queryState, options);
     }
 
-    public ResultMessage processBatch(BatchStatement batch, QueryState queryState, BatchQueryOptions options)
+    public Observable<? extends ResultMessage> processBatch(BatchStatement batch, QueryState queryState, BatchQueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         ClientState clientState = queryState.getClientState();

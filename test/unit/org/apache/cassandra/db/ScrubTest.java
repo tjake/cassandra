@@ -355,7 +355,7 @@ public class ScrubTest
         CompactionManager.instance.performScrub(cfs, true);
 
         // Scrub is silent, but it will remove broken records. So reading everything back to make sure nothing to "scrubbed away"
-        UntypedResultSet rs = QueryProcessor.executeInternal(String.format("SELECT * FROM \"%s\".test_compact_dynamic_columns", KEYSPACE));
+        UntypedResultSet rs = QueryProcessor.executeInternal(String.format("SELECT * FROM \"%s\".test_compact_dynamic_columns", KEYSPACE)).toBlocking().first();
         assertEquals(3, rs.size());
 
         Iterator<UntypedResultSet.Row> iter = rs.iterator();

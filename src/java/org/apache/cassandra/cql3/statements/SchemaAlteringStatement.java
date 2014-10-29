@@ -25,6 +25,7 @@ import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 /**
  * Abstract class for statements that alter the schema.
@@ -73,28 +74,28 @@ public abstract class SchemaAlteringStatement extends CFStatement implements CQL
      */
     public abstract boolean announceMigration(boolean isLocalOnly) throws RequestValidationException;
 
-    public ResultMessage execute(QueryState state, QueryOptions options) throws RequestValidationException
+    public Observable<? extends ResultMessage> execute(QueryState state, QueryOptions options) throws RequestValidationException
     {
         // If an IF [NOT] EXISTS clause was used, this may not result in an actual schema change.  To avoid doing
         // extra work in the drivers to handle schema changes, we return an empty message in this case. (CASSANDRA-7600)
         boolean didChangeSchema = announceMigration(false);
         if (!didChangeSchema)
-            return new ResultMessage.Void();
+            return Observable.just(new ResultMessage.Void());
 
         Event.SchemaChange ce = changeEvent();
-        return ce == null ? new ResultMessage.Void() : new ResultMessage.SchemaChange(ce);
+        return Observable.just(ce == null ? new ResultMessage.Void() : new ResultMessage.SchemaChange(ce));
     }
 
-    public ResultMessage executeInternal(QueryState state, QueryOptions options)
+    public Observable<? extends ResultMessage> executeInternal(QueryState state, QueryOptions options)
     {
         try
         {
             boolean didChangeSchema = announceMigration(true);
             if (!didChangeSchema)
-                return new ResultMessage.Void();
+                return Observable.just(new ResultMessage.Void());
 
             Event.SchemaChange ce = changeEvent();
-            return ce == null ? new ResultMessage.Void() : new ResultMessage.SchemaChange(ce);
+            return Observable.just(ce == null ? new ResultMessage.Void() : new ResultMessage.SchemaChange(ce));
         }
         catch (RequestValidationException e)
         {

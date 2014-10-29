@@ -30,6 +30,8 @@ import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.filter.ColumnCounter;
 import org.apache.cassandra.db.marshal.Int32Type;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import rx.*;
+import rx.Observable;
 
 public class AbstractQueryPagerTest
 {
@@ -162,7 +164,7 @@ public class AbstractQueryPagerTest
             return null;
         }
 
-        protected List<Row> queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery)
+        protected Observable<Row> queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery)
         {
             return null;
         }

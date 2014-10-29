@@ -30,8 +30,22 @@ public class AsyncOneResponse<T> implements IAsyncCallback<T>
     private boolean done;
     private final long start = System.nanoTime();
 
+    public boolean isReady(long timeout, TimeUnit tu) throws TimeoutException
+    {
+        long overallTimeout = timeout - (System.nanoTime() - start);
+        if (overallTimeout <= 0)
+        {
+            throw new TimeoutException("Operation timed out.");
+        }
+
+        return done;
+    }
+
     public T get(long timeout, TimeUnit tu) throws TimeoutException
     {
+        if (done)
+            return result;
+
         timeout = tu.toNanos(timeout);
         boolean interrupted = false;
         try

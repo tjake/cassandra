@@ -62,7 +62,7 @@ public class TriggerDefinition
     {
         List<TriggerDefinition> triggers = new ArrayList<>();
         String query = String.format("SELECT * FROM %s.%s", Keyspace.SYSTEM_KS, SystemKeyspace.SCHEMA_TRIGGERS_CF);
-        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, serializedTriggers))
+        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, serializedTriggers).toBlocking().first())
         {
             String name = row.getString(TRIGGER_NAME);
             String classOption = row.getMap(TRIGGER_OPTIONS, UTF8Type.instance, UTF8Type.instance).get(CLASS);

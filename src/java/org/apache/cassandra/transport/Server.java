@@ -295,7 +295,7 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast(server.eventExecutorGroup, "executor", dispatcher);
+            pipeline.addLast("executor", dispatcher);
         }
     }
 

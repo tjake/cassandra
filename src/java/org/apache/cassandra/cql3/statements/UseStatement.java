@@ -24,6 +24,7 @@ import org.apache.cassandra.exceptions.UnauthorizedException;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
+import rx.Observable;
 
 public class UseStatement extends ParsedStatement implements CQLStatement
 {
@@ -53,13 +54,13 @@ public class UseStatement extends ParsedStatement implements CQLStatement
     {
     }
 
-    public ResultMessage execute(QueryState state, QueryOptions options) throws InvalidRequestException
+    public Observable<ResultMessage.SetKeyspace> execute(QueryState state, QueryOptions options) throws InvalidRequestException
     {
         state.getClientState().setKeyspace(keyspace);
-        return new ResultMessage.SetKeyspace(keyspace);
+        return Observable.just(new ResultMessage.SetKeyspace(keyspace));
     }
 
-    public ResultMessage executeInternal(QueryState state, QueryOptions options)
+    public Observable<ResultMessage> executeInternal(QueryState state, QueryOptions options)
     {
         // Internal queries are exclusively on the system keyspace and 'use' is thus useless
         throw new UnsupportedOperationException();

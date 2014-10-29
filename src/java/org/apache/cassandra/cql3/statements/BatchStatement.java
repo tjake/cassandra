@@ -37,6 +37,8 @@ import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.*;
+import rx.Observable;
 
 /**
  * A <code>BATCH</code> statement parsed from a CQL query.
@@ -267,17 +269,17 @@ public class BatchStatement implements CQLStatement, MeasurableForPreparedCache
         }
     }
 
-    public ResultMessage execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public Observable<? extends ResultMessage> execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         return execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options));
     }
 
-    public ResultMessage execute(QueryState queryState, BatchQueryOptions options) throws RequestExecutionException, RequestValidationException
+    public Observable<? extends ResultMessage> execute(QueryState queryState, BatchQueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         return execute(queryState, options, false, options.getTimestamp(queryState));
     }
 
-    private ResultMessage execute(QueryState queryState, BatchQueryOptions options, boolean local, long now)
+    private Observable<? extends ResultMessage> execute(QueryState queryState, BatchQueryOptions options, boolean local, long now)
     throws RequestExecutionException, RequestValidationException
     {
         if (options.getConsistency() == null)
@@ -289,7 +291,7 @@ public class BatchStatement implements CQLStatement, MeasurableForPreparedCache
             return executeWithConditions(options, now);
 
         executeWithoutConditions(getMutations(options, local, now), options.getConsistency());
-        return new ResultMessage.Void();
+        return Observable.just(new ResultMessage.Void());
     }
 
     private void executeWithoutConditions(Collection<? extends IMutation> mutations, ConsistencyLevel cl) throws RequestExecutionException, RequestValidationException
@@ -308,7 +310,7 @@ public class BatchStatement implements CQLStatement, MeasurableForPreparedCache
         StorageProxy.mutateWithTriggers(mutations, cl, mutateAtomic);
     }
 
-    private ResultMessage executeWithConditions(BatchQueryOptions options, long now)
+    private Observable<? extends ResultMessage> executeWithConditions(BatchQueryOptions options, long now)
     throws RequestExecutionException, RequestValidationException
     {
         ByteBuffer key = null;
@@ -352,10 +354,10 @@ public class BatchStatement implements CQLStatement, MeasurableForPreparedCache
 
         ColumnFamily result = StorageProxy.cas(ksName, cfName, key, casRequest, options.getSerialConsistency(), options.getConsistency());
 
-        return new ResultMessage.Rows(ModificationStatement.buildCasResultSet(ksName, key, cfName, result, columnsWithConditions, true, options.forStatement(0)));
+        return Observable.just(new ResultMessage.Rows(ModificationStatement.buildCasResultSet(ksName, key, cfName, result, columnsWithConditions, true, options.forStatement(0))));
     }
 
-    public ResultMessage executeInternal(QueryState queryState, QueryOptions options) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> executeInternal(QueryState queryState, QueryOptions options) throws RequestValidationException, RequestExecutionException
     {
         assert !hasConditions;
         for (IMutation mutation : getMutations(BatchQueryOptions.withoutPerStatementVariables(options), true, queryState.getTimestamp()))
@@ -364,7 +366,8 @@ public class BatchStatement implements CQLStatement, MeasurableForPreparedCache
             assert mutation instanceof Mutation;
             ((Mutation) mutation).apply();
         }
-        return null;
+
+        return Observable.empty();
     }
 
     public interface BatchVariables

@@ -26,6 +26,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.SemanticVersion;
+import rx.Observable;
 
 /**
  * The initial message of the protocol.
@@ -62,7 +63,7 @@ public class StartupMessage extends Message.Request
         this.options = options;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<? extends Response> execute(QueryState state)
     {
         String cqlVersion = options.get(CQL_VERSION);
         if (cqlVersion == null)
@@ -98,9 +99,9 @@ public class StartupMessage extends Message.Request
         }
 
         if (DatabaseDescriptor.getAuthenticator().requireAuthentication())
-            return new AuthenticateMessage(DatabaseDescriptor.getAuthenticator().getClass().getName());
+            return Observable.just(new AuthenticateMessage(DatabaseDescriptor.getAuthenticator().getClass().getName()));
         else
-            return new ReadyMessage();
+            return Observable.just(new ReadyMessage());
     }
 
     private static Map<String, String> upperCaseKeys(Map<String, String> options)

@@ -1892,7 +1892,7 @@ public final class CFMetaData
 
     private static CFMetaData fromSchema(Row row)
     {
-        UntypedResultSet.Row result = QueryProcessor.resultify("SELECT * FROM system.schema_columnfamilies", row).one();
+        UntypedResultSet.Row result = QueryProcessor.resultify("SELECT * FROM system.schema_columnfamilies", row).toBlocking().first().one();
         return fromSchema(result);
     }
 

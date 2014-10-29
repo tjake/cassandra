@@ -30,6 +30,8 @@ import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.service.CASRequest;
 import org.apache.cassandra.utils.Pair;
+import rx.*;
+import rx.Observable;
 
 /**
  * Processed CAS conditions and update on potentially multiple rows of the same partition.
@@ -174,7 +176,7 @@ public class CQL3CasRequest implements CASRequest
                 }
             }
 
-            UpdateParameters params = new UpdateParameters(cfm, options, timestamp, stmt.getTimeToLive(options), map);
+            UpdateParameters params = new UpdateParameters(cfm, options, timestamp, stmt.getTimeToLive(options), Observable.just(map));
             stmt.addUpdateForKey(updates, key, rowPrefix, params);
         }
     }

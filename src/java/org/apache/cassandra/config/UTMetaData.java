@@ -75,7 +75,7 @@ public final class UTMetaData
 
     public static Map<ByteBuffer, UserType> fromSchema(Row row)
     {
-        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system." + SystemKeyspace.SCHEMA_USER_TYPES_CF, row);
+        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system." + SystemKeyspace.SCHEMA_USER_TYPES_CF, row).toBlocking().first();
         Map<ByteBuffer, UserType> types = new HashMap<>(results.size());
         for (UntypedResultSet.Row result : results)
         {

@@ -43,6 +43,9 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.transport.messages.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.utils.JVMStabilityInspector;
+import rx.Observable;
+import rx.functions.Action0;
+import rx.functions.Action1;
 
 /**
  * A message from the CQL binary protocol.
@@ -195,7 +198,7 @@ public abstract class Message
                 throw new IllegalArgumentException();
         }
 
-        public abstract Response execute(QueryState queryState);
+        public abstract Observable<? extends Response> execute(QueryState queryState);
 
         public void setTracingRequested()
         {
@@ -422,35 +425,63 @@ public abstract class Message
         }
 
         @Override
-        public void channelRead0(ChannelHandlerContext ctx, Request request)
+        public void channelRead0(final ChannelHandlerContext ctx, final Request request)
         {
 
-            final Response response;
             final ServerConnection connection;
 
-            try
+
+            assert request.connection() instanceof ServerConnection;
+            connection = (ServerConnection)request.connection();
+            QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+
+            logger.warn("Received: {}, v={}", request, ctx.channel().remoteAddress());
+
+            Observable<? extends Response> responseObs = request.execute(qstate);
+
+            Response response = responseObs.toBlocking().first();
+            response.setStreamId(request.getStreamId());
+            response.attach(connection);
+            connection.applyStateTransition(request.type, response.type);
+
+            logger.warn("Responding: {}, v={}", response, ctx.channel().remoteAddress());
+            ctx.writeAndFlush(response, ctx.voidPromise());
+
+            /*response.subscribe(new Action1<Response>()
             {
-                assert request.connection() instanceof ServerConnection;
-                connection = (ServerConnection)request.connection();
-                QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+                @Override
+                public void call(Response response)
+                {
+                    response.setStreamId(request.getStreamId());
+                    response.attach(connection);
+                    connection.applyStateTransition(request.type, response.type);
 
-                logger.debug("Received: {}, v={}", request, connection.getVersion());
-
-                response = request.execute(qstate);
-                response.setStreamId(request.getStreamId());
-                response.attach(connection);
-                connection.applyStateTransition(request.type, response.type);
-            }
-            catch (Throwable t)
+                    logger.warn("Responding: {}, v={}", response, connection.getVersion());
+                    ctx.write(response, ctx.voidPromise());
+                }
+            },
+            new Action1<Throwable>()
             {
-                JVMStabilityInspector.inspectThrowable(t);
-                UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
-                return;
-            }
+                @Override
+                public void call(Throwable t)
+                {
+                    JVMStabilityInspector.inspectThrowable(t);
+                    UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
+                    ctx.write(ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
 
-            logger.debug("Responding: {}, v={}", response, connection.getVersion());
-            flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                }
+            },
+            new Action0()
+            {
+                @Override
+                public void call()
+                {
+                    ctx.flush();
+                    request.getSourceFrame().release();
+                }
+            });*/
+
+
         }
 
         private void flush(FlushItem item)

@@ -57,6 +57,12 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.*;
+import rx.Observable;
+import rx.functions.Action2;
+import rx.functions.Func0;
+import rx.functions.Func1;
+import rx.functions.Func2;
 
 /**
  * Encapsulates a completely parsed SELECT query, including the target
@@ -191,7 +197,7 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
         // Nothing to do, all validation has been done by RawStatement.prepare()
     }
 
-    public ResultMessage.Rows execute(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public Observable<ResultMessage.Rows> execute(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         ConsistencyLevel cl = options.getConsistency();
         if (cl == null)
@@ -225,11 +231,11 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
             throw new InvalidRequestException("Cannot page queries with both ORDER BY and a IN restriction on the partition key; you must either remove the "
                                             + "ORDER BY or the IN and sort client side, or disable paging for this query");
 
-        List<Row> page = pager.fetchPage(pageSize);
-        ResultMessage.Rows msg = processResults(page, options, limit, now);
+        Observable<Row> page = pager.fetchPage(pageSize);
+        Observable<ResultMessage.Rows> msg = processResults(page, options, limit, now);
 
         if (!pager.isExhausted())
-            msg.result.metadata.setHasMorePages(pager.state());
+            msg.toBlocking().first().result.metadata.setHasMorePages(pager.state());
 
         return msg;
     }
@@ -249,30 +255,30 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
         return getPageableCommand(options, getLimit(options), System.currentTimeMillis());
     }
 
-    private ResultMessage.Rows execute(Pageable command, QueryOptions options, int limit, long now) throws RequestValidationException, RequestExecutionException
+    private Observable<ResultMessage.Rows> execute(Pageable command, QueryOptions options, int limit, long now) throws RequestValidationException, RequestExecutionException
     {
-        List<Row> rows;
+        Observable<Row> rows;
         if (command == null)
         {
-            rows = Collections.<Row>emptyList();
+            rows = Observable.empty();
         }
         else
         {
             rows = command instanceof Pageable.ReadCommands
                  ? StorageProxy.read(((Pageable.ReadCommands)command).commands, options.getConsistency())
-                 : StorageProxy.getRangeSlice((RangeSliceCommand)command, options.getConsistency());
+                 : Observable.from(StorageProxy.getRangeSlice((RangeSliceCommand) command, options.getConsistency()));
         }
 
         return processResults(rows, options, limit, now);
     }
 
-    private ResultMessage.Rows pageAggregateQuery(QueryPager pager, QueryOptions options, int pageSize, long now)
+    private Observable<ResultMessage.Rows> pageAggregateQuery(QueryPager pager, QueryOptions options, int pageSize, long now)
             throws RequestValidationException, RequestExecutionException
     {
         Selection.ResultSetBuilder result = selection.resultSetBuilder(now);
         while (!pager.isExhausted())
         {
-            for (org.apache.cassandra.db.Row row : pager.fetchPage(pageSize))
+            for (Row row : pager.fetchPage(pageSize).toBlocking().toIterable())
             {
                 // Not columns match the query, skip
                 if (row.cf == null)
@@ -281,13 +287,21 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
                 processColumnFamily(row.key.getKey(), row.cf, options, now, result);
             }
         }
-        return new ResultMessage.Rows(result.build());
+        return Observable.just(new ResultMessage.Rows(result.build()));
     }
 
-    public ResultMessage.Rows processResults(List<Row> rows, QueryOptions options, int limit, long now) throws RequestValidationException
+    public Observable<ResultMessage.Rows> processResults(Observable<Row> rows, QueryOptions options, int limit, long now) throws RequestValidationException
     {
-        ResultSet rset = process(rows, options, limit, now);
-        return new ResultMessage.Rows(rset);
+        Observable<ResultSet> rset = process(rows, options, limit, now);
+
+        return rset.flatMap(new Func1<ResultSet, Observable<ResultMessage.Rows>>()
+        {
+            @Override
+            public Observable<ResultMessage.Rows> call(ResultSet resultSet)
+            {
+                return Observable.just(new ResultMessage.Rows(resultSet));
+            }
+        });
     }
 
     static List<Row> readLocally(String keyspaceName, List<ReadCommand> cmds)
@@ -299,21 +313,21 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
         return rows;
     }
 
-    public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public Observable<ResultMessage.Rows> executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         int limit = getLimit(options);
         long now = System.currentTimeMillis();
         Pageable command = getPageableCommand(options, limit, now);
-        List<Row> rows = command == null
-                       ? Collections.<Row>emptyList()
+        Observable<Row> rows = command == null
+                       ? Observable.<Row>empty()
                        : (command instanceof Pageable.ReadCommands
-                          ? readLocally(keyspace(), ((Pageable.ReadCommands)command).commands)
-                          : ((RangeSliceCommand)command).executeLocally());
+                          ? Observable.from(readLocally(keyspace(), ((Pageable.ReadCommands)command).commands))
+                          : Observable.from(((RangeSliceCommand)command).executeLocally()));
 
         return processResults(rows, options, limit, now);
     }
 
-    public ResultSet process(List<Row> rows) throws InvalidRequestException
+    public Observable<ResultSet> process(Observable<Row> rows) throws InvalidRequestException
     {
         QueryOptions options = QueryOptions.DEFAULT;
         return process(rows, options, getLimit(options), System.currentTimeMillis());
@@ -1111,29 +1125,58 @@ public class SelectStatement implements CQLStatement, MeasurableForPreparedCache
         }
     }
 
-    private ResultSet process(List<Row> rows, QueryOptions options, int limit, long now) throws InvalidRequestException
+
+
+    private Observable<ResultSet> process(final Observable<Row> rows, final QueryOptions options, final int limit, final long now) throws InvalidRequestException
     {
-        Selection.ResultSetBuilder result = selection.resultSetBuilder(now);
-        for (org.apache.cassandra.db.Row row : rows)
+        final Selection.ResultSetBuilder result = selection.resultSetBuilder(now);
+
+
+        return rows.collect(result, new Action2<Selection.ResultSetBuilder, Row>()
         {
-            // Not columns match the query, skip
-            if (row.cf == null)
-                continue;
+            @Override
+            public void call(Selection.ResultSetBuilder resultSetBuilder, Row row)
+            {
+                if (row.cf == null)
+                    return;
 
-            processColumnFamily(row.key.getKey(), row.cf, options, now, result);
-        }
+                try
+                {
+                    processColumnFamily(row.key.getKey(), row.cf, options, now, result);
+                } catch (Throwable e)
+                {
+                    throw new RuntimeException(e);
+                }
+            }
+        }).flatMap(new Func1<Selection.ResultSetBuilder, Observable<ResultSet>>()
+        {
+            @Override
+            public Observable<ResultSet> call(Selection.ResultSetBuilder resultSetBuilder)
+            {
 
-        ResultSet cqlRows = result.build();
+                ResultSet cqlRows = null;
+                try
+                {
+                    cqlRows = result.build();
+                } catch (InvalidRequestException e)
+                {
+                    return Observable.error(e);
+                }
 
-        orderResults(cqlRows);
 
-        // Internal calls always return columns in the comparator order, even when reverse was set
-        if (isReversed)
-            cqlRows.reverse();
+                orderResults(cqlRows);
 
-        // Trim result if needed to respect the user limit
-        cqlRows.trim(limit);
-        return cqlRows;
+                // Internal calls always return columns in the comparator order, even when reverse was set
+                if (isReversed)
+                    cqlRows.reverse();
+
+                // Trim result if needed to respect the user limit
+                cqlRows.trim(limit);
+
+
+                return Observable.just(cqlRows);
+            }
+        });
     }
 
     // Used by ModificationStatement for CAS operations

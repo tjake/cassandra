@@ -374,7 +374,7 @@ public class CompactionsPurgeTest
                                       keyspace, table, 1, "foo", 1));
         cfs.forceBlockingFlush();
 
-        UntypedResultSet result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1));
+        UntypedResultSet result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1)).toBlocking().first();
         assertEquals(1, result.size());
 
         // write a row tombstone out to a second sstable
@@ -383,7 +383,7 @@ public class CompactionsPurgeTest
 
         // basic check that the row is considered deleted
         assertEquals(2, cfs.getSSTables().size());
-        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1));
+        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1)).toBlocking().first();
         assertEquals(0, result.size());
 
         // compact the two sstables with a gcBefore that does *not* allow the row tombstone to be purged
@@ -392,7 +392,7 @@ public class CompactionsPurgeTest
 
         // the data should be gone, but the tombstone should still exist
         assertEquals(1, cfs.getSSTables().size());
-        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1));
+        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1)).toBlocking().first();
         assertEquals(0, result.size());
 
         // write a row out to one sstable
@@ -400,7 +400,7 @@ public class CompactionsPurgeTest
                                       keyspace, table, 1, "foo", 1));
         cfs.forceBlockingFlush();
         assertEquals(2, cfs.getSSTables().size());
-        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1));
+        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1)).toBlocking().first();
         assertEquals(1, result.size());
 
         // write a row tombstone out to a different sstable
@@ -413,7 +413,7 @@ public class CompactionsPurgeTest
 
         // both the data and the tombstone should be gone this time
         assertEquals(0, cfs.getSSTables().size());
-        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1));
+        result = executeInternal(String.format("SELECT * FROM %s.%s WHERE k = %d", keyspace, table, 1)).toBlocking().first();
         assertEquals(0, result.size());
     }
 }

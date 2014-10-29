@@ -24,6 +24,7 @@ import io.netty.buffer.ByteBuf;
 
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.*;
+import rx.Observable;
 
 public class RegisterMessage extends Message.Request
 {
@@ -62,14 +63,14 @@ public class RegisterMessage extends Message.Request
         this.eventTypes = eventTypes;
     }
 
-    public Response execute(QueryState state)
+    public Observable<? extends Response> execute(QueryState state)
     {
         assert connection instanceof ServerConnection;
         Connection.Tracker tracker = ((ServerConnection)connection).getTracker();
         assert tracker instanceof Server.ConnectionTracker;
         for (Event.Type type : eventTypes)
             ((Server.ConnectionTracker)tracker).register(type, connection().channel());
-        return new ReadyMessage();
+        return Observable.just(new ReadyMessage());
     }
 
     @Override

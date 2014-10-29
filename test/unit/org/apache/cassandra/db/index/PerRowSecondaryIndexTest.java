@@ -152,7 +152,7 @@ public class PerRowSecondaryIndexTest
         rm.apply();
         
         // test we can search:
-        UntypedResultSet result = QueryProcessor.executeInternal(String.format("SELECT * FROM \"%s\".\"Indexed1\" WHERE indexed = 'foo'", KEYSPACE1));
+        UntypedResultSet result = QueryProcessor.executeInternal(String.format("SELECT * FROM \"%s\".\"Indexed1\" WHERE indexed = 'foo'", KEYSPACE1)).toBlocking().first();
         assertEquals(1, result.size());
 
         // test we can't search if the searcher doesn't validate the expression:

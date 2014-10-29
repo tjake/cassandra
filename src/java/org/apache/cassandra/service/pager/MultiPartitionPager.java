@@ -23,6 +23,7 @@ import java.util.List;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.exceptions.RequestExecutionException;
+import rx.Observable;
 
 /**
  * Pager over a list of ReadCommand.
@@ -119,7 +120,7 @@ class MultiPartitionPager implements QueryPager
         return true;
     }
 
-    public List<Row> fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public Observable<Row> fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
     {
         List<Row> result = new ArrayList<Row>();
 
@@ -127,7 +128,7 @@ class MultiPartitionPager implements QueryPager
         while (remainingThisQuery > 0 && !isExhausted())
         {
             // isExhausted has set us on the first non-exhausted pager
-            List<Row> page = pagers[current].fetchPage(remainingThisQuery);
+            List<Row> page = pagers[current].fetchPage(remainingThisQuery).toList().toBlocking().first();
             if (page.isEmpty())
                 continue;
 
@@ -138,7 +139,7 @@ class MultiPartitionPager implements QueryPager
             result.add(row);
         }
 
-        return result;
+        return Observable.from(result);
     }
 
     public int maxRemaining()

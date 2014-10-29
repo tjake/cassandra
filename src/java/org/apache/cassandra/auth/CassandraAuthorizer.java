@@ -35,6 +35,8 @@ import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import rx.*;
+import rx.Observable;
 
 /**
  * CassandraAuthorizer is an IAuthorizer implementation that keeps
@@ -70,11 +72,11 @@ public class CassandraAuthorizer implements IAuthorizer
         UntypedResultSet result;
         try
         {
-            ResultMessage.Rows rows = authorizeStatement.execute(QueryState.forInternalCalls(),
+            Observable<ResultMessage.Rows> rows = authorizeStatement.execute(QueryState.forInternalCalls(),
                                                                  QueryOptions.forInternalCalls(ConsistencyLevel.LOCAL_ONE,
                                                                                                Lists.newArrayList(ByteBufferUtil.bytes(user.getName()),
                                                                                                                   ByteBufferUtil.bytes(resource.getName()))));
-            result = UntypedResultSet.create(rows.result);
+            result = UntypedResultSet.create(rows.toBlocking().first().result);
         }
         catch (RequestValidationException e)
         {
@@ -132,7 +134,7 @@ public class CassandraAuthorizer implements IAuthorizer
 
         Set<PermissionDetails> details = new HashSet<PermissionDetails>();
 
-        for (UntypedResultSet.Row row : process(buildListQuery(resource, of)))
+        for (UntypedResultSet.Row row : process(buildListQuery(resource, of)).toBlocking().first())
         {
             if (row.has(PERMISSIONS))
             {
@@ -202,7 +204,7 @@ public class CassandraAuthorizer implements IAuthorizer
             rows = process(String.format("SELECT username FROM %s.%s WHERE resource = '%s' ALLOW FILTERING",
                                          Auth.AUTH_KS,
                                          PERMISSIONS_CF,
-                                         escape(droppedResource.getName())));
+                                         escape(droppedResource.getName()))).toBlocking().first();
         }
         catch (RequestExecutionException e)
         {
@@ -257,7 +259,7 @@ public class CassandraAuthorizer implements IAuthorizer
         return StringUtils.replace(name, "'", "''");
     }
 
-    private static UntypedResultSet process(String query) throws RequestExecutionException
+    private static Observable<UntypedResultSet> process(String query) throws RequestExecutionException
     {
         return QueryProcessor.process(query, ConsistencyLevel.ONE);
     }

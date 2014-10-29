@@ -136,6 +136,14 @@ public abstract class AbstractReadExecutor
     public abstract void executeAsync();
 
     /**
+     * Returns true if the row is ready
+     */
+    public boolean isReady() throws ReadTimeoutException
+    {
+        return handler.isReady();
+    }
+
+    /**
      * wait for an answer.  Blocks until success or timeout, so it is caller's
      * responsibility to call maybeTryAdditionalReplicas first.
      */

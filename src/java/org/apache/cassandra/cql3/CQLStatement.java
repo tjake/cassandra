@@ -21,6 +21,7 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.exceptions.*;
+import rx.Observable;
 
 public interface CQLStatement
 {
@@ -50,12 +51,12 @@ public interface CQLStatement
      * @param state the current query state
      * @param options options for this query (consistency, variables, pageSize, ...)
      */
-    public ResultMessage execute(QueryState state, QueryOptions options) throws RequestValidationException, RequestExecutionException;
+    public Observable<? extends ResultMessage> execute(QueryState state, QueryOptions options) throws RequestValidationException, RequestExecutionException;
 
     /**
      * Variante of execute used for internal query against the system tables, and thus only query the local node.
      *
      * @param state the current query state
      */
-    public ResultMessage executeInternal(QueryState state, QueryOptions options) throws RequestValidationException, RequestExecutionException;
+    public Observable<? extends ResultMessage> executeInternal(QueryState state, QueryOptions options) throws RequestValidationException, RequestExecutionException;
 }

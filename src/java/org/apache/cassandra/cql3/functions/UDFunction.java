@@ -254,7 +254,7 @@ public abstract class UDFunction extends AbstractFunction implements ScalarFunct
 
     public static Map<ByteBuffer, UDFunction> fromSchema(Row row)
     {
-        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system." + SystemKeyspace.SCHEMA_FUNCTIONS_CF, row);
+        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system." + SystemKeyspace.SCHEMA_FUNCTIONS_CF, row).toBlocking().first();
         Map<ByteBuffer, UDFunction> udfs = new HashMap<>(results.size());
         for (UntypedResultSet.Row result : results)
             udfs.put(result.getBlob("signature"), fromSchema(result));

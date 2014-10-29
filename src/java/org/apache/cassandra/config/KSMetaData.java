@@ -273,7 +273,7 @@ public final class KSMetaData
      */
     public static KSMetaData fromSchema(Row row, Iterable<CFMetaData> cfms, UTMetaData userTypes)
     {
-        UntypedResultSet.Row result = QueryProcessor.resultify("SELECT * FROM system.schema_keyspaces", row).one();
+        UntypedResultSet.Row result = QueryProcessor.resultify("SELECT * FROM system.schema_keyspaces", row).toBlocking().first().one();
         try
         {
             return new KSMetaData(result.getString("keyspace_name"),
@@ -315,7 +315,7 @@ public final class KSMetaData
             return Collections.emptyMap();
 
         Map<String, CFMetaData> cfms = new HashMap<>();
-        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system.schema_columnfamilies", row);
+        UntypedResultSet results = QueryProcessor.resultify("SELECT * FROM system.schema_columnfamilies", row).toBlocking().first();
         for (UntypedResultSet.Row result : results)
         {
             CFMetaData cfm = CFMetaData.fromSchema(result);

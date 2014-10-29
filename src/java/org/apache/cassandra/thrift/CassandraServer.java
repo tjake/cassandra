@@ -109,7 +109,7 @@ public class CassandraServer implements Cassandra.Iface
             schedule(DatabaseDescriptor.getReadRpcTimeout());
             try
             {
-                rows = StorageProxy.read(commands, consistency_level);
+                rows = StorageProxy.read(commands, consistency_level).toList().toBlocking().first();
             }
             finally
             {
@@ -1169,7 +1169,7 @@ public class CassandraServer implements Cassandra.Iface
                 RowPosition end = range.end_key == null
                                 ? p.getTokenFactory().fromString(range.end_token).maxKeyBound(p)
                                 : RowPosition.ForKey.get(range.end_key, p);
-                bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(range.start_key, p), end);
+                bounds = new Bounds<>(RowPosition.ForKey.get(range.start_key, p), end);
             }
             long now = System.currentTimeMillis();
             schedule(DatabaseDescriptor.getRangeRpcTimeout());
@@ -1912,7 +1912,7 @@ public class CassandraServer implements Cassandra.Iface
             }
 
             ThriftClientState cState = state();
-            return cState.getCQLQueryHandler().process(queryString, cState.getQueryState(), QueryOptions.fromProtocolV2(ThriftConversion.fromThrift(cLevel), Collections.<ByteBuffer>emptyList())).toThriftResult();
+            return cState.getCQLQueryHandler().process(queryString, cState.getQueryState(), QueryOptions.fromProtocolV2(ThriftConversion.fromThrift(cLevel), Collections.<ByteBuffer>emptyList())).toBlocking().first().toThriftResult();
         }
         catch (RequestExecutionException e)
         {
@@ -1982,7 +1982,7 @@ public class CassandraServer implements Cassandra.Iface
 
             return cState.getCQLQueryHandler().processPrepared(prepared.statement,
                                                                cState.getQueryState(),
-                                                               QueryOptions.fromProtocolV2(ThriftConversion.fromThrift(cLevel), bindVariables)).toThriftResult();
+                                                               QueryOptions.fromProtocolV2(ThriftConversion.fromThrift(cLevel), bindVariables)).toBlocking().first().toThriftResult();
         }
         catch (RequestExecutionException e)
         {

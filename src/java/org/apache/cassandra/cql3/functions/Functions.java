@@ -97,7 +97,7 @@ public abstract class Functions
     public static void loadUDFFromSchema()
     {
         logger.debug("Loading UDFs");
-        for (UntypedResultSet.Row row : QueryProcessor.executeOnceInternal(SELECT_UDFS))
+        for (UntypedResultSet.Row row : QueryProcessor.executeOnceInternal(SELECT_UDFS).toBlocking().first())
             addFunction(UDFunction.fromSchema(row));
     }
 

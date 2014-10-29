@@ -29,6 +29,8 @@ import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
+import rx.Observable;
+import rx.observables.BlockingObservable;
 
 /**
  * Static utility methods to create query pagers.
@@ -151,8 +153,8 @@ public class QueryPagers
             {
                 try
                 {
-                    List<Row> rows = pager.fetchPage(pageSize);
-                    ColumnFamily cf = rows.isEmpty() ? null : rows.get(0).cf;
+                    Iterator<Row> rows = pager.fetchPage(pageSize).toBlocking().getIterator();
+                    ColumnFamily cf = rows.hasNext() ? null : rows.next().cf;
                     return cf == null ? ArrayBackedSortedColumns.factory.create(cfs.metadata) : cf;
                 }
                 catch (Exception e)
@@ -185,9 +187,10 @@ public class QueryPagers
         ColumnCounter counter = filter.columnCounter(Schema.instance.getCFMetaData(keyspace, columnFamily).comparator, now);
         while (!pager.isExhausted())
         {
-            List<Row> next = pager.fetchPage(pageSize);
-            if (!next.isEmpty())
-                counter.countAll(next.get(0).cf);
+            Iterator<Row> iterator = pager.fetchPage(pageSize).toBlocking().getIterator();
+
+            if (iterator.hasNext())
+                counter.countAll(iterator.next().cf);
         }
         return counter.live();
     }

@@ -95,6 +95,23 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
         }
     }
 
+    public boolean isReady() throws ReadTimeoutException
+    {
+        long time = TimeUnit.MILLISECONDS.toNanos(command.getTimeout()) - (System.nanoTime() - start);
+
+        if (time <= 0)
+        {
+            // Same as for writes, see AbstractWriteResponseHandler
+            ReadTimeoutException ex = new ReadTimeoutException(consistencyLevel, received, blockfor, resolver.isDataPresent());
+
+            if (logger.isDebugEnabled())
+                logger.debug("Read timeout: {}", ex.toString());
+            throw ex;
+        }
+
+        return condition.isSignaled();
+    }
+
     public TResolved get() throws ReadTimeoutException, DigestMismatchException
     {
         if (!await(command.getTimeout(), TimeUnit.MILLISECONDS))

@@ -98,7 +98,7 @@ public class BatchlogManager implements BatchlogManagerMBean
     public int countAllBatches()
     {
         String query = String.format("SELECT count(*) FROM %s.%s", Keyspace.SYSTEM_KS, SystemKeyspace.BATCHLOG_CF);
-        return (int) executeInternal(query).one().getLong("count");
+        return (int) executeInternal(query).toBlocking().first().one().getLong("count");
     }
 
     public long getTotalBatchesReplayed()
@@ -170,7 +170,7 @@ public class BatchlogManager implements BatchlogManagerMBean
         UntypedResultSet page = executeInternal(String.format("SELECT id, data, written_at, version FROM %s.%s LIMIT %d",
                                                               Keyspace.SYSTEM_KS,
                                                               SystemKeyspace.BATCHLOG_CF,
-                                                              PAGE_SIZE));
+                                                              PAGE_SIZE)).toBlocking().first();
 
         while (!page.isEmpty())
         {
@@ -183,7 +183,7 @@ public class BatchlogManager implements BatchlogManagerMBean
                                                  Keyspace.SYSTEM_KS,
                                                  SystemKeyspace.BATCHLOG_CF,
                                                  PAGE_SIZE),
-                                   id);
+                                   id).toBlocking().first();
         }
 
         cleanup();
