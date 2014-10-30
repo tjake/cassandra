@@ -1405,7 +1405,10 @@ public class StorageProxy implements StorageProxyMBean
             public void call()
             {
                 if (subscriber.isUnsubscribed())
+                {
+                    worker.unsubscribe();
                     return;
+                }
 
                 try
                 {
@@ -1452,8 +1455,9 @@ public class StorageProxy implements StorageProxyMBean
                             if (!subscriber.isUnsubscribed())
                             {
                                 subscriber.onError(e);
-                                subscriber.onCompleted();
                             }
+
+                            worker.unsubscribe();
 
                         } catch (DigestMismatchException e)
                         {
@@ -1462,21 +1466,23 @@ public class StorageProxy implements StorageProxyMBean
                             if (!subscriber.isUnsubscribed())
                                 subscriber.onError(new WrappedDigestMismatchException(e, exec));
 
+                            worker.unsubscribe();
                             return;
                         }
                     }
                 } catch (UnavailableException e)
                 {
                     if (!subscriber.isUnsubscribed())
-                    {
                         subscriber.onError(e);
-                    }
 
+                    worker.unsubscribe();
                     return;
                 }
 
                 if (!subscriber.isUnsubscribed())
                     subscriber.onCompleted();
+
+                worker.unsubscribe();
             }
         }
 

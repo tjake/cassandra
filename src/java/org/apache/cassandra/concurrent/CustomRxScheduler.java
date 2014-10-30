@@ -15,7 +15,7 @@ import java.util.concurrent.*;
  */
 public class CustomRxScheduler extends Scheduler
 {
-    TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(128, 1024, "test", "foo");
+    TracingAwareExecutorService executor = new DisruptorExecutorService(Runtime.getRuntime().availableProcessors(), 1024, false);
 
     @Override
     public Worker createWorker()

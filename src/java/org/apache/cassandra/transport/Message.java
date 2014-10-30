@@ -453,9 +453,9 @@ public abstract class Message
                                                                        connection.applyStateTransition(request.type, response.type);
 
                                                                        logger.debug("Responding: {}, v={}", response, connection.getVersion());
-                                                                       ctx.write(response, ctx.voidPromise());
+                                                                       //ctx.write(response, ctx.voidPromise());
 
-                                                                       //flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                                                                       flush(new FlushItem(ctx, response, request.getSourceFrame()));
                                                                    }
                                                                },
                     new Action1<Throwable>()
@@ -474,8 +474,8 @@ public abstract class Message
                         @Override
                         public void call()
                         {
-                            ctx.flush();
-                            request.getSourceFrame().release();
+                            //ctx.flush();
+                            //request.getSourceFrame().release();
                         }
                     });
 
