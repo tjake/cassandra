@@ -95,7 +95,7 @@ abstract class AbstractQueryPager implements QueryPager
                     @Override
                     public Boolean call(Row row)
                     {
-                        return row.cf == null || !row.cf.hasColumns();
+                        return !(row.cf == null || !row.cf.hasColumns());
                     }
                 })
                 .toBlocking()

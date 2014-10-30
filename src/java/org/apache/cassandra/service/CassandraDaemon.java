@@ -59,10 +59,7 @@ import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.thrift.ThriftServer;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.*;
-import rx.plugins.DebugHook;
-import rx.plugins.DebugNotification;
-import rx.plugins.DebugNotificationListener;
-import rx.plugins.RxJavaPlugins;
+import rx.plugins.*;
 
 /**
  * The <code>CassandraDaemon</code> is an abstraction for a Cassandra daemon
@@ -143,6 +140,14 @@ public class CassandraDaemon
     protected void setup()
     {
         //rxJavaDebugSetup();
+        RxJavaPlugins.getInstance().registerErrorHandler(new RxJavaErrorHandler()
+        {
+            @Override
+            public void handleError(Throwable e)
+            {
+                logger.error("RxJava unexpected Exception ", e);
+            }
+        });
 
         try
         {

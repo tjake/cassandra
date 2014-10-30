@@ -154,7 +154,7 @@ public class QueryPagers
                 try
                 {
                     Iterator<Row> rows = pager.fetchPage(pageSize).toBlocking().getIterator();
-                    ColumnFamily cf = rows.hasNext() ? null : rows.next().cf;
+                    ColumnFamily cf = rows.hasNext() ? rows.next().cf : null;
                     return cf == null ? ArrayBackedSortedColumns.factory.create(cfs.metadata) : cf;
                 }
                 catch (Exception e)

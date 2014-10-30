@@ -435,19 +435,12 @@ public abstract class Message
             connection = (ServerConnection)request.connection();
             QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
-            logger.warn("Received: {}, v={}", request, ctx.channel().remoteAddress());
+            logger.debug("Received: {}, v={}", request, connection.getVersion());
 
             Observable<? extends Response> responseObs = request.execute(qstate);
 
-            Response response = responseObs.toBlocking().first();
-            response.setStreamId(request.getStreamId());
-            response.attach(connection);
-            connection.applyStateTransition(request.type, response.type);
 
-            logger.warn("Responding: {}, v={}", response, ctx.channel().remoteAddress());
-            ctx.writeAndFlush(response, ctx.voidPromise());
-
-            /*response.subscribe(new Action1<Response>()
+            responseObs.subscribe(new Action1<Response>()
             {
                 @Override
                 public void call(Response response)
@@ -456,7 +449,7 @@ public abstract class Message
                     response.attach(connection);
                     connection.applyStateTransition(request.type, response.type);
 
-                    logger.warn("Responding: {}, v={}", response, connection.getVersion());
+                    logger.debug("Responding: {}, v={}", response, connection.getVersion());
                     ctx.write(response, ctx.voidPromise());
                 }
             },
@@ -479,7 +472,7 @@ public abstract class Message
                     ctx.flush();
                     request.getSourceFrame().release();
                 }
-            });*/
+            });
 
 
         }
