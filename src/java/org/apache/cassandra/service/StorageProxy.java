@@ -67,6 +67,7 @@ import org.apache.cassandra.utils.*;
 import rx.*;
 import rx.Observable;
 import rx.functions.*;
+import rx.schedulers.Schedulers;
 
 public class StorageProxy implements StorageProxyMBean
 {
@@ -1346,12 +1347,14 @@ public class StorageProxy implements StorageProxyMBean
         List<ReadCommand> commands;
         AbstractReadExecutor[] readExecutors;
         int commandOffset = 0;
+        Scheduler.Worker worker;
 
         RowObservable(List<ReadCommand> initialCommands, ConsistencyLevel consistencyLevel)
         {
             this.initialCommands = initialCommands;
             this.consistencyLevel = consistencyLevel;
             this.commands = initialCommands;
+            this.worker = Schedulers.computation().createWorker();
         }
 
         boolean maybeFetchMore() throws UnavailableException
@@ -1388,6 +1391,97 @@ public class StorageProxy implements StorageProxyMBean
         }
 
 
+        class WatchAction implements Action0
+        {
+
+            final Subscriber<? super Row> subscriber;
+
+            WatchAction( Subscriber<? super Row> subscriber)
+            {
+                this.subscriber = subscriber;
+            }
+
+            @Override
+            public void call()
+            {
+                if (subscriber.isUnsubscribed())
+                    return;
+
+                try
+                {
+                    while (maybeFetchMore())
+                    {
+                        final AbstractReadExecutor exec = readExecutors[commandOffset];
+
+                        try
+                        {
+                            if (exec.isReady())
+                            {
+                                commandOffset++;
+
+                                Row row = exec.get();
+                                if (row != null)
+                                {
+                                    exec.command.maybeTrim(row);
+                                    subscriber.onNext(row);
+                                }
+                            }
+                            else
+                            {
+                                worker.schedule(this);
+                                return;
+                            }
+
+                        } catch (ReadTimeoutException e)
+                        {
+                            int blockFor = consistencyLevel.blockFor(Keyspace.open(exec.command.getKeyspace()));
+                            int responseCount = exec.handler.getReceivedCount();
+                            String gotData = responseCount > 0
+                                    ? exec.resolver.isDataPresent() ? " (including data)" : " (only digests)"
+                                    : "";
+
+                            if (Tracing.isTracing())
+                            {
+                                Tracing.trace("Timed out; received {} of {} responses{}",
+                                        new Object[]{responseCount, blockFor, gotData});
+                            } else if (logger.isDebugEnabled())
+                            {
+                                logger.debug("Read timeout; received {} of {} responses{}", responseCount, blockFor, gotData);
+                            }
+
+                            if (!subscriber.isUnsubscribed())
+                            {
+                                subscriber.onError(e);
+                                subscriber.onCompleted();
+                            }
+
+                        } catch (DigestMismatchException e)
+                        {
+                            commandOffset++;
+
+                            if (!subscriber.isUnsubscribed())
+                                subscriber.onError(new WrappedDigestMismatchException(e, exec));
+
+                            return;
+                        }
+                    }
+                } catch (UnavailableException e)
+                {
+                    if (!subscriber.isUnsubscribed())
+                    {
+                        subscriber.onError(e);
+                    }
+
+                    return;
+                }
+
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onCompleted();
+            }
+        }
+
+
+
         @Override
         public void call(Subscriber<? super Row> subscriber)
         {
@@ -1395,72 +1489,9 @@ public class StorageProxy implements StorageProxyMBean
             if (subscriber.isUnsubscribed())
                 return;
 
-            try
-            {
-                while (maybeFetchMore())
-                {
-                    final AbstractReadExecutor exec = readExecutors[commandOffset];
-
-                    try
-                    {
-                        //if (exec.isReady())
-                        //{
-                        commandOffset++;
-
-                        Row row = exec.get();
-                        if (row != null)
-                        {
-                            exec.command.maybeTrim(row);
-                            subscriber.onNext(row);
-                        }
-                        //}
-
-                    } catch (ReadTimeoutException e)
-                    {
-                        int blockFor = consistencyLevel.blockFor(Keyspace.open(exec.command.getKeyspace()));
-                        int responseCount = exec.handler.getReceivedCount();
-                        String gotData = responseCount > 0
-                                ? exec.resolver.isDataPresent() ? " (including data)" : " (only digests)"
-                                : "";
-
-                        if (Tracing.isTracing())
-                        {
-                            Tracing.trace("Timed out; received {} of {} responses{}",
-                                    new Object[]{responseCount, blockFor, gotData});
-                        } else if (logger.isDebugEnabled())
-                        {
-                            logger.debug("Read timeout; received {} of {} responses{}", responseCount, blockFor, gotData);
-                        }
-
-                        if (!subscriber.isUnsubscribed())
-                        {
-                            subscriber.onError(e);
-                            subscriber.onCompleted();
-                        }
-
-                    } catch (DigestMismatchException e)
-                    {
-                        commandOffset++;
-
-                        if (!subscriber.isUnsubscribed())
-                            subscriber.onError(new WrappedDigestMismatchException(e, exec));
-
-                        return;
-                    }
-                }
-            } catch (UnavailableException e)
-            {
-                if (!subscriber.isUnsubscribed())
-                {
-                    subscriber.onError(e);
-                }
-
-                return;
-            }
-
-            if (!subscriber.isUnsubscribed())
-                subscriber.onCompleted();
+            worker.schedule(new WatchAction(subscriber));
         }
+
     }
 
     static class WrappedDigestMismatchException extends Exception

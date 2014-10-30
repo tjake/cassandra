@@ -44,8 +44,11 @@ import org.apache.cassandra.transport.messages.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
+import rx.Subscriber;
 import rx.functions.Action0;
 import rx.functions.Action1;
+import rx.observers.Subscribers;
+import rx.schedulers.Schedulers;
 
 /**
  * A message from the CQL binary protocol.
@@ -441,38 +444,40 @@ public abstract class Message
 
 
             responseObs.subscribe(new Action1<Response>()
-            {
-                @Override
-                public void call(Response response)
-                {
-                    response.setStreamId(request.getStreamId());
-                    response.attach(connection);
-                    connection.applyStateTransition(request.type, response.type);
+                                                               {
+                                                                   @Override
+                                                                   public void call(Response response)
+                                                                   {
+                                                                       response.setStreamId(request.getStreamId());
+                                                                       response.attach(connection);
+                                                                       connection.applyStateTransition(request.type, response.type);
 
-                    logger.debug("Responding: {}, v={}", response, connection.getVersion());
-                    ctx.write(response, ctx.voidPromise());
-                }
-            },
-            new Action1<Throwable>()
-            {
-                @Override
-                public void call(Throwable t)
-                {
-                    JVMStabilityInspector.inspectThrowable(t);
-                    UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                    ctx.write(ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
+                                                                       logger.debug("Responding: {}, v={}", response, connection.getVersion());
+                                                                       ctx.write(response, ctx.voidPromise());
 
-                }
-            },
-            new Action0()
-            {
-                @Override
-                public void call()
-                {
-                    ctx.flush();
-                    request.getSourceFrame().release();
-                }
-            });
+                                                                       //flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                                                                   }
+                                                               },
+                    new Action1<Throwable>()
+                    {
+                        @Override
+                        public void call(Throwable t)
+                        {
+                            JVMStabilityInspector.inspectThrowable(t);
+                            UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
+                            ctx.write(ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
+
+                        }
+                    },
+                    new Action0()
+                    {
+                        @Override
+                        public void call()
+                        {
+                            ctx.flush();
+                            request.getSourceFrame().release();
+                        }
+                    });
 
 
         }

@@ -33,6 +33,7 @@ import javax.management.StandardMBean;
 
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.hyperic.sigar.SigarException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +60,9 @@ import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.thrift.ThriftServer;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.*;
+import rx.Scheduler;
 import rx.plugins.*;
+import rx.schedulers.Schedulers;
 
 /**
  * The <code>CassandraDaemon</code> is an abstraction for a Cassandra daemon
@@ -140,6 +143,28 @@ public class CassandraDaemon
     protected void setup()
     {
         //rxJavaDebugSetup();
+
+        RxJavaPlugins.getInstance().registerDefaultSchedulers(new RxJavaDefaultSchedulers()
+        {
+            @Override
+            public Scheduler getComputationScheduler()
+            {
+                return new CustomRxScheduler();
+            }
+
+            @Override
+            public Scheduler getIOScheduler()
+            {
+                return null;
+            }
+
+            @Override
+            public Scheduler getNewThreadScheduler()
+            {
+                return null;
+            }
+        });
+
         RxJavaPlugins.getInstance().registerErrorHandler(new RxJavaErrorHandler()
         {
             @Override
