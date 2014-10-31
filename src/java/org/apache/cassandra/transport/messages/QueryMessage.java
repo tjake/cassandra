@@ -155,7 +155,7 @@ public class QueryMessage extends Message.Request
         }
         catch (Exception e)
         {
-            throw new RuntimeException(e);
+            return Observable.just((Response)ErrorMessage.fromException(e));
         }
         finally
         {
