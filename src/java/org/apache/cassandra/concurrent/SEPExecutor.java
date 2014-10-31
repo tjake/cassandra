@@ -180,11 +180,11 @@ public class SEPExecutor extends AbstractTracingAwareExecutorService
     public void maybeExecuteImmediately(Runnable command)
     {
         FutureTask<?> ft = newTaskFor(command, null);
-        if (!takeWorkPermit(false))
+        //if (!takeWorkPermit(false))
         {
             addTask(ft);
         }
-        else
+        /*else
         {
             try
             {
@@ -198,7 +198,7 @@ public class SEPExecutor extends AbstractTracingAwareExecutorService
                 // the work permit may go wasted if we don't immediately attempt to spawn another worker
                 maybeSchedule();
             }
-        }
+        }*/
     }
 
     public synchronized void shutdown()
