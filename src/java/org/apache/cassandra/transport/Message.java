@@ -37,6 +37,7 @@ import io.netty.handler.codec.MessageToMessageEncoder;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableSet;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,7 @@ import org.apache.cassandra.transport.messages.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
+import rx.Scheduler;
 import rx.Subscriber;
 import rx.functions.Action0;
 import rx.functions.Action1;
@@ -432,7 +434,6 @@ public abstract class Message
         {
 
             final ServerConnection connection;
-
 
             assert request.connection() instanceof ServerConnection;
             connection = (ServerConnection)request.connection();

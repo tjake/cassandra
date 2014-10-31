@@ -144,7 +144,7 @@ public class CassandraDaemon
     {
         //rxJavaDebugSetup();
 
-        RxJavaPlugins.getInstance().registerDefaultSchedulers(new RxJavaDefaultSchedulers()
+        /*RxJavaPlugins.getInstance().registerDefaultSchedulers(new RxJavaDefaultSchedulers()
         {
             @Override
             public Scheduler getComputationScheduler()
@@ -163,7 +163,7 @@ public class CassandraDaemon
             {
                 return null;
             }
-        });
+        });*/
 
         RxJavaPlugins.getInstance().registerErrorHandler(new RxJavaErrorHandler()
         {

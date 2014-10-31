@@ -1,37 +1,43 @@
 package org.apache.cassandra.concurrent;
 
+import io.netty.channel.EventLoopGroup;
 import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action0;
 import rx.internal.schedulers.ScheduledAction;
-import rx.internal.util.RxRingBuffer;
 import rx.plugins.RxJavaPlugins;
 import rx.plugins.RxJavaSchedulersHook;
 import rx.subscriptions.Subscriptions;
 
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Created by jake on 10/30/14.
+ * Created by jake on 10/31/14.
  */
-public class CustomRxScheduler extends Scheduler
+public class NettyRxScheduler extends Scheduler
 {
-    TracingAwareExecutorService executor = new DisruptorExecutorService((Runtime.getRuntime().availableProcessors()/2), 1024, false);
+    final EventLoopGroup eventLoopGroup;
+
+    public NettyRxScheduler(EventLoopGroup eventLoopGroup)
+    {
+        this.eventLoopGroup = eventLoopGroup;
+    }
+
 
     @Override
     public Worker createWorker()
     {
-        return new Worker(executor);
+        return new Worker();
     }
 
-    static class Worker extends Scheduler.Worker implements Subscription {
-        private final ExecutorService executor;
+    class Worker extends Scheduler.Worker implements Subscription
+    {
         private final RxJavaSchedulersHook schedulersHook;
         volatile boolean isUnsubscribed;
 
-        /* package */
-        public Worker(ExecutorService executor) {
-            this.executor = executor;
+        public Worker() {
             schedulersHook = RxJavaPlugins.getInstance().getSchedulersHook();
         }
 
@@ -60,9 +66,9 @@ public class CustomRxScheduler extends Scheduler
             ScheduledAction run = new ScheduledAction(decoratedAction);
             Future<?> f;
             if (delayTime <= 0) {
-                f = executor.submit(run);
+                f = eventLoopGroup.submit(run);
             } else {
-                throw new UnsupportedOperationException("Use a different scheduler");
+                f = eventLoopGroup.schedule(run, delayTime, unit);
             }
             run.add(Subscriptions.from(f));
 
@@ -79,6 +85,5 @@ public class CustomRxScheduler extends Scheduler
             return isUnsubscribed;
         }
     }
-
 
 }

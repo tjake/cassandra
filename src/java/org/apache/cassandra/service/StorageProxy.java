@@ -32,6 +32,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.cassandra.metrics.*;
+import org.apache.cassandra.transport.Server;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1354,7 +1355,7 @@ public class StorageProxy implements StorageProxyMBean
             this.initialCommands = initialCommands;
             this.consistencyLevel = consistencyLevel;
             this.commands = initialCommands;
-            this.worker = Schedulers.computation().createWorker();
+            this.worker = Server.nettyWorker.createWorker();
         }
 
         boolean maybeFetchMore() throws UnavailableException
@@ -1420,14 +1421,14 @@ public class StorageProxy implements StorageProxyMBean
                         {
                             if (exec.isReady())
                             {
-                                commandOffset++;
-
-                                Row row = exec.get();
+                                final Row row = exec.get();
                                 if (row != null)
                                 {
                                     exec.command.maybeTrim(row);
+
                                     subscriber.onNext(row);
                                 }
+                                commandOffset++;
                             }
                             else
                             {
@@ -1482,7 +1483,9 @@ public class StorageProxy implements StorageProxyMBean
                 }
 
                 if (!subscriber.isUnsubscribed())
+                {
                     subscriber.onCompleted();
+                }
 
                 worker.unsubscribe();
             }
@@ -1497,7 +1500,104 @@ public class StorageProxy implements StorageProxyMBean
             if (subscriber.isUnsubscribed())
                 return;
 
+
+            //worker.schedule(new WatchAction(subscriber));
+
             try
+            {
+                if (maybeFetchMore())
+                {
+                    worker.schedule(new WatchAction(subscriber));
+                }
+                else
+                {
+                    worker.unsubscribe();
+                    subscriber.onCompleted();
+                }
+            }
+            catch (UnavailableException e)
+            {
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onError(e);
+
+                worker.unsubscribe();
+            }
+
+
+
+            /*try
+            {
+                while (maybeFetchMore())
+                {
+                    final AbstractReadExecutor exec = readExecutors[commandOffset];
+
+                    try
+                    {
+                        //if (exec.isReady())
+                        {
+                            commandOffset++;
+
+                            Row row = exec.get();
+                            if (row != null)
+                            {
+                                exec.command.maybeTrim(row);
+                                subscriber.onNext(row);
+                            }
+                        }
+
+
+                    } catch (ReadTimeoutException e)
+                    {
+                        int blockFor = consistencyLevel.blockFor(Keyspace.open(exec.command.getKeyspace()));
+                        int responseCount = exec.handler.getReceivedCount();
+                        String gotData = responseCount > 0
+                                ? exec.resolver.isDataPresent() ? " (including data)" : " (only digests)"
+                                : "";
+
+                        if (Tracing.isTracing())
+                        {
+                            Tracing.trace("Timed out; received {} of {} responses{}",
+                                    new Object[]{responseCount, blockFor, gotData});
+                        } else if (logger.isDebugEnabled())
+                        {
+                            logger.debug("Read timeout; received {} of {} responses{}", responseCount, blockFor, gotData);
+                        }
+
+                        if (!subscriber.isUnsubscribed())
+                        {
+                            subscriber.onError(e);
+                        }
+
+                        //worker.unsubscribe();
+                        return;
+
+                    } catch (DigestMismatchException e)
+                    {
+                        commandOffset++;
+
+                        if (!subscriber.isUnsubscribed())
+                            subscriber.onError(new WrappedDigestMismatchException(e, exec));
+
+                        //worker.unsubscribe();
+                        return;
+                    }
+                }
+            } catch (UnavailableException e)
+            {
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onError(e);
+
+//                worker.unsubscribe();
+                return;
+            }
+
+            if (!subscriber.isUnsubscribed())
+                subscriber.onCompleted();
+
+//            worker.unsubscribe();
+
+
+            /*try
             {
                 maybeFetchMore();
             }
@@ -1508,9 +1608,9 @@ public class StorageProxy implements StorageProxyMBean
 
                 worker.unsubscribe();
                 return;
-            }
+            }*/
 
-            worker.schedule(new WatchAction(subscriber));
+            //worker.schedule(new WatchAction(subscriber));
         }
 
     }

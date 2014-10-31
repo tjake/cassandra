@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.EnumMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -32,7 +33,9 @@ import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.nio.NioEventLoop;
 import io.netty.util.Version;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,8 +84,26 @@ public class Server implements CassandraDaemon.Server
 
     public final InetSocketAddress socket;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    static final boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
 
-    private EventLoopGroup workerGroup;
+    static final private EventLoopGroup workerGroup;
+    static
+    {
+        if (hasEpoll)
+        {
+            workerGroup = new EpollEventLoopGroup();
+            logger.info("Netty using native Epoll event loop");
+        }
+        else
+        {
+            workerGroup = new NioEventLoopGroup();
+            ((NioEventLoopGroup)workerGroup).setIoRatio(10);
+            logger.info("Netty using Java NIO event loop");
+        }
+    }
+
+    public static final NettyRxScheduler nettyWorker = new NettyRxScheduler(workerGroup);
+
 
     public Server(InetSocketAddress socket)
     {
@@ -139,17 +160,7 @@ public class Server implements CassandraDaemon.Server
             return;
         }
 
-        boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
-        if (hasEpoll)
-        {
-            workerGroup = new EpollEventLoopGroup();
-            logger.info("Netty using native Epoll event loop");
-        }
-        else
-        {
-            workerGroup = new NioEventLoopGroup();
-            logger.info("Netty using Java NIO event loop");
-        }
+
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                                     .group(workerGroup)
@@ -201,7 +212,6 @@ public class Server implements CassandraDaemon.Server
         // Close opened connections
         connectionTracker.closeAll();
         workerGroup.shutdownGracefully();
-        workerGroup = null;
 
         logger.info("Stop listening for CQL clients");
     }
