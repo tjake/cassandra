@@ -1355,7 +1355,7 @@ public class StorageProxy implements StorageProxyMBean
             this.initialCommands = initialCommands;
             this.consistencyLevel = consistencyLevel;
             this.commands = initialCommands;
-            this.worker = Server.nettyWorker.createWorker();
+            this.worker = Server.disruptorWorker.createWorker();
         }
 
         boolean maybeFetchMore() throws UnavailableException

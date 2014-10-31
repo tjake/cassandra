@@ -35,6 +35,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoop;
 import io.netty.util.Version;
+import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,12 +98,13 @@ public class Server implements CassandraDaemon.Server
         else
         {
             workerGroup = new NioEventLoopGroup();
-            ((NioEventLoopGroup)workerGroup).setIoRatio(10);
             logger.info("Netty using Java NIO event loop");
         }
     }
 
     public static final NettyRxScheduler nettyWorker = new NettyRxScheduler(workerGroup);
+    public static final CustomRxScheduler disruptorWorker = new CustomRxScheduler();
+
 
 
     public Server(InetSocketAddress socket)
