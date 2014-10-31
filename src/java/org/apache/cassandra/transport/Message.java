@@ -442,22 +442,22 @@ public abstract class Message
 
             Observable<? extends Response> responseObs = request.execute(qstate);
 
+            responseObs.subscribe(
+                    new Action1<Response>()
+                    {
+                        @Override
+                        public void call(Response response)
+                        {
+                            response.setStreamId(request.getStreamId());
+                            response.attach(connection);
+                            connection.applyStateTransition(request.type, response.type);
 
-            responseObs.subscribe(new Action1<Response>()
-                                                               {
-                                                                   @Override
-                                                                   public void call(Response response)
-                                                                   {
-                                                                       response.setStreamId(request.getStreamId());
-                                                                       response.attach(connection);
-                                                                       connection.applyStateTransition(request.type, response.type);
+                            logger.debug("Responding: {}, v={}", response, connection.getVersion());
+                            //ctx.write(response, ctx.voidPromise());
 
-                                                                       logger.debug("Responding: {}, v={}", response, connection.getVersion());
-                                                                       //ctx.write(response, ctx.voidPromise());
-
-                                                                       flush(new FlushItem(ctx, response, request.getSourceFrame()));
-                                                                   }
-                                                               },
+                            flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                        }
+                    },
                     new Action1<Throwable>()
                     {
                         @Override
@@ -465,8 +465,7 @@ public abstract class Message
                         {
                             JVMStabilityInspector.inspectThrowable(t);
                             UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                            ctx.write(ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), ctx.voidPromise());
-
+                            flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
                         }
                     },
                     new Action0()
@@ -477,9 +476,8 @@ public abstract class Message
                             //ctx.flush();
                             //request.getSourceFrame().release();
                         }
-                    });
-
-
+                    }
+            );
         }
 
         private void flush(FlushItem item)

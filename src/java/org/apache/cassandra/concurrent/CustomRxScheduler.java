@@ -4,6 +4,7 @@ import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action0;
 import rx.internal.schedulers.ScheduledAction;
+import rx.internal.util.RxRingBuffer;
 import rx.plugins.RxJavaPlugins;
 import rx.plugins.RxJavaSchedulersHook;
 import rx.subscriptions.Subscriptions;

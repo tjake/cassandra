@@ -1431,6 +1431,7 @@ public class StorageProxy implements StorageProxyMBean
                             }
                             else
                             {
+
                                 worker.schedule(this);
                                 return;
                             }
@@ -1458,6 +1459,7 @@ public class StorageProxy implements StorageProxyMBean
                             }
 
                             worker.unsubscribe();
+                            return;
 
                         } catch (DigestMismatchException e)
                         {
@@ -1494,6 +1496,19 @@ public class StorageProxy implements StorageProxyMBean
             //We can disregard the rest.
             if (subscriber.isUnsubscribed())
                 return;
+
+            try
+            {
+                maybeFetchMore();
+            }
+            catch (UnavailableException e)
+            {
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onError(e);
+
+                worker.unsubscribe();
+                return;
+            }
 
             worker.schedule(new WatchAction(subscriber));
         }

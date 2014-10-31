@@ -83,7 +83,6 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
-    private EventExecutor eventExecutorGroup;
 
     public Server(InetSocketAddress socket)
     {
@@ -139,10 +138,6 @@ public class Server implements CassandraDaemon.Server
             isRunning.compareAndSet(true, false);
             return;
         }
-
-        // Configure the server.
-        eventExecutorGroup = new RequestThreadPoolExecutor();
-
 
         boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
         if (hasEpoll)
@@ -208,8 +203,6 @@ public class Server implements CassandraDaemon.Server
         workerGroup.shutdownGracefully();
         workerGroup = null;
 
-        eventExecutorGroup.shutdown();
-        eventExecutorGroup = null;
         logger.info("Stop listening for CQL clients");
     }
 

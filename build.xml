@@ -421,6 +421,7 @@
         <dependency groupId="com.netflix.rxjava" artifactId="rxjava-core" />
         <dependency groupId="com.netflix.rxjava" artifactId="rxjava-math" />
           <dependency groupId="com.netflix.rxjava" artifactId="rxjava-debug" />
+          <dependency groupId="io.netty" artifactId="netty-all" version="4.0.23.Final" />
         <dependency groupId="com.google.code.findbugs" artifactId="jsr305"/>
         <dependency groupId="org.antlr" artifactId="antlr"/>
         <dependency groupId="com.datastax.cassandra" artifactId="cassandra-driver-core"/>
