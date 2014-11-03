@@ -173,6 +173,8 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
                         {
                             subscriber.onError(e);
                         }
+
+                        responseWorker.unsubscribe();
                     }
                 });
             }
@@ -237,7 +239,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
             responseWorker = Schedulers.immediate().createWorker();
         }
 
-        Scheduler.Worker timeoutWorker = nettyEventLoop == null ? Schedulers.io().createWorker() : responseWorker;
+        final Scheduler.Worker timeoutWorker = nettyEventLoop == null ? Schedulers.io().createWorker() : responseWorker;
 
         //setup read timeout trigger
         readTimeoutSubscription = timeoutWorker.schedule(new Action0()
@@ -253,6 +255,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
                 if (!subscriber.isUnsubscribed())
                     subscriber.onError(ex);
 
+                timeoutWorker.unsubscribe();
             }
         }, command.getTimeout(), TimeUnit.MILLISECONDS);
     }
