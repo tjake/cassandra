@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import io.netty.channel.EventLoop;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.metrics.*;
+import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.Server;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -67,6 +68,7 @@ import org.apache.cassandra.sink.SinkManager;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.triggers.TriggerExecutor;
 import org.apache.cassandra.utils.*;
+import org.yaml.snakeyaml.reader.ReaderException;
 import rx.*;
 import rx.Observable;
 import rx.functions.*;
@@ -1342,13 +1344,66 @@ public class StorageProxy implements StorageProxyMBean
     }
 
 
-    private static class RowObservable implements Observable.OnSubscribe<Row>
+
+
+    static Observable<Row> startReads(List<ReadCommand> commands, ConsistencyLevel consistencyLevel) throws UnavailableException
+    {
+
+        assert !commands.isEmpty();
+
+        final Observable<Row>[] rowObservables = new Observable[commands.size()];
+        final AbstractReadExecutor[] readExecutors = new AbstractReadExecutor[commands.size()];
+
+        // send out read initial requests
+        for (int i = 0; i < commands.size(); i++)
+        {
+            final ReadCommand command = commands.get(i);
+            assert !command.isDigestQuery();
+
+            final AbstractReadExecutor exec = AbstractReadExecutor.getReadExecutor(command, consistencyLevel);
+            readExecutors[i] = exec;
+
+
+            rowObservables[i] = exec.getObservable().map(new Func1<Row, Row>()
+            {
+                @Override
+                public Row call(Row row)
+                {
+                    command.maybeTrim(row);
+                    return row;
+                }
+            });
+        }
+
+        return Observable.create( new Observable.OnSubscribe<Row>()
+                                  {
+                                      @Override
+                                      public void call(Subscriber<? super Row> subscriber)
+                                      {
+
+                                          for (Observable<Row> observable : rowObservables)
+                                              observable.subscribe(subscriber);
+
+                                          for (AbstractReadExecutor exec : readExecutors)
+                                            exec.executeAsync();
+
+                                          //What is the point of this?
+                                          for (AbstractReadExecutor exec : readExecutors)
+                                              exec.maybeTryAdditionalReplicas();
+                                      }
+                                  }
+
+        );
+    }
+
+
+    /*private static class RowObservable implements Observable.OnSubscribe<Row>
     {
         final List<ReadCommand> initialCommands;
         final ConsistencyLevel consistencyLevel;
 
         List<ReadCommand> commands;
-        AbstractReadExecutor[] readExecutors;
+        Observable<Row> rowObservables = Observable.empty();
         int commandOffset = 0;
         Scheduler.Worker worker;
 
@@ -1360,47 +1415,18 @@ public class StorageProxy implements StorageProxyMBean
             this.commands = initialCommands;
         }
 
-        boolean maybeFetchMore() throws UnavailableException
-        {
 
-            //More work todo
-            if (readExecutors != null)
-            {
-                if (commandOffset < readExecutors.length)
-                    return true;
-
-                return false;
-            }
-
-            readExecutors = new AbstractReadExecutor[commands.size()];
-
-            // send out read initial requests
-            for (int i = 0; i < commands.size(); i++)
-            {
-                ReadCommand command = commands.get(i);
-                assert !command.isDigestQuery();
-
-                AbstractReadExecutor exec = AbstractReadExecutor.getReadExecutor(command, consistencyLevel);
-                exec.executeAsync();
-                readExecutors[i] = exec;
-            }
-
-            for (AbstractReadExecutor exec : readExecutors)
-                exec.maybeTryAdditionalReplicas();
-
-
-            commandOffset = 0;
-            return readExecutors.length > 0;
-        }
 
         class WatchAction implements Action0
         {
 
             final Subscriber<? super Row> subscriber;
+            final EventLoop nettyEventLoop;
 
-            WatchAction(Subscriber<? super Row> subscriber)
+            WatchAction(Subscriber<? super Row> subscriber, EventLoop nettyEventLoop)
             {
                 this.subscriber = subscriber;
+                this.nettyEventLoop = nettyEventLoop;
             }
 
             @Override
@@ -1492,8 +1518,6 @@ public class StorageProxy implements StorageProxyMBean
             }
         }
 
-
-
         @Override
         public void call(Subscriber<? super Row> subscriber)
         {
@@ -1504,21 +1528,13 @@ public class StorageProxy implements StorageProxyMBean
 
             EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
 
-            if (nettyEventLoop == null)
-            {
-                worker = Schedulers.io().createWorker();
-            }
-            else
-            {
-                //logger.warn("NETTY WORKER!");
-                worker = new NettyRxScheduler.Worker(nettyEventLoop);
-            }
+
 
             try
             {
                 if (maybeFetchMore())
                 {
-                    worker.schedule(new WatchAction(subscriber));
+                    worker.schedule(new WatchAction(subscriber, nettyEventLoop));
                 }
                 else
                 {
@@ -1608,23 +1624,10 @@ public class StorageProxy implements StorageProxyMBean
 //            worker.unsubscribe();
 
 
-            /*try
-            {
-                maybeFetchMore();
-            }
-            catch (UnavailableException e)
-            {
-                if (!subscriber.isUnsubscribed())
-                    subscriber.onError(e);
 
-                worker.unsubscribe();
-                return;
-            }*/
-
-            //worker.schedule(new WatchAction(subscriber));
         }
 
-    }
+    }  */
 
     static class WrappedDigestMismatchException extends Exception
     {
@@ -1654,59 +1657,58 @@ public class StorageProxy implements StorageProxyMBean
     private static Observable<Row> fetchRows(final List<ReadCommand> initialCommands, final ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadTimeoutException
     {
-        return Observable.create(new RowObservable(initialCommands, consistencyLevel))
+        return startReads(initialCommands, consistencyLevel)
                 .flatMap(new Func1<Row, Observable<Row>>()
-                {
-                    @Override
-                    public Observable<Row> call(Row row)
-                    {
-                        return Observable.just(row);
-                    }
-                },
-                new Func1<Throwable, Observable<Row>>()
-                {
-                    @Override
-                    public Observable<Row> call(Throwable throwable)
-                    {
-                        if (throwable instanceof WrappedDigestMismatchException)
+                         {
+                             @Override
+                             public Observable<Row> call(Row row)
+                             {
+                                 return Observable.just(row);
+                             }
+                         },
+                        new Func1<Throwable, Observable<Row>>()
                         {
-
-                            AbstractReadExecutor exec = ((WrappedDigestMismatchException)throwable).readHandler;
-
-                            Tracing.trace("Digest mismatch: {}", throwable);
-
-                            ReadRepairMetrics.repairedBlocking.mark();
-
-                            // Do a full data read to resolve the correct response (and repair node that need be)
-                            RowDataResolver resolver = new RowDataResolver(exec.command.ksName, exec.command.key, exec.command.filter(), exec.command.timestamp, exec.handler.endpoints.size());
-                            ReadCallback<ReadResponse, Row> repairHandler = new ReadCallback<>(resolver,
-                                    ConsistencyLevel.ALL,
-                                    exec.getContactedReplicas().size(),
-                                    exec.command,
-                                    Keyspace.open(exec.command.getKeyspace()),
-                                    exec.handler.endpoints);
-
-                            MessageOut<ReadCommand> message = exec.command.createMessage();
-                            for (InetAddress endpoint : exec.getContactedReplicas())
+                            @Override
+                            public Observable<Row> call(Throwable throwable)
                             {
-                                Tracing.trace("Enqueuing full data read to {}", endpoint);
-                                MessagingService.instance().sendRR(message, endpoint, repairHandler);
+                                if (throwable instanceof WrappedDigestMismatchException)
+                                {
+                                    AbstractReadExecutor exec = ((WrappedDigestMismatchException) throwable).readHandler;
+
+                                    Tracing.trace("Digest mismatch: {}", throwable);
+
+                                    ReadRepairMetrics.repairedBlocking.mark();
+
+                                    // Do a full data read to resolve the correct response (and repair node that need be)
+                                    RowDataResolver resolver = new RowDataResolver(exec.command.ksName, exec.command.key, exec.command.filter(), exec.command.timestamp, exec.handler.endpoints.size());
+                                    ReadCallback<ReadResponse, Row> repairHandler = new ReadCallback<>(resolver,
+                                            ConsistencyLevel.ALL,
+                                            exec.getContactedReplicas().size(),
+                                            exec.command,
+                                            Keyspace.open(exec.command.getKeyspace()),
+                                            exec.handler.endpoints);
+
+                                    MessageOut<ReadCommand> message = exec.command.createMessage();
+                                    for (InetAddress endpoint : exec.getContactedReplicas())
+                                    {
+                                        Tracing.trace("Enqueuing full data read to {}", endpoint);
+                                        MessagingService.instance().sendRR(message, endpoint, repairHandler);
+                                    }
+
+                                    return Observable.create(new RepairObservable(exec.command, exec.handler, consistencyLevel));
+                                }
+
+                                return Observable.error(throwable);
                             }
-
-                            return Observable.create(new RepairObservable(exec.command, exec.handler, consistencyLevel));
-                        }
-
-                        return null;
-                    }
-                },
-                new Func0<Observable<Row>>()
-                {
-                    @Override
-                    public Observable<Row> call()
-                    {
-                        return null;
-                    }
-                });
+                        },
+                        new Func0<Observable<Row>>()
+                        {
+                            @Override
+                            public Observable<Row> call()
+                            {
+                                return null;
+                            }
+                        });
     }
 
     static class LocalReadRunnable extends DroppableRunnable

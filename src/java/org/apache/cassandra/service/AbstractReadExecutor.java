@@ -44,6 +44,7 @@ import org.apache.cassandra.net.MessageOut;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.StorageProxy.LocalReadRunnable;
 import org.apache.cassandra.utils.FBUtilities;
+import rx.Observable;
 
 /**
  * Sends a read request to the replicas needed to satisfy a given ConsistencyLevel.
@@ -136,11 +137,11 @@ public abstract class AbstractReadExecutor
     public abstract void executeAsync();
 
     /**
-     * Returns true if the row is ready
+     * Returns Observable of for row (nonblocking)
      */
-    public boolean isReady() throws ReadTimeoutException
+    public Observable<Row> getObservable()
     {
-        return handler.isReady();
+        return handler.getObservable();
     }
 
     /**

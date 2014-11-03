@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import io.netty.channel.EventLoop;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +44,14 @@ import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.SimpleCondition;
+import rx.Observable;
+import rx.Scheduler;
+import rx.Subscriber;
+import rx.Subscription;
+import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
-public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessage>
+public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessage>, Observable.OnSubscribe<TResolved>
 {
     protected static final Logger logger = LoggerFactory.getLogger( ReadCallback.class );
 
@@ -58,6 +66,9 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
             = AtomicIntegerFieldUpdater.newUpdater(ReadCallback.class, "received");
     private volatile int received = 0;
     private final Keyspace keyspace; // TODO push this into ConsistencyLevel?
+    private Subscriber<? super TResolved> subscriber = null;
+    private Scheduler.Worker responseWorker = null;
+    private Subscription readTimeoutSubscription = null;
 
     /**
      * Constructor when response count has to be calculated and blocked for.
@@ -127,6 +138,11 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
         return blockfor == 1 ? resolver.getData() : resolver.resolve();
     }
 
+    public Observable<TResolved> getObservable()
+    {
+        return Observable.create(this);
+    }
+
     public void response(MessageIn<TMessage> message)
     {
         resolver.preprocess(message);
@@ -136,6 +152,31 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
         if (n >= blockfor && resolver.isDataPresent())
         {
             condition.signalAll();
+
+            //Cancel read timeout and pick the best worker to do the callback on
+            if (readTimeoutSubscription != null)
+                readTimeoutSubscription.unsubscribe();
+
+            //Notify Subscribers
+            if (subscriber != null && !subscriber.isUnsubscribed())
+            {
+                responseWorker.schedule(new Action0()
+                {
+                    @Override
+                    public void call()
+                    {
+                        try
+                        {
+                            subscriber.onNext(blockfor == 1 ? resolver.getData() : resolver.resolve());
+                            subscriber.onCompleted();
+                        } catch (DigestMismatchException e)
+                        {
+                            subscriber.onError(e);
+                        }
+                    }
+                });
+            }
+
             // kick off a background digest comparison if this is a result that (may have) arrived after
             // the original resolve that get() kicks off as soon as the condition is signaled
             if (blockfor < endpoints.size() && n == endpoints.size())
@@ -179,6 +220,41 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     public boolean isLatencyForSnitch()
     {
         return true;
+    }
+
+    @Override
+    public void call(final Subscriber<? super TResolved> subscriber)
+    {
+        this.subscriber = subscriber;
+
+        EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
+        if (nettyEventLoop != null)
+        {
+            responseWorker = new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
+        }
+        else
+        {
+            responseWorker = Schedulers.immediate().createWorker();
+        }
+
+        Scheduler.Worker timeoutWorker = nettyEventLoop == null ? Schedulers.io().createWorker() : responseWorker;
+
+        //setup read timeout trigger
+        readTimeoutSubscription = timeoutWorker.schedule(new Action0()
+        {
+            @Override
+            public void call()
+            {
+                ReadTimeoutException ex = new ReadTimeoutException(consistencyLevel, received, blockfor, resolver.isDataPresent());
+
+                if (logger.isDebugEnabled())
+                    logger.debug("Read timeout: {}", ex.toString());
+
+                if (!subscriber.isUnsubscribed())
+                    subscriber.onError(ex);
+
+            }
+        }, command.getTimeout(), TimeUnit.MILLISECONDS);
     }
 
     private class AsyncRepairRunner implements Runnable
