@@ -1,8 +1,10 @@
 package org.apache.cassandra.concurrent;
 
+import io.netty.channel.EventLoop;
 import io.netty.channel.EventLoopGroup;
 import rx.Scheduler;
 import rx.Subscription;
+import rx.functions.Action;
 import rx.functions.Action0;
 import rx.internal.schedulers.ScheduledAction;
 import rx.plugins.RxJavaPlugins;
@@ -18,26 +20,33 @@ import java.util.concurrent.TimeUnit;
  */
 public class NettyRxScheduler extends Scheduler
 {
-    final EventLoopGroup eventLoopGroup;
 
-    public NettyRxScheduler(EventLoopGroup eventLoopGroup)
+    public static ThreadLocal<EventLoop> localNettyEventLoop = new ThreadLocal<>();
+
+    final EventLoop eventLoop;
+
+    public NettyRxScheduler(EventLoop eventLoop)
     {
-        this.eventLoopGroup = eventLoopGroup;
+        this.eventLoop = eventLoop;
+        localNettyEventLoop.set(eventLoop);
     }
 
 
     @Override
     public Worker createWorker()
     {
-        return new Worker();
+        return new Worker(eventLoop);
     }
 
-    class Worker extends Scheduler.Worker implements Subscription
+    public static class Worker extends Scheduler.Worker implements Subscription
     {
         private final RxJavaSchedulersHook schedulersHook;
+        private final EventLoop nettyEventLoop;
         volatile boolean isUnsubscribed;
 
-        public Worker() {
+        public Worker(EventLoop nettyEventLoop)
+        {
+            this.nettyEventLoop = nettyEventLoop;
             schedulersHook = RxJavaPlugins.getInstance().getSchedulersHook();
         }
 
@@ -62,13 +71,17 @@ public class NettyRxScheduler extends Scheduler
          * @return
          */
         public ScheduledAction scheduleActual(final Action0 action, long delayTime, TimeUnit unit) {
+
+            if (action instanceof NettyAction0)
+                ((NettyAction0)action).setNettyEventLoop(nettyEventLoop);
+
             Action0 decoratedAction = schedulersHook.onSchedule(action);
             ScheduledAction run = new ScheduledAction(decoratedAction);
             Future<?> f;
             if (delayTime <= 0) {
-                f = eventLoopGroup.submit(run);
+                f = nettyEventLoop.submit(run);
             } else {
-                f = eventLoopGroup.schedule(run, delayTime, unit);
+                f = nettyEventLoop.schedule(run, delayTime, unit);
             }
             run.add(Subscriptions.from(f));
 
@@ -84,6 +97,11 @@ public class NettyRxScheduler extends Scheduler
         public boolean isUnsubscribed() {
             return isUnsubscribed;
         }
+    }
+
+    public static interface NettyAction0 extends Action
+    {
+        public void setNettyEventLoop(EventLoop eventLoop);
     }
 
 }

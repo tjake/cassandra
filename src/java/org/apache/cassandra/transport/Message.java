@@ -443,7 +443,9 @@ public abstract class Message
 
             Observable<? extends Response> responseObs = request.execute(qstate);
 
-            responseObs.subscribe(
+            NettyRxScheduler scheduler = new NettyRxScheduler(ctx.channel().eventLoop());
+
+            responseObs.subscribeOn(scheduler).subscribe(
                     new Action1<Response>()
                     {
                         @Override

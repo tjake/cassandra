@@ -31,6 +31,8 @@ import com.google.common.base.Predicate;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
+import io.netty.channel.EventLoop;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.metrics.*;
 import org.apache.cassandra.transport.Server;
 import org.apache.commons.lang3.StringUtils;
@@ -1350,12 +1352,12 @@ public class StorageProxy implements StorageProxyMBean
         int commandOffset = 0;
         Scheduler.Worker worker;
 
+
         RowObservable(List<ReadCommand> initialCommands, ConsistencyLevel consistencyLevel)
         {
             this.initialCommands = initialCommands;
             this.consistencyLevel = consistencyLevel;
             this.commands = initialCommands;
-            this.worker = Server.disruptorWorker.createWorker();
         }
 
         boolean maybeFetchMore() throws UnavailableException
@@ -1391,13 +1393,12 @@ public class StorageProxy implements StorageProxyMBean
             return readExecutors.length > 0;
         }
 
-
         class WatchAction implements Action0
         {
 
             final Subscriber<? super Row> subscriber;
 
-            WatchAction( Subscriber<? super Row> subscriber)
+            WatchAction(Subscriber<? super Row> subscriber)
             {
                 this.subscriber = subscriber;
             }
@@ -1501,7 +1502,17 @@ public class StorageProxy implements StorageProxyMBean
                 return;
 
 
-            //worker.schedule(new WatchAction(subscriber));
+            EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
+
+            if (nettyEventLoop == null)
+            {
+                worker = Schedulers.io().createWorker();
+            }
+            else
+            {
+                //logger.warn("NETTY WORKER!");
+                worker = new NettyRxScheduler.Worker(nettyEventLoop);
+            }
 
             try
             {

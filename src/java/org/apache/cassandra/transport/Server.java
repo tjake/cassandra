@@ -102,10 +102,7 @@ public class Server implements CassandraDaemon.Server
         }
     }
 
-    public static final NettyRxScheduler nettyWorker = new NettyRxScheduler(workerGroup);
-    public static final CustomRxScheduler disruptorWorker = new CustomRxScheduler();
-
-
+    //public static final CustomRxScheduler disruptorWorker = new CustomRxScheduler();
 
     public Server(InetSocketAddress socket)
     {
