@@ -1343,12 +1343,8 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-
-
-
     static Observable<Row> startReads(List<ReadCommand> commands, ConsistencyLevel consistencyLevel) throws UnavailableException
     {
-
         assert !commands.isEmpty();
 
         final Observable<Row>[] rowObservables = new Observable[commands.size()];
@@ -1362,8 +1358,6 @@ public class StorageProxy implements StorageProxyMBean
 
             final AbstractReadExecutor exec = AbstractReadExecutor.getReadExecutor(command, consistencyLevel);
             readExecutors[i] = exec;
-
-
             rowObservables[i] = exec.getObservable().map(new Func1<Row, Row>()
             {
                 @Override
@@ -1375,25 +1369,23 @@ public class StorageProxy implements StorageProxyMBean
             });
         }
 
-        return Observable.create( new Observable.OnSubscribe<Row>()
-                                  {
-                                      @Override
-                                      public void call(Subscriber<? super Row> subscriber)
-                                      {
+        //Create parent observable
+        return Observable.create(new Observable.OnSubscribe<Row>()
+                                 {
+                                     @Override
+                                     public void call(Subscriber<? super Row> subscriber)
+                                     {
+                                         for (Observable<Row> observable : rowObservables)
+                                            observable.subscribe(subscriber);
 
-                                          for (Observable<Row> observable : rowObservables)
-                                              observable.subscribe(subscriber);
-
-                                          for (AbstractReadExecutor exec : readExecutors)
+                                         for (AbstractReadExecutor exec : readExecutors)
                                             exec.executeAsync();
 
-                                          //What is the point of this?
-                                          for (AbstractReadExecutor exec : readExecutors)
-                                              exec.maybeTryAdditionalReplicas();
-                                      }
-                                  }
-
-        );
+                                         //What is the point of this?
+                                         for (AbstractReadExecutor exec : readExecutors)
+                                            exec.maybeTryAdditionalReplicas();
+                                     }
+                                 }).take(rowObservables.length);
     }
 
 

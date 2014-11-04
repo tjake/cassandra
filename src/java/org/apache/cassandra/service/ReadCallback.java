@@ -168,8 +168,8 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
                         try
                         {
                             subscriber.onNext(blockfor == 1 ? resolver.getData() : resolver.resolve());
-                            subscriber.onCompleted();
-                        } catch (DigestMismatchException e)
+                        }
+                        catch (DigestMismatchException e)
                         {
                             subscriber.onError(e);
                         }
@@ -239,7 +239,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
             responseWorker = Schedulers.immediate().createWorker();
         }
 
-        final Scheduler.Worker timeoutWorker = nettyEventLoop == null ? Schedulers.io().createWorker() : responseWorker;
+        final Scheduler.Worker timeoutWorker = Schedulers.computation().createWorker();
 
         //setup read timeout trigger
         readTimeoutSubscription = timeoutWorker.schedule(new Action0()
