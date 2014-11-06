@@ -199,7 +199,7 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
     {
         executor = Executors.newFixedThreadPool(workerPoolSize, new NamedThreadFactory("disruptor1"));
 
-        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new YieldingWaitStrategy());
+        disruptor = new Disruptor<>(TaskEvent.factory, disruptorRingSize, executor, isSingleProducer ? ProducerType.SINGLE : ProducerType.MULTI, new BlockingWaitStrategy());
 
         ringBuffer = disruptor.getRingBuffer();
 
