@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import io.netty.channel.EventLoop;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
+import org.apache.cassandra.transport.Server;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,7 +233,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
         EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
         if (nettyEventLoop != null)
         {
-            responseWorker = Schedulers.computation().createWorker(); //new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
+            responseWorker = Server.disruptorWorker.createWorker(); //new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
         }
         else
         {
