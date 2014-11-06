@@ -376,9 +376,9 @@ public abstract class Message
             final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
 
 
-            //NettyRxScheduler scheduler = new NettyRxScheduler(loop);
+            NettyRxScheduler scheduler = new NettyRxScheduler(loop);
 
-            responseObs.subscribe(
+            responseObs.subscribeOn(scheduler).subscribe(
                     new Action1<Response>()
                     {
                         @Override

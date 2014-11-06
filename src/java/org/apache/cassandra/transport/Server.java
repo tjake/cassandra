@@ -88,6 +88,8 @@ public class Server implements CassandraDaemon.Server
     static final boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
 
     static final private EventLoopGroup workerGroup;
+    private RequestThreadPoolExecutor requests;
+
     static
     {
         if (hasEpoll)
@@ -157,7 +159,7 @@ public class Server implements CassandraDaemon.Server
             return;
         }
 
-
+        requests = new RequestThreadPoolExecutor();
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                                     .group(workerGroup)
@@ -295,7 +297,7 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast("executor", dispatcher);
+            pipeline.addLast(server.requests, "executor", dispatcher);
         }
     }
 
