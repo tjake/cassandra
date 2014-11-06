@@ -24,10 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.netty.buffer.ByteBuf;
@@ -38,6 +35,7 @@ import io.netty.handler.codec.MessageToMessageEncoder;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableSet;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
+import org.apache.cassandra.utils.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -343,86 +341,7 @@ public abstract class Message
     @ChannelHandler.Sharable
     public static class Dispatcher extends SimpleChannelInboundHandler<Request>
     {
-        private static class FlushItem
-        {
-            final ChannelHandlerContext ctx;
-            final Object response;
-            final Frame sourceFrame;
-            private FlushItem(ChannelHandlerContext ctx, Object response, Frame sourceFrame)
-            {
-                this.ctx = ctx;
-                this.sourceFrame = sourceFrame;
-                this.response = response;
-            }
-        }
-
-        private final class Flusher implements Runnable
-        {
-            final EventLoop eventLoop;
-            final ConcurrentLinkedQueue<FlushItem> queued = new ConcurrentLinkedQueue<>();
-            final AtomicBoolean running = new AtomicBoolean(false);
-            final HashSet<ChannelHandlerContext> channels = new HashSet<>();
-            final List<FlushItem> flushed = new ArrayList<>();
-            int runsSinceFlush = 0;
-            int runsWithNoWork = 0;
-            private Flusher(EventLoop eventLoop)
-            {
-                this.eventLoop = eventLoop;
-            }
-            void start()
-            {
-                if (!running.get() && running.compareAndSet(false, true))
-                {
-                    this.eventLoop.execute(this);
-                }
-            }
-            public void run()
-            {
-
-                boolean doneWork = false;
-                FlushItem flush;
-                while ( null != (flush = queued.poll()) )
-                {
-                    channels.add(flush.ctx);
-                    flush.ctx.write(flush.response, flush.ctx.voidPromise());
-                    flushed.add(flush);
-                    doneWork = true;
-                }
-
-                runsSinceFlush++;
-
-                if (!doneWork || runsSinceFlush > 2 || flushed.size() > 50)
-                {
-                    for (ChannelHandlerContext channel : channels)
-                        channel.flush();
-                    for (FlushItem item : flushed)
-                        item.sourceFrame.release();
-
-                    channels.clear();
-                    flushed.clear();
-                    runsSinceFlush = 0;
-                }
-
-                if (doneWork)
-                {
-                    runsWithNoWork = 0;
-                }
-                else
-                {
-                    // either reschedule or cancel
-                    if (++runsWithNoWork > 5)
-                    {
-                        running.set(false);
-                        if (queued.isEmpty() || !running.compareAndSet(false, true))
-                            return;
-                    }
-                }
-
-                eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
-            }
-        }
-
-        private static final ConcurrentMap<EventLoop, Flusher> flusherLookup = new ConcurrentHashMap<>();
+        private static final ConcurrentMap<EventLoop, ConcurrentLinkedQueue<Pair<Response,Frame>>> flusherLookup = new ConcurrentHashMap<>();
 
         public Dispatcher()
         {
@@ -436,16 +355,30 @@ public abstract class Message
             final ServerConnection connection;
 
             assert request.connection() instanceof ServerConnection;
-            connection = (ServerConnection)request.connection();
+            connection = (ServerConnection) request.connection();
             QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
             logger.debug("Received: {}, v={}", request, connection.getVersion());
 
-            Observable<? extends Response> responseObs = request.execute(qstate);
+            final Observable<? extends Response> responseObs = request.execute(qstate);
 
-            NettyRxScheduler scheduler = new NettyRxScheduler(ctx.channel().eventLoop());
 
-            responseObs.subscribeOn(scheduler).subscribe(
+            final EventLoop loop = ctx.channel().eventLoop();
+            ConcurrentLinkedQueue<Pair<Response, Frame>> current = flusherLookup.get(loop);
+            if (current == null)
+            {
+                ConcurrentLinkedQueue<Pair<Response, Frame>> alt = flusherLookup.putIfAbsent(loop, current = new ConcurrentLinkedQueue<>());
+                if (alt != null)
+                    current = alt;
+
+            }
+
+            final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
+
+
+            //NettyRxScheduler scheduler = new NettyRxScheduler(loop);
+
+            responseObs.subscribe(
                     new Action1<Response>()
                     {
                         @Override
@@ -456,9 +389,8 @@ public abstract class Message
                             connection.applyStateTransition(request.type, response.type);
 
                             logger.debug("Responding: {}, v={}", response, connection.getVersion());
-                            //ctx.write(response, ctx.voidPromise());
 
-                            flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                            currentFinal.add(Pair.create(response, request.getSourceFrame()));
                         }
                     },
                     new Action1<Throwable>()
@@ -468,7 +400,7 @@ public abstract class Message
                         {
                             JVMStabilityInspector.inspectThrowable(t);
                             UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                            flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                            currentFinal.add(Pair.create((Response) ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
                         }
                     },
                     new Action0()
@@ -476,26 +408,35 @@ public abstract class Message
                         @Override
                         public void call()
                         {
-                            //ctx.flush();
-                            //request.getSourceFrame().release();
+                            loop.schedule(new Runnable()
+                            {
+                                @Override
+                                public void run()
+                                {
+                                    List<Frame> frames = null;
+
+                                    Pair<Response, Frame> pair;
+                                    while (null != (pair = currentFinal.poll()))
+                                    {
+                                        ctx.write(pair.left);
+
+                                        if (frames == null)
+                                            frames = new ArrayList<>();
+
+                                        frames.add(pair.right);
+                                    }
+
+                                    if (frames != null)
+                                    {
+                                        ctx.flush();
+                                        for (Frame frame : frames)
+                                            frame.release();
+                                    }
+                                }
+                            }, 10, TimeUnit.MICROSECONDS);
                         }
                     }
             );
-        }
-
-        private void flush(FlushItem item)
-        {
-            EventLoop loop = item.ctx.channel().eventLoop();
-            Flusher flusher = flusherLookup.get(loop);
-            if (flusher == null)
-            {
-                Flusher alt = flusherLookup.putIfAbsent(loop, flusher = new Flusher(loop));
-                if (alt != null)
-                    flusher = alt;
-            }
-
-            flusher.queued.add(item);
-            flusher.start();
         }
 
         @Override

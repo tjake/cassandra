@@ -230,14 +230,14 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     {
         this.subscriber = subscriber;
 
-        EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
+        //EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
         //if (nettyEventLoop != null)
-        {
-        //    responseWorker = Server.disruptorWorker.createWorker(); //new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
-        }
+        //{
+        //    responseWorker = Schedulers.computation().createWorker(); //new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
+        //}
         //else
         {
-            responseWorker = Schedulers.immediate().createWorker();
+            responseWorker = Schedulers.computation().createWorker();
         }
 
         final Scheduler.Worker timeoutWorker = Schedulers.computation().createWorker();
