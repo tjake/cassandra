@@ -1358,13 +1358,13 @@ public class StorageProxy implements StorageProxyMBean
 
             final AbstractReadExecutor exec = AbstractReadExecutor.getReadExecutor(command, consistencyLevel);
             readExecutors[i] = exec;
-            rowObservables[i] = exec.getObservable().map(new Func1<Row, Row>()
+            rowObservables[i] = exec.getObservable().flatMap(new Func1<Row, Observable<Row>>()
             {
                 @Override
-                public Row call(Row row)
+                public Observable<Row> call(Row row)
                 {
                     command.maybeTrim(row);
-                    return row;
+                    return Observable.just(row);
                 }
             });
         }

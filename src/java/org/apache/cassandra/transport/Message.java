@@ -378,7 +378,7 @@ public abstract class Message
 
             NettyRxScheduler scheduler = new NettyRxScheduler(loop);
 
-            responseObs.subscribeOn(scheduler).subscribe(
+            responseObs.observeOn(scheduler).subscribe(
                     new Action1<Response>()
                     {
                         @Override
@@ -428,6 +428,7 @@ public abstract class Message
 
                                     if (frames != null)
                                     {
+
                                         ctx.flush();
                                         for (Frame frame : frames)
                                             frame.release();
