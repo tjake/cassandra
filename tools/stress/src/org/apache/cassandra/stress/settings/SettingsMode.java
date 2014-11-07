@@ -34,6 +34,11 @@ public class SettingsMode implements Serializable
     public final ConnectionAPI api;
     public final ConnectionStyle style;
     public final CqlVersion cqlVersion;
+
+    public final String username;
+    public final String password;
+    public final Integer connectionsPerHost;
+
     private final String compression;
 
     public SettingsMode(GroupedOptions options)
@@ -43,8 +48,11 @@ public class SettingsMode implements Serializable
             cqlVersion = CqlVersion.CQL3;
             Cql3Options opts = (Cql3Options) options;
             api = opts.mode().displayPrefix.equals("native") ? ConnectionAPI.JAVA_DRIVER_NATIVE : ConnectionAPI.THRIFT;
-            style = opts.usePrepared.setByUser() ? ConnectionStyle.CQL_PREPARED : ConnectionStyle.CQL;
+            style = opts.useUnPrepared.setByUser() ? ConnectionStyle.CQL :  ConnectionStyle.CQL_PREPARED;
             compression = ProtocolOptions.Compression.valueOf(opts.useCompression.value().toUpperCase()).name();
+            username = opts.user.value();
+            password = opts.password.value();
+            connectionsPerHost = opts.connectionsPerHost.value() == null ? null : Integer.valueOf(opts.connectionsPerHost.value());
         }
         else if (options instanceof Cql3SimpleNativeOptions)
         {
@@ -53,6 +61,9 @@ public class SettingsMode implements Serializable
             api = ConnectionAPI.SIMPLE_NATIVE;
             style = opts.usePrepared.setByUser() ? ConnectionStyle.CQL_PREPARED : ConnectionStyle.CQL;
             compression = ProtocolOptions.Compression.NONE.name();
+            username = null;
+            password = null;
+            connectionsPerHost = null;
         }
         else if (options instanceof Cql2ThriftOptions)
         {
@@ -61,6 +72,9 @@ public class SettingsMode implements Serializable
             Cql2ThriftOptions opts = (Cql2ThriftOptions) options;
             style = opts.usePrepared.setByUser() ? ConnectionStyle.CQL_PREPARED : ConnectionStyle.CQL;
             compression = ProtocolOptions.Compression.NONE.name();
+            username = null;
+            password = null;
+            connectionsPerHost = null;
         }
         else if (options instanceof ThriftOptions)
         {
@@ -69,6 +83,9 @@ public class SettingsMode implements Serializable
             api = opts.smart.setByUser() ? ConnectionAPI.THRIFT_SMART : ConnectionAPI.THRIFT;
             style = ConnectionStyle.THRIFT;
             compression = ProtocolOptions.Compression.NONE.name();
+            username = null;
+            password = null;
+            connectionsPerHost = null;
         }
         else
             throw new IllegalStateException();
@@ -102,15 +119,19 @@ public class SettingsMode implements Serializable
     private static abstract class Cql3Options extends GroupedOptions
     {
         final OptionSimple api = new OptionSimple("cql3", "", null, "", true);
-        final OptionSimple usePrepared = new OptionSimple("prepared", "", null, "", false);
+        final OptionSimple useUnPrepared = new OptionSimple("unprepared", "", null, "force use of unprepared statements", false);
         final OptionSimple useCompression = new OptionSimple("compression=", "none|lz4|snappy", "none", "", false);
         final OptionSimple port = new OptionSimple("port=", "[0-9]+", "9046", "", false);
+        final OptionSimple user = new OptionSimple("user=", ".+", null, "username", false);
+        final OptionSimple password = new OptionSimple("password=", ".+", null, "password", false);
+        final OptionSimple connectionsPerHost = new OptionSimple("connections_per_host=", "[0-9]+", null, "connections to share per host", false);
+
 
         abstract OptionSimple mode();
         @Override
         public List<? extends Option> options()
         {
-            return Arrays.asList(mode(), usePrepared, api, useCompression, port);
+            return Arrays.asList(mode(), useUnPrepared, api, useCompression, port, user, password, connectionsPerHost);
         }
     }
 

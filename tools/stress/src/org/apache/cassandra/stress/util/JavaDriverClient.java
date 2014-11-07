@@ -41,6 +41,10 @@ public class JavaDriverClient
 
     public final String host;
     public final int port;
+    public final String username;
+    public final String password;
+    public final Integer connectionsPerHost;
+
     private final EncryptionOptions.ClientEncryptionOptions encryptionOptions;
     private Cluster cluster;
     private Session session;
@@ -57,11 +61,16 @@ public class JavaDriverClient
     {
         this.host = host;
         this.port = port;
+        this.username = settings.mode.username;
+        this.password = settings.mode.password;
+        this.connectionsPerHost = settings.mode.connectionsPerHost;
+
         this.encryptionOptions = encryptionOptions;
         if (settings.node.isWhiteList)
             whitelist = new WhiteListPolicy(new DCAwareRoundRobinPolicy(), settings.node.resolveAll(settings.port.nativePort));
         else
             whitelist = null;
+
     }
 
     public PreparedStatement prepare(String query)
@@ -96,6 +105,19 @@ public class JavaDriverClient
             SSLOptions sslOptions = new SSLOptions(sslContext, encryptionOptions.cipher_suites);
             clusterBuilder.withSSL(sslOptions);
         }
+
+        if (username != null)
+        {
+            clusterBuilder.withCredentials(username, password);
+        }
+
+        if (connectionsPerHost != null)
+        {
+            clusterBuilder.withPoolingOptions(new PoolingOptions()
+                    .setMaxConnectionsPerHost(HostDistance.LOCAL, connectionsPerHost+1)
+                    .setCoreConnectionsPerHost(HostDistance.LOCAL, connectionsPerHost));
+        }
+
         cluster = clusterBuilder.build();
         Metadata metadata = cluster.getMetadata();
         System.out.printf("Connected to cluster: %s%n",
