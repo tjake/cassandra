@@ -378,7 +378,7 @@ public abstract class Message
 
             NettyRxScheduler scheduler = new NettyRxScheduler(loop);
 
-            responseObs.observeOn(scheduler).subscribe(
+            responseObs.subscribe(
                     new Action1<Response>()
                     {
                         @Override
@@ -418,7 +418,7 @@ public abstract class Message
                                     Pair<Response, Frame> pair;
                                     while (null != (pair = currentFinal.poll()))
                                     {
-                                        ctx.write(pair.left);
+                                        ctx.write(pair.left, ctx.voidPromise());
 
                                         if (frames == null)
                                             frames = new ArrayList<>();
@@ -428,13 +428,12 @@ public abstract class Message
 
                                     if (frames != null)
                                     {
-
                                         ctx.flush();
                                         for (Frame frame : frames)
                                             frame.release();
                                     }
                                 }
-                            }, 10, TimeUnit.MICROSECONDS);
+                            }, 10000, TimeUnit.NANOSECONDS);
                         }
                     }
             );

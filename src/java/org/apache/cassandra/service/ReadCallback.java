@@ -233,7 +233,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
         EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
         if (nettyEventLoop != null)
         {
-            responseWorker = new NettyRxScheduler.Worker(NettyRxScheduler.localNettyEventLoop.get());
+            responseWorker = new NettyRxScheduler.Worker(nettyEventLoop);
         }
         else
         {

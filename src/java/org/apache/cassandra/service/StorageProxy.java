@@ -1369,7 +1369,6 @@ public class StorageProxy implements StorageProxyMBean
             });
         }
 
-
         //Create parent observable
         return Observable.create(new Observable.OnSubscribe<Row>()
                                  {
