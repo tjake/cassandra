@@ -159,7 +159,7 @@ public class Server implements CassandraDaemon.Server
             return;
         }
 
-        requestPool = new RequestThreadPoolExecutor();
+        //requestPool = new RequestThreadPoolExecutor();
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                                     .group(workerGroup)
@@ -297,7 +297,7 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            pipeline.addLast(server.requestPool, "executor", dispatcher);
+            pipeline.addLast("executor", dispatcher);
         }
     }
 
