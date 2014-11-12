@@ -34,6 +34,7 @@ import io.netty.handler.codec.MessageToMessageEncoder;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableSet;
+import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.utils.Pair;
 import org.slf4j.Logger;
@@ -356,9 +357,18 @@ public abstract class Message
 
             assert request.connection() instanceof ServerConnection;
             connection = (ServerConnection) request.connection();
-            QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+            final QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
             logger.debug("Received: {}, v={}", request, connection.getVersion());
+
+            Scheduler.Worker worker = CustomRxScheduler.instance.createWorker();
+
+            worker.schedule(new Action0()
+            {
+                @Override
+                public void call()
+                {
+
 
             final Observable<? extends Response> responseObs = request.execute(qstate);
 
@@ -375,8 +385,6 @@ public abstract class Message
 
             final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
 
-
-            NettyRxScheduler scheduler = new NettyRxScheduler(loop);
 
             responseObs.subscribe(
                     new Action1<Response>()
@@ -437,6 +445,11 @@ public abstract class Message
                         }
                     }
             );
+
+
+                }
+            });
+
         }
 
         @Override

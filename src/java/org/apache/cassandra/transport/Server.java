@@ -88,7 +88,7 @@ public class Server implements CassandraDaemon.Server
     static final boolean hasEpoll = enableEpoll ? Epoll.isAvailable() : false;
 
     static final private EventLoopGroup workerGroup;
-    private RequestThreadPoolExecutor requestPool;
+   // private RequestThreadPoolExecutor requestPool;
 
     static
     {
