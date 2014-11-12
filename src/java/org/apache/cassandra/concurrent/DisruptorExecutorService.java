@@ -1,12 +1,10 @@
 package org.apache.cassandra.concurrent;
 
-import com.google.common.util.concurrent.Uninterruptibles;
 import com.lmax.disruptor.*;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
 import java.util.List;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -238,13 +236,6 @@ public class DisruptorExecutorService extends AbstractTracingAwareExecutorServic
     @Override
     public void maybeExecuteImmediately(final Runnable command)
     {
-
-        /*command.run();
-        return;
-*/
-
-
-
         EventTranslator translator = new EventTranslator<TaskEvent>()
         {
             @Override

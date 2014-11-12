@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import io.netty.channel.EventLoop;
+import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.transport.Server;
 import org.apache.commons.lang3.StringUtils;
@@ -230,17 +231,17 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     {
         this.subscriber = subscriber;
 
-        EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
-        if (nettyEventLoop != null)
+        //EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
+        //if (nettyEventLoop != null)
+        //{
+        //    responseWorker = new NettyRxScheduler.Worker(nettyEventLoop);
+        //}
+        //else
         {
-            responseWorker = new NettyRxScheduler.Worker(nettyEventLoop);
-        }
-        else
-        {
-            responseWorker = Schedulers.computation().createWorker();
+            responseWorker = CustomRxScheduler.instance.createWorker();
         }
 
-        final Scheduler.Worker timeoutWorker = Schedulers.computation().createWorker();
+        final Scheduler.Worker timeoutWorker = CustomRxScheduler.instance.createWorker();
 
         //setup read timeout trigger
         readTimeoutSubscription = timeoutWorker.schedule(new Action0()
