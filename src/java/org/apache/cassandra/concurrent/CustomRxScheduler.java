@@ -7,6 +7,7 @@ import io.netty.util.TimerTask;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import rx.Scheduler;
 import rx.Subscription;
+import rx.functions.Action;
 import rx.functions.Action0;
 import rx.internal.schedulers.ScheduledAction;
 import rx.plugins.RxJavaPlugins;
@@ -23,7 +24,7 @@ public class CustomRxScheduler extends Scheduler
     public static final CustomRxScheduler instance = new CustomRxScheduler();
 
     final HashedWheelTimer wheelTimer = new HashedWheelTimer();
-    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "rxjava");
+    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(Runtime.getRuntime().availableProcessors()*2, 512, "worker", "rxjava");
 
     @Override
     public Worker createWorker()
@@ -34,9 +35,9 @@ public class CustomRxScheduler extends Scheduler
     class TimeoutFuture<T> extends AbstractFuture<T> implements TimerTask
     {
         private final Timeout timeout;
-        private final Action0 action;
+        private final Runnable action;
 
-        TimeoutFuture(Action0 action, long delay, TimeUnit unit)
+        TimeoutFuture(Runnable action, long delay, TimeUnit unit)
         {
             this.action = action;
             timeout = wheelTimer.newTimeout(this, delay, unit);
@@ -65,7 +66,7 @@ public class CustomRxScheduler extends Scheduler
         @Override
         public void run(Timeout timeout) throws Exception
         {
-            action.call();
+            action.run();
         }
     }
 
@@ -105,7 +106,7 @@ public class CustomRxScheduler extends Scheduler
             if (delayTime <= 0) {
                 f = executor.submit(run);
             } else {
-                f = new TimeoutFuture(action, delayTime, unit);
+                f = new TimeoutFuture(run, delayTime, unit);
             }
             run.add(Subscriptions.from(f));
 

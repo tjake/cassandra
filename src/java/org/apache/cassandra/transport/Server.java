@@ -98,7 +98,7 @@ public class Server implements CassandraDaemon.Server
         }
         else
         {
-            workerGroup = new NioEventLoopGroup();
+            workerGroup = new NioEventLoopGroup(0, Executors.defaultThreadFactory());
             logger.info("Netty using Java NIO event loop");
         }
     }
