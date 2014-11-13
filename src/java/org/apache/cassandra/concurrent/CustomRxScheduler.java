@@ -21,9 +21,8 @@ public class CustomRxScheduler extends Scheduler
 {
     public static final CustomRxScheduler instance = new CustomRxScheduler();
 
-
     final HashedWheelTimer wheelTimer = new HashedWheelTimer();
-    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(Runtime.getRuntime().availableProcessors(), 2048, "rxjava", "foo");
+    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(Runtime.getRuntime().availableProcessors(), 2048, "worker", "rxjava");
 
     @Override
     public Worker createWorker()

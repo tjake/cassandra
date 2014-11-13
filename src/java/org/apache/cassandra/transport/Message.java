@@ -363,90 +363,86 @@ public abstract class Message
 
             Scheduler.Worker worker = CustomRxScheduler.instance.createWorker();
 
+            //Schedule the work on our compute scheduler
             worker.schedule(new Action0()
             {
                 @Override
                 public void call()
                 {
+                    final Observable<? extends Response> responseObs = request.execute(qstate);
 
-
-            final Observable<? extends Response> responseObs = request.execute(qstate);
-
-
-            final EventLoop loop = ctx.channel().eventLoop();
-            ConcurrentLinkedQueue<Pair<Response, Frame>> current = flusherLookup.get(loop);
-            if (current == null)
-            {
-                ConcurrentLinkedQueue<Pair<Response, Frame>> alt = flusherLookup.putIfAbsent(loop, current = new ConcurrentLinkedQueue<>());
-                if (alt != null)
-                    current = alt;
-
-            }
-
-            final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
-
-
-            responseObs.subscribe(
-                    new Action1<Response>()
+                    final EventLoop loop = ctx.channel().eventLoop();
+                    ConcurrentLinkedQueue<Pair<Response, Frame>> current = flusherLookup.get(loop);
+                    if (current == null)
                     {
-                        @Override
-                        public void call(Response response)
-                        {
-                            response.setStreamId(request.getStreamId());
-                            response.attach(connection);
-                            connection.applyStateTransition(request.type, response.type);
+                        ConcurrentLinkedQueue<Pair<Response, Frame>> alt = flusherLookup.putIfAbsent(loop, current = new ConcurrentLinkedQueue<>());
+                        if (alt != null)
+                            current = alt;
 
-                            logger.debug("Responding: {}, v={}", response, connection.getVersion());
+                    }
 
-                            currentFinal.add(Pair.create(response, request.getSourceFrame()));
-                        }
-                    },
-                    new Action1<Throwable>()
-                    {
-                        @Override
-                        public void call(Throwable t)
-                        {
-                            JVMStabilityInspector.inspectThrowable(t);
-                            UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                            currentFinal.add(Pair.create((Response) ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
-                        }
-                    },
-                    new Action0()
-                    {
-                        @Override
-                        public void call()
-                        {
-                            loop.schedule(new Runnable()
+                    final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
+
+
+                    responseObs.subscribe(
+                            new Action1<Response>()
                             {
                                 @Override
-                                public void run()
+                                public void call(Response response)
                                 {
-                                    List<Frame> frames = null;
+                                    response.setStreamId(request.getStreamId());
+                                    response.attach(connection);
+                                    connection.applyStateTransition(request.type, response.type);
 
-                                    Pair<Response, Frame> pair;
-                                    while (null != (pair = currentFinal.poll()))
-                                    {
-                                        ctx.write(pair.left, ctx.voidPromise());
+                                    logger.debug("Responding: {}, v={}", response, connection.getVersion());
 
-                                        if (frames == null)
-                                            frames = new ArrayList<>();
-
-                                        frames.add(pair.right);
-                                    }
-
-                                    if (frames != null)
-                                    {
-                                        ctx.flush();
-                                        for (Frame frame : frames)
-                                            frame.release();
-                                    }
+                                    currentFinal.add(Pair.create(response, request.getSourceFrame()));
                                 }
-                            }, 10000, TimeUnit.NANOSECONDS);
-                        }
-                    }
-            );
+                            },
+                            new Action1<Throwable>()
+                            {
+                                @Override
+                                public void call(Throwable t)
+                                {
+                                    JVMStabilityInspector.inspectThrowable(t);
+                                    UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
+                                    currentFinal.add(Pair.create((Response) ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                                }
+                            },
+                            new Action0()
+                            {
+                                @Override
+                                public void call()
+                                {
+                                    loop.schedule(new Runnable()
+                                    {
+                                        @Override
+                                        public void run()
+                                        {
+                                            List<Frame> frames = null;
 
+                                            Pair<Response, Frame> pair;
+                                            while (null != (pair = currentFinal.poll()))
+                                            {
+                                                ctx.write(pair.left, ctx.voidPromise());
 
+                                                if (frames == null)
+                                                    frames = new ArrayList<>();
+
+                                                frames.add(pair.right);
+                                            }
+
+                                            if (frames != null)
+                                            {
+                                                ctx.flush();
+                                                for (Frame frame : frames)
+                                                    frame.release();
+                                            }
+                                        }
+                                    }, 10000, TimeUnit.NANOSECONDS);
+                                }
+                            }
+                    );
                 }
             });
 

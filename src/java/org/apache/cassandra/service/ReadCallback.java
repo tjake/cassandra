@@ -231,15 +231,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     {
         this.subscriber = subscriber;
 
-        //EventLoop nettyEventLoop = NettyRxScheduler.localNettyEventLoop.get();
-        //if (nettyEventLoop != null)
-        //{
-        //    responseWorker = new NettyRxScheduler.Worker(nettyEventLoop);
-        //}
-        //else
-        {
-            responseWorker = CustomRxScheduler.instance.createWorker();
-        }
+        responseWorker = CustomRxScheduler.instance.createWorker();
 
         final Scheduler.Worker timeoutWorker = CustomRxScheduler.instance.createWorker();
 
