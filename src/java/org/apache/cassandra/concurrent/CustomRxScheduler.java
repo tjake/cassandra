@@ -4,6 +4,7 @@ import com.google.common.util.concurrent.AbstractFuture;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action0;
@@ -22,7 +23,7 @@ public class CustomRxScheduler extends Scheduler
     public static final CustomRxScheduler instance = new CustomRxScheduler();
 
     final HashedWheelTimer wheelTimer = new HashedWheelTimer();
-    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(Runtime.getRuntime().availableProcessors(), 2048, "worker", "rxjava");
+    final TracingAwareExecutorService executor = JMXEnabledSharedExecutorPool.SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "rxjava");
 
     @Override
     public Worker createWorker()
