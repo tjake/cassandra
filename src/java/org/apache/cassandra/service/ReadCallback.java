@@ -69,7 +69,6 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     private volatile int received = 0;
     private final Keyspace keyspace; // TODO push this into ConsistencyLevel?
     private Subscriber<? super TResolved> subscriber = null;
-    private Scheduler.Worker responseWorker = null;
     private Subscription readTimeoutSubscription = null;
 
     /**
@@ -162,23 +161,14 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
             //Notify Subscribers
             if (subscriber != null && !subscriber.isUnsubscribed())
             {
-                //responseWorker.schedule(new Action0()
+                try
                 {
-                //    @Override
-                //    public void call()
-                    {
-                        try
-                        {
-                            subscriber.onNext(blockfor == 1 ? resolver.getData() : resolver.resolve());
-                        }
-                        catch (DigestMismatchException e)
-                        {
-                            subscriber.onError(e);
-                        }
-
-                        responseWorker.unsubscribe();
-                    }
-                }//);
+                    subscriber.onNext(blockfor == 1 ? resolver.getData() : resolver.resolve());
+                }
+                catch (DigestMismatchException e)
+                {
+                    subscriber.onError(e);
+                }
             }
 
             // kick off a background digest comparison if this is a result that (may have) arrived after
@@ -230,8 +220,6 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
     public void call(final Subscriber<? super TResolved> subscriber)
     {
         this.subscriber = subscriber;
-
-        responseWorker = CustomRxScheduler.instance.createWorker();
 
         final Scheduler.Worker timeoutWorker = CustomRxScheduler.instance.createWorker();
 

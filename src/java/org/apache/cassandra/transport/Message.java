@@ -386,7 +386,7 @@ public abstract class Message
                     }
 
                     final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
-                    
+
 
                     responseObs.subscribe(
                             new Action1<Response>()
