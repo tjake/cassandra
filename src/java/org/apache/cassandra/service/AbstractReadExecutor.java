@@ -103,18 +103,25 @@ public abstract class AbstractReadExecutor
         ReadCommand digestCommand = command.copy();
         digestCommand.setDigestQuery(true);
         MessageOut<?> message = digestCommand.createMessage();
+
+        boolean readLocal = false;
         for (InetAddress endpoint : endpoints)
         {
             if (isLocalRequest(endpoint))
             {
-                logger.trace("reading digest locally");
-                StageManager.getStage(Stage.READ).execute(new LocalReadRunnable(digestCommand, handler));
+                readLocal = true;
             }
             else
             {
                 logger.trace("reading digest from {}", endpoint);
                 MessagingService.instance().sendRR(message, endpoint, handler);
             }
+        }
+
+        if (readLocal)
+        {
+            logger.trace("reading digest locally");
+            StageManager.getStage(Stage.READ).maybeExecuteImmediately(new LocalReadRunnable(digestCommand, handler));
         }
     }
 

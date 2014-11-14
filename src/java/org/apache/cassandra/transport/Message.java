@@ -26,6 +26,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -377,8 +379,9 @@ public abstract class Message
                     {
                         ConcurrentLinkedQueue<Pair<Response, Frame>> alt = flusherLookup.putIfAbsent(loop, current = new ConcurrentLinkedQueue<>());
                         if (alt != null)
+                        {
                             current = alt;
-
+                        }
                     }
 
                     final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;

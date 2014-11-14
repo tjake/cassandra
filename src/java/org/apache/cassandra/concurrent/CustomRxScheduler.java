@@ -70,6 +70,8 @@ public class CustomRxScheduler extends Scheduler
         }
     }
 
+
+
     class Worker extends Scheduler.Worker implements Subscription {
         private final RxJavaSchedulersHook schedulersHook;
         volatile boolean isUnsubscribed;
@@ -99,9 +101,9 @@ public class CustomRxScheduler extends Scheduler
          * @param unit
          * @return
          */
-        public ScheduledAction scheduleActual(final Action0 action, long delayTime, TimeUnit unit) {
+        public NewScheduledAction scheduleActual(final Action0 action, long delayTime, TimeUnit unit) {
             Action0 decoratedAction = schedulersHook.onSchedule(action);
-            ScheduledAction run = new ScheduledAction(decoratedAction);
+            NewScheduledAction run = new NewScheduledAction(decoratedAction);
             Future<?> f;
             if (delayTime <= 0) {
                 f = executor.submit(run);

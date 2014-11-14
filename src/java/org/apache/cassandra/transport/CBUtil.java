@@ -51,7 +51,7 @@ import org.apache.cassandra.utils.ByteBufferUtil;
  */
 public abstract class CBUtil
 {
-    public static final ByteBufAllocator allocator = new PooledByteBufAllocator(true);
+    public static final ByteBufAllocator allocator = new UnpooledByteBufAllocator(false);
 
     private CBUtil() {}
 
