@@ -48,6 +48,7 @@ import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
 import rx.Scheduler;
 import rx.Subscriber;
+import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.observers.Subscribers;
@@ -385,7 +386,7 @@ public abstract class Message
                     }
 
                     final ConcurrentLinkedQueue<Pair<Response, Frame>> currentFinal = current;
-
+                    
 
                     responseObs.subscribe(
                             new Action1<Response>()

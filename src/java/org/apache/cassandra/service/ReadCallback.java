@@ -162,10 +162,10 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
             //Notify Subscribers
             if (subscriber != null && !subscriber.isUnsubscribed())
             {
-                responseWorker.schedule(new Action0()
+                //responseWorker.schedule(new Action0()
                 {
-                    @Override
-                    public void call()
+                //    @Override
+                //    public void call()
                     {
                         try
                         {
@@ -178,7 +178,7 @@ public class ReadCallback<TMessage, TResolved> implements IAsyncCallback<TMessag
 
                         responseWorker.unsubscribe();
                     }
-                });
+                }//);
             }
 
             // kick off a background digest comparison if this is a result that (may have) arrived after
