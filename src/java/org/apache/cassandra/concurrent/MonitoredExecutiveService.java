@@ -201,9 +201,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        //if (currentItems.get() < 16)
-        //    command.run();
-        //else
             addTask(newTaskFor(command, null));
     }
 
