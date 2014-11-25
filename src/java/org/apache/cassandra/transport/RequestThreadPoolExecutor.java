@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 import io.netty.util.concurrent.AbstractEventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.Future;
+import org.apache.cassandra.concurrent.MonitoredExecutiveService;
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.concurrent.TracingAwareExecutorService;
 import org.apache.cassandra.config.DatabaseDescriptor;
 
@@ -32,10 +34,12 @@ public class RequestThreadPoolExecutor extends AbstractEventExecutor
 {
     private final static int MAX_QUEUED_REQUESTS = 128;
     private final static String THREAD_FACTORY_ID = "Native-Transport-Requests";
-    private final TracingAwareExecutorService wrapped = SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(),
+    private final TracingAwareExecutorService wrapped = MonitoredExecutiveService.shared; //new MonitoredExecutiveService(THREAD_FACTORY_ID, DatabaseDescriptor.getNativeTransportMaxThreads(), 2048, new NamedThreadFactory(THREAD_FACTORY_ID));
+
+ /*   SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(),
                                                                            MAX_QUEUED_REQUESTS,
                                                                            THREAD_FACTORY_ID,
-                                                                           "transport");
+                                                                           "transport"); */
 
     public boolean isShuttingDown()
     {

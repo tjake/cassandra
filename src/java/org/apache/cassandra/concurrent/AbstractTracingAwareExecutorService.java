@@ -26,6 +26,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.apache.cassandra.metrics.LatencyMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,12 @@ public abstract class AbstractTracingAwareExecutorService implements TracingAwar
 
     protected abstract void addTask(FutureTask<?> futureTask);
     protected abstract void onCompletion();
+    LatencyMetrics queueLatency;
+
+    public AbstractTracingAwareExecutorService(String name)
+    {
+        queueLatency = new LatencyMetrics(name+"-TimeQueued", "internal");
+    }
 
     /** Task Submission / Creation / Objects **/
 
@@ -147,6 +154,7 @@ public abstract class AbstractTracingAwareExecutorService implements TracingAwar
         private boolean failure;
         private Object result = this;
         private final Callable<T> callable;
+        private long startTime = System.nanoTime();
 
         public FutureTask(Callable<T> callable)
         {
@@ -161,6 +169,7 @@ public abstract class AbstractTracingAwareExecutorService implements TracingAwar
         {
             try
             {
+                queueLatency.addNano(System.nanoTime() - startTime);
                 result = callable.call();
             }
             catch (Throwable t)
@@ -213,6 +222,8 @@ public abstract class AbstractTracingAwareExecutorService implements TracingAwar
 
     private <T> FutureTask<T> submit(FutureTask<T> task)
     {
+
+
         addTask(task);
         return task;
     }
