@@ -30,7 +30,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private int lastSize = 0;
     private final Thread[] allThreads;
     private final Thread[] parkedThreads;
-    private final Queue<FutureTask>[] localWorkQueue;
+    private final Queue<FutureTask>[] localWorkQueues;
     private final Queue<FutureTask<?>> workQueue;
     private final Map<Thread, Queue<FutureTask>> threadIdLookup;
     private final int maxItems;
@@ -42,7 +42,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         allThreads = new Thread[maxThreads];
         parkedThreads = new Thread[maxThreads];
-        localWorkQueue = new Queue[maxThreads];
+        localWorkQueues = new Queue[maxThreads];
         threadIdLookup = new HashMap<>(maxThreads);
 
         workQueue = new ConcurrentLinkedQueue<>();
@@ -50,63 +50,9 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         for (int i = 0; i < maxThreads; i++)
         {
-            final int threadId = i;
-
-            localWorkQueue[i] = new ConcurrentLinkedQueue<>();
-
-            allThreads[i] = threadFactory.newThread(new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    while (true)
-                    {
-
-                        FutureTask<?> t;
-                        while ((t = findWork()) != null)
-                        {
-                            try
-                            {
-                                currentItems.decrementAndGet();
-                                t.run();
-                            } catch (Throwable ex)
-                            {
-                                JVMStabilityInspector.inspectThrowable(ex);
-                                ex.printStackTrace();
-
-                            }
-                        }
-
-                        //Nothing todo; park
-                        parkedThreads[threadId] = allThreads[threadId];
-                        LockSupport.park();
-                    }
-                }
-
-                private FutureTask findWork()
-                {
-                    FutureTask work;
-
-                    //Check local queue first
-                    work = localWorkQueue[threadId].poll();
-                    if (work != null)
-                        return work;
-
-                    for (int i = 0; i < localWorkQueue.length; i++)
-                    {
-                        if (i == threadId) continue;
-
-                        work = localWorkQueue[i].poll();
-
-                        if (work != null)
-                            return work;
-                    }
-
-                    return workQueue.poll();
-                }
-            });
-
-            threadIdLookup.put(allThreads[i], localWorkQueue[i]);
+            localWorkQueues[i] = new ConcurrentLinkedQueue<>();
+            allThreads[i] = threadFactory.newThread(new ThreadWorker(i));
+            threadIdLookup.put(allThreads[i], localWorkQueues[i]);
 
             allThreads[i].start();
         }
@@ -115,7 +61,70 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     }
 
 
+    class ThreadWorker implements Runnable
+    {
+        final int threadId;
 
+        ThreadWorker(int threadId)
+        {
+            this.threadId = threadId;
+        }
+
+        @Override
+        public void run()
+        {
+            while (true)
+            {
+                FutureTask<?> t;
+                while ((t = findWork()) != null)
+                {
+                    try
+                    {
+                        currentItems.decrementAndGet();
+                        t.run();
+                    } catch (Throwable ex)
+                    {
+                        JVMStabilityInspector.inspectThrowable(ex);
+                        ex.printStackTrace();
+                    }
+                }
+
+                //Nothing todo; park
+                parkedThreads[threadId] = allThreads[threadId];
+                LockSupport.park();
+            }
+        }
+
+        /**
+         * Looks for work to steal from peers, if none found moves to main work queue
+         * @return A task to work on
+         */
+        private FutureTask findWork()
+        {
+            FutureTask work;
+
+            //Check local queue first
+            work = localWorkQueues[threadId].poll();
+            if (work != null)
+                return work;
+
+            for (int i = 0, length = localWorkQueues.length; i < length; i++)
+            {
+                if (i == threadId) continue;
+
+                work = localWorkQueues[i].poll();
+
+                if (work != null)
+                    return work;
+            }
+
+            return workQueue.poll();
+        }
+    }
+
+    /**
+     *
+     */
     private void check()
     {
         final int size = currentItems.get();
@@ -190,7 +199,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
             else
             {
-               workQueue.add(futureTask);
+                workQueue.add(futureTask);
             }
         }
         else
