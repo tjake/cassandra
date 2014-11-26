@@ -1,6 +1,8 @@
 package org.apache.cassandra.concurrent;
 
 import com.google.common.collect.Lists;
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 
 import java.util.*;
@@ -17,13 +19,19 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private static Thread monitorThread;
     private static List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
 
-    public static final MonitoredExecutiveService shared = new MonitoredExecutiveService("Shared-Worker", 128, 8192, new NamedThreadFactory("SHARED-Work"));
+    public static final MonitoredExecutiveService shared = new MonitoredExecutiveService("Shared-Worker",
+            DatabaseDescriptor.getNativeTransportMaxThreads() +
+                    DatabaseDescriptor.getConcurrentReaders() +
+                    DatabaseDescriptor.getConcurrentWriters() +
+                    DatabaseDescriptor.getConcurrentCounterWriters() +
+                    FBUtilities.getAvailableProcessors()
+            , 8192, new NamedThreadFactory("SHARED-Work"));
 
     private int lastSize = 0;
     private final Thread[] allThreads;
     private final Thread[] parkedThreads;
     private final Deque<FutureTask>[] localWorkQueue;
-    private final Deque<FutureTask<?>> workQueue;
+    private final Queue<FutureTask<?>> workQueue;
     private final Map<Thread, Deque<FutureTask>> threadIdLookup;
     private final int maxItems;
     private final AtomicInteger currentItems = new AtomicInteger(0);
@@ -37,7 +45,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         localWorkQueue = new Deque[maxThreads];
         threadIdLookup = new HashMap<>(maxThreads);
 
-        workQueue = new ConcurrentLinkedDeque<>();
+        workQueue = new ConcurrentLinkedQueue<>();
         this.maxItems = maxItems;
 
         for (int i = 0; i < maxThreads; i++)
@@ -117,7 +125,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             if (t == null) numRunning++;
         }
 
-        if (size >= lastSize || numRunning == 0)
+        if (size > 0 && (size >= lastSize || numRunning == 0))
         {
             for (int i = 0; i < parkedThreads.length; i++) {
                 Thread t = parkedThreads[i];
@@ -177,12 +185,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             if (localQueue != null)
             {
                 localQueue.offerFirst(futureTask);
-            } else
+            }
+            else
             {
-                if (ThreadLocalRandom.current().nextBoolean())
-                    workQueue.addFirst(futureTask);
-                else
-                    workQueue.addLast(futureTask);
+                workQueue.add(futureTask);
             }
         }
         else
