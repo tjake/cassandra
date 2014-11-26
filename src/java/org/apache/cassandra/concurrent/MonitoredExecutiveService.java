@@ -30,9 +30,9 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private int lastSize = 0;
     private final Thread[] allThreads;
     private final Thread[] parkedThreads;
-    private final Deque<FutureTask>[] localWorkQueue;
+    private final Queue<FutureTask>[] localWorkQueue;
     private final Queue<FutureTask<?>> workQueue;
-    private final Map<Thread, Deque<FutureTask>> threadIdLookup;
+    private final Map<Thread, Queue<FutureTask>> threadIdLookup;
     private final int maxItems;
     private final AtomicInteger currentItems = new AtomicInteger(0);
 
@@ -42,7 +42,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         allThreads = new Thread[maxThreads];
         parkedThreads = new Thread[maxThreads];
-        localWorkQueue = new Deque[maxThreads];
+        localWorkQueue = new Queue[maxThreads];
         threadIdLookup = new HashMap<>(maxThreads);
 
         workQueue = new ConcurrentLinkedQueue<>();
@@ -52,7 +52,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             final int threadId = i;
 
-            localWorkQueue[i] = new ConcurrentLinkedDeque<>();
+            localWorkQueue[i] = new ConcurrentLinkedQueue<>();
 
             allThreads[i] = threadFactory.newThread(new Runnable()
             {
@@ -61,6 +61,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     while (true)
                     {
+
                         FutureTask<?> t;
                         while ((t = findWork()) != null)
                         {
@@ -72,6 +73,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                             {
                                 JVMStabilityInspector.inspectThrowable(ex);
                                 ex.printStackTrace();
+
                             }
                         }
 
@@ -86,7 +88,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     FutureTask work;
 
                     //Check local queue first
-                    work = localWorkQueue[threadId].pollFirst();
+                    work = localWorkQueue[threadId].poll();
                     if (work != null)
                         return work;
 
@@ -94,7 +96,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     {
                         if (i == threadId) continue;
 
-                        work = localWorkQueue[i].pollFirst();
+                        work = localWorkQueue[i].poll();
 
                         if (work != null)
                             return work;
@@ -180,15 +182,15 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         if (queueLength <= maxItems)
         {
-            Deque<FutureTask> localQueue = threadIdLookup.get(Thread.currentThread());
+            Queue<FutureTask> localQueue = threadIdLookup.get(Thread.currentThread());
 
             if (localQueue != null)
             {
-                localQueue.offerFirst(futureTask);
+                localQueue.add(futureTask);
             }
             else
             {
-                workQueue.add(futureTask);
+               workQueue.add(futureTask);
             }
         }
         else
