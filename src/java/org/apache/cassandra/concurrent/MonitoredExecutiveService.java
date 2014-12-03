@@ -1,103 +1,64 @@
 package org.apache.cassandra.concurrent;
 
-import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
 import com.google.common.collect.Lists;
 import net.openhft.affinity.*;
-import net.openhft.affinity.impl.NoCpuLayout;
-import net.openhft.affinity.impl.VanillaCpuLayout;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.locks.LockSupport;
 
 /**
  * Executor Service based on idea from Martin Thompson
+ *
+ * Added work stealing and thread affinity
  */
 public class MonitoredExecutiveService extends AbstractTracingAwareExecutorService
 {
     private static final Logger logger = LoggerFactory.getLogger(MonitoredExecutiveService.class);
 
     private static Thread monitorThread;
-    private static List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
+    private static final int globalMaxThreads =  DatabaseDescriptor.getNativeTransportMaxThreads() +
+                                        DatabaseDescriptor.getConcurrentReaders() +
+                                        DatabaseDescriptor.getConcurrentWriters() +
+                                        DatabaseDescriptor.getConcurrentCounterWriters() +
+                                        FBUtilities.getAvailableProcessors();
 
-    //Lazy Singleton
-    public static final Supplier<MonitoredExecutiveService> shared = Suppliers.memoize(new Supplier<MonitoredExecutiveService>()
-    {
-        @Override
-        public MonitoredExecutiveService get()
-        {
-            MonitoredExecutiveService svc =  new MonitoredExecutiveService("Shared-Worker",
-                    DatabaseDescriptor.getNativeTransportMaxThreads() +
-                            DatabaseDescriptor.getConcurrentReaders() +
-                            DatabaseDescriptor.getConcurrentWriters() +
-                            DatabaseDescriptor.getConcurrentCounterWriters() +
-                            FBUtilities.getAvailableProcessors()
-                    , 8192, new NamedThreadFactory("SHARED-Work"));
+    private static final List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
+    private static final List<Queue<FutureTask<?>>> globalQueues = Lists.newCopyOnWriteArrayList();
+    private static final ThreadFactory threadFactory = new NamedThreadFactory("SHARED-Work");
 
-            svc.start();
-
-            return svc;
-        }
-    });
-
-    private boolean started;
     private int lastSize = 0;
-    private final ThreadWorker[] allWorkers;
-    private final Thread[] allThreads;
-    private final Thread[] parkedThreads;
-    private final Queue<FutureTask>[] localWorkQueues;
+
+    private static ThreadWorker[] allWorkers;
+    private static Thread[] allThreads;
+
+    //Work queue per core
+    private static Queue<FutureTask>[] localWorkQueues;
+
+
+    private static Map<Thread, Queue<FutureTask>> threadIdLookup;
+
+
     private final Queue<FutureTask<?>> workQueue;
-    private final Map<Thread, Queue<FutureTask>> threadIdLookup;
+    private final int maxThreads;
     private final int maxItems;
     private final AtomicInteger currentItems = new AtomicInteger(0);
 
-    public MonitoredExecutiveService(String name, int maxThreads, int maxItems, ThreadFactory threadFactory)
+    public MonitoredExecutiveService(String name, int maxThreads, int maxItems)
     {
         super(name);
 
-        started = false;
-        allWorkers = new ThreadWorker[maxThreads];
-        allThreads = new Thread[maxThreads];
-        parkedThreads = new Thread[maxThreads];
-        localWorkQueues = new Queue[maxThreads];
-        threadIdLookup = new HashMap<>(maxThreads);
-
         workQueue = new ConcurrentLinkedQueue<>();
+        globalQueues.add(workQueue);
+
         this.maxItems = maxItems;
-
-        Integer[] reservableCPUs = getReservableCPUs();
-
-        for (int i = 0; i < maxThreads; i++)
-        {
-            //Round robin all cpus to evenly spread out threads across cores.
-            int cpuId = reservableCPUs[ i % reservableCPUs.length ];
-
-            localWorkQueues[i] = new ConcurrentLinkedQueue<>();
-            allWorkers[i] = new ThreadWorker(i, cpuId);
-            allThreads[i] = threadFactory.newThread(allWorkers[i]);
-            threadIdLookup.put(allThreads[i], localWorkQueues[i]);
-        }
-    }
-
-    public synchronized void start()
-    {
-        if (started)
-            return;
-
-        for (int i = 0; i < allThreads.length; i++)
-        {
-            allThreads[i].start();
-        }
+        this.maxThreads = maxThreads;
 
         startMonitoring(this);
     }
@@ -109,10 +70,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         for (int i = 0; i < AffinityLock.cpuLayout().cpus(); i++)
         {
-            boolean reservable = ((AffinityLock.RESERVED_AFFINITY >> i) & 1) != 0;
-            //if (!reservable)
-            //    continue;
-
             reservableCPUs.add(i);
         }
 
@@ -120,20 +77,29 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         return reservableCPUs.toArray(new Integer[]{});
     }
 
-    class ThreadWorker implements Runnable
+    static class ThreadWorker implements Runnable
     {
-        final int threadId;
-        final int cpuId;
-        final int coreId;
-        final int socketId;
+        enum State
+        {
+            PARKED, WORKING
+        }
+
+        public volatile State state;
+        public final int threadId;
+        public final int cpuId;
+        public final int coreId;
+        public final int socketId;
+        public final int localQueueOffset;
+
         private int[] workOrder;
 
-        ThreadWorker(int threadId, int cpuId)
+        ThreadWorker(int threadId, int cpuId, int coreId, int socketId, int localQueueOffset)
         {
             this.threadId = threadId;
             this.cpuId = cpuId;
-            this.coreId = AffinityLock.cpuLayout().coreId(cpuId);
-            this.socketId = AffinityLock.cpuLayout().socketId(cpuId);
+            this.coreId = coreId;
+            this.socketId = socketId;
+            this.localQueueOffset = localQueueOffset;
         }
 
         @Override
@@ -149,22 +115,27 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
                 while (true)
                 {
+                    state = State.WORKING;
                     FutureTask<?> t;
-                    while ((t = findWork()) != null)
+                    int run = 0;
+
+                    //while (run++ < 4)
                     {
-                        try
+                        while ((t = findWork()) != null)
                         {
-                            currentItems.decrementAndGet();
-                            t.run();
-                        } catch (Throwable ex)
-                        {
-                            JVMStabilityInspector.inspectThrowable(ex);
-                            ex.printStackTrace();
+                            try
+                            {
+                                t.run();
+                            } catch (Throwable ex)
+                            {
+                                JVMStabilityInspector.inspectThrowable(ex);
+                                ex.printStackTrace();
+                            }
                         }
                     }
 
                     //Nothing todo; park
-                    parkedThreads[threadId] = allThreads[threadId];
+                    state = State.PARKED;
                     LockSupport.park();
                 }
             }
@@ -182,68 +153,44 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 return;
 
             int index = 0;
-            workOrder = new int[allThreads.length];
+            workOrder = new int[localWorkQueues.length];
 
             //Sort relative to self/cpu/core/socket distance
-
             //self
-            workOrder[index++] = threadId;
+            workOrder[index++] = localQueueOffset;
 
-            //cpu
-            for (int i = 0; i < allThreads.length; i++)
+            Set<Integer> seenOffsets = new HashSet<>();
+            seenOffsets.add(localQueueOffset);
+
+            //Same socket different core
+            for (int tcpuId : getReservableCPUs())
             {
-                if (allWorkers[i].threadId == threadId)
+                int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
+                int tsocketId = AffinityLock.cpuLayout().socketId(tcoreId);
+                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
+                int offset = tcoreId+(tsocketId * coresPerSocket);
+
+                if (offset == localQueueOffset || tsocketId != socketId)
                     continue;
 
-                if (allWorkers[i].cpuId == cpuId)
-                    workOrder[index++] = allWorkers[i].threadId;
+                if (!seenOffsets.add(offset))
+                    continue;
+
+                workOrder[index++] = offset;
             }
 
-            //core
-            for (int i = 0; i < allThreads.length; i++)
+            //Different Socket
+            for (int tcpuId : getReservableCPUs())
             {
-                if (allWorkers[i].threadId == threadId)
+                int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
+                int tsocketId = AffinityLock.cpuLayout().socketId(tcoreId);
+                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
+                int offset = tcoreId+(tsocketId * coresPerSocket);
+
+                if (!seenOffsets.add(offset))
                     continue;
 
-                if (allWorkers[i].cpuId == cpuId)
-                    continue;
-
-                if (allWorkers[i].coreId == coreId)
-                    workOrder[index++] = allWorkers[i].threadId;
-            }
-
-            //socket
-            for (int i = 0; i < allThreads.length; i++)
-            {
-                if (allWorkers[i].threadId == threadId)
-                    continue;
-
-                if (allWorkers[i].cpuId == cpuId)
-                    continue;
-
-                if (allWorkers[i].coreId == coreId)
-                    continue;
-
-                if (allWorkers[i].socketId == socketId)
-                    workOrder[index++] = allWorkers[i].threadId;
-            }
-
-            //Anything else
-            for (int i = 0; i < allThreads.length; i++)
-            {
-                if (allWorkers[i].threadId == threadId)
-                    continue;
-
-                if (allWorkers[i].cpuId == cpuId)
-                    continue;
-
-                if (allWorkers[i].coreId == coreId)
-                    continue;
-
-                if (allWorkers[i].socketId == socketId)
-                    continue;
-
-                workOrder[index++] = allWorkers[i].threadId;
+                workOrder[index++] = offset;
             }
         }
 
@@ -263,8 +210,16 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     return work;
             }
 
-            //Take from global pool
-            return workQueue.poll();
+            //Take from global pools
+            for (int i = 0, length = globalQueues.size(); i < length; i++)
+            {
+                work = globalQueues.get((i + threadId) % length).poll();
+
+                if (work != null)
+                    return work;
+            }
+
+            return null;
         }
     }
 
@@ -277,22 +232,20 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         int numUnparked = 0;
         int numRunning = 0;
 
-        for (int i = 0; i < parkedThreads.length; i++) {
-            Thread t = parkedThreads[i];
-            if (t == null) numRunning++;
+        for (int i = 0; i < allWorkers.length; i++) {
+            ThreadWorker t = allWorkers[i];
+            if (t.state == ThreadWorker.State.WORKING) numRunning++;
         }
 
         if (size > 0 && (size >= lastSize || numRunning == 0))
         {
-            for (int i = 0; i < parkedThreads.length; i++) {
-                Thread t = parkedThreads[i];
-                if (t != null)
+            for (int i = 0; i < allWorkers.length; i++) {
+                ThreadWorker t = allWorkers[i];
+                if (t.state == ThreadWorker.State.PARKED)
                 {
-                    parkedThreads[i] = null;
-                    LockSupport.unpark(t);
-
+                    LockSupport.unpark(allThreads[i]);
                     numUnparked++;
-                    if (size == lastSize || numUnparked >= size) break;
+                    if (size == lastSize || numUnparked >= size || numUnparked > maxThreads) break;
                 }
             }
         }
@@ -302,6 +255,39 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     private static synchronized void startMonitoring(MonitoredExecutiveService service)
     {
+
+        if (allWorkers == null)
+        {
+            Integer[] reservableCPUs = getReservableCPUs();
+
+
+            allWorkers = new ThreadWorker[globalMaxThreads];
+            allThreads = new Thread[globalMaxThreads];
+            localWorkQueues = new Queue[AffinityLock.cpuLayout().coresPerSocket() * AffinityLock.cpuLayout().sockets()];
+            threadIdLookup = new HashMap<>(globalMaxThreads);
+
+
+            for (int i = 0; i < globalMaxThreads; i++)
+            {
+                //Round robin all cpus to evenly spread out threads across cores.
+                int cpuId = reservableCPUs[ i % reservableCPUs.length ];
+                int coreId = AffinityLock.cpuLayout().coreId(cpuId);
+                int socketId = AffinityLock.cpuLayout().socketId(coreId);
+                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
+                int localQueueOffset = coreId+(socketId * coresPerSocket);
+
+                allWorkers[i] = new ThreadWorker(i, cpuId, coreId, socketId, localQueueOffset);
+
+                if (localWorkQueues[localQueueOffset] == null)
+                    localWorkQueues[localQueueOffset] = new ConcurrentLinkedQueue<>();
+
+                allThreads[i] = threadFactory.newThread(allWorkers[i]);
+                threadIdLookup.put(allThreads[i], localWorkQueues[localQueueOffset]);
+            }
+
+            for (int i = 0; i < globalMaxThreads; i++)
+                allThreads[i].start();
+        }
 
         monitoredExecutiveServices.add(service);
 
@@ -358,7 +344,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     protected void onCompletion()
     {
-
+        currentItems.decrementAndGet();
     }
 
     @Override
