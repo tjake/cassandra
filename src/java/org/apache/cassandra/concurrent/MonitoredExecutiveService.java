@@ -6,7 +6,6 @@ import org.apache.cassandra.utils.JVMStabilityInspector;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -17,7 +16,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private static Thread monitorThread;
     private static List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
 
-    public static final MonitoredExecutiveService shared = new MonitoredExecutiveService("Shared-Worker", 128, 8192, new NamedThreadFactory("SHARED-Work"));
+    //public static final MonitoredExecutiveService shared = new MonitoredExecutiveService("Shared-Worker", 128, 8192, new NamedThreadFactory("SHARED-Work"));
 
     private int lastSize = 0;
     private final Thread[] allThreads;
