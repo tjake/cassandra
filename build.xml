@@ -377,6 +377,7 @@
           <dependency groupId="org.javassist" artifactId="javassist" version="3.18.2-GA" />
           <dependency groupId="net.sf.supercsv" artifactId="super-csv" version="2.1.0" />
 	      <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" version="1.2.0" />
+            <dependency groupId="net.openhft" artifactId="affinity" version="2.1.5" />
           <dependency groupId="org.fusesource" artifactId="sigar" version="1.6.4">
           	<exclusion groupId="log4j" artifactId="log4j"/>
           </dependency>
@@ -428,6 +429,7 @@
         <dependency groupId="org.openjdk.jmh" artifactId="jmh-generator-annprocess"/>
 	    <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
         <dependency groupId="org.javassist" artifactId="javassist" />
+          <dependency groupId="net.openhft" artifactId="affinity" />
       </artifact:pom>
 
       <artifact:pom id="coverage-deps-pom"

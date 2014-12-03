@@ -34,9 +34,12 @@ import javax.management.StandardMBean;
 
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.Uninterruptibles;
-import org.hyperic.sigar.SigarException;
+import net.openhft.affinity.NonForkingAffinityLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.openhft.affinity.AffinityLock;
+import net.openhft.affinity.AffinitySupport;
+import net.openhft.affinity.IAffinity;
 
 import com.addthis.metrics.reporter.config.ReporterConfig;
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
