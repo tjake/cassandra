@@ -202,7 +202,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             //Check local queues
             for (int i = 0, length = localWorkQueues.length; i < length; i++)
             {
-                work = localWorkQueues[workOrder[i]].poll();
+                work = localWorkQueues[i].poll();
 
                 if (work != null)
                     return work;
