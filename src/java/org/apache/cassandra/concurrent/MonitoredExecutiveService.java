@@ -187,6 +187,8 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
                 workOrder[index++] = offset;
             }
+
+            logger.info("Work order for thread on {} {} {}", coreId, socketId, workOrder);
         }
 
         /**
@@ -228,7 +230,8 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         int numUnparked = 0;
         int numRunning = 0;
 
-        for (int i = 0; i < allWorkers.length; i++) {
+        for (int i = 0; i < allWorkers.length; i++)
+        {
             ThreadWorker t = allWorkers[i];
             if (t.state == ThreadWorker.State.WORKING) numRunning++;
         }
@@ -251,11 +254,9 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     private static synchronized void startMonitoring(MonitoredExecutiveService service)
     {
-
         if (allWorkers == null)
         {
             Integer[] reservableCPUs = getReservableCPUs();
-
 
             allWorkers = new ThreadWorker[globalMaxThreads];
             allThreads = new Thread[globalMaxThreads];
@@ -270,7 +271,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 int coreId = AffinityLock.cpuLayout().coreId(cpuId);
                 int socketId = AffinityLock.cpuLayout().socketId(coreId);
                 int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
-                int localQueueOffset = coreId+(socketId * coresPerSocket);
+                int localQueueOffset = coreId + (socketId * coresPerSocket);
 
                 allWorkers[i] = new ThreadWorker(i, cpuId, coreId, socketId, localQueueOffset);
 
