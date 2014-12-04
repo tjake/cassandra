@@ -37,10 +37,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private static ThreadWorker[] allWorkers;
     private static Thread[] allThreads;
 
-    //Work queue per core
-    private static Queue<FutureTask>[] localWorkQueues;
-    private static Map<Thread, Queue<FutureTask>> threadIdLookup;
-
     public final Queue<FutureTask<?>> workQueue;
     private final String name;
     private final int maxThreads;
@@ -76,19 +72,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         return true;
     }
 
-    static Integer[] getReservableCPUs()
-    {
-        List<Integer> reservableCPUs = new ArrayList<>();
-
-        for (int i = 0; i < AffinityLock.cpuLayout().cpus(); i++)
-        {
-            reservableCPUs.add(i);
-        }
-
-        assert !reservableCPUs.isEmpty();
-        return reservableCPUs.toArray(new Integer[]{});
-    }
-
     static class ThreadWorker implements Runnable
     {
         enum State
@@ -98,20 +81,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         public volatile State state;
         public final int threadId;
-        public final int cpuId;
-        public final int coreId;
-        public final int socketId;
-        public final int localQueueOffset;
 
-        private int[] workOrder;
-
-        ThreadWorker(int threadId, int cpuId, int coreId, int socketId, int localQueueOffset)
+        ThreadWorker(int threadId)
         {
             this.threadId = threadId;
-            this.cpuId = cpuId;
-            this.coreId = coreId;
-            this.socketId = socketId;
-            this.localQueueOffset = localQueueOffset;
             this.state = State.WORKING;
         }
 
@@ -132,12 +105,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             try
             {
-                logger.info("Assigning {} to cpu {} on core {} on socket {}", Thread.currentThread().getName(), cpuId, coreId, socketId);
-                AffinitySupport.setAffinity(1L << cpuId);
-
-                //Setup the work order for work stealing
-                setWorkOrder();
-
                 while (true)
                 {
                     FutureTask<?> t;
@@ -168,53 +135,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
             finally
             {
-                AffinitySupport.setAffinity(AffinityLock.BASE_AFFINITY);
+                logger.info("Closed worker thread");
             }
         }
 
-        private void setWorkOrder()
-        {
-            if (workOrder != null)
-                return;
 
-            int index = 0;
-            workOrder = new int[localWorkQueues.length];
-
-            //Sort relative to self/cpu/core/socket distance
-            //self
-            workOrder[index++] = localQueueOffset;
-
-            Set<Integer> seenOffsets = new HashSet<>();
-            seenOffsets.add(localQueueOffset);
-
-            //Same socket different core
-            for (int tcpuId : getReservableCPUs())
-            {
-                int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
-                int tsocketId = AffinityLock.cpuLayout().socketId(tcpuId);
-                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
-                int offset = tcoreId + (tsocketId * coresPerSocket);
-
-                if (offset == localQueueOffset || tsocketId != socketId)
-                    continue;
-
-                if (!seenOffsets.add(offset))
-                    continue;
-
-                workOrder[index++] = offset;
-            }
-
-            //Everything else...
-            for (int offset = 0; offset < localWorkQueues.length; offset++)
-            {
-                if (!seenOffsets.add(offset))
-                    continue;
-
-                workOrder[index++] = offset;
-            }
-
-            logger.info("Work order for thread on {} {} {}", coreId, socketId, workOrder);
-        }
 
         /**
          * Looks for work to steal from peers, if none found moves to main work queue
@@ -224,16 +149,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             FutureTask work = null;
 
-            //Check local queues
-            for (int i = 0, length = localWorkQueues.length; i < length; i++)
-            {
-                work = localWorkQueues[workOrder[i]].poll();
-
-                if (work != null)
-                {
-                    return work;
-                }
-            }
 
             //Take from global queues
             for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
@@ -272,7 +187,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         for (int i = 0; i < allWorkers.length; i++)
         {
             ThreadWorker t = allWorkers[i];
-            if (t.state == ThreadWorker.State.WORKING) numRunning++;
+            if (t.state == ThreadWorker.State.WORKING)
+            {
+                numRunning++;
+                break;
+            }
         }
 
         if (size > 0 && (size >= lastSize || numRunning == 0))
@@ -283,7 +202,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     t.unpark();
                     numUnparked++;
-                    if (size == lastSize || numUnparked >= halfSize) break;
+                    if (numUnparked >= halfSize) break;
                 }
             }
         }
@@ -295,30 +214,13 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     {
         if (allWorkers == null)
         {
-            Integer[] reservableCPUs = getReservableCPUs();
-
             allWorkers = new ThreadWorker[globalMaxThreads];
             allThreads = new Thread[globalMaxThreads];
-            localWorkQueues = new Queue[AffinityLock.cpuLayout().coresPerSocket() * AffinityLock.cpuLayout().sockets()];
-            threadIdLookup = new HashMap<>(globalMaxThreads);
-
 
             for (int i = 0; i < globalMaxThreads; i++)
             {
-                //Round robin all cpus to evenly spread out threads across cores.
-                int cpuId = reservableCPUs[ i % reservableCPUs.length ];
-                int coreId = AffinityLock.cpuLayout().coreId(cpuId);
-                int socketId = AffinityLock.cpuLayout().socketId(cpuId);
-                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
-                int localQueueOffset = coreId + (socketId * coresPerSocket);
-
-                allWorkers[i] = new ThreadWorker(i, cpuId, coreId, socketId, localQueueOffset);
-
-                if (localWorkQueues[localQueueOffset] == null)
-                    localWorkQueues[localQueueOffset] = new ConcurrentLinkedQueue<>();
-
+                allWorkers[i] = new ThreadWorker(i);
                 allThreads[i] = threadFactory.newThread(allWorkers[i]);
-                threadIdLookup.put(allThreads[i], localWorkQueues[localQueueOffset]);
             }
 
             for (int i = 0; i < globalMaxThreads; i++)
@@ -362,16 +264,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         if (queueLength <= maxItems)
         {
-            Queue<FutureTask> localQueue = threadIdLookup.get(Thread.currentThread());
-
-            if (localQueue != null)
-            {
-                localQueue.add(futureTask);
-            }
-            else
-            {
-                workQueue.add(futureTask);
-            }
+            workQueue.add(futureTask);
         }
         else
         {
@@ -390,7 +283,14 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        addTask(newTaskFor(command, null));
+        if (takePermit())
+        {
+            newTaskFor(command, null).run();
+        }
+        else
+        {
+            addTask(newTaskFor(command, null));
+        }
     }
 
     @Override
