@@ -168,7 +168,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
                 int tsocketId = AffinityLock.cpuLayout().socketId(tcoreId);
                 int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
-                int offset = tcoreId+(tsocketId * coresPerSocket);
+                int offset = tcoreId + (tsocketId * coresPerSocket);
 
                 if (offset == localQueueOffset || tsocketId != socketId)
                     continue;
@@ -179,14 +179,9 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 workOrder[index++] = offset;
             }
 
-            //Different Socket
-            for (int tcpuId : getReservableCPUs())
+            //Everything else...
+            for (int offset = 0; offset < localWorkQueues.length; offset++)
             {
-                int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
-                int tsocketId = AffinityLock.cpuLayout().socketId(tcoreId);
-                int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
-                int offset = tcoreId+(tsocketId * coresPerSocket);
-
                 if (!seenOffsets.add(offset))
                     continue;
 
@@ -202,6 +197,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             FutureTask work = null;
 
+            //Check local queues
             for (int i = 0, length = localWorkQueues.length; i < length; i++)
             {
                 work = localWorkQueues[workOrder[i]].poll();
@@ -210,7 +206,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     return work;
             }
 
-            //Take from global pools
+            //Take from global queues
             for (int i = 0, length = globalQueues.size(); i < length; i++)
             {
                 work = globalQueues.get((i + threadId) % length).poll();
@@ -245,7 +241,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     LockSupport.unpark(allThreads[i]);
                     numUnparked++;
-                    if (size == lastSize || numUnparked >= size || numUnparked > maxThreads) break;
+                    if (size == lastSize || numUnparked >= size) break;
                 }
             }
         }
