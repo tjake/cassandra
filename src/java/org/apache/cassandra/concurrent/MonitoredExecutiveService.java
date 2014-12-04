@@ -51,7 +51,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     public MonitoredExecutiveService(String name, int maxThreads, int maxItems)
     {
         super(name);
-        
+
         workQueue = new ConcurrentLinkedQueue<>();
         this.name = name;
         this.maxItems = maxItems;
@@ -230,13 +230,15 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 work = localWorkQueues[workOrder[i]].poll();
 
                 if (work != null)
+                {
                     return work;
+                }
             }
 
             //Take from global queues
             for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
-                MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
+                MonitoredExecutiveService executor = monitoredExecutiveServices.get((threadId + i) % length );
 
                 if (executor.takePermit())
                 {
@@ -263,6 +265,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             return;
 
         final int size = queuedItems.get();
+        final int halfSize = size / 2;
         int numUnparked = 0;
         int numRunning = 0;
 
@@ -280,7 +283,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     t.unpark();
                     numUnparked++;
-                    if (size == lastSize || numUnparked >= size) break;
+                    if (size == lastSize || numUnparked >= halfSize) break;
                 }
             }
         }
@@ -387,16 +390,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-
-        if (takePermit())
-        {
-            command.run();
-            returnPermit();
-        }
-        else
-        {
-            addTask(newTaskFor(command, null));
-        }
+        addTask(newTaskFor(command, null));
     }
 
     @Override
