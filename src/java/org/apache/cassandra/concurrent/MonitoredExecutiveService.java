@@ -23,14 +23,13 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     private static final Logger logger = LoggerFactory.getLogger(MonitoredExecutiveService.class);
 
     private static Thread monitorThread;
-    private static final int globalMaxThreads =  DatabaseDescriptor.getNativeTransportMaxThreads() +
+    private static final int globalMaxThreads = DatabaseDescriptor.getNativeTransportMaxThreads() +
                                         DatabaseDescriptor.getConcurrentReaders() +
                                         DatabaseDescriptor.getConcurrentWriters() +
                                         DatabaseDescriptor.getConcurrentCounterWriters() +
                                         FBUtilities.getAvailableProcessors();
 
     private static final List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
-    private static final List<Queue<FutureTask<?>>> globalQueues = Lists.newCopyOnWriteArrayList();
     private static final ThreadFactory threadFactory = new NamedThreadFactory("SHARED-Work");
 
     private int lastSize = 0;
@@ -40,29 +39,42 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     //Work queue per core
     private static Queue<FutureTask>[] localWorkQueues;
-
-
     private static Map<Thread, Queue<FutureTask>> threadIdLookup;
 
-
-    private final Queue<FutureTask<?>> workQueue;
+    public final Queue<FutureTask<?>> workQueue;
+    private final String name;
     private final int maxThreads;
     private final int maxItems;
-    private final AtomicInteger currentItems = new AtomicInteger(0);
+    private final AtomicInteger queuedItems = new AtomicInteger(0);
+    private final AtomicInteger activeItems = new AtomicInteger(0);
 
     public MonitoredExecutiveService(String name, int maxThreads, int maxItems)
     {
         super(name);
-
+        
         workQueue = new ConcurrentLinkedQueue<>();
-        globalQueues.add(workQueue);
-
+        this.name = name;
         this.maxItems = maxItems;
         this.maxThreads = maxThreads;
 
         startMonitoring(this);
     }
 
+    void returnPermit()
+    {
+        activeItems.decrementAndGet();
+    }
+
+    boolean takePermit()
+    {
+        if (activeItems.incrementAndGet() >= maxThreads)
+        {
+            activeItems.decrementAndGet();
+            return false;
+        }
+
+        return true;
+    }
 
     static Integer[] getReservableCPUs()
     {
@@ -222,24 +234,35 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
 
             //Take from global queues
-            for (int i = 0, length = globalQueues.size(); i < length; i++)
+            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
-                work = globalQueues.get((i + threadId) % length).poll();
+                MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
 
-                if (work != null)
-                    return work;
+                if (executor.takePermit())
+                {
+                    work = executor.workQueue.poll();
+                    if (work == null)
+                    {
+                        executor.returnPermit();
+                    }
+                    else
+                    {
+                        return work;
+                    }
+                }
             }
 
             return null;
         }
     }
 
-    /**
-     *
-     */
-    private void check()
+    private void checkQueue()
     {
-        final int size = currentItems.get();
+        //Avoid checking if we are over the specified limit for this executor
+        if (activeItems.get() >= maxThreads)
+            return;
+
+        final int size = queuedItems.get();
         int numUnparked = 0;
         int numRunning = 0;
 
@@ -316,7 +339,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
                     {
-                        monitoredExecutiveServices.get(i).check();
+                        monitoredExecutiveServices.get(i).checkQueue();
                     }
 
                     LockSupport.parkNanos(1);
@@ -332,7 +355,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     protected void addTask(FutureTask<?> futureTask)
     {
-        int queueLength = currentItems.incrementAndGet();
+        int queueLength = queuedItems.incrementAndGet();
 
         if (queueLength <= maxItems)
         {
@@ -349,7 +372,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         }
         else
         {
-            currentItems.decrementAndGet();
+            queuedItems.decrementAndGet();
             throw new RuntimeException("Queue is full");
         }
     }
@@ -357,13 +380,23 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     protected void onCompletion()
     {
-        currentItems.decrementAndGet();
+        queuedItems.decrementAndGet();
+        returnPermit();
     }
 
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        addTask(newTaskFor(command, null));
+
+        if (takePermit())
+        {
+            command.run();
+            returnPermit();
+        }
+        else
+        {
+            addTask(newTaskFor(command, null));
+        }
     }
 
     @Override
