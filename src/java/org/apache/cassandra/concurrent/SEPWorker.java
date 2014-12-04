@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
+import net.openhft.affinity.AffinitySupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,8 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 {
     private static final Logger logger = LoggerFactory.getLogger(SEPWorker.class);
 
+    Boolean useThreadAffinity = Boolean.valueOf(System.getProperty("cassandra.thread.affinity","true"));
+    static final int numProcessors = Runtime.getRuntime().availableProcessors();
     final Long workerId;
     final Thread thread;
     final SharedExecutorPool pool;
@@ -64,6 +67,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
          *      with invariant (1) ensures that if any thread was spinning when a task was added to any executor, that
          *      task will be processed immediately if work permits are available
          */
+
+        // Assign ourselves to a cpu
+        if (useThreadAffinity)
+            AffinitySupport.setAffinity(1L << (workerId % numProcessors));
 
         SEPExecutor assigned = null;
         Runnable task = null;
