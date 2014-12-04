@@ -117,20 +117,17 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     state = State.WORKING;
                     FutureTask<?> t;
-                    int run = 0;
 
-                    //while (run++ < 4)
+
+                    while ((t = findWork()) != null)
                     {
-                        while ((t = findWork()) != null)
+                        try
                         {
-                            try
-                            {
-                                t.run();
-                            } catch (Throwable ex)
-                            {
-                                JVMStabilityInspector.inspectThrowable(ex);
-                                ex.printStackTrace();
-                            }
+                            t.run();
+                        } catch (Throwable ex)
+                        {
+                            JVMStabilityInspector.inspectThrowable(ex);
+                            ex.printStackTrace();
                         }
                     }
 
@@ -166,7 +163,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             for (int tcpuId : getReservableCPUs())
             {
                 int tcoreId = AffinityLock.cpuLayout().coreId(tcpuId);
-                int tsocketId = AffinityLock.cpuLayout().socketId(tcoreId);
+                int tsocketId = AffinityLock.cpuLayout().socketId(tcpuId);
                 int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
                 int offset = tcoreId + (tsocketId * coresPerSocket);
 
@@ -269,7 +266,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 //Round robin all cpus to evenly spread out threads across cores.
                 int cpuId = reservableCPUs[ i % reservableCPUs.length ];
                 int coreId = AffinityLock.cpuLayout().coreId(cpuId);
-                int socketId = AffinityLock.cpuLayout().socketId(coreId);
+                int socketId = AffinityLock.cpuLayout().socketId(cpuId);
                 int coresPerSocket = AffinityLock.cpuLayout().coresPerSocket();
                 int localQueueOffset = coreId + (socketId * coresPerSocket);
 
@@ -283,7 +280,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
 
             for (int i = 0; i < globalMaxThreads; i++)
+            {
+                allThreads[i].setDaemon(true);
                 allThreads[i].start();
+            }
         }
 
         monitoredExecutiveServices.add(service);
@@ -322,11 +322,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             Queue<FutureTask> localQueue = threadIdLookup.get(Thread.currentThread());
 
-            //if (localQueue != null)
-            //{
-            //    localQueue.add(futureTask);
-            //}
-            //else
+            if (localQueue != null)
+            {
+                localQueue.add(futureTask);
+            }
+            else
             {
                 workQueue.add(futureTask);
             }
@@ -347,7 +347,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-            addTask(newTaskFor(command, null));
+        addTask(newTaskFor(command, null));
     }
 
     @Override
