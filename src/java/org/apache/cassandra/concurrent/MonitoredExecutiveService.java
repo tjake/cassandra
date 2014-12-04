@@ -100,6 +100,19 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             this.coreId = coreId;
             this.socketId = socketId;
             this.localQueueOffset = localQueueOffset;
+            this.state = State.WORKING;
+        }
+
+        public void park()
+        {
+            state = State.PARKED;
+            LockSupport.park();
+        }
+
+        public void unpark()
+        {
+            state = State.WORKING;
+            LockSupport.unpark(allThreads[threadId]);
         }
 
         @Override
@@ -115,25 +128,30 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
                 while (true)
                 {
-                    state = State.WORKING;
                     FutureTask<?> t;
 
-
-                    while ((t = findWork()) != null)
+                    //deal with spurious wakeups
+                    if (state == State.PARKED)
                     {
-                        try
-                        {
-                            t.run();
-                        } catch (Throwable ex)
-                        {
-                            JVMStabilityInspector.inspectThrowable(ex);
-                            ex.printStackTrace();
-                        }
+                        park();
                     }
+                    else
+                    {
+                        while ((t = findWork()) != null)
+                        {
+                            try
+                            {
+                                t.run();
+                            } catch (Throwable ex)
+                            {
+                                JVMStabilityInspector.inspectThrowable(ex);
+                                ex.printStackTrace();
+                            }
+                        }
 
-                    //Nothing todo; park
-                    state = State.PARKED;
-                    LockSupport.park();
+                        //Nothing todo; park
+                        park();
+                    }
                 }
             }
             finally
@@ -141,8 +159,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 AffinitySupport.setAffinity(AffinityLock.BASE_AFFINITY);
             }
         }
-
-
 
         private void setWorkOrder()
         {
@@ -239,7 +255,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
-                    LockSupport.unpark(allThreads[i]);
+                    t.unpark();
                     numUnparked++;
                     if (size == lastSize || numUnparked >= size) break;
                 }
