@@ -16,7 +16,7 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * Executor Service based on idea from Martin Thompson
  *
- * Added work stealing and thread affinity
+ * Added work stealing
  */
 public class MonitoredExecutiveService extends AbstractTracingAwareExecutorService
 {
@@ -151,7 +151,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             {
                 FutureTask work = null;
 
-                //Work on our requested queue
+                //Work on the requested queue
                 if (primary != null)
                 {
                     if (primary.takePermit())
@@ -172,6 +172,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
 
+                    //We just checked this one
                     if (primary != null && primary == executor)
                         continue;
 
@@ -199,12 +200,14 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     private void checkQueue()
     {
-        if (activeItems.get() >= maxThreads)
+        int active = activeItems.get();
+
+        if (active >= maxThreads)
             return;
 
-        final int size = queuedItems.get();
+        int size = queuedItems.get();
 
-        if (size > 0 && (size >= lastSize || activeItems.get() == 0))
+        if (size > 0 || activeItems.get() == 0)
         {
             for (int i = 0; i < allWorkers.length; i++) {
                 ThreadWorker t = allWorkers[i];
@@ -292,11 +295,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        if (takePermit())
-        {
-            newTaskFor(command, null).run();
-        }
-        else
+        //if (takePermit())
+        //{
+        //    newTaskFor(command, null).run();
+        //}
+        //else
         {
             addTask(newTaskFor(command, null));
         }
