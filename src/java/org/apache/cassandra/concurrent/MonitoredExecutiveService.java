@@ -110,11 +110,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     FutureTask<?> t;
 
                     //deal with spurious wakeups
-                    if (state == State.PARKED)
-                    {
-                        park();
-                    }
-                    else
+                    //if (state == State.PARKED)
+                    //{
+                    //    park();
+                    //}
+                    //else
                     {
                         while ((t = findWork()) != null)
                         {
@@ -152,7 +152,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             //Take from global queues
             for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
-                MonitoredExecutiveService executor = monitoredExecutiveServices.get((threadId + i) % length );
+                MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
 
                 if (executor.takePermit())
                 {
@@ -202,7 +202,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     t.unpark();
                     numUnparked++;
-                    if (size == lastSize || numUnparked >= doubleSize) break;
+                    if (size == lastSize || numUnparked >= halfSize) break;
                 }
             }
         }
