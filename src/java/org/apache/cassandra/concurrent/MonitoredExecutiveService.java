@@ -80,7 +80,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         }
 
         public volatile State state;
-        public volatile Queue<FutureTask<?>> primaryQueue;
+        public volatile MonitoredExecutiveService primary;
         public final int threadId;
 
         ThreadWorker(int threadId)
@@ -95,10 +95,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             LockSupport.park();
         }
 
-        public void unpark(Queue<FutureTask<?>> primaryQueue)
+        public void unpark(MonitoredExecutiveService executor)
         {
             state = State.WORKING;
-            this.primaryQueue = primaryQueue;
+            this.primary = executor;
             LockSupport.unpark(allThreads[threadId]);
         }
 
@@ -147,37 +147,50 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
          */
         private FutureTask findWork()
         {
-            FutureTask work = null;
-
-            if (primaryQueue != null)
+            try
             {
-                work = primaryQueue.poll();
-                primaryQueue = null;
-                if (work != null)
-                    return work;
-            }
+                FutureTask work = null;
 
-            //Take from global queues
-            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
-            {
-                MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
-
-                //Already did this one above
-                if (primaryQueue != null && primaryQueue == executor.workQueue)
-                    continue;
-
-                if (executor.takePermit())
+                //Work on our requested queue
+                if (primary != null)
                 {
-                    work = executor.workQueue.poll();
-                    if (work == null)
+                    if (primary.takePermit())
                     {
-                        executor.returnPermit();
-                    }
-                    else
-                    {
-                        return work;
+                        work = primary.workQueue.poll();
+                        if (work == null)
+                        {
+                            primary.returnPermit();
+                        } else
+                        {
+                            return work;
+                        }
                     }
                 }
+
+                //Take from global queues
+                for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
+                {
+                    MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
+
+                    if (primary != null && primary == executor)
+                        continue;
+
+                    if (executor.takePermit())
+                    {
+                        work = executor.workQueue.poll();
+                        if (work == null)
+                        {
+                            executor.returnPermit();
+                        } else
+                        {
+                            return work;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                primary = null;
             }
 
             return null;
@@ -186,34 +199,19 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     private void checkQueue()
     {
-        //Avoid checking if we are over the specified limit for this executor
         if (activeItems.get() >= maxThreads)
             return;
 
         final int size = queuedItems.get();
-        final int halfSize = size / 3;
-        final int doubleSize = size * 2;
-        int numUnparked = 0;
-        int numRunning = 0;
 
-        for (int i = 0; i < allWorkers.length; i++)
-        {
-            ThreadWorker t = allWorkers[i];
-            if (t.state == ThreadWorker.State.WORKING)
-            {
-                numRunning++;
-                break;
-            }
-        }
-
-        if (size > 0 && (size >= lastSize || numRunning == 0))
+        if (size > 0 && (size >= lastSize || activeItems.get() == 0))
         {
             for (int i = 0; i < allWorkers.length; i++) {
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
-                    t.unpark(workQueue);
-                    if (size == lastSize || numUnparked++ >= halfSize) break;
+                    t.unpark(this);
+                    break;
                 }
             }
         }
