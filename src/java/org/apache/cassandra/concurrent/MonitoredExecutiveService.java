@@ -297,7 +297,18 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        addTask(newTaskFor(command, null));
+        FutureTask<?> work = newTaskFor(command, null);
+
+        if (activeItems.incrementAndGet() <= maxThreads)
+        {
+            work.run();
+        }
+        else
+        {
+            activeItems.decrementAndGet();
+            addTask(work);
+        }
+
     }
 
     @Override
