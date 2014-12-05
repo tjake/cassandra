@@ -80,6 +80,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         }
 
         public volatile State state;
+        public volatile Queue<FutureTask<?>> primaryQueue;
         public final int threadId;
 
         ThreadWorker(int threadId)
@@ -94,9 +95,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             LockSupport.park();
         }
 
-        public void unpark()
+        public void unpark(Queue<FutureTask<?>> primaryQueue)
         {
             state = State.WORKING;
+            this.primaryQueue = primaryQueue;
             LockSupport.unpark(allThreads[threadId]);
         }
 
@@ -110,11 +112,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                     FutureTask<?> t;
 
                     //deal with spurious wakeups
-                    //if (state == State.PARKED)
-                    //{
-                    //    park();
-                    //}
-                    //else
+                    if (state == State.PARKED)
+                    {
+                        park();
+                    }
+                    else
                     {
                         while ((t = findWork()) != null)
                         {
@@ -147,10 +149,22 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             FutureTask work = null;
 
+            if (primaryQueue != null)
+            {
+                work = primaryQueue.poll();
+                primaryQueue = null;
+                if (work != null)
+                    return work;
+            }
+
             //Take from global queues
             for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
                 MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
+
+                //Already did this one above
+                if (primaryQueue != null && primaryQueue == executor.workQueue)
+                    continue;
 
                 if (executor.takePermit())
                 {
@@ -198,9 +212,8 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
-                    t.unpark();
-                    numUnparked++;
-                    if (size == lastSize || numUnparked >= halfSize) break;
+                    t.unpark(workQueue);
+                    if (size == lastSize || numUnparked++ >= halfSize) break;
                 }
             }
         }
