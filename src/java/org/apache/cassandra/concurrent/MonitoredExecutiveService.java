@@ -30,13 +30,13 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * Executor Service based on idea from Martin Thompson.
  *
- * Threads looks for work in their queue. If they can't find any
+ * Threads look for work in their queue. If they can't find any
  * work they park themselves.
  *
- * A single background monitor thread watches the queue for each executor.
- * When the queue is not empty it unparks a thread then sleeps and tries again.
+ * A single background monitor thread watches the queue for each executor in a loopr.
+ * When the queue is not empty it unparks a thread then sleeps.
  *
- * This service incorporates workStealing by splitting Threads from Queues. Meaning,
+ * This service incorporates work stealing by splitting Threads from Queues. Meaning,
  * any thread can fetch from any other executor queue once it's finished with it's local
  * queue.
  */
@@ -77,7 +77,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     }
 
     /**
-     * Kicks off the monitoring of a new ES.  Also spawns worker threads when first called.
+     * Kicks off the monitoring of a new ES.  Also spawns worker threads and monitor when first called.
      * @param service
      */
     private static synchronized void startMonitoring(MonitoredExecutiveService service)
@@ -268,7 +268,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
         }
     }
-
 
     @Override
     protected void addTask(FutureTask<?> futureTask)
