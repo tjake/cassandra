@@ -180,6 +180,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
         final int size = queuedItems.get();
         final int halfSize = size / 2;
+        final int doubleSize = size * 2;
         int numUnparked = 0;
         int numRunning = 0;
 
@@ -201,7 +202,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     t.unpark();
                     numUnparked++;
-                    if (numUnparked >= size) break;
+                    if (size == lastSize || numUnparked >= doubleSize) break;
                 }
             }
         }
