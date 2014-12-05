@@ -1,10 +1,24 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.cassandra.concurrent;
 
 import com.google.common.collect.Lists;
-import net.openhft.affinity.*;
-import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.JVMStabilityInspector;
+import org.apache.cassandra.utils.concurrent.SimpleCondition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,62 +28,137 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * Executor Service based on idea from Martin Thompson
+ * Executor Service based on idea from Martin Thompson.
  *
- * Added work stealing
+ * Threads looks for work in their queue. If they can't find any
+ * work they park themselves.
+ *
+ * A single background monitor thread watches the queue for each executor.
+ * When the queue is not empty it unparks a thread then sleeps and tries again.
+ *
+ * This service incorporates workStealing by splitting Threads from Queues. Meaning,
+ * any thread can fetch from any other executor queue once it's finished with it's local
+ * queue.
  */
 public class MonitoredExecutiveService extends AbstractTracingAwareExecutorService
 {
     private static final Logger logger = LoggerFactory.getLogger(MonitoredExecutiveService.class);
 
     private static Thread monitorThread;
-    private static final int globalMaxThreads = DatabaseDescriptor.getNativeTransportMaxThreads() +
-                                        DatabaseDescriptor.getConcurrentReaders() +
-                                        DatabaseDescriptor.getConcurrentWriters() +
-                                        DatabaseDescriptor.getConcurrentCounterWriters() +
-                                        FBUtilities.getAvailableProcessors();
 
     private static final List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
-    private static final ThreadFactory threadFactory = new NamedThreadFactory("SHARED-Work");
-
-    private int lastSize = 0;
-
+    private static final ThreadFactory threadFactory = new NamedThreadFactory("monitored-executor-service-worker");
+    private static final int globalMaxThreads = 256;
     private static ThreadWorker[] allWorkers;
     private static Thread[] allThreads;
 
-    public final Queue<FutureTask<?>> workQueue;
-    private final String name;
-    private final int maxThreads;
-    private final int maxItems;
-    private final AtomicInteger queuedItems = new AtomicInteger(0);
-    private final AtomicInteger activeItems = new AtomicInteger(0);
+    final String name;
+    final int maxThreads;
+    final int maxQueuedItems;
+    final Queue<FutureTask<?>> workQueue;
 
-    public MonitoredExecutiveService(String name, int maxThreads, int maxItems)
+    // Tracks the number of items in the queued and number running
+    final AtomicInteger queuedItems = new AtomicInteger(0);
+    final AtomicInteger activeItems = new AtomicInteger(0);
+
+    volatile boolean shuttingDown = false;
+    final SimpleCondition shutdown = new SimpleCondition();
+
+    public MonitoredExecutiveService(String name, int maxThreads, int maxQueuedItems)
     {
         super(name);
 
         workQueue = new ConcurrentLinkedQueue<>();
         this.name = name;
-        this.maxItems = maxItems;
+        this.maxQueuedItems = maxQueuedItems;
         this.maxThreads = maxThreads;
 
         startMonitoring(this);
     }
 
-    void returnPermit()
+    /**
+     * Kicks off the monitoring of a new ES.  Also spawns worker threads when first called.
+     * @param service
+     */
+    private static synchronized void startMonitoring(MonitoredExecutiveService service)
     {
-        activeItems.decrementAndGet();
+        monitoredExecutiveServices.add(service);
+
+        // Start workers on first call
+        if (allWorkers == null)
+        {
+            allWorkers = new ThreadWorker[globalMaxThreads];
+            allThreads = new Thread[globalMaxThreads];
+
+            for (int i = 0; i < globalMaxThreads; i++)
+            {
+                allWorkers[i] = new ThreadWorker(i);
+                allThreads[i] = threadFactory.newThread(allWorkers[i]);
+            }
+
+            for (int i = 0; i < globalMaxThreads; i++)
+            {
+                allThreads[i].setDaemon(true);
+                allThreads[i].start();
+            }
+        }
+
+        // Start monitor on first call
+        if (monitorThread == null)
+        {
+            monitorThread = new Thread(new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    while (true)
+                    {
+                        for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
+                        {
+                            monitoredExecutiveServices.get(i).checkQueue();
+                        }
+
+                        LockSupport.parkNanos(1);
+                    }
+                }
+            });
+
+            monitorThread.setName("monitor-executor-service-thread");
+            monitorThread.setDaemon(true);
+            monitorThread.start();
+        }
     }
 
-    boolean takePermit()
+    /**
+     * @return A unit of work if there are idle slots and queued work
+     */
+    FutureTask<?> takeWorkPermit()
     {
         if (activeItems.incrementAndGet() >= maxThreads)
         {
             activeItems.decrementAndGet();
-            return false;
+            return null;
         }
 
-        return true;
+        FutureTask<?> work = workQueue.poll();
+        if (work == null)
+        {
+            returnWorkPermit();
+        }
+        else
+        {
+            queuedItems.decrementAndGet();
+        }
+
+        return work;
+    }
+
+    /**
+     * Give a work slot back
+     */
+    void returnWorkPermit()
+    {
+        activeItems.decrementAndGet();
     }
 
     static class ThreadWorker implements Runnable
@@ -89,6 +178,65 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             this.state = State.WORKING;
         }
 
+        @Override
+        public void run()
+        {
+
+            while (true)
+            {
+                FutureTask<?> t;
+
+                //deal with spurious wakeups
+                if (state == State.PARKED)
+                {
+                    park();
+                }
+                else
+                {
+                    //Find/Steal work then park self
+                    while ((t = findWork()) != null)
+                    {
+                        t.run();
+                    }
+
+                    park();
+                }
+            }
+        }
+
+        /**
+         * Looks for work on a initial queue.  If nothing is found
+         * steals work from other queues.
+         *
+         * @return A task to work on
+         */
+        private FutureTask findWork()
+        {
+
+            // Work on the requested queue
+            if (primary != null)
+            {
+                FutureTask<?> work = primary.takeWorkPermit();
+                primary = null;
+                if (work != null)
+                    return work;
+            }
+
+            // Steal from all other executor queues
+            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
+            {
+                // avoid all threads checking in the same order
+                int idx = (threadId + i) % length;
+                MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
+
+                FutureTask<?> work = executor.takeWorkPermit();
+                if (work != null)
+                    return work;
+            }
+
+            return null;
+        }
+
         public void park()
         {
             state = State.PARKED;
@@ -101,113 +249,14 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             this.primary = executor;
             LockSupport.unpark(allThreads[threadId]);
         }
-
-        @Override
-        public void run()
-        {
-            try
-            {
-                while (true)
-                {
-                    FutureTask<?> t;
-
-                    //deal with spurious wakeups
-                    if (state == State.PARKED)
-                    {
-                        park();
-                    }
-                    else
-                    {
-                        while ((t = findWork()) != null)
-                        {
-                            try
-                            {
-                                t.run();
-                            } catch (Throwable ex)
-                            {
-                                JVMStabilityInspector.inspectThrowable(ex);
-                                ex.printStackTrace();
-                            }
-                        }
-
-                        //Nothing todo; park
-                        park();
-                    }
-                }
-            }
-            finally
-            {
-                logger.info("Closed worker thread");
-            }
-        }
-
-        /**
-         * Looks for work to steal from peers, if none found moves to main work queue
-         * @return A task to work on
-         */
-        private FutureTask findWork()
-        {
-            try
-            {
-                FutureTask work = null;
-
-                //Work on the requested queue
-                if (primary != null)
-                {
-                    if (primary.takePermit())
-                    {
-                        work = primary.workQueue.poll();
-                        if (work == null)
-                        {
-                            primary.returnPermit();
-                        } else
-                        {
-                            return work;
-                        }
-                    }
-                }
-
-                //Take from global queues
-                for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
-                {
-                    MonitoredExecutiveService executor = monitoredExecutiveServices.get(i);
-
-                    //We just checked this one
-                    if (primary != null && primary == executor)
-                        continue;
-
-                    if (executor.takePermit())
-                    {
-                        work = executor.workQueue.poll();
-                        if (work == null)
-                        {
-                            executor.returnPermit();
-                        } else
-                        {
-                            return work;
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                primary = null;
-            }
-
-            return null;
-        }
     }
 
     private void checkQueue()
     {
-        int active = activeItems.get();
-
-        if (active >= maxThreads)
+        if (activeItems.get() >= maxThreads)
             return;
 
-        int size = queuedItems.get();
-
-        if (size > 0 || activeItems.get() == 0)
+        if (queuedItems.get() > 0)
         {
             for (int i = 0; i < allWorkers.length; i++) {
                 ThreadWorker t = allWorkers[i];
@@ -218,120 +267,76 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 }
             }
         }
-
-        lastSize = size;
     }
 
-    private static synchronized void startMonitoring(MonitoredExecutiveService service)
-    {
-        if (allWorkers == null)
-        {
-            allWorkers = new ThreadWorker[globalMaxThreads];
-            allThreads = new Thread[globalMaxThreads];
-
-            for (int i = 0; i < globalMaxThreads; i++)
-            {
-                allWorkers[i] = new ThreadWorker(i);
-                allThreads[i] = threadFactory.newThread(allWorkers[i]);
-            }
-
-            for (int i = 0; i < globalMaxThreads; i++)
-            {
-                allThreads[i].setDaemon(true);
-                allThreads[i].start();
-            }
-        }
-
-        monitoredExecutiveServices.add(service);
-
-        if (monitorThread != null)
-            return;
-
-        monitorThread = new Thread(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                while (true)
-                {
-                    for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
-                    {
-                        monitoredExecutiveServices.get(i).checkQueue();
-                    }
-
-                    LockSupport.parkNanos(1);
-                }
-            }
-        });
-
-        monitorThread.setName("monitor-executive-service-thread");
-        monitorThread.setDaemon(true);
-        monitorThread.start();
-    }
 
     @Override
     protected void addTask(FutureTask<?> futureTask)
     {
+        if (shuttingDown == true)
+            throw new RuntimeException("ExecutorService has shutdown : " + name);
+
         int queueLength = queuedItems.incrementAndGet();
 
-        if (queueLength <= maxItems)
+        if (queueLength <= maxQueuedItems)
         {
             workQueue.add(futureTask);
         }
         else
         {
             queuedItems.decrementAndGet();
-            throw new RuntimeException("Queue is full");
+            throw new RuntimeException("Queue is full for ExecutorService : " + name);
         }
     }
 
     @Override
     protected void onCompletion()
     {
-        queuedItems.decrementAndGet();
-        returnPermit();
+        returnWorkPermit();
     }
 
     @Override
     public void maybeExecuteImmediately(Runnable command)
     {
-        //if (takePermit())
-        //{
-        //    newTaskFor(command, null).run();
-        //}
-        //else
-        {
-            addTask(newTaskFor(command, null));
-        }
+        addTask(newTaskFor(command, null));
     }
 
     @Override
     public void shutdown()
     {
-
+        shuttingDown = true;
+        if (queuedItems.get() == 0 && activeItems.get() == 0)
+            shutdown.signalAll();
     }
 
     @Override
     public List<Runnable> shutdownNow()
     {
-        return null;
+        shutdown();
+        List<Runnable> aborted = new ArrayList<>();
+        FutureTask<?> work;
+        while ((work = workQueue.poll()) != null)
+            aborted.add(work);
+
+        return aborted;
     }
 
     @Override
     public boolean isShutdown()
     {
-        return false;
+        return shuttingDown;
     }
 
     @Override
     public boolean isTerminated()
     {
-        return false;
+        return shuttingDown && shutdown.isSignaled();
     }
 
     @Override
     public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException
     {
-        return false;
+        shutdown.await(timeout, unit);
+        return isTerminated();
     }
 }
