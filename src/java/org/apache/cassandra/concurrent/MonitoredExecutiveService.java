@@ -149,7 +149,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         {
             FutureTask work = null;
 
-
             //Take from global queues
             for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
@@ -202,7 +201,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 {
                     t.unpark();
                     numUnparked++;
-                    if (numUnparked >= halfSize) break;
+                    if (numUnparked >= size) break;
                 }
             }
         }
