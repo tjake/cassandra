@@ -139,8 +139,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
         }
 
-
-
         /**
          * Looks for work to steal from peers, if none found moves to main work queue
          * @return A task to work on
@@ -179,7 +177,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             return;
 
         final int size = queuedItems.get();
-        final int halfSize = size / 2;
+        final int halfSize = size / 3;
         final int doubleSize = size * 2;
         int numUnparked = 0;
         int numRunning = 0;
