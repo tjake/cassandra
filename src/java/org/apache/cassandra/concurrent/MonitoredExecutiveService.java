@@ -258,15 +258,18 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             return;
 
         int numberQueued = queuedItems.get();
+        int maxToUnpark = numberQueued/3;
 
         if (numberQueued > 0 && (numberQueued >= lastNumberQueued || activeItems.get() == 0))
         {
+            int unparked = 0;
             for (int i = 0; i < allWorkers.length; i++) {
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
                     t.unpark(this);
-                    break;
+                    if (lastNumberQueued == numberQueued || unparked++ >= maxToUnpark)
+                        break;
                 }
             }
         }
