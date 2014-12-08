@@ -60,6 +60,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     // Tracks the number of items in the queued and number running
     final AtomicInteger queuedItems = new AtomicInteger(0);
     final AtomicInteger activeItems = new AtomicInteger(0);
+    int lastNumberQueued = 0;
 
     volatile boolean shuttingDown = false;
     final SimpleCondition shutdown = new SimpleCondition();
@@ -134,7 +135,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
      */
     FutureTask<?> takeWorkPermit()
     {
-        if (activeItems.incrementAndGet() >= maxThreads)
+        if (activeItems.incrementAndGet() > maxThreads)
         {
             activeItems.decrementAndGet();
             return null;
@@ -256,17 +257,19 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         if (activeItems.get() >= maxThreads)
             return;
 
-        if (queuedItems.get() > 0)
+        int numberQueued = queuedItems.get();
+        if (numberQueued > 0 && (numberQueued >= lastNumberQueued || activeItems.get() == 0))
         {
-            for (int i = 0; i < allWorkers.length; i++) {
+            for (int i = 0, unparked = 0; unparked <= numberQueued && i < allWorkers.length; i++, unparked++) {
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
                     t.unpark(this);
-                    break;
                 }
             }
         }
+
+        lastNumberQueued = numberQueued;
     }
 
     @Override
