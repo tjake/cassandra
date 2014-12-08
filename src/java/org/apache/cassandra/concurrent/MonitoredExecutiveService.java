@@ -258,7 +258,6 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             return;
 
         int numberQueued = queuedItems.get();
-        int halfNumberQueued = numberQueued / 2;
 
         if (numberQueued > 0 && (numberQueued >= lastNumberQueued || activeItems.get() == 0))
         {
@@ -268,7 +267,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 if (t.state == ThreadWorker.State.PARKED)
                 {
                     t.unpark(this);
-                    if (lastNumberQueued == numberQueued || unparked++ >= halfNumberQueued)
+                    if (lastNumberQueued == numberQueued || unparked++ >= numberQueued)
                         break;
                 }
             }
