@@ -278,9 +278,9 @@ public class FileUtils
         return canCleanDirectBuffers;
     }
 
-    public static void clean(MappedByteBuffer buffer)
+    public static void clean(DirectBuffer buffer)
     {
-        ((DirectBuffer) buffer).cleaner().clean();
+        buffer.cleaner().clean();
     }
 
     public static void createDirectory(String directory)

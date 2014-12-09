@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.io.FSReadError;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.utils.JVMStabilityInspector;
+import sun.nio.ch.DirectBuffer;
 
 public class MmappedSegmentedFile extends SegmentedFile
 {
@@ -101,7 +102,7 @@ public class MmappedSegmentedFile extends SegmentedFile
             {
                 if (segment.right == null)
                     continue;
-                FileUtils.clean(segment.right);
+                FileUtils.clean((DirectBuffer)segment.right);
             }
             logger.debug("All segments have been unmapped successfully");
         }

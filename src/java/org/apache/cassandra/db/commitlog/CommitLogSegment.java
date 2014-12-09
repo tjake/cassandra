@@ -50,6 +50,7 @@ import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.PureJavaCrc32;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.utils.concurrent.WaitQueue;
+import sun.nio.ch.DirectBuffer;
 
 /*
  * A single commit log file on disk. Manages creation of the file and writing mutations to disk,

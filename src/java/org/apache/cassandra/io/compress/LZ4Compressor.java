@@ -18,6 +18,7 @@
 package org.apache.cassandra.io.compress;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,6 +26,7 @@ import java.util.Set;
 
 import net.jpountz.lz4.LZ4Exception;
 import net.jpountz.lz4.LZ4Factory;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class LZ4Compressor implements ICompressor
 {
@@ -38,13 +40,13 @@ public class LZ4Compressor implements ICompressor
     }
 
     private final net.jpountz.lz4.LZ4Compressor compressor;
-    private final net.jpountz.lz4.LZ4Decompressor decompressor;
+    private final net.jpountz.lz4.LZ4FastDecompressor decompressor;
 
     private LZ4Compressor()
     {
         final LZ4Factory lz4Factory = LZ4Factory.fastestInstance();
         compressor = lz4Factory.fastCompressor();
-        decompressor = lz4Factory.decompressor();
+        decompressor = lz4Factory.fastDecompressor();
     }
 
     public int initialCompressedBufferLength(int chunkLength)
@@ -95,6 +97,46 @@ public class LZ4Compressor implements ICompressor
         }
 
         return decompressedLength;
+    }
+
+    public int uncompress(ByteBuffer input_, ByteBuffer output_) throws IOException
+    {
+
+        if (input_.hasArray() && output_.hasArray())
+        {
+            return uncompress(input_.array(), input_.arrayOffset() + input_.position(), input_.remaining(), output_.array(), output_.arrayOffset() + output_.position());
+        }
+
+        ByteBuffer input = input_.duplicate();
+        ByteBuffer output = output_.duplicate();
+
+        byte[] lengthBytes = new byte[INTEGER_BYTES];
+        input.get(lengthBytes);
+
+        final int decompressedLength = (lengthBytes[0] & 0xFF)
+                | ((lengthBytes[1] & 0xFF) << 8)
+                | ((lengthBytes[2] & 0xFF) << 16)
+                | ((lengthBytes[3] & 0xFF) << 24);
+
+        int inputLength = input.remaining();
+
+        final int compressedLength;
+        try
+        {
+            compressedLength = decompressor.decompress(input, input.position(), output, output.position(), decompressedLength);
+        }
+        catch (LZ4Exception e)
+        {
+            throw new IOException(e);
+        }
+
+        if (compressedLength != inputLength)
+        {
+            throw new IOException("Compressed lengths mismatch: "+compressedLength+" vs "+inputLength);
+        }
+
+        return decompressedLength;
+
     }
 
     public Set<String> supportedOptions()

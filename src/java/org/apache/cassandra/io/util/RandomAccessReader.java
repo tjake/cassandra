@@ -26,6 +26,7 @@ import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.io.FSReadError;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import sun.nio.ch.DirectBuffer;
 
 public class RandomAccessReader extends AbstractDataInput implements FileDataInput
 {
@@ -239,6 +240,12 @@ public class RandomAccessReader extends AbstractDataInput implements FileDataInp
     public void deallocate()
     {
         bufferOffset += buffer.position();
+
+        if (buffer.isDirect() && FileUtils.isCleanerAvailable())
+        {
+            FileUtils.clean((DirectBuffer)buffer);
+        }
+
         buffer = null; // makes sure we don't use this after it's ostensibly closed
 
         try
