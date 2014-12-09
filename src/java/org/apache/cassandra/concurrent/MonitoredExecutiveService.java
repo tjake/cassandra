@@ -112,14 +112,12 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 @Override
                 public void run()
                 {
-                    long iteration = 0;
                     while (true)
                     {
                         for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
                         {
-                            monitoredExecutiveServices.get((int)(i + iteration) % length).checkQueue();
+                            monitoredExecutiveServices.get(i).checkQueue();
                         }
-                        iteration ++;
                         LockSupport.parkNanos(1);
                     }
                 }
@@ -195,13 +193,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 }
                 else
                 {
-                    //Find/Steal work then park self (one busy spin)
-                    for (int i = 0; i < 2; i++)
+                    //Find/Steal work then park self
+                    while ((t = findWork()) != null)
                     {
-                        while ((t = findWork()) != null)
-                        {
-                            t.run();
-                        }
+                        t.run();
                     }
 
                     park();
