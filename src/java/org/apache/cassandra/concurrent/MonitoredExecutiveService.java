@@ -48,9 +48,9 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
 
     private static final List<MonitoredExecutiveService> monitoredExecutiveServices = Lists.newCopyOnWriteArrayList();
     private static final ThreadFactory threadFactory = new NamedThreadFactory("monitored-executor-service-worker");
-    private static final int globalMaxThreads = 256;
-    private static ThreadWorker[] allWorkers;
-    private static Thread[] allThreads;
+
+    private ThreadWorker[] allWorkers;
+    private Thread[] allThreads;
 
     final String name;
     final int maxThreads;
@@ -74,6 +74,21 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         this.maxQueuedItems = maxQueuedItems;
         this.maxThreads = maxThreads;
 
+        allWorkers = new ThreadWorker[maxThreads];
+        allThreads = new Thread[maxThreads];
+
+        for (int i = 0; i < maxThreads; i++)
+        {
+            allWorkers[i] = new ThreadWorker(i, this);
+            allThreads[i] = threadFactory.newThread(allWorkers[i]);
+        }
+
+        for (int i = 0; i < maxThreads; i++)
+        {
+            allThreads[i].setDaemon(true);
+            allThreads[i].start();
+        }
+
         startMonitoring(this);
     }
 
@@ -85,30 +100,12 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
     {
         monitoredExecutiveServices.add(service);
 
-        // Start workers on first call
-        if (allWorkers == null)
-        {
-            allWorkers = new ThreadWorker[globalMaxThreads];
-            allThreads = new Thread[globalMaxThreads];
-
-            for (int i = 0; i < globalMaxThreads; i++)
-            {
-                allWorkers[i] = new ThreadWorker(i);
-                allThreads[i] = threadFactory.newThread(allWorkers[i]);
-            }
-
-            for (int i = 0; i < globalMaxThreads; i++)
-            {
-                allThreads[i].setDaemon(true);
-                allThreads[i].start();
-            }
-        }
-
         // Start monitor on first call
         if (monitorThread == null)
         {
             monitorThread = new Thread(new Runnable()
             {
+
                 @Override
                 public void run()
                 {
@@ -118,6 +115,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                         {
                             monitoredExecutiveServices.get(i).checkQueue();
                         }
+
                         LockSupport.parkNanos(1);
                     }
                 }
@@ -172,10 +170,11 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         public volatile MonitoredExecutiveService primary;
         public final int threadId;
 
-        ThreadWorker(int threadId)
+        ThreadWorker(int threadId, MonitoredExecutiveService executor)
         {
             this.threadId = threadId;
-            this.state = State.WORKING;
+            this.state = State.PARKED;
+            this.primary = executor;
         }
 
         @Override
@@ -194,7 +193,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 else
                 {
                     //Find/Steal work then park self
-                    while ((t = findWork()) != null)
+                    while ((t = primary.takeWorkPermit()) != null)
                     {
                         t.run();
                     }
@@ -204,69 +203,41 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             }
         }
 
-        /**
-         * Looks for work on a initial queue.  If nothing is found
-         * steals work from other queues.
-         *
-         * @return A task to work on
-         */
-        private FutureTask findWork()
-        {
-            // Work on the requested queue
-            if (primary != null)
-            {
-                FutureTask<?> work = primary.takeWorkPermit();
-                if (work != null)
-                    return work;
-            }
-
-            // Steal from all other executor queues
-            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
-            {
-                // avoid all threads checking in the same order
-                int idx = (threadId + i) % length;
-                MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
-
-                FutureTask<?> work = executor.takeWorkPermit();
-                if (work != null)
-                    return work;
-            }
-
-            return null;
-        }
-
         public void park()
         {
             state = State.PARKED;
             LockSupport.park();
         }
 
-        public void unpark(MonitoredExecutiveService executor)
+        public void unpark(Thread thread)
         {
             state = State.WORKING;
-            this.primary = executor;
-            LockSupport.unpark(allThreads[threadId]);
+            LockSupport.unpark(thread);
         }
     }
 
     private void checkQueue()
     {
-        if (activeItems.get() >= maxThreads)
+        int numActive = activeItems.get();
+        if (numActive >= maxThreads)
             return;
 
         int numberQueued = queuedItems.get();
-        int maxToUnpark = numberQueued/3;
 
         if (numberQueued > 0 && (numberQueued >= lastNumberQueued || activeItems.get() == 0))
         {
+            //One thread for every power of
+            int maxToUnpark = Math.min(numberQueued, 4) - 1;
+
             int unparked = 0;
             for (int i = 0; i < allWorkers.length; i++) {
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
-                    t.unpark(this);
-                    if (lastNumberQueued == numberQueued || unparked++ >= maxToUnpark)
+                    t.unpark(allThreads[i]);
+                    if (numberQueued == lastNumberQueued || unparked++ >= maxToUnpark)
                         break;
+
                 }
             }
         }
