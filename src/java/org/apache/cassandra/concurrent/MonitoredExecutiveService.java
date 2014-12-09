@@ -112,13 +112,14 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 @Override
                 public void run()
                 {
+                    long iteration = 0;
                     while (true)
                     {
                         for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
                         {
-                            monitoredExecutiveServices.get(i).checkQueue();
+                            monitoredExecutiveServices.get((int)(i + iteration) % length).checkQueue();
                         }
-
+                        iteration ++;
                         LockSupport.parkNanos(1);
                     }
                 }
@@ -170,6 +171,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
         }
 
         public volatile State state;
+        public volatile MonitoredExecutiveService primary;
         public final int threadId;
 
         ThreadWorker(int threadId)
@@ -212,19 +214,38 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
          */
         private FutureTask findWork()
         {
-            // Steal from all executor queues
-            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
+
+            try
             {
-                // avoid all threads checking in the same order
-                int idx = (threadId + i) % length;
-                MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
+                // Work on the requested queue
+                if (primary != null)
+                {
+                    FutureTask<?> work = primary.takeWorkPermit();
+                    if (work != null)
+                        return work;
+                }
 
-                FutureTask<?> work = executor.takeWorkPermit();
-                if (work != null)
-                    return work;
+                // Steal from all other executor queues
+                for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
+                {
+                    // avoid all threads checking in the same order
+                    int idx = (threadId + i) % length;
+                    MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
+
+                    if (executor == primary)
+                        continue;
+
+                    FutureTask<?> work = executor.takeWorkPermit();
+                    if (work != null)
+                        return work;
+                }
+
+                return null;
             }
-
-            return null;
+            finally
+            {
+                primary = null;
+            }
         }
 
         public void park()
@@ -233,9 +254,10 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
             LockSupport.park();
         }
 
-        public void unpark()
+        public void unpark(MonitoredExecutiveService executor)
         {
             state = State.WORKING;
+            this.primary = executor;
             LockSupport.unpark(allThreads[threadId]);
         }
     }
@@ -255,7 +277,7 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 ThreadWorker t = allWorkers[i];
                 if (t.state == ThreadWorker.State.PARKED)
                 {
-                    t.unpark();
+                    t.unpark(this);
                     if (lastNumberQueued == numberQueued || unparked++ >= maxToUnpark)
                         break;
                 }
