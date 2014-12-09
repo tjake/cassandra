@@ -195,10 +195,13 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
                 }
                 else
                 {
-                    //Find/Steal work then park self
-                    while ((t = findWork()) != null)
+                    //Find/Steal work then park self (one busy spin)
+                    for (int i = 0; i < 2; i++)
                     {
-                        t.run();
+                        while ((t = findWork()) != null)
+                        {
+                            t.run();
+                        }
                     }
 
                     park();
@@ -214,38 +217,27 @@ public class MonitoredExecutiveService extends AbstractTracingAwareExecutorServi
          */
         private FutureTask findWork()
         {
-
-            try
+            // Work on the requested queue
+            if (primary != null)
             {
-                // Work on the requested queue
-                if (primary != null)
-                {
-                    FutureTask<?> work = primary.takeWorkPermit();
-                    if (work != null)
-                        return work;
-                }
-
-                // Steal from all other executor queues
-                for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
-                {
-                    // avoid all threads checking in the same order
-                    int idx = (threadId + i) % length;
-                    MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
-
-                    if (executor == primary)
-                        continue;
-
-                    FutureTask<?> work = executor.takeWorkPermit();
-                    if (work != null)
-                        return work;
-                }
-
-                return null;
+                FutureTask<?> work = primary.takeWorkPermit();
+                if (work != null)
+                    return work;
             }
-            finally
+
+            // Steal from all other executor queues
+            for (int i = 0, length = monitoredExecutiveServices.size(); i < length; i++)
             {
-                primary = null;
+                // avoid all threads checking in the same order
+                int idx = (threadId + i) % length;
+                MonitoredExecutiveService executor = monitoredExecutiveServices.get(idx);
+
+                FutureTask<?> work = executor.takeWorkPermit();
+                if (work != null)
+                    return work;
             }
+
+            return null;
         }
 
         public void park()
