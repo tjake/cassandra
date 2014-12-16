@@ -188,7 +188,7 @@ public class ResultSet
             // rows
             int totalValues = rowCount * m.columnCount;
             for (int i = 0; i < totalValues; i++)
-                rs.addColumnValue(CBUtil.readValue(body));
+                rs.addColumnValue(CBUtil.readValue(body, true));
 
             return rs;
         }
@@ -333,7 +333,7 @@ public class ResultSet
 
                 PagingState state = null;
                 if (flags.contains(Flag.HAS_MORE_PAGES))
-                    state = PagingState.deserialize(CBUtil.readValue(body));
+                    state = PagingState.deserialize(CBUtil.readValue(body, true));
 
                 if (flags.contains(Flag.NO_METADATA))
                     return new Metadata(flags, null, columnCount, state);

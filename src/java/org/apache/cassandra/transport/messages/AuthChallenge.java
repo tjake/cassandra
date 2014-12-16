@@ -32,7 +32,7 @@ public class AuthChallenge extends Message.Response
     {
         public AuthChallenge decode(ByteBuf body, int version)
         {
-            ByteBuffer b = CBUtil.readValue(body);
+            ByteBuffer b = CBUtil.readValue(body, true);
             byte[] token = new byte[b.remaining()];
             b.get(token);
             return new AuthChallenge(token);

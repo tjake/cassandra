@@ -328,12 +328,17 @@ public abstract class CBUtil
         return size;
     }
 
-    public static ByteBuffer readValue(ByteBuf cb)
+    public static ByteBuffer readValue(ByteBuf cb, boolean deepCopy)
     {
         int length = cb.readInt();
         if (length < 0)
             return null;
         ByteBuf slice = cb.readSlice(length);
+
+        if (!deepCopy && slice.nioBufferCount() == 1)
+        {
+            return slice.nioBuffer();
+        }
 
         return ByteBuffer.wrap(readRawBytes(slice));
     }
@@ -375,7 +380,7 @@ public abstract class CBUtil
         return 4 + (bytes == null ? 0 : bytes.remaining());
     }
 
-    public static List<ByteBuffer> readValueList(ByteBuf cb)
+    public static List<ByteBuffer> readValueList(ByteBuf cb, boolean deepCopy)
     {
         int size = cb.readUnsignedShort();
         if (size == 0)
@@ -383,7 +388,7 @@ public abstract class CBUtil
 
         List<ByteBuffer> l = new ArrayList<ByteBuffer>(size);
         for (int i = 0; i < size; i++)
-            l.add(readValue(cb));
+            l.add(readValue(cb, deepCopy));
         return l;
     }
 
@@ -402,7 +407,7 @@ public abstract class CBUtil
         return size;
     }
 
-    public static Pair<List<String>, List<ByteBuffer>> readNameAndValueList(ByteBuf cb)
+    public static Pair<List<String>, List<ByteBuffer>> readNameAndValueList(ByteBuf cb, boolean deepCopy)
     {
         int size = cb.readUnsignedShort();
         if (size == 0)
@@ -413,7 +418,7 @@ public abstract class CBUtil
         for (int i = 0; i < size; i++)
         {
             s.add(readString(cb));
-            l.add(readValue(cb));
+            l.add(readValue(cb, deepCopy));
         }
         return Pair.create(s, l);
     }

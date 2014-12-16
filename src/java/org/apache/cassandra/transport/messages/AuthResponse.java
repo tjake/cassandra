@@ -44,7 +44,7 @@ public class AuthResponse extends Message.Request
             if (version == 1)
                 throw new ProtocolException("SASL Authentication is not supported in version 1 of the protocol");
 
-            ByteBuffer b = CBUtil.readValue(body);
+            ByteBuffer b = CBUtil.readValue(body, true);
             byte[] token = new byte[b.remaining()];
             b.get(token);
             return new AuthResponse(token);
