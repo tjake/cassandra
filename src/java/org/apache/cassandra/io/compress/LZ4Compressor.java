@@ -30,7 +30,6 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class LZ4Compressor implements ICompressor
 {
-
     private static final int INTEGER_BYTES = 4;
     private static final LZ4Compressor instance = new LZ4Compressor();
 
@@ -99,17 +98,8 @@ public class LZ4Compressor implements ICompressor
         return decompressedLength;
     }
 
-    public int uncompress(ByteBuffer input_, ByteBuffer output_) throws IOException
+    public int uncompress(ByteBuffer input, ByteBuffer output) throws IOException
     {
-
-        if (input_.hasArray() && output_.hasArray())
-        {
-            return uncompress(input_.array(), input_.arrayOffset() + input_.position(), input_.remaining(), output_.array(), output_.arrayOffset() + output_.position());
-        }
-
-        ByteBuffer input = input_.duplicate();
-        ByteBuffer output = output_.duplicate();
-
         byte[] lengthBytes = new byte[INTEGER_BYTES];
         input.get(lengthBytes);
 
@@ -136,11 +126,16 @@ public class LZ4Compressor implements ICompressor
         }
 
         return decompressedLength;
+    }
 
+    @Override
+    public boolean useDirectOutputByteBuffers()
+    {
+        return false;
     }
 
     public Set<String> supportedOptions()
     {
-        return new HashSet<String>(Arrays.asList(CompressionParameters.CRC_CHECK_CHANCE));
+        return new HashSet<>(Arrays.asList(CompressionParameters.CRC_CHECK_CHANCE));
     }
 }

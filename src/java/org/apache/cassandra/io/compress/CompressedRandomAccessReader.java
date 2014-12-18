@@ -46,7 +46,7 @@ import sun.nio.ch.DirectBuffer;
  */
 public class CompressedRandomAccessReader extends RandomAccessReader
 {
-    private static final boolean useMmap = DatabaseDescriptor.getDiskAccessMode() == Config.DiskAccessMode.mmap && FBUtilities.supportsDirectChecksum();
+    private static final boolean useMmap = DatabaseDescriptor.getDiskAccessMode() == Config.DiskAccessMode.mmap;
 
     public static CompressedRandomAccessReader open(String path, CompressionMetadata metadata, CompressedPoolingSegmentedFile owner)
     {
@@ -88,7 +88,7 @@ public class CompressedRandomAccessReader extends RandomAccessReader
 
     protected CompressedRandomAccessReader(String dataFilePath, CompressionMetadata metadata, PoolingSegmentedFile owner) throws FileNotFoundException
     {
-        super(new File(dataFilePath), metadata.chunkLength(), owner);
+        super(new File(dataFilePath), metadata.chunkLength(), metadata.compressor().useDirectOutputByteBuffers(), owner);
         this.metadata = metadata;
         checksum = new Adler32();
 
@@ -114,7 +114,7 @@ public class CompressedRandomAccessReader extends RandomAccessReader
     {
         chunkSegments = new TreeMap<>();
         long offset = 0;
-        long lastOffset = 0;
+        long lastSegmentOffset = 0;
         long segmentSize = 0;
 
         while (offset < metadata.dataLength)
@@ -124,23 +124,23 @@ public class CompressedRandomAccessReader extends RandomAccessReader
             //Reached a new mmap boundary
             if (segmentSize + chunk.length + 4 > MAX_SEGMENT_SIZE)
             {
-                chunkSegments.put(lastOffset, channel.map(FileChannel.MapMode.READ_ONLY, lastOffset, segmentSize));
+                chunkSegments.put(lastSegmentOffset, channel.map(FileChannel.MapMode.READ_ONLY, lastSegmentOffset, segmentSize));
+                lastSegmentOffset += segmentSize;
                 segmentSize = 0;
-                lastOffset = offset;
             }
 
             segmentSize += chunk.length + 4; //checksum
             offset += metadata.chunkLength();
         }
 
-        chunkSegments.put(lastOffset, channel.map(FileChannel.MapMode.READ_ONLY, lastOffset, segmentSize));
-
+        if (segmentSize > 0)
+            chunkSegments.put(lastSegmentOffset, channel.map(FileChannel.MapMode.READ_ONLY, lastSegmentOffset, segmentSize));
     }
 
-    protected ByteBuffer allocateBuffer(int bufferSize)
+    protected ByteBuffer allocateBuffer(int bufferSize, boolean useDirect)
     {
         assert Integer.bitCount(bufferSize) == 1;
-        return useMmap && FileUtils.isCleanerAvailable()
+        return useMmap && useDirect
                 ? ByteBuffer.allocateDirect(bufferSize)
                 : ByteBuffer.allocate(bufferSize);
     }
@@ -150,13 +150,15 @@ public class CompressedRandomAccessReader extends RandomAccessReader
     {
         super.deallocate();
 
-        if (chunkSegments != null && FileUtils.isCleanerAvailable())
+        if (chunkSegments != null)
         {
             for (Map.Entry<Long, MappedByteBuffer> entry : chunkSegments.entrySet())
             {
-                FileUtils.clean((DirectBuffer)entry.getValue());
+                FileUtils.clean(entry.getValue());
             }
         }
+
+        chunkSegments = null;
     }
 
     private void reBufferStandard()
@@ -280,7 +282,7 @@ public class CompressedRandomAccessReader extends RandomAccessReader
         {
             throw new CorruptSSTableException(e, getPath());
         }
-        
+
     }
 
     @Override

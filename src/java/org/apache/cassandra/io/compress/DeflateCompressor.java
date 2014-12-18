@@ -119,10 +119,15 @@ public class DeflateCompressor implements ICompressor
 
     public int uncompress(ByteBuffer input_, ByteBuffer output) throws IOException
     {
-        if (!!output.hasArray())
+        if (!output.hasArray())
             throw new IllegalArgumentException("DeflateCompressor doesn't work with direct byte buffers");
 
         byte[] input = ByteBufferUtil.getArray(input_);
         return uncompress(input, 0, input.length, output.array(), output.arrayOffset() + output.position());
+    }
+
+    public boolean useDirectOutputByteBuffers()
+    {
+        return false;
     }
 }

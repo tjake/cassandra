@@ -102,7 +102,7 @@ public class MmappedSegmentedFile extends SegmentedFile
             {
                 if (segment.right == null)
                     continue;
-                FileUtils.clean((DirectBuffer)segment.right);
+                FileUtils.clean(segment.right);
             }
             logger.debug("All segments have been unmapped successfully");
         }

@@ -28,8 +28,17 @@ public interface ICompressor
     public int compress(byte[] input, int inputOffset, int inputLength, WrappedArray output, int outputOffset) throws IOException;
 
     public int uncompress(byte[] input, int inputOffset, int inputLength, byte[] output, int outputOffset) throws IOException;
+
+    /**
+     * Decompression for DirectByteBuffers
+     */
     public int uncompress(ByteBuffer input, ByteBuffer output) throws IOException;
 
+    /**
+     * Notifies user if this compressor will wants/requires a direct byte buffers to
+     * decompress direct byteBuffers
+     */
+    public boolean useDirectOutputByteBuffers();
 
     public Set<String> supportedOptions();
 

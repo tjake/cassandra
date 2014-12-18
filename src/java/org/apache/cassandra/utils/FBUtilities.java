@@ -47,6 +47,8 @@ import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.IVersionedSerializer;
+import org.apache.cassandra.io.compress.CompressedRandomAccessReader;
+import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.IAllocator;
@@ -651,6 +653,15 @@ public class FBUtilities
         }
     }
 
+    private static final ThreadLocal<byte[]> localDigestBuffer = new ThreadLocal<byte[]>()
+    {
+        @Override
+        protected byte[] initialValue()
+        {
+            return new byte[CompressionParameters.DEFAULT_CHUNK_LENGTH];
+        }
+    };
+
     //Java 7 has this method but it's private till Java 8. Thanks JDK!
     public static boolean supportsDirectChecksum()
     {
@@ -664,6 +675,7 @@ public class FBUtilities
             try
             {
                 directUpdate.invoke(checksum, bb);
+                return;
             } catch (IllegalAccessException e)
             {
                 directUpdate = null;
@@ -674,14 +686,17 @@ public class FBUtilities
                 throw new RuntimeException(e);
             }
         }
-        else
-        {
-            //Fallback
-            while (bb.remaining() > Ints.BYTES)
-                updateChecksumInt(checksum, bb.getInt());
 
-            while (bb.remaining() > 0)
-                checksum.update(bb.get());
+        //Fallback
+        byte[] buffer = localDigestBuffer.get();
+
+        int remaining;
+        while ((remaining = bb.remaining()) > 0)
+        {
+            remaining = Math.min(remaining, buffer.length);
+            ByteBufferUtil.arrayCopy(bb, bb.position(), buffer, 0, remaining);
+            bb.position(bb.position() + remaining);
+            checksum.update(buffer, 0, remaining);
         }
     }
 

@@ -102,4 +102,10 @@ public class SnappyCompressor implements ICompressor
     {
         return Snappy.uncompress(input, output);
     }
+
+    @Override
+    public boolean useDirectOutputByteBuffers()
+    {
+        return true;
+    }
 }

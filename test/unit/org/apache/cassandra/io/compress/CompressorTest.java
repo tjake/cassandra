@@ -33,15 +33,31 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class LZ4CompressorTest
+public class CompressorTest
 {
-    LZ4Compressor compressor;
+    ICompressor compressor;
 
-    @Before
-    public void setUp()
+    ICompressor[] compressors = new ICompressor[] {
+            LZ4Compressor.create(Collections.<String, String>emptyMap()),
+            DeflateCompressor.create(Collections.<String, String>emptyMap()),
+            SnappyCompressor.create(Collections.<String, String>emptyMap())
+    };
+
+
+    @Test
+    public void testAllCompressors() throws IOException
     {
-        compressor = LZ4Compressor.create(Collections.<String, String>emptyMap());
+        for (ICompressor compressor : compressors)
+        {
+            this.compressor = compressor;
+
+            testEmptyArray();
+            testLongArray();
+            testShortArray();
+            testMappedFile();
+        }
     }
+
 
     public void test(byte[] data, int off, int len) throws IOException
     {
@@ -63,19 +79,16 @@ public class LZ4CompressorTest
         test(data, 0, data.length);
     }
 
-    @Test
     public void testEmptyArray() throws IOException
     {
         test(new byte[0]);
     }
 
-    @Test
     public void testShortArray() throws UnsupportedEncodingException, IOException
     {
         test("Cassandra".getBytes("UTF-8"), 1, 7);
     }
 
-    @Test
     public void testLongArray() throws UnsupportedEncodingException, IOException
     {
         byte[] data = new byte[1 << 20];
@@ -84,7 +97,6 @@ public class LZ4CompressorTest
         test(data, 13, 1 << 19);
     }
 
-    @Test
     public void testMappedFile() throws IOException
     {
         byte[] data = new byte[1 << 20];
@@ -105,10 +117,17 @@ public class LZ4CompressorTest
         mappedData.position(outOffset);
         mappedData.limit(compressedLength+outOffset);
 
-        byte[] result = new byte[data.length + 100];
-        int length = compressor.uncompress(mappedData, ByteBuffer.wrap(result));
 
-        assert length == data.length;
-        Assert.assertArrayEquals(data, Arrays.copyOfRange(result, 0, length));
+        ByteBuffer result = compressor.useDirectOutputByteBuffers()
+                ? ByteBuffer.allocateDirect(data.length + 100)
+                : ByteBuffer.allocate(data.length + 100);
+
+        int length = compressor.uncompress(mappedData, result);
+
+        Assert.assertEquals(data.length, length);
+        for (int i = 0; i < length; i++)
+        {
+            Assert.assertEquals("Decompression mismatch at byte "+i, data[i], result.get());
+        }
     }
 }
