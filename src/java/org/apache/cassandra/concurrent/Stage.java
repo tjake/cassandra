@@ -31,6 +31,14 @@ public enum Stage
     INTERNAL_RESPONSE,
     READ_REPAIR;
 
+    public boolean isJmxHidden()
+    {
+        if (this == TRACING)
+            return true;
+
+        return false;
+    }
+
     public String getJmxType()
     {
         switch (this)

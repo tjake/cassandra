@@ -26,7 +26,7 @@ import io.netty.util.concurrent.Future;
 import org.apache.cassandra.concurrent.TracingAwareExecutorService;
 import org.apache.cassandra.config.DatabaseDescriptor;
 
-import static org.apache.cassandra.concurrent.JMXEnabledSharedExecutorPool.SHARED;
+import static org.apache.cassandra.concurrent.SharedExecutorPool.SHARED;
 
 public class RequestThreadPoolExecutor extends AbstractEventExecutor
 {
