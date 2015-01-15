@@ -28,6 +28,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.zip.Adler32;
 import java.util.zip.Checksum;
 
 import com.google.common.base.Joiner;

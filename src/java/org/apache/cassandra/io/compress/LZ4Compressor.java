@@ -26,7 +26,7 @@ import java.util.Set;
 
 import net.jpountz.lz4.LZ4Exception;
 import net.jpountz.lz4.LZ4Factory;
-import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.FastByteOperations;
 
 public class LZ4Compressor implements ICompressor
 {
@@ -101,19 +101,19 @@ public class LZ4Compressor implements ICompressor
     public int uncompress(ByteBuffer input, ByteBuffer output) throws IOException
     {
         byte[] lengthBytes = new byte[INTEGER_BYTES];
-        input.get(lengthBytes);
+        FastByteOperations.copy(input, input.position(), lengthBytes, 0, INTEGER_BYTES);
 
         final int decompressedLength = (lengthBytes[0] & 0xFF)
                 | ((lengthBytes[1] & 0xFF) << 8)
                 | ((lengthBytes[2] & 0xFF) << 16)
                 | ((lengthBytes[3] & 0xFF) << 24);
 
-        int inputLength = input.remaining();
+        int inputLength = input.remaining() - INTEGER_BYTES;
 
         final int compressedLength;
         try
         {
-            compressedLength = decompressor.decompress(input, input.position(), output, output.position(), decompressedLength);
+            compressedLength = decompressor.decompress(input, input.position() + INTEGER_BYTES, output, output.position(), decompressedLength);
         }
         catch (LZ4Exception e)
         {

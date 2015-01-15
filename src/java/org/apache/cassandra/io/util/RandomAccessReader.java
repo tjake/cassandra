@@ -26,7 +26,6 @@ import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.io.FSReadError;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import sun.nio.ch.DirectBuffer;
 
 public class RandomAccessReader extends AbstractDataInput implements FileDataInput
 {
