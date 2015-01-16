@@ -1,0 +1,34 @@
+keyspace: extreme
+keyspace_definition: |
+    CREATE KEYSPACE extreme WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': 1 };
+
+table: extreme
+table_definition: |
+    CREATE TABLE extreme (
+        partition_key int,
+        clustering_col0 int,
+        clustering_col1 int,
+        clustering_col2 int,
+        val int,
+        PRIMARY KEY ((partition_key), clustering_col0, clustering_col1, clustering_col2)
+    ) WITH compaction = { 'class': 'LeveledCompactionStrategy' }
+
+columnspec:
+    - name: partition_key
+      population: fixed(1)
+    - name: clustering_col0
+      cluster: fixed(100)
+    - name: clustering_col1
+      cluster: fixed(100)
+    - name: clustering_col2
+      cluster: fixed(100)
+
+insert:
+    partitions: fixed(1)
+    select: fixed(1)/1M
+    batchtype: UNLOGGED
+
+queries:
+    select:
+        cql: select * from extreme where partition_key = ? and clustering_col0 = ?
+        fields: samrow
