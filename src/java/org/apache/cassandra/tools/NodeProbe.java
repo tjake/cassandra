@@ -28,6 +28,7 @@ import java.net.UnknownHostException;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import javax.management.*;
@@ -57,11 +58,12 @@ import org.apache.cassandra.metrics.StorageMetrics;
 import org.apache.cassandra.metrics.ThreadPoolMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.net.MessagingServiceMBean;
-import org.apache.cassandra.repair.RepairParallelism;
 import org.apache.cassandra.service.*;
 import org.apache.cassandra.streaming.StreamState;
 import org.apache.cassandra.streaming.StreamManagerMBean;
 import org.apache.cassandra.streaming.management.StreamStateCompositeData;
+
+import org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
 
 /**
  * JMX client operations for Cassandra.

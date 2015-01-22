@@ -22,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
 import com.codahale.metrics.*;
+import com.codahale.metrics.Timer;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.io.sstable.format.SSTableReader;

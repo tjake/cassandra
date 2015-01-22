@@ -31,9 +31,7 @@ import javax.management.openmbean.*;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.Maps;
+import com.google.common.collect.*;
 
 import io.airlift.command.*;
 import org.apache.commons.lang3.StringUtils;
@@ -45,9 +43,8 @@ import org.apache.cassandra.db.compaction.CompactionManagerMBean;
 import org.apache.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.EndpointSnitchInfoMBean;
-import org.apache.cassandra.locator.LocalStrategy;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry;
-import org.apache.cassandra.metrics.ThreadPoolMetrics;
+import org.apache.cassandra.metrics.ColumnFamilyMetrics;
 import org.apache.cassandra.net.MessagingServiceMBean;
 import org.apache.cassandra.repair.messages.RepairOption;
 import org.apache.cassandra.repair.RepairParallelism;
@@ -59,6 +56,7 @@ import org.apache.cassandra.utils.EstimatedHistogram;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 
+import static org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.getStackTraceAsString;
@@ -943,7 +941,7 @@ public class NodeTool
         @Option(name = "-k", description = "Number of the top partitions to list (Default: 10)")
         private int topCount = 10;
         @Option(name = "-a", description = "Comma separated list of samplers to use (Default: all)")
-        private String samplers = join(Sampler.values(), ',');
+        private String samplers = join(ColumnFamilyMetrics.Sampler.values(), ',');
         @Override
         public void execute(NodeProbe probe)
         {
