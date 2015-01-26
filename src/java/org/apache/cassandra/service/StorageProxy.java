@@ -31,6 +31,8 @@ import com.google.common.base.Predicate;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.cassandra.db.index.GlobalIndexManager;
+import org.apache.cassandra.metrics.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -629,13 +631,23 @@ public class StorageProxy implements StorageProxyMBean
     throws WriteTimeoutException, WriteFailureException, UnavailableException, OverloadedException, InvalidRequestException
     {
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
-
         if (augmented != null)
-            mutateAtomically(augmented, consistencyLevel);
-        else if (mutateAtomically)
-            mutateAtomically((Collection<Mutation>) mutations, consistencyLevel);
+        {
+            Collection<Mutation> giMutations = GlobalIndexManager.instance.execute(augmented);
+            if (giMutations != null)
+                mutateAtomically(giMutations, consistencyLevel);
+            else mutateAtomically(augmented, consistencyLevel);
+        }
         else
-            mutate(mutations, consistencyLevel);
+        {
+            Collection<Mutation> giMutations = GlobalIndexManager.instance.execute(mutations);
+            if (giMutations != null)
+                mutateAtomically(giMutations, consistencyLevel);
+            else if (mutateAtomically)
+                mutateAtomically((Collection<Mutation>) mutations, consistencyLevel);
+            else
+                mutate(mutations, consistencyLevel);
+        }
     }
 
     /**

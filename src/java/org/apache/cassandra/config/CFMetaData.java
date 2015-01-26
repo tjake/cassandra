@@ -28,6 +28,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Strings;
 import com.google.common.collect.*;
+import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -188,6 +189,7 @@ public final class CFMetaData
     private volatile SpeculativeRetry speculativeRetry = DEFAULT_SPECULATIVE_RETRY;
     private volatile Map<ColumnIdentifier, Long> droppedColumns = new HashMap<>();
     private volatile Map<String, TriggerDefinition> triggers = new HashMap<>();
+    private volatile Collection<GlobalIndexDefinition> globalIndexes;
     private volatile boolean isPurged = false;
     /*
      * All CQL3 columns definition are stored in the columnMetadata map.
@@ -287,6 +289,11 @@ public final class CFMetaData
     public Map<String, TriggerDefinition> getTriggers()
     {
         return triggers;
+    }
+
+    public Collection<GlobalIndexDefinition> getGlobalIndexes()
+    {
+        return globalIndexes;
     }
 
     public static CFMetaData compile(String cql, String keyspace)
@@ -1190,6 +1197,11 @@ public final class CFMetaData
     public boolean removeTrigger(String name)
     {
         return triggers.remove(name) != null;
+    }
+
+    public void addGlobalIndex(GlobalIndexDefinition def)
+    {
+        globalIndexes.add(def);
     }
 
     public void recordColumnDrop(ColumnDefinition def)
