@@ -41,10 +41,16 @@ public class GlobalIndexManager
     {
         Collection<GlobalIndexDefinition> indexDefs = cf.metadata().getGlobalIndexes();
 
-        List<Mutation> tmutations = Lists.newLinkedList();
+        List<Mutation> tmutations = null;
         for (GlobalIndex index: resolveIndexes(indexDefs))
         {
-            tmutations.addAll(index.createMutations(key, cf));
+            Collection<Mutation> mutations = index.createMutations(key, cf);
+            if (mutations != null) {
+                if (tmutations == null) {
+                    tmutations = Lists.newLinkedList();
+                }
+                tmutations.addAll(mutations);
+            }
         }
         return tmutations;
     }
@@ -75,7 +81,7 @@ public class GlobalIndexManager
             return null;
 
         if (hasCounters)
-            throw new InvalidRequestException("Counter mutations and trigger mutations cannot be applied together atomically.");
+            throw new InvalidRequestException("Counter mutations and global index mutations cannot be applied together atomically.");
 
         @SuppressWarnings("unchecked")
         Collection<Mutation> originalMutations = (Collection<Mutation>) mutations;
