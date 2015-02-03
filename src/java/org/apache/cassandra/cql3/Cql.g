@@ -732,6 +732,17 @@ indexIdent returns [IndexTarget.Raw id]
     | K_FULL '(' c=cident ')'    { $id = IndexTarget.Raw.fullCollection(c); }
     ;
 
+createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
+    @init {
+        boolean ifNotExists = false;
+        IndexName name = new IndexName();
+    }
+    : K_CREATE K_GLOBAL K_INDEX (K_IF K_NOT K_EXISTS { ifNotExists = true; })?
+        (idxName[name])? K_ON cf=columnFamilyName '(' id=indexIdent ')'
+        (K_DENORMALIZED '(' denormalized=selectClause ')')
+      { $expr = new CreateGlobalIndexStatement(cf, name, id, denormalized, ifNotExists); }
+    ;
+
 
 /**
  * CREATE TRIGGER triggerName ON columnFamily USING 'triggerClass';
@@ -1593,6 +1604,8 @@ K_COLUMNFAMILY:( C O L U M N F A M I L Y
 K_INDEX:       I N D E X;
 K_CUSTOM:      C U S T O M;
 K_ON:          O N;
+K_GLOBAL:      G L O B A L;
+K_DENORMALIZED:D E N O R M A L I Z E D;
 K_TO:          T O;
 K_DROP:        D R O P;
 K_PRIMARY:     P R I M A R Y;
