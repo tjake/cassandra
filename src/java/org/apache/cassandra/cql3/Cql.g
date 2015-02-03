@@ -268,6 +268,7 @@ cqlStatement returns [ParsedStatement stmt]
     | st35=listRolesStatement          { $stmt = st35; }
     | st36=grantRoleStatement          { $stmt = st36; }
     | st37=revokeRoleStatement         { $stmt = st37; }
+    | st38=createGlobalIndexStatement  { $stmt = st38; }
     ;
 
 /*
@@ -739,10 +740,14 @@ createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
     }
     : K_CREATE K_GLOBAL K_INDEX (K_IF K_NOT K_EXISTS { ifNotExists = true; })?
         (idxName[name])? K_ON cf=columnFamilyName '(' id=indexIdent ')'
-        (K_DENORMALIZED '(' denormalized=selectClause ')')
+        (K_DENORMALIZED '(' denormalized=denormalizedClause ')')
       { $expr = new CreateGlobalIndexStatement(cf, name, id, denormalized, ifNotExists); }
     ;
 
+denormalizedClause returns [List<ColumnIdentifier.Raw> expr]
+    : t1=cident { $expr = new ArrayList<ColumnIdentifier.Raw>(); $expr.add(t1); } (',' tN=cident { $expr.add(tN); })*
+    | '\*' { $expr = Collections.<ColumnIdentifier.Raw>emptyList();}
+    ;
 
 /**
  * CREATE TRIGGER triggerName ON columnFamily USING 'triggerClass';

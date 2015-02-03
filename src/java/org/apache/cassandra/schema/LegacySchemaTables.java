@@ -41,6 +41,7 @@ import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.filter.QueryFilter;
+import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.dht.Range;
@@ -66,6 +67,7 @@ public class LegacySchemaTables
     public static final String COLUMNFAMILIES = "schema_columnfamilies";
     public static final String COLUMNS = "schema_columns";
     public static final String TRIGGERS = "schema_triggers";
+    public static final String GLOBALINDEXES = "schema_globalindexes";
     public static final String USERTYPES = "schema_usertypes";
     public static final String FUNCTIONS = "schema_functions";
     public static final String AGGREGATES = "schema_aggregates";
@@ -140,6 +142,17 @@ public class LegacySchemaTables
                 + "trigger_options map<text, text>,"
                 + "PRIMARY KEY ((keyspace_name), columnfamily_name, trigger_name))");
 
+    private static final CFMetaData GlobalIndexes =
+     compile(GLOBALINDEXES,
+             "global index definitions",
+             "CREATE TABLE %s ("
+              + "keyspace_name text,"
+              + "columnfamily_name text,"
+              + "index_name text,"
+              + "indexed_column text,"
+              + "denormalized_columns list<text>,"
+              + "PRIMARY KEY ((keyspace_name), columnfamily_name, index_name))");
+
     private static final CFMetaData Usertypes =
         compile(USERTYPES,
                 "user defined type definitions",
@@ -180,7 +193,7 @@ public class LegacySchemaTables
                 + "state_type text,"
                 + "PRIMARY KEY ((keyspace_name), aggregate_name, signature))");
 
-    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, Usertypes, Functions, Aggregates);
+    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, GlobalIndexes, Usertypes, Functions, Aggregates);
 
     private static CFMetaData compile(String name, String description, String schema)
     {
@@ -947,6 +960,16 @@ public class LegacySchemaTables
         for (TriggerDefinition trigger : triggerDiff.entriesOnlyOnRight().values())
             addTriggerToSchemaMutation(newTable, trigger, timestamp, mutation);
 
+        MapDifference<String, GlobalIndexDefinition> globalIndexDiff = Maps.difference(oldTable.getGlobalIndexes(), newTable.getGlobalIndexes());
+
+        // dropped global indexes
+        for (GlobalIndexDefinition globalIndex : globalIndexDiff.entriesOnlyOnLeft().values())
+            dropGlobalIndexFromSchemaMutation(oldTable, globalIndex, timestamp, mutation);
+
+        // newly created global indexes
+        for (GlobalIndexDefinition globalIndex : globalIndexDiff.entriesOnlyOnRight().values())
+            addGlobalIndexToSchemaMutation(oldTable, globalIndex, timestamp, mutation);
+
         return mutation;
     }
 
@@ -1239,6 +1262,29 @@ public class LegacySchemaTables
         int ldt = (int) (System.currentTimeMillis() / 1000);
 
         Composite prefix = Triggers.comparator.make(table.cfName, trigger.name);
+        cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
+    }
+
+    /*
+     * Global Index metadata serialization/deserialization.
+     */
+
+    private static void addGlobalIndexToSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
+    {
+        ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
+        Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
+        CFRowAdder adder = new CFRowAdder(cells, prefix, timestamp);
+        adder.add("indexed_column", globalIndex.target.toString());
+        for (ColumnIdentifier denormalizedColumn: globalIndex.denormalized)
+            adder.addListEntry("denormalized_columns", denormalizedColumn.toString());
+    }
+
+    private static void dropGlobalIndexFromSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
+    {
+        ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
+        int ldt = (int) (System.currentTimeMillis() / 1000);
+
+        Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
         cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
     }
 
