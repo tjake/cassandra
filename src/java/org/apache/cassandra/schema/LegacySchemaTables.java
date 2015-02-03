@@ -1058,6 +1058,10 @@ public class LegacySchemaTables
         for (TriggerDefinition trigger : createTriggersFromTriggersPartition(serializedTriggers))
             cfm.addTriggerDefinition(trigger);
 
+        Row serializedGlobalIndexes = readSchemaPartitionForTable(GLOBALINDEXES, ksName, cfName);
+        for (GlobalIndexDefinition globalIndex : createGlobalIndexesFromGlobalIndexesPartition(serializedGlobalIndexes))
+            cfm.addGlobalIndex(globalIndex);
+
         return cfm;
     }
 
@@ -1300,6 +1304,29 @@ public class LegacySchemaTables
             triggers.add(new TriggerDefinition(name, classOption));
         }
         return triggers;
+    }
+
+    /**
+     * Deserialize global indexes from storage-level representation.
+     *
+     * @param partition storage-level partition containing the global indexes definitions
+     * @return the list of processed GlobalIndexDefinitions
+     */
+    private static List<GlobalIndexDefinition> createGlobalIndexesFromGlobalIndexesPartition(Row partition)
+    {
+        List<GlobalIndexDefinition> globalIndexes = new ArrayList<>();
+        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, GLOBALINDEXES);
+        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, partition))
+        {
+            String name = row.getString("index_name");
+            String indexedColumn = row.getString("indexed_column");
+            List<String> denormalizedColumnNames = row.getList("denormalized_columns", UTF8Type.instance);
+            List<ColumnIdentifier> denormalizedColumns = new ArrayList<>();
+            for (String columnName: denormalizedColumnNames)
+                denormalizedColumns.add(new ColumnIdentifier(columnName, false));
+            globalIndexes.add(new GlobalIndexDefinition(name, new ColumnIdentifier(indexedColumn, false), denormalizedColumns));
+        }
+        return globalIndexes;
     }
 
     /*

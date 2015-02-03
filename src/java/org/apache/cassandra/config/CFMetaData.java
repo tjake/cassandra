@@ -239,6 +239,7 @@ public final class CFMetaData
     public CFMetaData speculativeRetry(SpeculativeRetry prop) {speculativeRetry = prop; return this;}
     public CFMetaData droppedColumns(Map<ColumnIdentifier, Long> cols) {droppedColumns = cols; return this;}
     public CFMetaData triggers(Map<String, TriggerDefinition> prop) {triggers = prop; return this;}
+    public CFMetaData globalIndexes(Map<String, GlobalIndexDefinition> prop) {globalIndexes = prop; return this;}
     public CFMetaData isDense(Boolean prop) {isDense = prop; return this;}
 
     /**
@@ -409,6 +410,7 @@ public final class CFMetaData
                       .speculativeRetry(oldCFMD.speculativeRetry)
                       .memtableFlushPeriod(oldCFMD.memtableFlushPeriod)
                       .droppedColumns(new HashMap<>(oldCFMD.droppedColumns))
+                      .globalIndexes(new HashMap<>(oldCFMD.globalIndexes))
                       .triggers(new HashMap<>(oldCFMD.triggers))
                       .isDense(oldCFMD.isDense)
                       .rebuild();
@@ -1202,6 +1204,11 @@ public final class CFMetaData
     public void addGlobalIndex(GlobalIndexDefinition def)
     {
         globalIndexes.put(def.indexName, def);
+    }
+
+    public void removeGlobalIndex(String name)
+    {
+        globalIndexes.remove(name);
     }
 
     public void recordColumnDrop(ColumnDefinition def)

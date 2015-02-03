@@ -9,6 +9,7 @@ import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.Pair;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -19,7 +20,11 @@ public class GlobalIndexManager
 
     private GlobalIndexManager()
     {
+    }
 
+    private GlobalIndex resolveIndex(GlobalIndexDefinition definition)
+    {
+        throw new NotImplementedException();
     }
 
     private Collection<GlobalIndex> resolveIndexes(Collection<GlobalIndexDefinition> definitions)
@@ -32,14 +37,9 @@ public class GlobalIndexManager
         return indexes;
     }
 
-    private GlobalIndex resolveIndex(GlobalIndexDefinition definition)
+    private List<Mutation> createMutationsInternal(ByteBuffer key, ColumnFamily cf)
     {
-        return new GlobalIndex();
-    }
-
-    private List<Mutation> executeInternal(ByteBuffer key, ColumnFamily cf)
-    {
-        Collection<GlobalIndexDefinition> indexDefs = cf.metadata().getGlobalIndexes();
+        Collection<GlobalIndexDefinition> indexDefs = cf.metadata().getGlobalIndexes().values();
 
         List<Mutation> tmutations = null;
         for (GlobalIndex index: resolveIndexes(indexDefs))
@@ -55,7 +55,7 @@ public class GlobalIndexManager
         return tmutations;
     }
 
-    public Collection<Mutation> execute(Collection<? extends IMutation> mutations)
+    public Collection<Mutation> createMutations(Collection<? extends IMutation> mutations)
     {
         boolean hasCounters = false;
         List<Mutation> augmentedMutations = null;
@@ -67,7 +67,7 @@ public class GlobalIndexManager
 
             for (ColumnFamily cf : mutation.getColumnFamilies())
             {
-                List<Mutation> augmentations = executeInternal(mutation.key(), cf);
+                List<Mutation> augmentations = createMutationsInternal(mutation.key(), cf);
                 if (augmentations == null || augmentations.isEmpty())
                     continue;
 
