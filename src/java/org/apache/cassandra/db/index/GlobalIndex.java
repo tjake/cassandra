@@ -14,6 +14,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
+import org.apache.cassandra.db.index.composites.CompositesIndex;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.LocalPartitioner;
 import org.apache.cassandra.service.StorageProxy;
@@ -41,12 +42,13 @@ public class GlobalIndex
     {
         assert baseCfs != null && target != null;
 
-        CellNameType indexComparator = SecondaryIndex.getIndexComparator(baseCfs.metadata, target);
+        CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
+
         CFMetaData indexedCfMetadata = CFMetaData.newIndexMetadata(baseCfs.metadata, target, indexComparator);
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
-                indexedCfMetadata.cfName,
-                new LocalPartitioner(target.type),
-                indexedCfMetadata);
+                                                             indexedCfMetadata.cfName,
+                                                             new LocalPartitioner(target.type),
+                                                             indexedCfMetadata);
     }
 
     /**
@@ -61,15 +63,16 @@ public class GlobalIndex
         if (denormalized == null && !cf.isEmpty())
             return true;
 
+        AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
         for (CellName cellName : cf.getColumnNames())
         {
-            AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
-            if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
+            ByteBuffer columnBytes = cellName.cql3ColumnName(cf.metadata()).bytes;
+            if (indexComparator.compare(target.name.bytes, columnBytes) == 0)
                 return true;
             for (ColumnDefinition column : denormalized)
             {
                 AbstractType<?> denormalizedComparator = cf.metadata().getColumnDefinitionComparator(column);
-                if (denormalizedComparator.compare(column.name.bytes, cellName.toByteBuffer()) == 0)
+                if (denormalizedComparator.compare(column.name.bytes, columnBytes) == 0)
                     return true;
             }
         }
@@ -80,31 +83,34 @@ public class GlobalIndex
     private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
     {
         boolean modifiesTarget = false;
-        AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
-        for (CellName cellName : cf.getColumnNames())
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(target);
+
+        for (CellName name: cf.getColumnNames())
         {
-            if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
+            if (name.size() > target.position()
+             && comp.compare(name.get(target.position()), target.name.bytes) == 0)
             {
                 modifiesTarget = true;
-                break;
             }
         }
 
+        // If we aren't modifying the target, then we need to issue some new values
         if (!modifiesTarget)
         {
-            Collections.emptyList();
+            return Collections.emptyList();
         }
 
         List<Mutation> tombstones = new ArrayList<>();
         for (Row row: previousResults)
         {
-            for (CellName cellName: row.cf.getColumnNames())
+            for (CellName name: row.cf.getColumnNames())
             {
-                if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
+                if (name.size() > target.position()
+                     && comp.compare(name.get(target.position()), target.name.bytes) == 0)
                 {
                     Mutation mutation = new Mutation(cf.metadata().ksName, key);
-                    ColumnFamily tombstoneCf = mutation.addOrGet(cf.metadata());
-                    tombstoneCf.addTombstone(cellName, 0, cf.maxTimestamp());
+                    ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
+                    tombstoneCf.addTombstone(name, 0, cf.maxTimestamp());
                     tombstones.add(mutation);
                 }
             }
@@ -114,6 +120,19 @@ public class GlobalIndex
 
     private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf)
     {
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(target);
+
+        ByteBuffer newKey = null;
+        for (CellName name: cf.getColumnNames())
+        {
+            if (name.size() > target.position()
+                 && comp.compare(name.get(target.position()), target.name.bytes) == 0)
+            {
+                newKey = cf.getColumn(name).value();
+                break;
+            }
+        }
+
         return Collections.emptyList();
     }
 
