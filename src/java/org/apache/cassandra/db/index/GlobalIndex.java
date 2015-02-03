@@ -21,7 +21,7 @@ public class GlobalIndex
     private String indexName;
     private ColumnFamilyStore baseCfs;
     private ColumnFamilyStore indexCfs;
-    
+
     private void createIndexCfs()
     {
         assert baseCfs != null && target != null;
@@ -36,6 +36,7 @@ public class GlobalIndex
 
     /**
      * Check to see if any value that is part of the index is updated. If so, we possibly need to mutate the index.
+     *
      * @param cf Column family to check for indexed values with
      * @return True if any of the indexed or denormalized values are contained in the column family.
      */
@@ -50,7 +51,8 @@ public class GlobalIndex
             AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
             if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
                 return true;
-            for (ColumnDefinition column: denormalized) {
+            for (ColumnDefinition column : denormalized)
+            {
                 AbstractType<?> denormalizedComparator = cf.metadata().getColumnDefinitionComparator(column);
                 if (denormalizedComparator.compare(column.name.bytes, cellName.toByteBuffer()) == 0)
                     return true;
