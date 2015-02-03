@@ -2,49 +2,59 @@ package org.apache.cassandra.db.index;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.GlobalIndexDefinition;
-import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.CounterMutation;
-import org.apache.cassandra.db.IMutation;
-import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.Pair;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class GlobalIndexManager
 {
     public static GlobalIndexManager instance = new GlobalIndexManager();
 
+    private ConcurrentHashMap<String, GlobalIndex> globalIndexMap = new ConcurrentHashMap<>();
+
     private GlobalIndexManager()
     {
     }
 
-    private GlobalIndex resolveIndex(GlobalIndexDefinition definition)
+    private GlobalIndex resolveIndex(CFMetaData cfm, GlobalIndexDefinition definition)
     {
-        throw new NotImplementedException();
+        if (globalIndexMap.containsKey(definition.indexName))
+            return globalIndexMap.get(definition.indexName);
+
+        GlobalIndex index = definition.resolve(cfm);
+        GlobalIndex previousIndex = globalIndexMap.putIfAbsent(definition.indexName, index);
+        if (previousIndex != null)
+            return previousIndex;
+        return index;
     }
 
-    private Collection<GlobalIndex> resolveIndexes(Collection<GlobalIndexDefinition> definitions)
+    private Collection<GlobalIndex> resolveIndexes(CFMetaData cfm, Collection<GlobalIndexDefinition> definitions)
     {
         List<GlobalIndex> indexes = new ArrayList<>(definitions.size());
 
         for (GlobalIndexDefinition definition: definitions) {
-            indexes.add(resolveIndex(definition));
+            indexes.add(resolveIndex(cfm, definition));
         }
         return indexes;
     }
 
-    private List<Mutation> createMutationsInternal(ByteBuffer key, ColumnFamily cf)
+    private List<Mutation> createMutationsInternal(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
         Collection<GlobalIndexDefinition> indexDefs = cf.metadata().getGlobalIndexes().values();
 
         List<Mutation> tmutations = null;
-        for (GlobalIndex index: resolveIndexes(indexDefs))
+        for (GlobalIndex index: resolveIndexes(cf.metadata(), indexDefs))
         {
-            Collection<Mutation> mutations = index.createMutations(key, cf);
+            Collection<Mutation> mutations = index.createMutations(key, cf, consistency);
             if (mutations != null) {
                 if (tmutations == null) {
                     tmutations = Lists.newLinkedList();
@@ -55,7 +65,7 @@ public class GlobalIndexManager
         return tmutations;
     }
 
-    public Collection<Mutation> createMutations(Collection<? extends IMutation> mutations)
+    public Collection<Mutation> createMutations(Collection<? extends IMutation> mutations, ConsistencyLevel consistency)
     {
         boolean hasCounters = false;
         List<Mutation> augmentedMutations = null;
@@ -67,7 +77,7 @@ public class GlobalIndexManager
 
             for (ColumnFamily cf : mutation.getColumnFamilies())
             {
-                List<Mutation> augmentations = createMutationsInternal(mutation.key(), cf);
+                List<Mutation> augmentations = createMutationsInternal(mutation.key(), cf, consistency);
                 if (augmentations == null || augmentations.isEmpty())
                     continue;
 

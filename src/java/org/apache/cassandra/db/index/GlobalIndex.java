@@ -1,17 +1,22 @@
 package org.apache.cassandra.db.index;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+import com.google.common.collect.Lists;
+
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.LocalPartitioner;
-
-import java.nio.ByteBuffer;
-import java.util.Collection;
+import org.apache.cassandra.service.StorageProxy;
 
 public class GlobalIndex
 {
@@ -21,6 +26,16 @@ public class GlobalIndex
     private String indexName;
     private ColumnFamilyStore baseCfs;
     private ColumnFamilyStore indexCfs;
+
+    public GlobalIndex(String indexName, ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)
+    {
+        this.indexName = indexName;
+        this.target = target;
+        this.denormalized = denormalized;
+        this.baseCfs = baseCfs;
+
+        createIndexCfs();
+    }
 
     private void createIndexCfs()
     {
@@ -61,13 +76,73 @@ public class GlobalIndex
         return false;
     }
 
-    public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf)
+    // If the indexed value is updated, and was previously set, then we need to tombstone the old value
+    private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
+    {
+        boolean modifiesTarget = false;
+        AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
+        for (CellName cellName : cf.getColumnNames())
+        {
+            if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
+            {
+                modifiesTarget = true;
+                break;
+            }
+        }
+
+        if (!modifiesTarget)
+        {
+            Collections.emptyList();
+        }
+
+        List<Mutation> tombstones = new ArrayList<>();
+        for (Row row: previousResults)
+        {
+            for (CellName cellName: row.cf.getColumnNames())
+            {
+                if (indexComparator.compare(target.name.bytes, cellName.toByteBuffer()) == 0)
+                {
+                    Mutation mutation = new Mutation(cf.metadata().ksName, key);
+                    ColumnFamily tombstoneCf = mutation.addOrGet(cf.metadata());
+                    tombstoneCf.addTombstone(cellName, 0, cf.maxTimestamp());
+                    tombstones.add(mutation);
+                }
+            }
+        }
+        return tombstones;
+    }
+
+    private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf)
+    {
+        return Collections.emptyList();
+    }
+
+    public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
         if (!containsIndex(cf))
         {
             return null;
         }
 
-        return null;
+        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write
+        List<Row> results = StorageProxy.read(Lists.<ReadCommand>newArrayList(new SliceFromReadCommand(cf.metadata().ksName, key, cf.metadata().cfName, cf.maxTimestamp(), new IdentityQueryFilter())), consistency);
+
+        Collection<Mutation> mutations = null;
+        Collection<Mutation> tombstones = createTombstones(key, cf, results);
+        if (tombstones != null && !tombstones.isEmpty())
+        {
+            if (mutations == null) mutations = new ArrayList<>();
+            mutations.addAll(tombstones);
+        }
+
+        Collection<Mutation> inserts = createInserts(key, cf);
+
+        if (inserts != null && !inserts.isEmpty())
+        {
+            if (mutations == null) mutations = new ArrayList<>();
+            mutations.addAll(inserts);
+        }
+
+        return mutations;
     }
 }
