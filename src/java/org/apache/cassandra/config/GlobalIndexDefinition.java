@@ -23,9 +23,16 @@ public class GlobalIndexDefinition
     public GlobalIndex resolve(CFMetaData cfm)
     {
         ColumnDefinition targetCd = cfm.getColumnDefinition(target);
+        assert targetCd != null;
+
         Collection<ColumnDefinition> denormalizedCds = new ArrayList<>();
-        for (ColumnIdentifier cd: denormalized)
-            denormalizedCds.add(cfm.getColumnDefinition(cd));
+        for (ColumnIdentifier identifier: denormalized)
+        {
+            ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
+            assert cfDef != null;
+            denormalizedCds.add(cfDef);
+        }
+
         return new GlobalIndex(indexName, targetCd, denormalizedCds, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
 }
