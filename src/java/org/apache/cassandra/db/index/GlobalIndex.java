@@ -15,14 +15,16 @@ import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.index.composites.CompositesIndex;
-import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.dht.LocalPartitioner;
 import org.apache.cassandra.service.StorageProxy;
 
 public class GlobalIndex
 {
     private ColumnDefinition target;
+    private GlobalIndexSelector targetSelector;
     private Collection<ColumnDefinition> denormalized;
+    private Collection<GlobalIndexSelector> denormalizedSelectors;
 
     private String indexName;
     private ColumnFamilyStore baseCfs;
@@ -36,11 +38,23 @@ public class GlobalIndex
         this.baseCfs = baseCfs;
 
         createIndexCfs();
+        createSelectors();
+    }
+
+    private void createSelectors()
+    {
+        targetSelector = GlobalIndexSelector.create(target);
+        denormalizedSelectors = new ArrayList<>(denormalized.size());
+        for (ColumnDefinition column: denormalized)
+        {
+            denormalizedSelectors.add(GlobalIndexSelector.create(column));
+        }
     }
 
     private void createIndexCfs()
     {
-        assert baseCfs != null && target != null;
+        assert baseCfs != null;
+        assert target != null;
 
         CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
 
@@ -57,22 +71,19 @@ public class GlobalIndex
      * @param cf Column family to check for indexed values with
      * @return True if any of the indexed or denormalized values are contained in the column family.
      */
-    private boolean containsIndex(ColumnFamily cf)
+    private boolean modifiesIndexedColumn(ColumnFamily cf)
     {
         // If we are denormalizing all of the columns, then any non-empty column family will need to be indexed
-        if (denormalized == null && !cf.isEmpty())
+        if (denormalized.isEmpty() && !cf.isEmpty())
             return true;
 
-        AbstractType<?> indexComparator = cf.metadata().getColumnDefinitionComparator(target);
         for (CellName cellName : cf.getColumnNames())
         {
-            ByteBuffer columnBytes = cellName.cql3ColumnName(cf.metadata()).bytes;
-            if (indexComparator.compare(target.name.bytes, columnBytes) == 0)
+            if (targetSelector.selects(cellName))
                 return true;
-            for (ColumnDefinition column : denormalized)
+            for (GlobalIndexSelector column: denormalizedSelectors)
             {
-                AbstractType<?> denormalizedComparator = cf.metadata().getColumnDefinitionComparator(column);
-                if (denormalizedComparator.compare(column.name.bytes, columnBytes) == 0)
+                if (column.selects(cellName))
                     return true;
             }
         }
@@ -82,54 +93,35 @@ public class GlobalIndex
     // If the indexed value is updated, and was previously set, then we need to tombstone the old value
     private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
     {
-        boolean modifiesTarget = false;
-        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(target);
-
-        for (CellName name: cf.getColumnNames())
-        {
-            if (name.size() > target.position()
-             && comp.compare(name.get(target.position()), target.name.bytes) == 0)
-            {
-                modifiesTarget = true;
-            }
-        }
-
-        // If we aren't modifying the target, then we need to issue some new values
-        if (!modifiesTarget)
-        {
-            return Collections.emptyList();
-        }
-
         List<Mutation> tombstones = new ArrayList<>();
-        for (Row row: previousResults)
+        for (CellName cellName: cf.getColumnNames())
         {
-            for (CellName name: row.cf.getColumnNames())
+
+            if (targetSelector.selects(cellName))
             {
-                if (name.size() > target.position()
-                     && comp.compare(name.get(target.position()), target.name.bytes) == 0)
-                {
-                    Mutation mutation = new Mutation(cf.metadata().ksName, key);
-                    ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
-                    tombstoneCf.addTombstone(name, 0, cf.maxTimestamp());
-                    tombstones.add(mutation);
-                }
+                Mutation mutation = new Mutation(cf.metadata().ksName, key);
+                ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
+                tombstoneCf.addTombstone(targetSelector.cellName(cellName), 0, cf.maxTimestamp());
+                tombstones.add(mutation);
             }
         }
+
         return tombstones;
     }
 
     private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf)
     {
-        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(target);
+        // The transformation is:
+        // Indexed Data Column -> Index Partition Key
+        // Partition Key -> Index Cluster Column
+        // Denormalized Columns -> Value
 
-        ByteBuffer newKey = null;
-        for (CellName name: cf.getColumnNames())
+        CellName indexKey = null;
+        for (CellName cellName: cf.getColumnNames())
         {
-            if (name.size() > target.position()
-                 && comp.compare(name.get(target.position()), target.name.bytes) == 0)
+            if (targetSelector.selects(cellName))
             {
-                newKey = cf.getColumn(name).value();
-                break;
+                indexKey = targetSelector.cellName(cellName);
             }
         }
 
@@ -138,7 +130,7 @@ public class GlobalIndex
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
-        if (!containsIndex(cf))
+        if (!modifiesIndexedColumn(cf))
         {
             return null;
         }
