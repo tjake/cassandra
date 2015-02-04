@@ -15,6 +15,7 @@ public class GlobalIndexDefinition
 
     public GlobalIndexDefinition(String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> denormalized)
     {
+        assert target != null;
         this.indexName = indexName;
         this.target = target;
         this.denormalized = denormalized;

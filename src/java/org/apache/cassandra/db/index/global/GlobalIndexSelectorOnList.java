@@ -12,15 +12,14 @@ public class GlobalIndexSelectorOnList extends GlobalIndexSelector
         this.definition = definition;
     }
 
-    @Override
+    public boolean canGenerateTombstones()
+    {
+        return false;
+    }
+
     public boolean selects(CellName cellName)
     {
         return false;
     }
 
-    @Override
-    public CellName cellName(CellName cellName)
-    {
-        return null;
-    }
 }

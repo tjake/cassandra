@@ -1,23 +1,30 @@
 package org.apache.cassandra.db.index.global;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.marshal.AbstractType;
 
 public class GlobalIndexSelectorOnRegularColumn extends GlobalIndexSelector
 {
-    public GlobalIndexSelectorOnRegularColumn(ColumnDefinition cfDef)
+    private final ColumnFamilyStore baseCfs;
+    private final ColumnDefinition columnDef;
+    public GlobalIndexSelectorOnRegularColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDef)
     {
+        this.baseCfs = baseCfs;
+        this.columnDef = columnDef;
     }
 
-    @Override
-    public boolean selects(CellName cellName)
+    public boolean canGenerateTombstones()
     {
-        return false;
+        return true;
     }
 
-    @Override
-    public CellName cellName(CellName cellName)
+    public boolean selects(CellName name)
     {
-        return null;
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDef);
+        return name.size() > columnDef.position()
+                && comp.compare(name.get(columnDef.position()), columnDef.name.bytes) == 0;
     }
+
 }

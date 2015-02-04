@@ -63,11 +63,6 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
         if (cd == null)
             throw new InvalidRequestException("No column definition found for column " + target.column);
 
-        if (!cd.isClusteringColumn())
-        {
-            throw new InvalidRequestException("Can only use clustering columns for Global Indexes");
-        }
-
         // If the denormalized are specified, make sure that they are in the schema
         for (ColumnIdentifier.Raw dcolumn: denormalized)
         {
