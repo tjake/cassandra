@@ -10,10 +10,12 @@ import com.google.common.collect.Lists;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
+import org.apache.cassandra.db.composites.CompoundDenseCellNameType;
 import org.apache.cassandra.db.index.composites.CompositesIndex;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.dht.LocalPartitioner;
@@ -43,11 +45,11 @@ public class GlobalIndex
 
     private void createSelectors()
     {
-        targetSelector = GlobalIndexSelector.create(target);
+        targetSelector = GlobalIndexSelector.create(baseCfs, target);
         denormalizedSelectors = new ArrayList<>(denormalized.size());
         for (ColumnDefinition column: denormalized)
         {
-            denormalizedSelectors.add(GlobalIndexSelector.create(column));
+            denormalizedSelectors.add(GlobalIndexSelector.create(baseCfs, column));
         }
     }
 
@@ -90,22 +92,53 @@ public class GlobalIndex
         return false;
     }
 
-    // If the indexed value is updated, and was previously set, then we need to tombstone the old value
-    private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
+    private boolean modifiesTarget(ColumnFamily cf)
     {
-        List<Mutation> tombstones = new ArrayList<>();
         for (CellName cellName: cf.getColumnNames())
         {
-
             if (targetSelector.selects(cellName))
             {
-                Mutation mutation = new Mutation(cf.metadata().ksName, key);
-                ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
-                tombstoneCf.addTombstone(targetSelector.cellName(cellName), 0, cf.maxTimestamp());
-                tombstones.add(mutation);
+                return true;
             }
         }
+        return false;
+    }
 
+    /**
+     * @param key Partition key which is being modified
+     * @param cf Column family being modified
+     */
+    private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
+    {
+        if (!targetSelector.canGenerateTombstones())
+            return Collections.emptyList();
+
+        // If there are no previous results, then throw an exception
+        if (previousResults.isEmpty())
+            return Collections.emptyList();
+
+        if (!modifiesTarget(cf))
+            return Collections.emptyList();
+
+        List<Mutation> tombstones = new ArrayList<>();
+        for (Row row: previousResults)
+        {
+            ColumnFamily rowCf = row.cf;
+            for (CellName cellName: rowCf.getColumnNames())
+            {
+                if (targetSelector.selects(cellName))
+                {
+                    ByteBuffer oldPartitionKey = rowCf.getColumn(cellName).value();
+                    ByteBuffer oldColumn = key;
+                    Mutation mutation = new Mutation(cf.metadata().ksName, oldPartitionKey);
+                    ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
+                    ColumnIdentifier partition = new ColumnIdentifier("partition", false);
+                    CellNameType type = new CompoundDenseCellNameType(indexCfs.metadata.getColumnDefinition(partition).type.getComponents());
+                    tombstoneCf.addTombstone(type.makeCellName(oldColumn), 0, cf.maxTimestamp());
+                    tombstones.add(mutation);
+                }
+            }
+        }
         return tombstones;
     }
 
@@ -115,15 +148,6 @@ public class GlobalIndex
         // Indexed Data Column -> Index Partition Key
         // Partition Key -> Index Cluster Column
         // Denormalized Columns -> Value
-
-        CellName indexKey = null;
-        for (CellName cellName: cf.getColumnNames())
-        {
-            if (targetSelector.selects(cellName))
-            {
-                indexKey = targetSelector.cellName(cellName);
-            }
-        }
 
         return Collections.emptyList();
     }

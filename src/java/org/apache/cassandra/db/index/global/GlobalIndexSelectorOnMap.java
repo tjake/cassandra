@@ -10,14 +10,15 @@ public class GlobalIndexSelectorOnMap extends GlobalIndexSelector
     }
 
     @Override
-    public boolean selects(CellName cellName)
+    public boolean canGenerateTombstones()
     {
         return false;
     }
 
     @Override
-    public CellName cellName(CellName cellName)
+    public boolean selects(CellName cellName)
     {
-        return null;
+        return false;
     }
+
 }

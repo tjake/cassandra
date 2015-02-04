@@ -9,15 +9,14 @@ public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
     {
     }
 
-    @Override
+    public boolean canGenerateTombstones()
+    {
+        return false;
+    }
+
     public boolean selects(CellName cellName)
     {
         return false;
     }
 
-    @Override
-    public CellName cellName(CellName cellName)
-    {
-        return null;
-    }
 }
