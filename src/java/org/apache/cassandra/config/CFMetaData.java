@@ -336,7 +336,7 @@ public final class CFMetaData
      * @param indexComparator Comparator for secondary index
      * @return CFMetaData for secondary index
      */
-    public static CFMetaData newIndexMetadata(CFMetaData parent, ColumnDefinition info, CellNameType indexComparator)
+    public static CFMetaData newSecondaryIndexMetadata(CFMetaData parent, ColumnDefinition info, CellNameType indexComparator)
     {
         // Depends on parent's cache setting, turn on its index CF's cache.
         // Row caching is never enabled; see CASSANDRA-5732

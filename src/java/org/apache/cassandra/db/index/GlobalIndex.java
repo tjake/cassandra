@@ -58,9 +58,25 @@ public class GlobalIndex
         assert baseCfs != null;
         assert target != null;
 
+        CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetaData();
+
+        int index = 0;
+
+        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, index++));
+        for (ColumnDefinition partitionColumn: baseCfs.metadata.partitionKeyColumns())
+            indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, partitionColumn.name.bytes, partitionColumn.type, index++));
+
+        for (ColumnDefinition clusteringColumn: baseCfs.metadata.clusteringColumns())
+            indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, clusteringColumn.name.bytes, clusteringColumn.type, index++));
+
+        for (ColumnDefinition regularColumn: baseCfs.metadata.regularColumns())
+            indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, regularColumn.name.bytes, regularColumn.type, index++));
+
+        for (ColumnDefinition staticColumn: baseCfs.metadata.staticColumns())
+            indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, staticColumn.name.bytes, staticColumn.type, index++));
+
         CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
 
-        CFMetaData indexedCfMetadata = CFMetaData.newIndexMetadata(baseCfs.metadata, target, indexComparator);
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
                                                              indexedCfMetadata.cfName,
                                                              new LocalPartitioner(target.type),
