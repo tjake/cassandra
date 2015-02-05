@@ -357,6 +357,14 @@ public final class CFMetaData
                              .rebuild();
     }
 
+    public static CFMetaData newGlobalIndexMetadata(CFMetaData parent, ColumnDefinition target, CellNameType indexComparator)
+    {
+        return new CFMetaData(parent.ksName, parent.indexColumnFamilyName(target), ColumnFamilyType.Standard, indexComparator, parent.cfId)
+                .speculativeRetry(parent.speculativeRetry)
+                .compactionStrategyClass(parent.compactionStrategyClass)
+                .compactionStrategyOptions(parent.compactionStrategyOptions);
+    }
+
     public CFMetaData reloadSecondaryIndexMetadata(CFMetaData parent)
     {
         minCompactionThreshold(parent.minCompactionThreshold);
