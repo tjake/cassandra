@@ -6,28 +6,29 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.CompoundDenseCellNameType;
 import org.apache.cassandra.db.index.composites.CompositesIndex;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
-import org.apache.cassandra.dht.LocalPartitioner;
 import org.apache.cassandra.service.StorageProxy;
 
 public class GlobalIndex
 {
     private ColumnDefinition target;
-    private GlobalIndexSelector targetSelector;
     private Collection<ColumnDefinition> denormalized;
-    private Collection<GlobalIndexSelector> denormalizedSelectors;
+
+    private GlobalIndexSelector targetSelector;
+    private List<GlobalIndexSelector> clusteringSelectors;
+    private List<GlobalIndexSelector> regularSelectors;
+    private List<GlobalIndexSelector> staticSelectors;
 
     private String indexName;
     private ColumnFamilyStore baseCfs;
@@ -40,52 +41,71 @@ public class GlobalIndex
         this.denormalized = denormalized;
         this.baseCfs = baseCfs;
 
-        createIndexCfs();
-        createSelectors();
+        clusteringSelectors = new ArrayList<>();
+        regularSelectors = new ArrayList<>();
+        staticSelectors = new ArrayList<>();
+
+        createIndexCfsAndSelectors();
     }
 
-    private void createSelectors()
-    {
-        targetSelector = GlobalIndexSelector.create(baseCfs, target);
-        denormalizedSelectors = new ArrayList<>(denormalized.size());
-        for (ColumnDefinition column: denormalized)
-        {
-            denormalizedSelectors.add(GlobalIndexSelector.create(baseCfs, column));
-        }
-    }
-
-    private void createIndexCfs()
+    private void createIndexCfsAndSelectors()
     {
         assert baseCfs != null;
         assert target != null;
 
         CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
-
         CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetadata(baseCfs.metadata, target, indexComparator);
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, target.position()));
-        for (ColumnDefinition partitionColumn: baseCfs.metadata.partitionKeyColumns())
+        targetSelector = GlobalIndexSelector.create(baseCfs, target);
+
+        // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
+        for (ColumnDefinition column: baseCfs.metadata.partitionKeyColumns())
         {
-            if (partitionColumn != target)
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, partitionColumn.name.bytes, partitionColumn.type, partitionColumn.position()));
+            if (column != target)
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+            }
         }
 
-        for (ColumnDefinition clusteringColumn: baseCfs.metadata.clusteringColumns())
+        for (ColumnDefinition column: baseCfs.metadata.clusteringColumns())
         {
-            if (clusteringColumn != target)
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, clusteringColumn.name.bytes, clusteringColumn.type, clusteringColumn.position()));
+            if (column != target)
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+            }
         }
 
-        for (ColumnDefinition regularColumn: baseCfs.metadata.regularColumns())
+        for (ColumnDefinition column: baseCfs.metadata.regularColumns())
         {
-            if (regularColumn != target)
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, regularColumn.name.bytes, regularColumn.type, regularColumn.position()));
+            if (column != target && denormalized.contains(column))
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                regularSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+            }
         }
 
-        for (ColumnDefinition staticColumn: baseCfs.metadata.staticColumns())
+        for (ColumnDefinition column: baseCfs.metadata.staticColumns())
         {
-            if (staticColumn != target)
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, staticColumn.name.bytes, staticColumn.type, staticColumn.position()));
+            if (column != target && denormalized.contains(column))
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                staticSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+            }
         }
 
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
@@ -110,7 +130,7 @@ public class GlobalIndex
         {
             if (targetSelector.selects(cellName))
                 return true;
-            for (GlobalIndexSelector column: denormalizedSelectors)
+            for (GlobalIndexSelector column: Iterables.concat(clusteringSelectors, regularSelectors, staticSelectors))
             {
                 if (column.selects(cellName))
                     return true;
@@ -132,15 +152,14 @@ public class GlobalIndex
     }
 
     /**
-     * @param key Partition key which is being modified
      * @param cf Column family being modified
+     * @param previousResults Current values that are stored for the specified partition key
      */
     private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
     {
         if (!targetSelector.canGenerateTombstones())
             return Collections.emptyList();
 
-        // If there are no previous results, then return nothing
         if (previousResults.isEmpty())
             return Collections.emptyList();
 
@@ -151,20 +170,15 @@ public class GlobalIndex
         for (Row row: previousResults)
         {
             ColumnFamily rowCf = row.cf;
+            GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
             for (CellName cellName: rowCf.getColumnNames())
             {
-                if (targetSelector.selects(cellName))
-                {
-                    ByteBuffer oldPartitionKey = rowCf.getColumn(cellName).value();
-                    ByteBuffer oldColumn = key;
-                    Mutation mutation = new Mutation(cf.metadata().ksName, oldPartitionKey);
-                    ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
-                    ColumnIdentifier partition = new ColumnIdentifier(target.column, false);
-                    CellNameType type = new CompoundDenseCellNameType(indexCfs.metadata.getColumnDefinition(partition).type.getComponents());
-                    tombstoneCf.addTombstone(type.makeCellName(oldColumn), 0, cf.maxTimestamp());
-                    tombstones.add(mutation);
-                }
+                holder.update(cellName, key, rowCf);
             }
+
+            Mutation mutation = holder.getTombstoneMutation(indexCfs, rowCf.maxTimestamp());
+            if (mutation != null)
+                tombstones.add(mutation);
         }
         return tombstones;
     }
