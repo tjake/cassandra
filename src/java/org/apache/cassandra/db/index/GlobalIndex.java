@@ -10,6 +10,7 @@ import com.google.common.collect.Lists;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
@@ -58,28 +59,38 @@ public class GlobalIndex
         assert baseCfs != null;
         assert target != null;
 
-        CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetaData();
+        CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
 
-        int index = 0;
+        CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetadata(baseCfs.metadata, target, indexComparator);
 
-        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, index++));
+        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, target.position()));
         for (ColumnDefinition partitionColumn: baseCfs.metadata.partitionKeyColumns())
-            indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, partitionColumn.name.bytes, partitionColumn.type, index++));
+        {
+            if (partitionColumn != target)
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, partitionColumn.name.bytes, partitionColumn.type, partitionColumn.position()));
+        }
 
         for (ColumnDefinition clusteringColumn: baseCfs.metadata.clusteringColumns())
-            indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, clusteringColumn.name.bytes, clusteringColumn.type, index++));
+        {
+            if (clusteringColumn != target)
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, clusteringColumn.name.bytes, clusteringColumn.type, clusteringColumn.position()));
+        }
 
         for (ColumnDefinition regularColumn: baseCfs.metadata.regularColumns())
-            indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, regularColumn.name.bytes, regularColumn.type, index++));
+        {
+            if (regularColumn != target)
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, regularColumn.name.bytes, regularColumn.type, regularColumn.position()));
+        }
 
         for (ColumnDefinition staticColumn: baseCfs.metadata.staticColumns())
-            indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, staticColumn.name.bytes, staticColumn.type, index++));
-
-        CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
+        {
+            if (staticColumn != target)
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, staticColumn.name.bytes, staticColumn.type, staticColumn.position()));
+        }
 
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
                                                              indexedCfMetadata.cfName,
-                                                             new LocalPartitioner(target.type),
+                                                             DatabaseDescriptor.getPartitioner(),
                                                              indexedCfMetadata);
     }
 
@@ -129,7 +140,7 @@ public class GlobalIndex
         if (!targetSelector.canGenerateTombstones())
             return Collections.emptyList();
 
-        // If there are no previous results, then throw an exception
+        // If there are no previous results, then return nothing
         if (previousResults.isEmpty())
             return Collections.emptyList();
 
@@ -148,7 +159,7 @@ public class GlobalIndex
                     ByteBuffer oldColumn = key;
                     Mutation mutation = new Mutation(cf.metadata().ksName, oldPartitionKey);
                     ColumnFamily tombstoneCf = mutation.addOrGet(indexCfs.metadata);
-                    ColumnIdentifier partition = new ColumnIdentifier("partition", false);
+                    ColumnIdentifier partition = new ColumnIdentifier(target.column, false);
                     CellNameType type = new CompoundDenseCellNameType(indexCfs.metadata.getColumnDefinition(partition).type.getComponents());
                     tombstoneCf.addTombstone(type.makeCellName(oldColumn), 0, cf.maxTimestamp());
                     tombstones.add(mutation);
