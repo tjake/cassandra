@@ -9,6 +9,7 @@ public class GlobalIndexSelectorOnRegularColumn extends GlobalIndexSelector
 {
     private final ColumnFamilyStore baseCfs;
     private final ColumnDefinition columnDef;
+
     public GlobalIndexSelectorOnRegularColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDef)
     {
         this.baseCfs = baseCfs;
