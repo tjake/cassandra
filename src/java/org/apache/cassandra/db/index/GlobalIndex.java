@@ -170,6 +170,8 @@ public class GlobalIndex
         for (Row row: previousResults)
         {
             ColumnFamily rowCf = row.cf;
+            if (rowCf == null) continue;
+
             GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
             for (CellName cellName: rowCf.getColumnNames())
             {

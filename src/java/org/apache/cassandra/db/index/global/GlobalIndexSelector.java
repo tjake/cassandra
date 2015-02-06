@@ -7,6 +7,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.marshal.CollectionType;
@@ -39,13 +40,14 @@ public abstract class GlobalIndexSelector
             this.staticColumns = new ByteBuffer[staticSelectors.size()];
         }
 
-        private boolean tryUpdate(CellName cellName, ColumnFamily cf, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
+        private boolean tryUpdate(CellName cellName, ByteBuffer key, ColumnFamily cf, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
         {
             for (int i = 0; i < selectors.size(); i++)
             {
-                if (selectors.get(i).selects(cellName))
+                GlobalIndexSelector selector = selectors.get(i);
+                if (selector.selects(cellName))
                 {
-                    columns[i] = cf.getColumn(cellName).value();
+                    columns[i] = selector.value(cellName, key, cf);
                     return true;
                 }
             }
@@ -56,28 +58,41 @@ public abstract class GlobalIndexSelector
         {
             if (partitionSelector.selects(cellName))
             {
-                partitionKey = cf.getColumn(cellName).value();
+                partitionKey = partitionSelector.value(cellName, key, cf);
             }
             else
             {
-                if (tryUpdate(cellName, cf, clusteringSelectors, clusteringColumns))
+                if (tryUpdate(cellName, key, cf, clusteringSelectors, clusteringColumns))
                     return;
-                if (tryUpdate(cellName, cf, regularSelectors, regularColumns))
+                if (tryUpdate(cellName, key, cf, regularSelectors, regularColumns))
                     return;
-                tryUpdate(cellName, cf, staticSelectors, staticColumns);
+                tryUpdate(cellName, key, cf, staticSelectors, staticColumns);
             }
         }
 
         public Mutation getTombstoneMutation(ColumnFamilyStore indexCfs, long timestamp)
         {
             if (partitionKey == null) return null;
-            for (int i = 0; i < clusteringColumns.length; i++)
-                if (clusteringColumns[i] == null) return null;
+            for (ByteBuffer clusteringColumn : clusteringColumns) {
+                if (clusteringColumn == null) return null;
+            }
+
             Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
             ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
             CellNameType cellNameType = indexCfs.getComparator();
-
-            CellName cellName = cellNameType.makeCellName();
+            CellName cellName;
+            if (cellNameType.isCompound())
+            {
+                CBuilder builder = cellNameType.prefixBuilder();
+                for (ByteBuffer prefix : clusteringColumns)
+                    builder = builder.add(prefix);
+                cellName = cellNameType.rowMarker(builder.build());
+            }
+            else
+            {
+                assert clusteringColumns.length == 1;
+                cellName = cellNameType.cellFromByteBuffer(clusteringColumns[0]);
+            }
             indexCf.addTombstone(cellName, 0, timestamp);
             return mutation;
         }
@@ -105,7 +120,7 @@ public abstract class GlobalIndexSelector
             case REGULAR:
                 return new GlobalIndexSelectorOnRegularColumn(baseCfs, cfDef);
             case PARTITION_KEY:
-                return new GlobalIndexSelectorOnPartitionKey(cfDef);
+                return new GlobalIndexSelectorOnPartitionKey(baseCfs, cfDef);
         }
         throw new AssertionError();
     }
@@ -118,4 +133,5 @@ public abstract class GlobalIndexSelector
 
     public abstract boolean selects(CellName cellName);
 
+    public abstract ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf);
 }
