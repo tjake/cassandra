@@ -72,8 +72,11 @@ public abstract class GlobalIndexSelector
 
         public Mutation getTombstoneMutation(ColumnFamilyStore indexCfs, long timestamp)
         {
-            if (partitionKey == null) return null;
-            for (ByteBuffer clusteringColumn : clusteringColumns) {
+            if (partitionKey == null)
+                return null;
+
+            for (ByteBuffer clusteringColumn : clusteringColumns)
+            {
                 if (clusteringColumn == null) return null;
             }
 
@@ -95,6 +98,11 @@ public abstract class GlobalIndexSelector
             }
             indexCf.addTombstone(cellName, 0, timestamp);
             return mutation;
+        }
+
+        public Mutation getMutation(ColumnFamilyStore indexCfs)
+        {
+            return null;
         }
     }
 
