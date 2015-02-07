@@ -187,11 +187,14 @@ public class GlobalIndex
 
     private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf)
     {
-        // The transformation is:
-        // Indexed Data Column -> Index Partition Key
-        // Partition Key -> Index Cluster Column
-        // Denormalized Columns -> Value
-
+        GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
+        for (CellName cellName: cf.getColumnNames())
+        {
+            holder.update(cellName, key, cf);
+        }
+        Mutation mutation = holder.getMutation(indexCfs);
+        if (mutation != null)
+            return Collections.singleton(mutation);
         return Collections.emptyList();
     }
 
