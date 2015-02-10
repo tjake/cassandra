@@ -4,16 +4,24 @@ import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.CFRowAdder;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
+import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.marshal.CollectionType;
 
 public abstract class GlobalIndexSelector
 {
+    public final ColumnDefinition columnDefinition;
+    protected GlobalIndexSelector(ColumnDefinition columnDefinition)
+    {
+        this.columnDefinition = columnDefinition;
+    }
+
     public static class Holder
     {
         private final GlobalIndexSelector partitionSelector;
@@ -52,6 +60,29 @@ public abstract class GlobalIndexSelector
                 }
             }
             return false;
+        }
+
+        private void updatePartitionKey(ByteBuffer key, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
+        {
+            for (int i = 0; i < selectors.size(); i++)
+            {
+                GlobalIndexSelector selector = selectors.get(i);
+                if (selector.isPrimaryKey())
+                {
+                    columns[i] = selector.value(key);
+                }
+            }
+        }
+
+        public void updatePartitionKey(ByteBuffer key)
+        {
+            if (partitionSelector.isPrimaryKey())
+            {
+                partitionKey = partitionSelector.value(key);
+            }
+            updatePartitionKey(key, clusteringSelectors, clusteringColumns);
+            updatePartitionKey(key, regularSelectors, regularColumns);
+            updatePartitionKey(key, staticSelectors, staticColumns);
         }
 
         public void update(CellName cellName, ByteBuffer key, ColumnFamily cf)
@@ -100,9 +131,38 @@ public abstract class GlobalIndexSelector
             return mutation;
         }
 
-        public Mutation getMutation(ColumnFamilyStore indexCfs)
+        public Mutation getMutation(ColumnFamilyStore indexCfs, long timestamp)
         {
-            return null;
+            if (partitionKey == null)
+                return null;
+
+            for (ByteBuffer clusteringColumn : clusteringColumns)
+            {
+                if (clusteringColumn == null) return null;
+            }
+
+            Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
+            ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
+            CellNameType cellNameType = indexCfs.getComparator();
+            Composite composite;
+            if (cellNameType.isCompound())
+            {
+                CBuilder builder = cellNameType.prefixBuilder();
+                for (ByteBuffer prefix : clusteringColumns)
+                    builder = builder.add(prefix);
+                composite = builder.build();
+            }
+            else
+            {
+                assert clusteringColumns.length == 1;
+                composite = cellNameType.make(clusteringColumns[0]);
+            }
+            CFRowAdder cfRowAdder = new CFRowAdder(indexCf, composite, timestamp);
+            for (int i = 0; i < regularColumns.length; i++)
+                cfRowAdder.add(regularSelectors.get(i).columnDefinition.name.toString(), regularColumns[i]);
+            for (int i = 0; i < staticColumns.length; i++)
+                cfRowAdder.add(staticSelectors.get(i).columnDefinition.name.toString(), staticColumns[i]);
+            return mutation;
         }
     }
 
@@ -139,7 +199,17 @@ public abstract class GlobalIndexSelector
      */
     public abstract boolean canGenerateTombstones();
 
+    public boolean isPrimaryKey()
+    {
+        return false;
+    }
+
     public abstract boolean selects(CellName cellName);
 
     public abstract ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf);
+
+    public ByteBuffer value(ByteBuffer key)
+    {
+        throw new AssertionError("Cannot create a value from partition key");
+    }
 }

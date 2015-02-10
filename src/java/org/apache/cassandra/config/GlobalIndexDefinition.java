@@ -34,6 +34,6 @@ public class GlobalIndexDefinition
             denormalizedCds.add(cfDef);
         }
 
-        return new GlobalIndex(indexName, targetCd, denormalizedCds, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
+        return new GlobalIndex(targetCd, denormalizedCds, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
 }

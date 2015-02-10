@@ -11,12 +11,11 @@ import java.nio.ByteBuffer;
 public class GlobalIndexSelectorOnRegularColumn extends GlobalIndexSelector
 {
     private final ColumnFamilyStore baseCfs;
-    private final ColumnDefinition columnDef;
 
-    public GlobalIndexSelectorOnRegularColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDef)
+    public GlobalIndexSelectorOnRegularColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
+        super(columnDefinition);
         this.baseCfs = baseCfs;
-        this.columnDef = columnDef;
     }
 
     public boolean canGenerateTombstones()
@@ -26,9 +25,9 @@ public class GlobalIndexSelectorOnRegularColumn extends GlobalIndexSelector
 
     public boolean selects(CellName name)
     {
-        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDef);
-        return name.size() > columnDef.position()
-                && comp.compare(name.get(columnDef.position()), columnDef.name.bytes) == 0;
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDefinition);
+        return name.size() > columnDefinition.position()
+                && comp.compare(name.get(columnDefinition.position()), columnDefinition.name.bytes) == 0;
     }
 
     public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {

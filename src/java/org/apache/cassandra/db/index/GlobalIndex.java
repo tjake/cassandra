@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.List;
 
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -16,8 +15,9 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.index.composites.CompositesIndex;
+import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
+import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.service.StorageProxy;
 
 public class GlobalIndex
@@ -30,13 +30,11 @@ public class GlobalIndex
     private List<GlobalIndexSelector> regularSelectors;
     private List<GlobalIndexSelector> staticSelectors;
 
-    private String indexName;
     private ColumnFamilyStore baseCfs;
     private ColumnFamilyStore indexCfs;
 
-    public GlobalIndex(String indexName, ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)
+    public GlobalIndex(ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)
     {
-        this.indexName = indexName;
         this.target = target;
         this.denormalized = denormalized;
         this.baseCfs = baseCfs;
@@ -48,12 +46,34 @@ public class GlobalIndex
         createIndexCfsAndSelectors();
     }
 
+    private CellNameType getIndexComparator()
+    {
+        List<AbstractType<?>> types = new ArrayList<>();
+        // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
+        for (ColumnDefinition column: baseCfs.metadata.partitionKeyColumns())
+        {
+            if (column != target)
+            {
+                types.add(column.type);
+            }
+        }
+
+        for (ColumnDefinition column: baseCfs.metadata.clusteringColumns())
+        {
+            if (column != target)
+            {
+                types.add(column.type);
+            }
+        }
+        return new CompoundSparseCellNameType(types);
+    }
+
     private void createIndexCfsAndSelectors()
     {
         assert baseCfs != null;
         assert target != null;
 
-        CellNameType indexComparator = CompositesIndex.getIndexComparator(baseCfs.metadata, target);
+        CellNameType indexComparator = getIndexComparator();
         CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetadata(baseCfs.metadata, target, indexComparator);
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, target.position()));
@@ -173,6 +193,9 @@ public class GlobalIndex
             if (rowCf == null) continue;
 
             GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
+
+            holder.updatePartitionKey(key);
+
             for (CellName cellName: rowCf.getColumnNames())
             {
                 holder.update(cellName, key, rowCf);
@@ -185,14 +208,17 @@ public class GlobalIndex
         return tombstones;
     }
 
-    private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf)
+    private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf, List<Row> results)
     {
         GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
+
+        // It is possible the that the index partition key is not known, so we have to look at the previous results for it
+        holder.updatePartitionKey(key);
         for (CellName cellName: cf.getColumnNames())
         {
             holder.update(cellName, key, cf);
         }
-        Mutation mutation = holder.getMutation(indexCfs);
+        Mutation mutation = holder.getMutation(indexCfs, cf.maxTimestamp());
         if (mutation != null)
             return Collections.singleton(mutation);
         return Collections.emptyList();
@@ -206,7 +232,11 @@ public class GlobalIndex
         }
 
         // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write
-        List<Row> results = StorageProxy.read(Lists.<ReadCommand>newArrayList(new SliceFromReadCommand(cf.metadata().ksName, key, cf.metadata().cfName, cf.maxTimestamp(), new IdentityQueryFilter())), consistency);
+        List<Row> results = StorageProxy.read(Collections.<ReadCommand>singletonList(new SliceFromReadCommand(cf.metadata().ksName,
+                                                                                                              key,
+                                                                                                              cf.metadata().cfName,
+                                                                                                              cf.maxTimestamp(),
+                                                                                                              new IdentityQueryFilter())), consistency);
 
         Collection<Mutation> mutations = null;
         Collection<Mutation> tombstones = createTombstones(key, cf, results);
@@ -216,7 +246,7 @@ public class GlobalIndex
             mutations.addAll(tombstones);
         }
 
-        Collection<Mutation> inserts = createInserts(key, cf);
+        Collection<Mutation> inserts = createInserts(key, cf, results);
 
         if (inserts != null && !inserts.isEmpty())
         {
