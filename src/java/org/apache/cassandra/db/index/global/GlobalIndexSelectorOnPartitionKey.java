@@ -11,12 +11,11 @@ import java.nio.ByteBuffer;
 public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
 {
     ColumnFamilyStore baseCfs;
-    ColumnDefinition columnDef;
 
-    public GlobalIndexSelectorOnPartitionKey(ColumnFamilyStore baseCfs, ColumnDefinition cfDef)
+    public GlobalIndexSelectorOnPartitionKey(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
+        super(columnDefinition);
         this.baseCfs = baseCfs;
-        this.columnDef = cfDef;
     }
 
     public boolean canGenerateTombstones()
@@ -26,15 +25,25 @@ public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
 
     public boolean selects(CellName cellName)
     {
+        return false;
+    }
+
+    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
+        throw new AssertionError("PartitionKey cannot produce value from a CellName");
+    }
+
+    public boolean isPrimaryKey()
+    {
         return true;
     }
 
-    @Override
-    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        if (columnDef.isOnAllComponents())
+    public ByteBuffer value(ByteBuffer key)
+    {
+        if (columnDefinition.isOnAllComponents())
             return key;
+
         CompositeType keyComparator = (CompositeType)baseCfs.metadata.getKeyValidator();
         ByteBuffer[] components = keyComparator.split(key);
-        return components[columnDef.position()];
+        return components[columnDefinition.position()];
     }
 }

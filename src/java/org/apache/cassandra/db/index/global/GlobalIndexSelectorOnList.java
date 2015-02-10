@@ -8,11 +8,9 @@ import java.nio.ByteBuffer;
 
 public class GlobalIndexSelectorOnList extends GlobalIndexSelector
 {
-    private ColumnDefinition definition;
-
-    public GlobalIndexSelectorOnList(ColumnDefinition definition)
+    public GlobalIndexSelectorOnList(ColumnDefinition columnDefinition)
     {
-        this.definition = definition;
+        super(columnDefinition);
     }
 
     public boolean canGenerateTombstones()
