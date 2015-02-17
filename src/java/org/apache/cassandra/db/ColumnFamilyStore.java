@@ -60,10 +60,12 @@ import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.FSReadError;
+import org.apache.cassandra.io.FSWriteError;
 import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.*;
@@ -204,6 +206,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         scheduleFlush();
 
         indexManager.reload();
+
+        GlobalIndexManager.instance.reload(this);
 
         // If the CF comparator has changed, we need to change the memtable,
         // because the old one still aliases the previous comparator.

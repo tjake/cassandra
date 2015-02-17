@@ -1,16 +1,14 @@
 package org.apache.cassandra.db.index;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.CellName;
@@ -19,6 +17,7 @@ import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class GlobalIndex
 {
@@ -46,37 +45,12 @@ public class GlobalIndex
         createIndexCfsAndSelectors();
     }
 
-    private CellNameType getIndexComparator()
-    {
-        List<AbstractType<?>> types = new ArrayList<>();
-        // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
-        for (ColumnDefinition column: baseCfs.metadata.partitionKeyColumns())
-        {
-            if (column != target)
-            {
-                types.add(column.type);
-            }
-        }
-
-        for (ColumnDefinition column: baseCfs.metadata.clusteringColumns())
-        {
-            if (column != target)
-            {
-                types.add(column.type);
-            }
-        }
-        return new CompoundSparseCellNameType(types);
-    }
-
     private void createIndexCfsAndSelectors()
     {
         assert baseCfs != null;
         assert target != null;
 
-        CellNameType indexComparator = getIndexComparator();
-        CFMetaData indexedCfMetadata = CFMetaData.newGlobalIndexMetadata(baseCfs.metadata, target, indexComparator);
-
-        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, target.position()));
+        CFMetaData indexedCfMetadata = getCFMetaData(baseCfs.metadata, target, denormalized);
         targetSelector = GlobalIndexSelector.create(baseCfs, target);
 
         // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
@@ -84,10 +58,6 @@ public class GlobalIndex
         {
             if (column != target)
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
                 clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
             }
         }
@@ -96,10 +66,6 @@ public class GlobalIndex
         {
             if (column != target)
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
                 clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
             }
         }
@@ -108,10 +74,6 @@ public class GlobalIndex
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, position));
                 regularSelectors.add(GlobalIndexSelector.create(baseCfs, column));
             }
         }
@@ -120,18 +82,11 @@ public class GlobalIndex
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, position));
                 staticSelectors.add(GlobalIndexSelector.create(baseCfs, column));
             }
         }
 
-        indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
-                                                             indexedCfMetadata.cfName,
-                                                             DatabaseDescriptor.getPartitioner(),
-                                                             indexedCfMetadata);
+        indexCfs = Schema.instance.getColumnFamilyStoreInstance(indexedCfMetadata.cfId);
     }
 
     /**
@@ -255,5 +210,86 @@ public class GlobalIndex
         }
 
         return mutations;
+    }
+
+    public static CFMetaData getCFMetaData(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnDefinition> denormalized)
+    {
+        String name = baseCFMD.cfName + "_" + ByteBufferUtil.bytesToHex(target.name.bytes);
+        UUID cfId = Schema.instance.getId(baseCFMD.ksName, name);
+        if (cfId != null)
+            return Schema.instance.getCFMetaData(cfId);
+
+        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCFMD, target, getIndexComparator(baseCFMD, target));
+
+        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
+
+        // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
+        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
+        {
+            if (column != target)
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+            }
+        }
+
+        for (ColumnDefinition column: baseCFMD.clusteringColumns())
+        {
+            if (column != target)
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+            }
+        }
+
+        for (ColumnDefinition column: baseCFMD.regularColumns())
+        {
+            if (column != target && denormalized.contains(column))
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, position));
+            }
+        }
+
+        for (ColumnDefinition column: baseCFMD.staticColumns())
+        {
+            if (column != target && denormalized.contains(column))
+            {
+                Integer position = null;
+                if (!column.isOnAllComponents())
+                    position = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, position));
+            }
+        }
+
+        return indexedCfMetadata;
+    }
+
+    public static CellNameType getIndexComparator(CFMetaData baseCFMD, ColumnDefinition target)
+    {
+        List<AbstractType<?>> types = new ArrayList<>();
+        // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
+        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
+        {
+            if (column != target)
+            {
+                types.add(column.type);
+            }
+        }
+
+        for (ColumnDefinition column: baseCFMD.clusteringColumns())
+        {
+            if (column != target)
+            {
+                types.add(column.type);
+            }
+        }
+        return new CompoundSparseCellNameType(types);
     }
 }

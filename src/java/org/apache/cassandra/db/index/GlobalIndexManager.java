@@ -122,4 +122,9 @@ public class GlobalIndexManager
 
         return groupedMutations.values();
     }
+
+    public void reload(ColumnFamilyStore columnFamilyStore)
+    {
+
+    }
 }

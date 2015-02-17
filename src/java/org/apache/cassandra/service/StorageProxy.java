@@ -642,7 +642,7 @@ public class StorageProxy implements StorageProxyMBean
         {
             Collection<Mutation> giMutations = GlobalIndexManager.instance.createMutations(mutations, consistencyLevel);
             if (giMutations != null)
-                mutateAtomically(giMutations, consistencyLevel);
+                mutate(giMutations, consistencyLevel);
             else if (mutateAtomically)
                 mutateAtomically((Collection<Mutation>) mutations, consistencyLevel);
             else
