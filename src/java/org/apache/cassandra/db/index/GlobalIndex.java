@@ -7,7 +7,6 @@ import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
@@ -179,14 +178,19 @@ public class GlobalIndex
         return Collections.emptyList();
     }
 
+    private Collection<Mutation> createDeletionInfo(ByteBuffer key, ColumnFamily cf, List<Row> results)
+    {
+        return null;
+    }
+
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
-        if (!modifiesIndexedColumn(cf))
+        if (!cf.deletionInfo().hasRanges() && !modifiesIndexedColumn(cf))
         {
             return null;
         }
 
-        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write
+        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write)
         List<Row> results = StorageProxy.read(Collections.<ReadCommand>singletonList(new SliceFromReadCommand(cf.metadata().ksName,
                                                                                                               key,
                                                                                                               cf.metadata().cfName,
@@ -202,11 +206,17 @@ public class GlobalIndex
         }
 
         Collection<Mutation> inserts = createInserts(key, cf, results);
-
         if (inserts != null && !inserts.isEmpty())
         {
             if (mutations == null) mutations = new ArrayList<>();
             mutations.addAll(inserts);
+        }
+
+        Collection<Mutation> deletion = createDeletionInfo(key, cf, results);
+        if (deletion != null && !deletion.isEmpty())
+        {
+            if (mutations == null) mutations = new ArrayList<>();
+            mutations.addAll(deletion);
         }
 
         return mutations;
@@ -223,15 +233,29 @@ public class GlobalIndex
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
 
+        int count = 0;
+        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
+        {
+            if (column != target)
+                count++;
+        }
+
+        if (count <= 1)
+        {
+            for (ColumnDefinition column : baseCFMD.clusteringColumns())
+            {
+                if (column != target)
+                    count++;
+            }
+        }
+
+        Integer position = count > 1 ? 0 : null;
         // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
         for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
         {
             if (column != target)
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position != null ? position++ : null));
             }
         }
 
@@ -239,10 +263,7 @@ public class GlobalIndex
         {
             if (column != target)
             {
-                Integer position = null;
-                if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position != null ? position++ : null));
             }
         }
 
@@ -250,10 +271,10 @@ public class GlobalIndex
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer position = null;
+                Integer columnPosition = null;
                 if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                    columnPosition = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, columnPosition));
             }
         }
 
@@ -261,10 +282,10 @@ public class GlobalIndex
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer position = null;
+                Integer columnPosition = null;
                 if (!column.isOnAllComponents())
-                    position = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, position));
+                    columnPosition = column.position();
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, columnPosition));
             }
         }
 
