@@ -910,6 +910,9 @@ public class LegacySchemaTables
 
             for (TriggerDefinition trigger : table.getTriggers().values())
                 addTriggerToSchemaMutation(table, trigger, timestamp, mutation);
+
+            for (GlobalIndexDefinition globalIndex: table.getGlobalIndexes().values())
+                addGlobalIndexToSchemaMutation(table, globalIndex, timestamp, mutation);
         }
     }
 
@@ -984,6 +987,9 @@ public class LegacySchemaTables
 
         for (TriggerDefinition trigger : table.getTriggers().values())
             dropTriggerFromSchemaMutation(table, trigger, timestamp, mutation);
+
+        for (GlobalIndexDefinition globalIndex: table.getGlobalIndexes().values())
+            dropGlobalIndexFromSchemaMutation(table, globalIndex, timestamp, mutation);
 
         // TODO: get rid of in #6717
         ColumnFamily indexCells = mutation.addOrGet(SystemKeyspace.BuiltIndexes);

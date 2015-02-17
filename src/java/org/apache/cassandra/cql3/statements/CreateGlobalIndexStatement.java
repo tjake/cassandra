@@ -15,6 +15,7 @@ import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.CFName;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.IndexName;
+import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.exceptions.UnauthorizedException;
@@ -91,11 +92,22 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
             indexName = createIndexName(target);
 
         Collection<ColumnIdentifier> identifiers = new ArrayList<>();
+        Collection<ColumnDefinition> denormalizedCds = new ArrayList<>();
         for(ColumnIdentifier.Raw rawIdentifer: denormalized)
-            identifiers.add(rawIdentifer.prepare(cfm));
+        {
+            ColumnIdentifier identifier = rawIdentifer.prepare(cfm);
+            identifiers.add(identifier);
+            ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
+            assert cfDef != null;
+            denormalizedCds.add(cfDef);
+        }
 
-        cfm.addGlobalIndex(new GlobalIndexDefinition(indexName, target.column, identifiers));
+        GlobalIndexDefinition definition = new GlobalIndexDefinition(indexName, target.column, identifiers);
+        cfm.addGlobalIndex(definition);
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);
+
+        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(definition.target), denormalizedCds);
+        MigrationManager.announceNewColumnFamily(indexCfmd);
         return true;
     }
     
