@@ -20,15 +20,15 @@ package org.apache.cassandra.net;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutput;
+import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
+import java.nio.channels.FileChannel.MapMode;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -44,14 +44,19 @@ import net.jpountz.lz4.LZ4BlockOutputStream;
 import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.xxhash.XXHashFactory;
+
 import org.apache.cassandra.io.util.DataOutputStreamPlus;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.CoalescingStrategies;
+import org.apache.cassandra.utils.CoalescingStrategies.Coalescable;
+import org.apache.cassandra.utils.CoalescingStrategies.CoalescingStrategy;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
+import org.apache.cassandra.utils.NanoTimeToCurrentTimeMillis;
 import org.apache.cassandra.utils.UUIDGen;
 import org.xerial.snappy.SnappyOutputStream;
-
 import org.apache.cassandra.config.Config;
 import org.apache.cassandra.config.DatabaseDescriptor;
 
@@ -60,6 +65,74 @@ import com.google.common.util.concurrent.Uninterruptibles;
 public class OutboundTcpConnection extends Thread
 {
     private static final Logger logger = LoggerFactory.getLogger(OutboundTcpConnection.class);
+
+    private static final String PREFIX = Config.PROPERTY_PREFIX;
+
+    /*
+     * Enabled/disable TCP_NODELAY for intradc connections. Defaults to enabled.
+     */
+    private static final String INTRADC_TCP_NODELAY_PROPERTY = PREFIX + "OTC_INTRADC_TCP_NODELAY";
+    private static final boolean INTRADC_TCP_NODELAY = Boolean.valueOf(System.getProperty(INTRADC_TCP_NODELAY_PROPERTY, "true"));
+
+    /*
+     * Size of buffer in output stream
+     */
+    private static final String BUFFER_SIZE_PROPERTY = PREFIX + "OTC_BUFFER_SIZE";
+    private static final int BUFFER_SIZE = Integer.getInteger(BUFFER_SIZE_PROPERTY, 1024 * 64);
+
+    /*
+     * Log debug information at info level about what the average is and when coalescing is enabled/disabled
+     */
+    private static final String DEBUG_COALESCING_PROPERTY = PREFIX + "OTC_COALESCING_DEBUG";
+    private static final boolean DEBUG_COALESCING = Boolean.getBoolean(DEBUG_COALESCING_PROPERTY) | logger.isDebugEnabled();
+
+    private static final String DEBUG_COALESCING_PATH_PROPERTY = PREFIX + "OTC_COALESCING_DEBUG_PATH";
+    private static final String DEBUG_COALESCING_PATH = System.getProperty(DEBUG_COALESCING_PATH_PROPERTY, "/tmp/coleascing_debug");
+
+    private static CoalescingStrategy newCoalescingStrategy()
+    {
+        return CoalescingStrategies.newCoalescingStrategy(DatabaseDescriptor.getOtcCoalescingStrategy(),
+                                                          DatabaseDescriptor.getOtcCoalescingWindow(),
+                                                          logger,
+                                                          DEBUG_COALESCING);
+    }
+
+    static
+    {
+        String strategy = DatabaseDescriptor.getOtcCoalescingStrategy();
+        switch (strategy)
+        {
+        case "TIMEHORIZON":
+            break;
+        case "MOVINGAVERAGE":
+        case "FIXED":
+        case "DISABLED":
+            logger.info("OutboundTcpConnection using coalescing strategy " + strategy);
+            break;
+            default:
+                //Check that it can be loaded
+                newCoalescingStrategy();
+        }
+
+        int coalescingWindow = DatabaseDescriptor.getOtcCoalescingWindow();
+        if (coalescingWindow != Config.otc_coalescing_window_us_default)
+            logger.info("OutboundTcpConnection coalescing window set to " + coalescingWindow + "μs");
+
+        if (coalescingWindow < 0)
+            throw new ExceptionInInitializerError(
+                    "Value provided for coalescing window must be greather than 0: " + coalescingWindow);
+
+        if (DEBUG_COALESCING)
+        {
+            File directory = new File(DEBUG_COALESCING_PATH);
+
+            if (directory.exists())
+                FileUtils.deleteRecursive(directory);
+
+            if (!directory.mkdirs())
+                throw new ExceptionInInitializerError("Couldn't create log dir");
+        }
+    }
 
     private static final MessageOut CLOSE_SENTINEL = new MessageOut(MessagingService.Verb.INTERNAL_RESPONSE);
     private volatile boolean isStopped = false;
@@ -74,6 +147,7 @@ public class OutboundTcpConnection extends Thread
 
     private final OutboundTcpConnectionPool poolReference;
 
+    private final CoalescingStrategy cs = newCoalescingStrategy();
     private DataOutputStreamPlus out;
     private Socket socket;
     private volatile long completed;
@@ -127,28 +201,58 @@ public class OutboundTcpConnection extends Thread
 
     public void run()
     {
+        ByteBuffer logBuffer = null;
+        RandomAccessFile ras = null;
+        if (DEBUG_COALESCING)
+        {
+            try
+            {
+                File outFile = File.createTempFile("coalescing_" + poolReference.endPoint().getHostAddress() + "_", ".log", new File(DEBUG_COALESCING_PATH));
+                ras = new RandomAccessFile(outFile, "rw");
+                logBuffer = ras.getChannel().map(MapMode.READ_WRITE, 0, Integer.MAX_VALUE);
+                logBuffer.putLong(0);
+            }
+            catch (Exception e)
+            {
+                logger.error("Unable to create output file for debugging coalescing", e);
+            }
+        }
+
+
+        final int drainedMessageSize = 128;
         // keeping list (batch) size small for now; that way we don't have an unbounded array (that we never resize)
-        final List<QueuedMessage> drainedMessages = new ArrayList<>(128);
+        final List<QueuedMessage> drainedMessages = new ArrayList<>(drainedMessageSize);
+
         outer:
         while (true)
         {
-            if (backlog.drainTo(drainedMessages, drainedMessages.size()) == 0)
+            try
             {
-                try
-                {
-                    drainedMessages.add(backlog.take());
-                }
-                catch (InterruptedException e)
-                {
-                    throw new AssertionError(e);
-                }
-
+                @SuppressWarnings("unchecked")
+                BlockingQueue<Coalescable> input = (BlockingQueue<Coalescable>)(BlockingQueue<?>)backlog;
+                @SuppressWarnings("unchecked")
+                List<Coalescable> outCasted= (List<Coalescable>)(List<?>)drainedMessages;
+                cs.coalesce(input, outCasted, drainedMessageSize);
             }
+            catch (InterruptedException e)
+            {
+                throw new AssertionError(e);
+            }
+
             currentMsgBufferCount = drainedMessages.size();
 
             int count = drainedMessages.size();
+            //The timestamp of the first message has already been provided to the coalescing strategy
+            //so skip logging it.
             for (QueuedMessage qm : drainedMessages)
             {
+
+                if (DEBUG_COALESCING)
+                {
+                    logBuffer.putLong(0, logBuffer.getLong(0) + 1);
+                    logBuffer.putLong(qm.timestampNanos);
+                }
+
                 try
                 {
                     MessageOut<?> m = qm.message;
@@ -159,10 +263,11 @@ public class OutboundTcpConnection extends Thread
                             break outer;
                         continue;
                     }
-                    if (qm.isTimedOut(m.getTimeout()))
+
+                    if (qm.isTimedOut(TimeUnit.MILLISECONDS.toNanos(m.getTimeout()), System.nanoTime()))
                         dropped.incrementAndGet();
                     else if (socket != null || connect())
-                        writeConnected(qm, count == 1 && backlog.size() == 0);
+                        writeConnected(qm, count == 1 && backlog.isEmpty());
                     else
                         // clear out the queue, else gossip messages back up.
                         backlog.clear();
@@ -225,7 +330,8 @@ public class OutboundTcpConnection extends Thread
                 }
             }
 
-            writeInternal(qm.message, qm.id, qm.timestamp);
+            long timestampMillis = NanoTimeToCurrentTimeMillis.convert(qm.timestampNanos);
+            writeInternal(qm.message, qm.id, timestampMillis);
 
             completed++;
             if (flush)
@@ -325,7 +431,7 @@ public class OutboundTcpConnection extends Thread
                 socket.setKeepAlive(true);
                 if (isLocalDC(poolReference.endPoint()))
                 {
-                    socket.setTcpNoDelay(true);
+                    socket.setTcpNoDelay(INTRADC_TCP_NODELAY);
                 }
                 else
                 {
@@ -342,7 +448,7 @@ public class OutboundTcpConnection extends Thread
                         logger.warn("Failed to set send buffer size on internode socket.", se);
                     }
                 }
-                out = new DataOutputStreamPlus(new BufferedOutputStream(socket.getOutputStream(), 4096));
+                out = new DataOutputStreamPlus(new BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE));
 
                 out.writeInt(MessagingService.PROTOCOL_MAGIC);
                 writeHeader(out, targetVersion, shouldCompressConnection());
@@ -414,7 +520,7 @@ public class OutboundTcpConnection extends Thread
         }
         return false;
     }
-    
+
     private int handshakeVersion(final DataInputStream inputStream)
     {
         final AtomicInteger version = new AtomicInteger(NO_VERSION);
@@ -429,7 +535,7 @@ public class OutboundTcpConnection extends Thread
                     logger.info("Handshaking version with {}", poolReference.endPoint());
                     version.set(inputStream.readInt());
                 }
-                catch (IOException ex) 
+                catch (IOException ex)
                 {
                     final String msg = "Cannot handshake version with " + poolReference.endPoint();
                     if (logger.isTraceEnabled())
@@ -462,7 +568,7 @@ public class OutboundTcpConnection extends Thread
         while (iter.hasNext())
         {
             QueuedMessage qm = iter.next();
-            if (qm.timestamp >= System.currentTimeMillis() - qm.message.getTimeout())
+            if (qm.timestampNanos >= System.nanoTime() - qm.message.getTimeout())
                 return;
             iter.remove();
             dropped.incrementAndGet();
@@ -470,30 +576,35 @@ public class OutboundTcpConnection extends Thread
     }
 
     /** messages that have not been retried yet */
-    private static class QueuedMessage
+    private static class QueuedMessage implements Coalescable
     {
         final MessageOut<?> message;
         final int id;
-        final long timestamp;
+        final long timestampNanos;
         final boolean droppable;
 
         QueuedMessage(MessageOut<?> message, int id)
         {
             this.message = message;
             this.id = id;
-            this.timestamp = System.currentTimeMillis();
+            this.timestampNanos = System.nanoTime();
             this.droppable = MessagingService.DROPPABLE_VERBS.contains(message.verb);
         }
 
         /** don't drop a non-droppable message just because it's timestamp is expired */
-        boolean isTimedOut(long maxTime)
+        boolean isTimedOut(long maxTimeNanos, long nowNanos)
         {
-            return droppable && timestamp < System.currentTimeMillis() - maxTime;
+            return droppable && timestampNanos < nowNanos - maxTimeNanos;
         }
 
         boolean shouldRetry()
         {
             return !droppable;
+        }
+
+        public long timestampNanos()
+        {
+            return timestampNanos;
         }
     }
 
