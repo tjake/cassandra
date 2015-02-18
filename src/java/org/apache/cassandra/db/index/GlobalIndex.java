@@ -183,6 +183,19 @@ public class GlobalIndex
         return null;
     }
 
+    private List<Row> query(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
+    {
+        // Values we need:
+        // For the current composite keys, all of the target/denormalized values
+
+        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write)
+        return StorageProxy.read(Collections.<ReadCommand>singletonList(new SliceFromReadCommand(cf.metadata().ksName,
+                                                                                                 key,
+                                                                                                 cf.metadata().cfName,
+                                                                                                 cf.maxTimestamp(),
+                                                                                                 new IdentityQueryFilter())), consistency);
+    }
+
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
         if (!cf.deletionInfo().hasRanges() && !modifiesIndexedColumn(cf))
@@ -190,12 +203,7 @@ public class GlobalIndex
             return null;
         }
 
-        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write)
-        List<Row> results = StorageProxy.read(Collections.<ReadCommand>singletonList(new SliceFromReadCommand(cf.metadata().ksName,
-                                                                                                              key,
-                                                                                                              cf.metadata().cfName,
-                                                                                                              cf.maxTimestamp(),
-                                                                                                              new IdentityQueryFilter())), consistency);
+        List<Row> results = query(key, cf, consistency);
 
         Collection<Mutation> mutations = null;
         Collection<Mutation> tombstones = createTombstones(key, cf, results);
@@ -229,33 +237,18 @@ public class GlobalIndex
         if (cfId != null)
             return Schema.instance.getCFMetaData(cfId);
 
-        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCFMD, target, getIndexComparator(baseCFMD, target));
+        CellNameType comparator = getIndexComparator(baseCFMD, target);
+        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCFMD, target, comparator);
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
 
-        int count = 0;
-        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
-        {
-            if (column != target)
-                count++;
-        }
-
-        if (count <= 1)
-        {
-            for (ColumnDefinition column : baseCFMD.clusteringColumns())
-            {
-                if (column != target)
-                    count++;
-            }
-        }
-
-        Integer position = count > 1 ? 0 : null;
+        Integer position = 0;
         // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
         for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
         {
             if (column != target)
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position != null ? position++ : null));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position++));
             }
         }
 
@@ -263,18 +256,16 @@ public class GlobalIndex
         {
             if (column != target)
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position != null ? position++ : null));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position++));
             }
         }
 
+        Integer componentIndex = comparator.isCompound() ? comparator.clusteringPrefixSize() : null;
         for (ColumnDefinition column: baseCFMD.regularColumns())
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer columnPosition = null;
-                if (!column.isOnAllComponents())
-                    columnPosition = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, columnPosition));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
             }
         }
 
@@ -282,10 +273,7 @@ public class GlobalIndex
         {
             if (column != target && denormalized.contains(column))
             {
-                Integer columnPosition = null;
-                if (!column.isOnAllComponents())
-                    columnPosition = column.position();
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, columnPosition));
+                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
             }
         }
 

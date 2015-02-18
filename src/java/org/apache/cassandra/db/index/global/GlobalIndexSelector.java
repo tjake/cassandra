@@ -48,7 +48,7 @@ public abstract class GlobalIndexSelector
             this.staticColumns = new ByteBuffer[staticSelectors.size()];
         }
 
-        private boolean tryUpdate(CellName cellName, ByteBuffer key, ColumnFamily cf, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
+        private void update(CellName cellName, ByteBuffer key, ColumnFamily cf, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
         {
             for (int i = 0; i < selectors.size(); i++)
             {
@@ -56,10 +56,8 @@ public abstract class GlobalIndexSelector
                 if (selector.selects(cellName))
                 {
                     columns[i] = selector.value(cellName, key, cf);
-                    return true;
                 }
             }
-            return false;
         }
 
         private void updatePartitionKey(ByteBuffer key, List<GlobalIndexSelector> selectors, ByteBuffer[] columns)
@@ -91,14 +89,9 @@ public abstract class GlobalIndexSelector
             {
                 partitionKey = partitionSelector.value(cellName, key, cf);
             }
-            else
-            {
-                if (tryUpdate(cellName, key, cf, clusteringSelectors, clusteringColumns))
-                    return;
-                if (tryUpdate(cellName, key, cf, regularSelectors, regularColumns))
-                    return;
-                tryUpdate(cellName, key, cf, staticSelectors, staticColumns);
-            }
+            update(cellName, key, cf, clusteringSelectors, clusteringColumns);
+            update(cellName, key, cf, regularSelectors, regularColumns);
+            update(cellName, key, cf, staticSelectors, staticColumns);
         }
 
         public Mutation getTombstoneMutation(ColumnFamilyStore indexCfs, long timestamp)
