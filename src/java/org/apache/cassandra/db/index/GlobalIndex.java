@@ -168,10 +168,23 @@ public class GlobalIndex
 
         // It is possible the that the index partition key is not known, so we have to look at the previous results for it
         holder.updatePartitionKey(key);
+
+        for (Row row: results)
+        {
+            ColumnFamily rowCf = row.cf;
+            if (rowCf != null)
+            {
+                for (CellName cellName : rowCf.getColumnNames())
+                {
+                    holder.update(cellName, key, rowCf);
+                }
+            }
+        }
         for (CellName cellName: cf.getColumnNames())
         {
             holder.update(cellName, key, cf);
         }
+        
         Mutation mutation = holder.getMutation(indexCfs, cf.maxTimestamp());
         if (mutation != null)
             return Collections.singleton(mutation);
