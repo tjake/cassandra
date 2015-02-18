@@ -691,6 +691,7 @@ public final class CFMetaData
             && Objects.equal(speculativeRetry, other.speculativeRetry)
             && Objects.equal(droppedColumns, other.droppedColumns)
             && Objects.equal(triggers, other.triggers)
+            && Objects.equal(globalIndexes, other.globalIndexes)
             && Objects.equal(isDense, other.isDense);
     }
 
@@ -724,6 +725,7 @@ public final class CFMetaData
             .append(speculativeRetry)
             .append(droppedColumns)
             .append(triggers)
+            .append(globalIndexes)
             .append(isDense)
             .toHashCode();
     }
