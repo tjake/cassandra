@@ -72,7 +72,7 @@ public class LegacySchemaTables
     public static final String FUNCTIONS = "schema_functions";
     public static final String AGGREGATES = "schema_aggregates";
 
-    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, USERTYPES, FUNCTIONS, AGGREGATES);
+    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, GLOBALINDEXES, USERTYPES, FUNCTIONS, AGGREGATES);
 
     private static final CFMetaData Keyspaces =
         compile(KEYSPACES,
@@ -1275,6 +1275,25 @@ public class LegacySchemaTables
         cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
     }
 
+    /**
+     * Deserialize triggers from storage-level representation.
+     *
+     * @param partition storage-level partition containing the trigger definitions
+     * @return the list of processed TriggerDefinitions
+     */
+    private static List<TriggerDefinition> createTriggersFromTriggersPartition(Row partition)
+    {
+        List<TriggerDefinition> triggers = new ArrayList<>();
+        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, TRIGGERS);
+        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, partition))
+        {
+            String name = row.getString("trigger_name");
+            String classOption = row.getMap("trigger_options", UTF8Type.instance, UTF8Type.instance).get("class");
+            triggers.add(new TriggerDefinition(name, classOption));
+        }
+        return triggers;
+    }
+
     /*
      * Global Index metadata serialization/deserialization.
      */
@@ -1296,25 +1315,6 @@ public class LegacySchemaTables
 
         Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
         cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
-    }
-
-    /**
-     * Deserialize triggers from storage-level representation.
-     *
-     * @param partition storage-level partition containing the trigger definitions
-     * @return the list of processed TriggerDefinitions
-     */
-    private static List<TriggerDefinition> createTriggersFromTriggersPartition(Row partition)
-    {
-        List<TriggerDefinition> triggers = new ArrayList<>();
-        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, TRIGGERS);
-        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, partition))
-        {
-            String name = row.getString("trigger_name");
-            String classOption = row.getMap("trigger_options", UTF8Type.instance, UTF8Type.instance).get("class");
-            triggers.add(new TriggerDefinition(name, classOption));
-        }
-        return triggers;
     }
 
     /**
