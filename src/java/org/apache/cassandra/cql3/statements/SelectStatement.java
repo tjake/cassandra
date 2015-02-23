@@ -28,6 +28,8 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.StatementRestrictions;
@@ -757,6 +759,9 @@ public class SelectStatement implements CQLStatement
 
             checkNeedsFiltering(restrictions);
 
+            if (globalIndexRestriction(cfm, restrictions))
+                return prepareGlobalIndex(cfm, restrictions);
+
             SelectStatement stmt = new SelectStatement(cfm,
                                                         boundNames.size(),
                                                         parameters,
@@ -834,6 +839,54 @@ public class SelectStatement implements CQLStatement
             for (ColumnDefinition def : cfm.partitionKeyColumns())
                 checkTrue(requestedColumns.contains(def),
                           "SELECT DISTINCT queries must request all the partition key columns (missing %s)", def.name);
+        }
+
+        private static boolean globalIndexRestriction(CFMetaData cfm, StatementRestrictions restrictions)
+        {
+            Collection<GlobalIndexDefinition> definitions = cfm.getGlobalIndexes().values();
+            if (definitions.isEmpty())
+                return false;
+
+            if (!restrictions.usesSecondaryIndexing())
+                return false;
+
+            for (IndexExpression indexExpression: restrictions.getIndexExpressions(QueryOptions.DEFAULT))
+            {
+                for (GlobalIndexDefinition gid: definitions)
+                {
+                    if (gid.target.bytes.compareTo(indexExpression.column) == 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private Prepared prepareGlobalIndex(CFMetaData cfm,
+                                            StatementRestrictions restrictions)
+        {
+            Collection<GlobalIndexDefinition> definitions = cfm.getGlobalIndexes().values();
+            GlobalIndexDefinition globalIndexDefinition = null;
+            for (IndexExpression indexExpression: restrictions.getIndexExpressions(QueryOptions.DEFAULT))
+            {
+                for (GlobalIndexDefinition gid: definitions)
+                {
+                    if (gid.target.bytes.compareTo(indexExpression.column) == 0)
+                        globalIndexDefinition = gid;
+                }
+            }
+
+            if (globalIndexDefinition == null)
+                return null;
+
+            String name = cfm.cfName + "_" + ByteBufferUtil.bytesToHex(globalIndexDefinition.target.bytes);
+            CFName cfName = new CFName();
+            cfName.setColumnFamily(name, true);
+            cfName.setKeyspace(keyspace(), true);
+
+            RawStatement rawStatement = new RawStatement(cfName, parameters, selectClause, whereClause, limit);
+            rawStatement.variables = getBoundVariables();
+            return rawStatement.prepare();
         }
 
         private void handleUnrecognizedOrderingColumn(ColumnIdentifier column) throws InvalidRequestException
