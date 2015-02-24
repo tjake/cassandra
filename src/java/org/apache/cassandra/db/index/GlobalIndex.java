@@ -8,20 +8,130 @@ import com.google.common.collect.Iterables;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
-import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
+import org.apache.cassandra.db.composites.*;
+import org.apache.cassandra.db.filter.ColumnSlice;
+import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class GlobalIndex
 {
+    private static class MutationUnit
+    {
+        private final ColumnFamilyStore baseCfs;
+        private final ColumnFamilyStore indexCfs;
+        private final ByteBuffer partitionKey;
+        private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
+        private Map<ColumnIdentifier, ByteBuffer> oldRegularColumnValues = new HashMap<>();
+        private Map<ColumnIdentifier, ByteBuffer> newRegularColumnValues = new HashMap<>();
+
+        public MutationUnit(ColumnFamilyStore baseCfs, ColumnFamilyStore indexCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
+        {
+            this.baseCfs = baseCfs;
+            this.indexCfs = indexCfs;
+            this.partitionKey = key;
+            this.clusteringColumns = clusteringColumns;
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            MutationUnit that = (MutationUnit) o;
+
+            if (!clusteringColumns.equals(that.clusteringColumns)) return false;
+            if (!partitionKey.equals(that.partitionKey)) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            int result = partitionKey.hashCode();
+            result = 31 * result + clusteringColumns.hashCode();
+            return result;
+        }
+
+        public void addNewColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value)
+        {
+            newRegularColumnValues.put(columnIdentifier, value);
+        }
+
+        public void addOldColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value)
+        {
+            oldRegularColumnValues.put(columnIdentifier, value);
+        }
+
+        public ByteBuffer oldValueIfUpdated(ColumnIdentifier columnIdentifier)
+        {
+            if (!newRegularColumnValues.containsKey(columnIdentifier))
+                return null;
+            if (!oldRegularColumnValues.containsKey(columnIdentifier))
+                return null;
+
+            ByteBuffer newValue = newRegularColumnValues.get(columnIdentifier);
+            ByteBuffer oldValue = oldRegularColumnValues.get(columnIdentifier);
+
+            return newValue.compareTo(oldValue) != 0 ? oldValue : null;
+        }
+
+        public ByteBuffer newValueIfUpdated(ColumnIdentifier columnIdentifier)
+        {
+            if (!newRegularColumnValues.containsKey(columnIdentifier))
+                return null;
+            if (!oldRegularColumnValues.containsKey(columnIdentifier))
+                return newRegularColumnValues.get(columnIdentifier);
+
+            ByteBuffer newValue = newRegularColumnValues.get(columnIdentifier);
+            ByteBuffer oldValue = oldRegularColumnValues.get(columnIdentifier);
+
+            return newValue.compareTo(oldValue) != 0 ? newValue : null;
+        }
+
+        public ByteBuffer value(ColumnDefinition definition)
+        {
+            if (definition.isPartitionKey())
+            {
+                if (definition.isOnAllComponents())
+                    return partitionKey;
+                else
+                {
+                    CompositeType keyComparator = (CompositeType) baseCfs.metadata.getKeyValidator();
+                    ByteBuffer[] components = keyComparator.split(partitionKey);
+                    return components[definition.position()];
+                }
+            }
+            else
+            {
+                ColumnIdentifier columnIdentifier = definition.name;
+
+                if (clusteringColumns.containsKey(columnIdentifier))
+                    return clusteringColumns.get(columnIdentifier);
+
+                if (newRegularColumnValues.containsKey(columnIdentifier))
+                    return newRegularColumnValues.get(columnIdentifier);
+
+                if (oldRegularColumnValues.containsKey(columnIdentifier))
+                    return oldRegularColumnValues.get(columnIdentifier);
+            }
+
+            return null;
+        }
+    }
+
     private ColumnDefinition target;
     private Collection<ColumnDefinition> denormalized;
+    private List<ColumnDefinition> clusteringKeys;
+    private List<ColumnDefinition> regularColumns;
+    private List<ColumnDefinition> staticColumns;
 
     private GlobalIndexSelector targetSelector;
     private List<GlobalIndexSelector> clusteringSelectors;
@@ -41,6 +151,10 @@ public class GlobalIndex
         regularSelectors = new ArrayList<>();
         staticSelectors = new ArrayList<>();
 
+        clusteringKeys = new ArrayList<>();
+        regularColumns = new ArrayList<>();
+        staticColumns = new ArrayList<>();
+
         createIndexCfsAndSelectors();
     }
 
@@ -58,6 +172,7 @@ public class GlobalIndex
             if (column != target)
             {
                 clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                clusteringKeys.add(column);
             }
         }
 
@@ -66,6 +181,7 @@ public class GlobalIndex
             if (column != target)
             {
                 clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                clusteringKeys.add(column);
             }
         }
 
@@ -74,6 +190,7 @@ public class GlobalIndex
             if (column != target && denormalized.contains(column))
             {
                 regularSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                regularColumns.add(column);
             }
         }
 
@@ -82,6 +199,7 @@ public class GlobalIndex
             if (column != target && denormalized.contains(column))
             {
                 staticSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                staticColumns.add(column);
             }
         }
 
@@ -113,100 +231,195 @@ public class GlobalIndex
         return false;
     }
 
-    private boolean modifiesTarget(ColumnFamily cf)
+    private boolean modifiesTarget(MutationUnit mutationUnit)
     {
-        for (CellName cellName: cf.getColumnNames())
-        {
-            if (targetSelector.selects(cellName))
-            {
-                return true;
-            }
-        }
+        // these will always be specified
+        if (target.isPrimaryKeyColumn() || target.isClusteringColumn())
+            return true;
+
+        // Otherwise, see if the *new* values are updated
+        if (mutationUnit.oldValueIfUpdated(target.name) != null)
+            return true;
+
         return false;
     }
 
-    /**
-     * @param cf Column family being modified
-     * @param previousResults Current values that are stored for the specified partition key
-     */
-    private Collection<Mutation> createTombstones(ByteBuffer key, ColumnFamily cf, List<Row> previousResults)
+    private Collection<Mutation> createTombstones(MutationUnit mutationUnit, long timestamp)
     {
+        // Primary Key and Clustering columns do not generate tombstones
         if (!targetSelector.canGenerateTombstones())
-            return Collections.emptyList();
+            return null;
 
-        if (previousResults.isEmpty())
-            return Collections.emptyList();
+        // Make sure that target is actually modified
+        if (!modifiesTarget(mutationUnit))
+            return null;
 
-        if (!modifiesTarget(cf))
-            return Collections.emptyList();
+        // Need to generate a tombstone in this case
+        ByteBuffer partitionKey = mutationUnit.oldValueIfUpdated(target.name);
 
-        List<Mutation> tombstones = new ArrayList<>();
-        for (Row row: previousResults)
+        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
+        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
+        CellNameType cellNameType = indexCfs.getComparator();
+        CellName cellName;
+        if (cellNameType.isCompound())
         {
-            ColumnFamily rowCf = row.cf;
-            if (rowCf == null) continue;
-
-            GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
-
-            holder.updatePartitionKey(key);
-
-            for (CellName cellName: rowCf.getColumnNames())
-            {
-                holder.update(cellName, key, rowCf);
-            }
-
-            Mutation mutation = holder.getTombstoneMutation(indexCfs, rowCf.maxTimestamp());
-            if (mutation != null)
-                tombstones.add(mutation);
+            CBuilder builder = cellNameType.prefixBuilder();
+            for (ColumnDefinition definition: clusteringKeys)
+                builder = builder.add(mutationUnit.value(definition));
+            cellName = cellNameType.rowMarker(builder.build());
         }
-        return tombstones;
+        else
+        {
+            assert clusteringKeys.size() == 1;
+            cellName = cellNameType.cellFromByteBuffer(mutationUnit.value(clusteringKeys.get(0)));
+        }
+        indexCf.addTombstone(cellName, 0, timestamp);
+        return Collections.singleton(mutation);
     }
 
-    private Collection<Mutation> createInserts(ByteBuffer key, ColumnFamily cf, List<Row> results)
+    private Collection<Mutation> createInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        GlobalIndexSelector.Holder holder = new GlobalIndexSelector.Holder(targetSelector, clusteringSelectors, regularSelectors, staticSelectors);
+        ByteBuffer partitionKey = mutationUnit.value(target);
+        ByteBuffer[] clusteringColumns = new ByteBuffer[clusteringKeys.size()];
+        ByteBuffer[] regularColumns = new ByteBuffer[this.regularColumns.size()];
+        ByteBuffer[] staticColumns = new ByteBuffer[this.staticColumns.size()];
 
-        // It is possible the that the index partition key is not known, so we have to look at the previous results for it
-        holder.updatePartitionKey(key);
+        for (int i = 0; i < clusteringColumns.length; i++)
+        {
+            clusteringColumns[i] = mutationUnit.value(clusteringKeys.get(i));
+        }
 
-        for (Row row: results)
+        for (int i = 0; i < regularColumns.length; i++)
         {
-            ColumnFamily rowCf = row.cf;
-            if (rowCf != null)
-            {
-                for (CellName cellName : rowCf.getColumnNames())
-                {
-                    holder.update(cellName, key, rowCf);
-                }
-            }
+            regularColumns[i] = tombstonesGenerated
+                                 ? mutationUnit.value(this.regularColumns.get(i))
+                                 : mutationUnit.newValueIfUpdated(this.regularColumns.get(i).name);
         }
-        for (CellName cellName: cf.getColumnNames())
+
+        for (int i = 0; i < staticColumns.length; i++)
         {
-            holder.update(cellName, key, cf);
+            staticColumns[i] = tombstonesGenerated
+                                ? mutationUnit.value(this.staticColumns.get(i))
+                                : mutationUnit.newValueIfUpdated(this.staticColumns.get(i).name);
         }
-        
-        Mutation mutation = holder.getMutation(indexCfs, cf.maxTimestamp());
-        if (mutation != null)
-            return Collections.singleton(mutation);
-        return Collections.emptyList();
+
+        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
+        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
+        CellNameType cellNameType = indexCfs.getComparator();
+        Composite composite;
+        if (cellNameType.isCompound())
+        {
+            CBuilder builder = cellNameType.prefixBuilder();
+            for (ByteBuffer prefix : clusteringColumns)
+                builder = builder.add(prefix);
+            composite = builder.build();
+        }
+        else
+        {
+            assert clusteringColumns.length == 1;
+            composite = cellNameType.make(clusteringColumns[0]);
+        }
+
+        CFRowAdder cfRowAdder = new CFRowAdder(indexCf, composite, timestamp);
+        for (int i = 0; i < regularColumns.length; i++)
+        {
+            if (regularColumns[i] != null)
+                cfRowAdder.add(regularSelectors.get(i).columnDefinition.name.toString(), regularColumns[i]);
+        }
+        for (int i = 0; i < staticColumns.length; i++)
+        {
+            if (staticColumns[i] != null)
+                cfRowAdder.add(staticSelectors.get(i).columnDefinition.name.toString(), staticColumns[i]);
+        }
+        return Collections.singleton(mutation);
     }
 
-    private Collection<Mutation> createDeletionInfo(ByteBuffer key, ColumnFamily cf, List<Row> results)
+    private Collection<Mutation> createDeletionInfo(MutationUnit mutationUnit)
     {
         return null;
     }
 
-    private List<Row> query(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
+    private ColumnSlice getColumnSlice(MutationUnit mutationUnit)
     {
-        // Values we need:
-        // For the current composite keys, all of the target/denormalized values
+        CBuilder builder = baseCfs.getComparator().prefixBuilder();
+        CFMetaData cfmd = baseCfs.metadata;
+        ByteBuffer[] buffers = new ByteBuffer[mutationUnit.clusteringColumns.size()];
+        for (Map.Entry<ColumnIdentifier, ByteBuffer> buffer: mutationUnit.clusteringColumns.entrySet())
+        {
+            buffers[cfmd.getColumnDefinition(buffer.getKey()).position()] = buffer.getValue();
+        }
 
-        // Need to execute a read first (this is *not* a local read; it should be done at the same consistency as write)
-        return StorageProxy.read(Collections.<ReadCommand>singletonList(new SliceFromReadCommand(cf.metadata().ksName,
-                                                                                                 key,
-                                                                                                 cf.metadata().cfName,
-                                                                                                 cf.maxTimestamp(),
-                                                                                                 new IdentityQueryFilter())), consistency);
+        for (ByteBuffer byteBuffer: buffers)
+            builder = builder.add(byteBuffer);
+
+        Composite built = builder.build();
+        return new ColumnSlice(built.start(), built.end());
+    }
+
+    private void query(ByteBuffer key, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency, long timestamp)
+    {
+        ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
+        Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
+        Map<MutationUnit, MutationUnit> mapMutationUnits = new HashMap<>();
+        for (int i = 0; i < slices.length; i++)
+        {
+            MutationUnit next = mutationUnitIterator.next();
+            slices[i] = getColumnSlice(next);
+            mapMutationUnits.put(next, next);
+        }
+
+        SliceQueryFilter queryFilter = new SliceQueryFilter(slices, false, 100);
+
+        List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
+                                                                                        key,
+                                                                                        baseCfs.metadata.cfName,
+                                                                                        timestamp,
+                                                                                        queryFilter)), consistency);
+
+        for (Row row: rows)
+        {
+            ColumnFamily cf = row.cf;
+
+            if (cf == null)
+                continue;
+
+            for (Cell cell: cf.getSortedColumns())
+            {
+                Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
+                for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
+                {
+                    clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
+                }
+
+                MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+                if (mapMutationUnits.containsKey(mutationUnit))
+                {
+                    MutationUnit previous = mapMutationUnits.get(mutationUnit);
+                    previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+                }
+            }
+        }
+    }
+
+    private Collection<MutationUnit> separateMutationUnits(ByteBuffer key, ColumnFamily cf)
+    {
+        Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+        // For each cell name, we need to grab the clustering columns
+        for (Cell cell: cf.getSortedColumns())
+        {
+            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
+            for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
+            {
+                clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
+            }
+
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+            MutationUnit previous = mutationUnits.putIfAbsent(mutationUnit, mutationUnit);
+            if (previous != null) mutationUnit = previous;
+            mutationUnit.addNewColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+        }
+
+        return mutationUnits.values();
     }
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
@@ -216,30 +429,35 @@ public class GlobalIndex
             return null;
         }
 
-        List<Row> results = query(key, cf, consistency);
+        Collection<MutationUnit> mutationUnits = separateMutationUnits(key, cf);
+
+        query(key, mutationUnits, consistency, cf.maxTimestamp());
 
         Collection<Mutation> mutations = null;
-        Collection<Mutation> tombstones = createTombstones(key, cf, results);
-        if (tombstones != null && !tombstones.isEmpty())
-        {
-            if (mutations == null) mutations = new ArrayList<>();
-            mutations.addAll(tombstones);
-        }
 
-        Collection<Mutation> inserts = createInserts(key, cf, results);
-        if (inserts != null && !inserts.isEmpty())
+        for (MutationUnit mutationUnit: mutationUnits)
         {
-            if (mutations == null) mutations = new ArrayList<>();
-            mutations.addAll(inserts);
-        }
+            Collection<Mutation> tombstones = createTombstones(mutationUnit, cf.maxTimestamp());
+            if (tombstones != null && !tombstones.isEmpty())
+            {
+                if (mutations == null) mutations = new ArrayList<>();
+                mutations.addAll(tombstones);
+            }
 
-        Collection<Mutation> deletion = createDeletionInfo(key, cf, results);
-        if (deletion != null && !deletion.isEmpty())
-        {
-            if (mutations == null) mutations = new ArrayList<>();
-            mutations.addAll(deletion);
-        }
+            Collection<Mutation> inserts = createInserts(mutationUnit, cf.maxTimestamp(), tombstones != null && !tombstones.isEmpty());
+            if (inserts != null && !inserts.isEmpty())
+            {
+                if (mutations == null) mutations = new ArrayList<>();
+                mutations.addAll(inserts);
+            }
 
+            Collection<Mutation> deletion = createDeletionInfo(mutationUnit);
+            if (deletion != null && !deletion.isEmpty())
+            {
+                if (mutations == null) mutations = new ArrayList<>();
+                mutations.addAll(deletion);
+            }
+        }
         return mutations;
     }
 
