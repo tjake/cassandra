@@ -107,7 +107,7 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);
 
         CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(definition.target), denormalizedCds);
-        MigrationManager.announceNewColumnFamily(indexCfmd);
+        MigrationManager.announceNewColumnFamily(indexCfmd, isLocalOnly);
         return true;
     }
     

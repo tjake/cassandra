@@ -850,31 +850,14 @@ public class SelectStatement implements CQLStatement
             if (!restrictions.usesSecondaryIndexing())
                 return false;
 
-            for (IndexExpression indexExpression: restrictions.getIndexExpressions(QueryOptions.DEFAULT))
-            {
-                for (GlobalIndexDefinition gid: definitions)
-                {
-                    if (gid.target.bytes.compareTo(indexExpression.column) == 0)
-                        return true;
-                }
-            }
-
-            return false;
+            return restrictions.getGlobalIndex(definitions) != null;
         }
 
         private Prepared prepareGlobalIndex(CFMetaData cfm,
                                             StatementRestrictions restrictions)
         {
             Collection<GlobalIndexDefinition> definitions = cfm.getGlobalIndexes().values();
-            GlobalIndexDefinition globalIndexDefinition = null;
-            for (IndexExpression indexExpression: restrictions.getIndexExpressions(QueryOptions.DEFAULT))
-            {
-                for (GlobalIndexDefinition gid: definitions)
-                {
-                    if (gid.target.bytes.compareTo(indexExpression.column) == 0)
-                        globalIndexDefinition = gid;
-                }
-            }
+            GlobalIndexDefinition globalIndexDefinition = restrictions.getGlobalIndex(definitions);
 
             if (globalIndexDefinition == null)
                 return null;
