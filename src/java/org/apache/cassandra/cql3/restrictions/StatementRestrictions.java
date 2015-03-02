@@ -25,7 +25,10 @@ import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.cql3.Relation;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.*;
@@ -307,6 +310,27 @@ public final class StatementRestrictions
 
         if (clusteringColumnsRestrictions.isContains())
             usesSecondaryIndexing = true;
+    }
+
+    public GlobalIndexDefinition getGlobalIndex(Collection<GlobalIndexDefinition> definitions)
+    {
+        if (!usesSecondaryIndexing || indexRestrictions.isEmpty())
+            return null;
+
+        for (Restrictions restrictions: indexRestrictions)
+        {
+            for (ColumnDefinition column : restrictions.getColumnDefs())
+            {
+                for (GlobalIndexDefinition gid : definitions)
+                {
+
+                    if (gid.target.bytes.compareTo(column.name.bytes) == 0)
+                        return gid;
+                }
+            }
+        }
+
+        return null;
     }
 
     public List<IndexExpression> getIndexExpressions(SecondaryIndexManager indexManager,

@@ -414,8 +414,14 @@ public class GlobalIndex
             }
 
             MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
-            MutationUnit previous = mutationUnits.putIfAbsent(mutationUnit, mutationUnit);
-            if (previous != null) mutationUnit = previous;
+            if (mutationUnits.containsKey(mutationUnit))
+            {
+                mutationUnit = mutationUnits.get(mutationUnit);
+            }
+            else
+            {
+                mutationUnits.put(mutationUnit, mutationUnit);
+            }
             mutationUnit.addNewColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
         }
 
