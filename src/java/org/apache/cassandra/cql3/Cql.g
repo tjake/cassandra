@@ -269,6 +269,7 @@ cqlStatement returns [ParsedStatement stmt]
     | st36=grantRoleStatement          { $stmt = st36; }
     | st37=revokeRoleStatement         { $stmt = st37; }
     | st38=createGlobalIndexStatement  { $stmt = st38; }
+    | st39=dropGlobalIndexStatement    { $stmt = st39; }
     ;
 
 /*
@@ -733,6 +734,9 @@ indexIdent returns [IndexTarget.Raw id]
     | K_FULL '(' c=cident ')'    { $id = IndexTarget.Raw.fullCollection(c); }
     ;
 
+/**
+ * CREATE GLOBAL INDEX [indexName] ON <columnFamily> (<columnName>) DENORMALIZED (<columns>|*);
+ */
 createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
     @init {
         boolean ifNotExists = false;
@@ -857,6 +861,15 @@ dropIndexStatement returns [DropIndexStatement expr]
     @init { boolean ifExists = false; }
     : K_DROP K_INDEX (K_IF K_EXISTS { ifExists = true; } )? index=indexName
       { $expr = new DropIndexStatement(index, ifExists); }
+    ;
+
+/**
+ * DROP GLOBAL INDEX [IF EXISTS] <INDEX_NAME>
+ */
+dropGlobalIndexStatement returns [DropGlobalIndexStatement expr]
+    @init { boolean ifExists = false; }
+    : K_DROP K_GLOBAL K_INDEX (K_IF K_EXISTS { ifExists = true; } )? index=indexName
+      { $expr = new DropGlobalIndexStatement(index, ifExists); }
     ;
 
 /**
