@@ -24,6 +24,7 @@ import java.util.Map;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
@@ -86,6 +87,16 @@ public class AlterTableStatement extends SchemaAlteringStatement
         {
             columnName = rawColumnName.prepare(cfm);
             def = cfm.getColumnDefinition(columnName);
+        }
+
+        // Disallow a globally indexed column from being dropped or modified.
+        if (def != null)
+        {
+            for (GlobalIndexDefinition globalIndexDefinition: cfm.getGlobalIndexes().values())
+            {
+                if (globalIndexDefinition.target.bytes.compareTo(def.name.bytes) == 0)
+                    throw new InvalidRequestException(String.format("Cannot %s column which is globally indexed; drop index %s first", oType, globalIndexDefinition.indexName));
+            }
         }
 
         switch (oType)
