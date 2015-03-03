@@ -95,7 +95,11 @@ public class AlterTableStatement extends SchemaAlteringStatement
             for (GlobalIndexDefinition globalIndexDefinition: cfm.getGlobalIndexes().values())
             {
                 if (globalIndexDefinition.target.bytes.compareTo(def.name.bytes) == 0)
-                    throw new InvalidRequestException(String.format("Cannot %s column which is globally indexed; drop index %s first", oType, globalIndexDefinition.indexName));
+                    throw new InvalidRequestException(String.format("Cannot %s %s which is globally indexed; drop global index %s.%s first",
+                                                                    oType,
+                                                                    globalIndexDefinition.target.toString(),
+                                                                    cfm.ksName,
+                                                                    globalIndexDefinition.indexName));
             }
         }
 
