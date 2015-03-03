@@ -2,7 +2,7 @@ package org.apache.cassandra.cql3.statements;
 
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.IndexName;
@@ -17,6 +17,7 @@ import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class DropGlobalIndexStatement extends SchemaAlteringStatement
 {
@@ -49,7 +50,6 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
 
     public Event.SchemaChange changeEvent()
     {
-        // Dropping an index is akin to updating the CF
         return new Event.SchemaChange(Event.SchemaChange.Change.UPDATED, Event.SchemaChange.Target.TABLE, keyspace(), columnFamily());
     }
 
@@ -67,20 +67,20 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
             return false;
 
         CFMetaData updatedCfm = updateCFMetadata(cfm);
-        indexedCF = updatedCfm.cfName;
+        String indexCf = cfm.cfName + "_" + ByteBufferUtil.bytesToHex(findGlobalIndex(cfm).target.bytes);
+        MigrationManager.announceColumnFamilyDrop(cfm.ksName, indexCf, isLocalOnly);
         MigrationManager.announceColumnFamilyUpdate(updatedCfm, false, isLocalOnly);
+
         return true;
     }
 
     private CFMetaData updateCFMetadata(CFMetaData cfm)
     {
-        ColumnDefinition column = findIndexedColumn(cfm);
-        assert column != null;
         CFMetaData cloned = cfm.copy();
-        ColumnDefinition toChange = cloned.getColumnDefinition(column.name);
-        assert toChange.getIndexName() != null && toChange.getIndexName().equals(indexName);
-        toChange.setIndexName(null);
-        toChange.setIndexType(null, null);
+
+        assert cloned.getGlobalIndexes().containsKey(indexName);
+        cloned.removeGlobalIndex(indexName);
+
         return cloned;
     }
 
@@ -89,9 +89,10 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
         KSMetaData ksm = Schema.instance.getKSMetaData(keyspace());
         if (ksm == null)
             throw new KeyspaceNotDefinedException("Keyspace " + keyspace() + " does not exist");
+
         for (CFMetaData cfm : ksm.cfMetaData().values())
         {
-            if (findIndexedColumn(cfm) != null)
+            if (findGlobalIndex(cfm) != null)
                 return cfm;
         }
 
@@ -101,13 +102,11 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
             throw new InvalidRequestException("Index '" + indexName + "' could not be found in any of the tables of keyspace '" + keyspace() + '\'');
     }
 
-    private ColumnDefinition findIndexedColumn(CFMetaData cfm)
+    private GlobalIndexDefinition findGlobalIndex(CFMetaData cfm)
     {
-        for (ColumnDefinition column : cfm.allColumns())
-        {
-            if (column.getIndexType() != null && column.getIndexName() != null && column.getIndexName().equals(indexName))
-                return column;
-        }
+        for (GlobalIndexDefinition definition: cfm.getGlobalIndexes().values())
+            if (definition.indexName.equals(indexName))
+                return definition;
         return null;
     }
 
