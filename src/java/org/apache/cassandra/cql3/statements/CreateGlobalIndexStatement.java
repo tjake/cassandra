@@ -89,9 +89,21 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
                 throw new InvalidRequestException("Must use defined columns for Global Indexes");
         }
 
+        if (cd.isIndexed())
+            throw new InvalidRequestException("Cannot create global index on a column which already has an index");
+
         // 2i don't support static columns, so I'm not either
         if (cd.isStatic())
             throw new InvalidRequestException("Global indexes are not allowed on static columns");
+
+        if (!ifNotExists)
+        {
+            for (GlobalIndexDefinition definition : cfm.getGlobalIndexes().values())
+            {
+                if (definition.target.bytes.compareTo(cd.name.bytes) == 0)
+                    throw new InvalidRequestException("GlobalIndex " + definition.indexName + " has already been defined for column " + target.column);
+            }
+        }
     }
 
     private String createIndexName(IndexTarget target) {
@@ -102,6 +114,15 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
     {
         CFMetaData cfm = Schema.instance.getCFMetaData(keyspace(), columnFamily()).copy();
         IndexTarget target = rawTarget.prepare(cfm);
+        if (!ifNotExists)
+        {
+            for (GlobalIndexDefinition definition : cfm.getGlobalIndexes().values())
+            {
+                if (definition.target.bytes.compareTo(target.column.bytes) == 0)
+                    throw new InvalidRequestException("GlobalIndex " + definition.indexName + " has already been defined for column " + target.column);
+            }
+        }
+
         logger.debug("Adding Global Index on {} named {}", target.column, indexName);
 
         String indexName = this.indexName;
