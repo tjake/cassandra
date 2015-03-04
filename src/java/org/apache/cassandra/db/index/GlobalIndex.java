@@ -261,7 +261,7 @@ public class GlobalIndex
         return false;
     }
 
-    private Collection<Mutation> createTombstones(MutationUnit mutationUnit, long timestamp)
+    private Collection<Mutation> createTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
         if (!targetSelector.canGenerateTombstones())
@@ -294,7 +294,7 @@ public class GlobalIndex
         return Collections.singleton(mutation);
     }
 
-    private Collection<Mutation> createInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
+    private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
         ByteBuffer partitionKey = mutationUnit.value(target);
         ByteBuffer[] clusteringColumns = new ByteBuffer[clusteringKeys.size()];
@@ -351,8 +351,84 @@ public class GlobalIndex
         return Collections.singleton(mutation);
     }
 
-    private Collection<Mutation> createDeletionInfo(MutationUnit mutationUnit)
+    private Collection<Mutation> createForDeletionInfo(ByteBuffer key, ColumnFamily columnFamily, ConsistencyLevel consistency)
     {
+        DeletionInfo deletionInfo = columnFamily.deletionInfo();
+        if (deletionInfo.hasRanges())
+        {
+            ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
+            Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
+            int i = 0;
+            long timestamp = Long.MIN_VALUE;
+            while (tombstones.hasNext())
+            {
+                RangeTombstone tombstone = tombstones.next();
+                slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
+                timestamp = Math.max(timestamp, tombstone.timestamp());
+            }
+
+            List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
+                                                                                            key,
+                                                                                            baseCfs.metadata.cfName,
+                                                                                            timestamp,
+                                                                                            new SliceQueryFilter(slices, false, 100))), consistency);
+
+            Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+            for (Row row: rows)
+            {
+                ColumnFamily cf = row.cf;
+
+                if (cf == null)
+                    continue;
+
+                for (Cell cell: cf.getSortedColumns())
+                {
+                    Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
+                    for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
+                    {
+                        clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
+                    }
+
+                    MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+                    if (mutationUnits.containsKey(mutationUnit))
+                    {
+                        MutationUnit previous = mutationUnits.get(mutationUnit);
+                        previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+                    }
+                    else
+                    {
+                        mutationUnits.put(mutationUnit, mutationUnit);
+                    }
+                }
+            }
+
+            if (!mutationUnits.isEmpty())
+            {
+                List<Mutation> mutations = new ArrayList<>();
+                for (MutationUnit mutationUnit : mutationUnits.values())
+                {
+                    Mutation mutation = new Mutation(indexCfs.metadata.ksName, mutationUnit.partitionKey);
+                    ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
+                    CellNameType cellNameType = indexCfs.getComparator();
+                    CellName cellName;
+                    if (cellNameType.isCompound())
+                    {
+                        CBuilder builder = cellNameType.prefixBuilder();
+                        for (ColumnDefinition definition: clusteringKeys)
+                            builder = builder.add(mutationUnit.value(definition));
+                        cellName = cellNameType.rowMarker(builder.build());
+                    }
+                    else
+                    {
+                        assert clusteringKeys.size() == 1;
+                        cellName = cellNameType.cellFromByteBuffer(mutationUnit.value(clusteringKeys.get(0)));
+                    }
+                    indexCf.addTombstone(cellName, 0, timestamp);
+                    mutations.add(mutation);
+                }
+                return mutations;
+            }
+        }
         return null;
     }
 
@@ -400,7 +476,7 @@ public class GlobalIndex
             if (cf == null)
                 continue;
 
-            for (Cell cell: cf.getSortedColumns())
+            for (Cell cell : cf.getSortedColumns())
             {
                 Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
                 for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
@@ -413,6 +489,10 @@ public class GlobalIndex
                 {
                     MutationUnit previous = mapMutationUnits.get(mutationUnit);
                     previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+                }
+                else
+                {
+                    mapMutationUnits.put(mutationUnit, mutationUnit);
                 }
             }
         }
@@ -460,27 +540,28 @@ public class GlobalIndex
 
         for (MutationUnit mutationUnit: mutationUnits)
         {
-            Collection<Mutation> tombstones = createTombstones(mutationUnit, cf.maxTimestamp());
+            Collection<Mutation> tombstones = createTombstonesForUpdates(mutationUnit, cf.maxTimestamp());
             if (tombstones != null && !tombstones.isEmpty())
             {
                 if (mutations == null) mutations = new ArrayList<>();
                 mutations.addAll(tombstones);
             }
 
-            Collection<Mutation> inserts = createInserts(mutationUnit, cf.maxTimestamp(), tombstones != null && !tombstones.isEmpty());
+            Collection<Mutation> inserts = createMutationsForInserts(mutationUnit, cf.maxTimestamp(), tombstones != null && !tombstones.isEmpty());
             if (inserts != null && !inserts.isEmpty())
             {
                 if (mutations == null) mutations = new ArrayList<>();
                 mutations.addAll(inserts);
             }
-
-            Collection<Mutation> deletion = createDeletionInfo(mutationUnit);
-            if (deletion != null && !deletion.isEmpty())
-            {
-                if (mutations == null) mutations = new ArrayList<>();
-                mutations.addAll(deletion);
-            }
         }
+
+        Collection<Mutation> deletion = createForDeletionInfo(key, cf, consistency);
+        if (deletion != null && !deletion.isEmpty())
+        {
+            if (mutations == null) mutations = new ArrayList<>();
+            mutations.addAll(deletion);
+        }
+
         return mutations;
     }
 
