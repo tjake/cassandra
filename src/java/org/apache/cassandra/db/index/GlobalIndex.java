@@ -27,8 +27,10 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.filter.ColumnSlice;
+import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
@@ -354,34 +356,45 @@ public class GlobalIndex
     private Collection<Mutation> createForDeletionInfo(ByteBuffer key, ColumnFamily columnFamily, ConsistencyLevel consistency)
     {
         DeletionInfo deletionInfo = columnFamily.deletionInfo();
-        if (deletionInfo.hasRanges())
+        if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
         {
-            ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
-            Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
-            int i = 0;
-            long timestamp = Long.MIN_VALUE;
-            while (tombstones.hasNext())
+            IDiskAtomFilter filter;
+            long timestamp;
+            if (deletionInfo.hasRanges())
             {
-                RangeTombstone tombstone = tombstones.next();
-                slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
-                timestamp = Math.max(timestamp, tombstone.timestamp());
+                ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
+                Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
+                int i = 0;
+                timestamp = Long.MIN_VALUE;
+                while (tombstones.hasNext())
+                {
+                    RangeTombstone tombstone = tombstones.next();
+                    slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
+                    timestamp = Math.max(timestamp, tombstone.timestamp());
+                }
+                filter = new SliceQueryFilter(slices, false, 100);
             }
-
+            else
+            {
+                filter = new IdentityQueryFilter();
+                timestamp = deletionInfo.getTopLevelDeletion().markedForDeleteAt;
+            }
+            
             List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
                                                                                             key,
                                                                                             baseCfs.metadata.cfName,
                                                                                             timestamp,
-                                                                                            new SliceQueryFilter(slices, false, 100))), consistency);
+                                                                                            filter)), consistency);
 
             Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
-            for (Row row: rows)
+            for (Row row : rows)
             {
                 ColumnFamily cf = row.cf;
 
                 if (cf == null)
                     continue;
 
-                for (Cell cell: cf.getSortedColumns())
+                for (Cell cell : cf.getSortedColumns())
                 {
                     Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
                     for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
@@ -407,14 +420,14 @@ public class GlobalIndex
                 List<Mutation> mutations = new ArrayList<>();
                 for (MutationUnit mutationUnit : mutationUnits.values())
                 {
-                    Mutation mutation = new Mutation(indexCfs.metadata.ksName, mutationUnit.partitionKey);
+                    Mutation mutation = new Mutation(indexCfs.metadata.ksName, mutationUnit.value(target));
                     ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
                     CellNameType cellNameType = indexCfs.getComparator();
                     CellName cellName;
                     if (cellNameType.isCompound())
                     {
                         CBuilder builder = cellNameType.prefixBuilder();
-                        for (ColumnDefinition definition: clusteringKeys)
+                        for (ColumnDefinition definition : clusteringKeys)
                             builder = builder.add(mutationUnit.value(definition));
                         cellName = cellNameType.rowMarker(builder.build());
                     }
@@ -527,7 +540,7 @@ public class GlobalIndex
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
-        if (!cf.deletionInfo().hasRanges() && !modifiesIndexedColumn(cf))
+        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !modifiesIndexedColumn(cf))
         {
             return null;
         }
