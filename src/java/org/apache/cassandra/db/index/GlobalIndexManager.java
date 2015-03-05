@@ -142,6 +142,7 @@ public class GlobalIndexManager
 
     public void reload(ColumnFamilyStore columnFamilyStore)
     {
-
+        // TODO: only remove the Column Family's GIs
+        globalIndexMap.clear();
     }
 }
