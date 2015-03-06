@@ -48,6 +48,7 @@ public class GlobalIndex
         private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
         private Map<ColumnIdentifier, ByteBuffer> oldRegularColumnValues = new HashMap<>();
         private Map<ColumnIdentifier, ByteBuffer> newRegularColumnValues = new HashMap<>();
+        private int ttl = 0;
 
         public MutationUnit(ColumnFamilyStore baseCfs, ColumnFamilyStore indexCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
         {
@@ -143,6 +144,14 @@ public class GlobalIndex
             }
 
             return null;
+        }
+    }
+
+    private static class RowAdder extends CFRowAdder
+    {
+        public RowAdder(ColumnFamily cf, Composite prefix, long timestamp, int ttl)
+        {
+            super(cf, prefix, timestamp, ttl, true);
         }
     }
 
@@ -339,16 +348,16 @@ public class GlobalIndex
             composite = cellNameType.make(clusteringColumns[0]);
         }
 
-        CFRowAdder cfRowAdder = new CFRowAdder(indexCf, composite, timestamp);
+        CFRowAdder rowAdder = new RowAdder(indexCf, composite, timestamp, mutationUnit.ttl);
         for (int i = 0; i < regularColumns.length; i++)
         {
             if (regularColumns[i] != null)
-                cfRowAdder.add(regularSelectors.get(i).columnDefinition.name.toString(), regularColumns[i]);
+                rowAdder.add(regularSelectors.get(i).columnDefinition.name.toString(), regularColumns[i]);
         }
         for (int i = 0; i < staticColumns.length; i++)
         {
             if (staticColumns[i] != null)
-                cfRowAdder.add(staticSelectors.get(i).columnDefinition.name.toString(), staticColumns[i]);
+                rowAdder.add(staticSelectors.get(i).columnDefinition.name.toString(), staticColumns[i]);
         }
         return Collections.singleton(mutation);
     }
@@ -524,6 +533,11 @@ public class GlobalIndex
             }
 
             MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+            if (cell instanceof ExpiringCell)
+            {
+                mutationUnit.ttl = ((ExpiringCell)cell).getTimeToLive();
+            }
+
             if (mutationUnits.containsKey(mutationUnit))
             {
                 mutationUnit = mutationUnits.get(mutationUnit);

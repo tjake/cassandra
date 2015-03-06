@@ -51,6 +51,11 @@ public class CFRowAdder
 
     public CFRowAdder(ColumnFamily cf, Composite prefix, long timestamp, int ttl)
     {
+        this(cf, prefix, timestamp, ttl, false);
+    }
+
+    protected CFRowAdder(ColumnFamily cf, Composite prefix, long timestamp, int ttl, boolean useTtlForRowMarker)
+    {
         this.cf = cf;
         this.prefix = prefix;
         this.timestamp = timestamp;
@@ -59,7 +64,9 @@ public class CFRowAdder
 
         // If a CQL3 table, add the row marker
         if (cf.metadata().isCQL3Table() && !prefix.isStatic())
-            cf.addColumn(new BufferCell(cf.getComparator().rowMarker(prefix), ByteBufferUtil.EMPTY_BYTE_BUFFER, timestamp));
+            cf.addColumn(useTtlForRowMarker && ttl != 0
+                          ?  new BufferExpiringCell(cf.getComparator().rowMarker(prefix), ByteBufferUtil.EMPTY_BYTE_BUFFER, timestamp, ttl)
+                          : new BufferCell(cf.getComparator().rowMarker(prefix), ByteBufferUtil.EMPTY_BYTE_BUFFER, timestamp));
     }
 
     public CFRowAdder add(String cql3ColumnName, Object value)
