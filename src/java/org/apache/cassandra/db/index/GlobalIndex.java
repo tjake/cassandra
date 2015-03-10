@@ -156,6 +156,7 @@ public class GlobalIndex
     }
 
     private ColumnDefinition target;
+    private boolean denormalizeAll;
     private Collection<ColumnDefinition> denormalized;
     private List<ColumnDefinition> clusteringKeys;
     private List<ColumnDefinition> regularColumns;
@@ -173,6 +174,7 @@ public class GlobalIndex
     {
         this.target = target;
         this.denormalized = denormalized;
+        this.denormalizeAll = denormalized.isEmpty();
         this.baseCfs = baseCfs;
 
         clusteringSelectors = new ArrayList<>();
@@ -215,7 +217,7 @@ public class GlobalIndex
 
         for (ColumnDefinition column: baseCfs.metadata.regularColumns())
         {
-            if (column != target && denormalized.contains(column))
+            if (column != target && (denormalizeAll || denormalized.contains(column)))
             {
                 regularSelectors.add(GlobalIndexSelector.create(baseCfs, column));
                 regularColumns.add(column);
@@ -224,7 +226,7 @@ public class GlobalIndex
 
         for (ColumnDefinition column: baseCfs.metadata.staticColumns())
         {
-            if (column != target && denormalized.contains(column))
+            if (column != target && (denormalizeAll || denormalized.contains(column)))
             {
                 staticSelectors.add(GlobalIndexSelector.create(baseCfs, column));
                 staticColumns.add(column);
@@ -243,7 +245,7 @@ public class GlobalIndex
     private boolean modifiesIndexedColumn(ColumnFamily cf)
     {
         // If we are denormalizing all of the columns, then any non-empty column family will need to be indexed
-        if (denormalized.isEmpty() && !cf.isEmpty())
+        if (denormalizeAll)
             return true;
 
         for (CellName cellName : cf.getColumnNames())
@@ -594,6 +596,7 @@ public class GlobalIndex
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
 
+        boolean denormalizeAll = denormalized.isEmpty();
         Integer position = 0;
         // All partition and clustering columns are included in the index, whether they are specified in the denormalized columns or not
         for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
@@ -615,7 +618,7 @@ public class GlobalIndex
         Integer componentIndex = comparator.isCompound() ? comparator.clusteringPrefixSize() : null;
         for (ColumnDefinition column: baseCFMD.regularColumns())
         {
-            if (column != target && denormalized.contains(column))
+            if (column != target && (denormalizeAll || denormalized.contains(column)))
             {
                 indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
             }
@@ -623,7 +626,7 @@ public class GlobalIndex
 
         for (ColumnDefinition column: baseCFMD.staticColumns())
         {
-            if (column != target && denormalized.contains(column))
+            if (column != target && (denormalizeAll || denormalized.contains(column)))
             {
                 indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
             }
