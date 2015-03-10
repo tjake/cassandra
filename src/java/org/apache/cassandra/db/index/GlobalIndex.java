@@ -167,7 +167,7 @@ public class GlobalIndex
     private List<GlobalIndexSelector> staticSelectors;
 
     private ColumnFamilyStore baseCfs;
-    private ColumnFamilyStore indexCfs;
+    public ColumnFamilyStore indexCfs;
 
     public GlobalIndex(ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)
     {
@@ -272,6 +272,33 @@ public class GlobalIndex
         return false;
     }
 
+    private Mutation createTombstone(MutationUnit mutationUnit, long timestamp)
+    {
+        // Need to generate a tombstone in this case
+        ByteBuffer partitionKey = mutationUnit.value(target);
+
+        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
+        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
+        CellNameType cellNameType = indexCfs.getComparator();
+        if (cellNameType.isCompound())
+        {
+            CBuilder builder = cellNameType.prefixBuilder();
+            for (ColumnDefinition definition: clusteringKeys)
+                builder = builder.add(mutationUnit.value(definition));
+            Composite cellName = builder.build();
+            RangeTombstone rt = new RangeTombstone(cellName.start(), cellName.end(), timestamp, Integer.MAX_VALUE);
+            indexCf.addAtom(rt);
+        }
+        else
+        {
+            assert clusteringKeys.size() == 1;
+            CellName cellName = cellNameType.cellFromByteBuffer(mutationUnit.value(clusteringKeys.get(0)));
+            indexCf.addTombstone(cellName, 0, timestamp);
+        }
+
+        return mutation;
+    }
+
     private Collection<Mutation> createTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
@@ -282,27 +309,7 @@ public class GlobalIndex
         if (!modifiesTarget(mutationUnit))
             return null;
 
-        // Need to generate a tombstone in this case
-        ByteBuffer partitionKey = mutationUnit.oldValueIfUpdated(target.name);
-
-        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
-        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
-        CellNameType cellNameType = indexCfs.getComparator();
-        CellName cellName;
-        if (cellNameType.isCompound())
-        {
-            CBuilder builder = cellNameType.prefixBuilder();
-            for (ColumnDefinition definition: clusteringKeys)
-                builder = builder.add(mutationUnit.value(definition));
-            cellName = cellNameType.rowMarker(builder.build());
-        }
-        else
-        {
-            assert clusteringKeys.size() == 1;
-            cellName = cellNameType.cellFromByteBuffer(mutationUnit.value(clusteringKeys.get(0)));
-        }
-        indexCf.addTombstone(cellName, 0, timestamp);
-        return Collections.singleton(mutation);
+        return Collections.singleton(createTombstone(mutationUnit, timestamp));
     }
 
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
@@ -429,24 +436,7 @@ public class GlobalIndex
                 List<Mutation> mutations = new ArrayList<>();
                 for (MutationUnit mutationUnit : mutationUnits.values())
                 {
-                    Mutation mutation = new Mutation(indexCfs.metadata.ksName, mutationUnit.value(target));
-                    ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
-                    CellNameType cellNameType = indexCfs.getComparator();
-                    CellName cellName;
-                    if (cellNameType.isCompound())
-                    {
-                        CBuilder builder = cellNameType.prefixBuilder();
-                        for (ColumnDefinition definition : clusteringKeys)
-                            builder = builder.add(mutationUnit.value(definition));
-                        cellName = cellNameType.rowMarker(builder.build());
-                    }
-                    else
-                    {
-                        assert clusteringKeys.size() == 1;
-                        cellName = cellNameType.cellFromByteBuffer(mutationUnit.value(clusteringKeys.get(0)));
-                    }
-                    indexCf.addTombstone(cellName, 0, timestamp);
-                    mutations.add(mutation);
+                    mutations.add(createTombstone(mutationUnit, timestamp));
                 }
                 return mutations;
             }
