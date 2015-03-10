@@ -1333,8 +1333,11 @@ public class LegacySchemaTables
             String indexedColumn = row.getString("indexed_column");
             List<String> denormalizedColumnNames = row.getList("denormalized_columns", UTF8Type.instance);
             List<ColumnIdentifier> denormalizedColumns = new ArrayList<>();
-            for (String columnName: denormalizedColumnNames)
-                denormalizedColumns.add(new ColumnIdentifier(columnName, false));
+            if (denormalizedColumnNames != null)
+            {
+                for (String columnName : denormalizedColumnNames)
+                    denormalizedColumns.add(new ColumnIdentifier(columnName, false));
+            }
             globalIndexes.add(new GlobalIndexDefinition(name, new ColumnIdentifier(indexedColumn, false), denormalizedColumns));
         }
         return globalIndexes;
