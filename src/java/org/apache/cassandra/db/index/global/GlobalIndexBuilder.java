@@ -37,6 +37,8 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.utils.Pair;
 
+// TODO: If key is only present in repaired sstables, write if it we are primary
+// If key is present in unrepaired sstables, write it no matter what
 public class GlobalIndexBuilder implements Runnable
 {
     private final ColumnFamilyStore baseCfs;
@@ -58,7 +60,7 @@ public class GlobalIndexBuilder implements Runnable
         while (columnFamilies.hasNext())
         {
             ColumnFamily cf = columnFamilies.next();
-            Collection<Mutation> mutations = index.createMutations(key.getKey(), cf, ConsistencyLevel.ONE);
+            Collection<Mutation> mutations = index.createMutations(key.getKey(), cf, ConsistencyLevel.ONE, true);
             StorageProxy.mutate(mutations, ConsistencyLevel.ONE);
         }
     }
@@ -70,7 +72,7 @@ public class GlobalIndexBuilder implements Runnable
         if (SystemKeyspace.isIndexBuilt(ksname, indexname))
             return;
 
-        Iterable<Range<Token>> ranges = StorageService.instance.getLocalRanges(baseCfs.metadata.ksName);
+        Iterable<Range<Token>> ranges = StorageService.instance.getPrimaryRanges(baseCfs.metadata.ksName);
         final Pair<Integer, ByteBuffer> indexStatus = SystemKeyspace.getGlobalIndexBuildStatus(ksname, indexname);
         ReducingKeyIterator iter;
         ByteBuffer lastKey;
@@ -78,6 +80,7 @@ public class GlobalIndexBuilder implements Runnable
         if (indexStatus == null)
         {
             int generation = Integer.MIN_VALUE;
+            baseCfs.forceBlockingFlush();
             Collection<SSTableReader> sstables = baseCfs.getSSTables();
             for (SSTableReader reader: sstables)
             {
@@ -94,7 +97,7 @@ public class GlobalIndexBuilder implements Runnable
                 @Override
                 public boolean apply(SSTableReader ssTableReader)
                 {
-                    return ssTableReader.descriptor.generation < indexStatus.left;
+                    return ssTableReader.descriptor.generation <= indexStatus.left;
                 }
             }));
             iter = new ReducingKeyIterator(sstables);
@@ -118,7 +121,6 @@ public class GlobalIndexBuilder implements Runnable
             }
         }
 
-        SystemKeyspace.setIndexBuilt(ksname, indexname);
         SystemKeyspace.finishGlobalIndexBuildStatus(ksname, indexname);
     }
 

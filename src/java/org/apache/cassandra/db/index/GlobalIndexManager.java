@@ -74,7 +74,7 @@ public class GlobalIndexManager
         List<Mutation> tmutations = null;
         for (GlobalIndex index: resolveIndexes(cf.metadata(), indexDefs))
         {
-            Collection<Mutation> mutations = index.createMutations(key, cf, consistency);
+            Collection<Mutation> mutations = index.createMutations(key, cf, consistency, false);
             if (mutations != null) {
                 if (tmutations == null) {
                     tmutations = Lists.newLinkedList();
@@ -156,6 +156,11 @@ public class GlobalIndexManager
 
     public Runnable build(CFMetaData cfm, GlobalIndexDefinition indexDefinition)
     {
-        return new GlobalIndexBuilder(indexDefinition.resolve(cfm).baseCfs, indexDefinition);
+        GlobalIndex index = resolveIndex(cfm, indexDefinition);
+        index.stopBuilder();
+
+        GlobalIndexBuilder builder = new GlobalIndexBuilder(indexDefinition.resolve(cfm).baseCfs, indexDefinition);
+        index.setBuilder(builder);
+        return builder;
     }
 }

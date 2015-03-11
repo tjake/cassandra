@@ -278,7 +278,7 @@ public class CassandraDaemon
             for (CFMetaData cfm : keyspaceName.metadata.cfMetaData().values())
             {
                 for (GlobalIndexDefinition indexDefinition : cfm.getGlobalIndexes().values())
-                    ScheduledExecutors.optionalTasks.execute(GlobalIndexManager.instance.build(cfm, indexDefinition));
+                    ScheduledExecutors.optionalTasks.schedule(GlobalIndexManager.instance.build(cfm, indexDefinition), StorageService.RING_DELAY, TimeUnit.MILLISECONDS);
             }
         }
 
