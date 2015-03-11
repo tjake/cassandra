@@ -434,11 +434,28 @@ public final class SystemKeyspace
         return CompactionHistoryTabularData.from(queryResultSet);
     }
 
-    public static void updateGlobalIndexBuild(String ksname, String indexname, ByteBuffer key)
+    public static void finishGlobalIndexBuildStatus(String ksname, String indexname)
+    {
+        executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
+        forceBlockingFlush(GLOBAL_INDEX_BUILDS_IN_PROGRESS);
+    }
+
+    public static void updateGlobalIndexBuildStatus(String ksname, String indexname, ByteBuffer key)
     {
         // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
         String req = "INSERT INTO system.%s (keyspace_name, index_name, last_key) VALUES (?, ?, ?)";
         executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, key);
+    }
+
+    public static ByteBuffer getGlobalIndexBuildStatus(String ksname, String indexname)
+    {
+        // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
+        String req = "SELECT last_key FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
+        UntypedResultSet queryResultSet = executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
+        if (queryResultSet.isEmpty())
+            return null;
+        
+        return queryResultSet.one().getBytes("last_key");
     }
 
     public static synchronized void saveTruncationRecord(ColumnFamilyStore cfs, long truncatedAt, ReplayPosition position)
