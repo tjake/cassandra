@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db.index.global;
 
+import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Iterator;
 
@@ -60,20 +61,33 @@ public class GlobalIndexBuilder
 
     public void start()
     {
+        String ksname = baseCfs.metadata.ksName, indexname = definition.indexName;
+
+        if (SystemKeyspace.isIndexBuilt(ksname, indexname))
+            return;
+
         Iterable<Range<Token>> ranges = StorageService.instance.getLocalRanges(baseCfs.metadata.ksName);
+        ByteBuffer lastKey = SystemKeyspace.getGlobalIndexBuildStatus(ksname, indexname);
 
         while (!isStopped && iter.hasNext())
         {
             DecoratedKey key = iter.next();
-            for (Range<Token> range: ranges)
+            if (lastKey == null || lastKey.compareTo(key.getKey()) < 0)
             {
-                if (range.contains(key.getToken()))
+                lastKey = null;
+                for (Range<Token> range : ranges)
                 {
-                    indexKey(key);
-                    SystemKeyspace.updateGlobalIndexBuild(baseCfs.metadata.ksName, definition.indexName, key.getKey());
+                    if (range.contains(key.getToken()))
+                    {
+                        indexKey(key);
+                        SystemKeyspace.updateGlobalIndexBuildStatus(ksname, indexname, key.getKey());
+                    }
                 }
             }
         }
+
+        SystemKeyspace.setIndexBuilt(ksname, indexname);
+        SystemKeyspace.finishGlobalIndexBuildStatus(ksname, indexname);
     }
 
 
