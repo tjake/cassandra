@@ -140,12 +140,13 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
             denormalizedCds.add(cfDef);
         }
 
+        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(target.column), denormalizedCds);
+        MigrationManager.announceNewColumnFamily(indexCfmd, isLocalOnly);
+
         GlobalIndexDefinition definition = new GlobalIndexDefinition(indexName, target.column, identifiers);
         cfm.addGlobalIndex(definition);
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);
 
-        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(definition.target), denormalizedCds);
-        MigrationManager.announceNewColumnFamily(indexCfmd, isLocalOnly);
         return true;
     }
     
