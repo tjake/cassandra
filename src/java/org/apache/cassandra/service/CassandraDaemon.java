@@ -45,10 +45,12 @@ import com.addthis.metrics3.reporter.config.ReporterConfig;
 import org.apache.cassandra.concurrent.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.compaction.CompactionManager;
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.StartupException;
 import org.apache.cassandra.io.FSError;
@@ -270,6 +272,15 @@ public class CassandraDaemon
             }
         };
         ScheduledExecutors.optionalTasks.schedule(runnable, 5, TimeUnit.MINUTES);
+
+        for (Keyspace keyspaceName : Keyspace.all())
+        {
+            for (CFMetaData cfm : keyspaceName.metadata.cfMetaData().values())
+            {
+                for (GlobalIndexDefinition indexDefinition : cfm.getGlobalIndexes().values())
+                    ScheduledExecutors.optionalTasks.execute(GlobalIndexManager.instance.build(cfm, indexDefinition));
+            }
+        }
 
         SystemKeyspace.finishStartup();
 

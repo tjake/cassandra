@@ -18,7 +18,6 @@
 package org.apache.cassandra.db.index.global;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 
@@ -38,7 +37,7 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.utils.Pair;
 
-public class GlobalIndexBuilder
+public class GlobalIndexBuilder implements Runnable
 {
     private final ColumnFamilyStore baseCfs;
     private final GlobalIndexDefinition definition;
@@ -64,7 +63,7 @@ public class GlobalIndexBuilder
         }
     }
 
-    public void start()
+    public void run()
     {
         String ksname = baseCfs.metadata.ksName, indexname = definition.indexName;
 

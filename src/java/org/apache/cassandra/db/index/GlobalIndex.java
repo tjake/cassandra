@@ -167,7 +167,7 @@ public class GlobalIndex
     private List<GlobalIndexSelector> regularSelectors;
     private List<GlobalIndexSelector> staticSelectors;
 
-    private ColumnFamilyStore baseCfs;
+    ColumnFamilyStore baseCfs;
     public ColumnFamilyStore indexCfs;
 
     public GlobalIndex(ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)

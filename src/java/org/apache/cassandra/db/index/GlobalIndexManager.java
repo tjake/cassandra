@@ -20,6 +20,7 @@ package org.apache.cassandra.db.index;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
+import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.Schema;
@@ -149,7 +150,12 @@ public class GlobalIndexManager
 
         for (GlobalIndexDefinition definition: columnFamilyStore.metadata.getGlobalIndexes().values())
         {
-            new GlobalIndexBuilder(columnFamilyStore, definition, new ReducingKeyIterator(columnFamilyStore.getSSTables())).start();
+            ScheduledExecutors.optionalTasks.execute(build(columnFamilyStore.metadata, definition));
         }
+    }
+
+    public Runnable build(CFMetaData cfm, GlobalIndexDefinition indexDefinition)
+    {
+        return new GlobalIndexBuilder(indexDefinition.resolve(cfm).baseCfs, indexDefinition);
     }
 }
