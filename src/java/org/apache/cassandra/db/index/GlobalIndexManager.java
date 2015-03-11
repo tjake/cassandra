@@ -24,7 +24,9 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
 import org.apache.cassandra.exceptions.InvalidRequestException;
+import org.apache.cassandra.io.sstable.ReducingKeyIterator;
 import org.apache.cassandra.utils.Pair;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
@@ -144,5 +146,10 @@ public class GlobalIndexManager
     {
         // TODO: only remove the Column Family's GIs
         globalIndexMap.clear();
+
+        for (GlobalIndexDefinition definition: columnFamilyStore.metadata.getGlobalIndexes().values())
+        {
+            new GlobalIndexBuilder(columnFamilyStore, definition, new ReducingKeyIterator(columnFamilyStore.getSSTables())).start();
+        }
     }
 }
