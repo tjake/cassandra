@@ -32,6 +32,7 @@ import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
+import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
 import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -169,6 +170,7 @@ public class GlobalIndex
 
     ColumnFamilyStore baseCfs;
     public ColumnFamilyStore indexCfs;
+    GlobalIndexBuilder builder;
 
     public GlobalIndex(ColumnDefinition target, Collection<ColumnDefinition> denormalized, ColumnFamilyStore baseCfs)
     {
@@ -544,7 +546,7 @@ public class GlobalIndex
         return mutationUnits.values();
     }
 
-    public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
+    public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency, boolean isBuilding)
     {
         if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !modifiesIndexedColumn(cf))
         {
@@ -553,17 +555,23 @@ public class GlobalIndex
 
         Collection<MutationUnit> mutationUnits = separateMutationUnits(key, cf);
 
-        query(key, mutationUnits, consistency, cf.maxTimestamp());
+        // If we are building the index, we do not want to add old values; they will always be the same
+        if (!isBuilding)
+            query(key, mutationUnits, consistency, cf.maxTimestamp());
 
         Collection<Mutation> mutations = null;
 
         for (MutationUnit mutationUnit: mutationUnits)
         {
-            Collection<Mutation> tombstones = createTombstonesForUpdates(mutationUnit, cf.maxTimestamp());
-            if (tombstones != null && !tombstones.isEmpty())
+            Collection<Mutation> tombstones = null;
+            if (!isBuilding)
             {
-                if (mutations == null) mutations = new ArrayList<>();
-                mutations.addAll(tombstones);
+                tombstones = createTombstonesForUpdates(mutationUnit, cf.maxTimestamp());
+                if (tombstones != null && !tombstones.isEmpty())
+                {
+                    if (mutations == null) mutations = new ArrayList<>();
+                    mutations.addAll(tombstones);
+                }
             }
 
             Collection<Mutation> inserts = createMutationsForInserts(mutationUnit, cf.maxTimestamp(), tombstones != null && !tombstones.isEmpty());
@@ -574,11 +582,14 @@ public class GlobalIndex
             }
         }
 
-        Collection<Mutation> deletion = createForDeletionInfo(key, cf, consistency);
-        if (deletion != null && !deletion.isEmpty())
+        if (!isBuilding)
         {
-            if (mutations == null) mutations = new ArrayList<>();
-            mutations.addAll(deletion);
+            Collection<Mutation> deletion = createForDeletionInfo(key, cf, consistency);
+            if (deletion != null && !deletion.isEmpty())
+            {
+                if (mutations == null) mutations = new ArrayList<>();
+                mutations.addAll(deletion);
+            }
         }
 
         return mutations;
@@ -655,5 +666,19 @@ public class GlobalIndex
             }
         }
         return new CompoundSparseCellNameType(types);
+    }
+
+    synchronized void setBuilder(GlobalIndexBuilder builder)
+    {
+        this.builder = builder;
+    }
+
+    synchronized void stopBuilder()
+    {
+        if (this.builder != null)
+        {
+            this.builder.stop();
+            this.builder = null;
+        }
     }
 }
