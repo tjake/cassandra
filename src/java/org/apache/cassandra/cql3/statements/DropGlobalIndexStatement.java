@@ -85,8 +85,8 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
 
         CFMetaData updatedCfm = updateCFMetadata(cfm);
         String indexCf = cfm.cfName + "_" + ByteBufferUtil.bytesToHex(findGlobalIndex(cfm).target.bytes);
-        MigrationManager.announceColumnFamilyDrop(cfm.ksName, indexCf, isLocalOnly);
         MigrationManager.announceColumnFamilyUpdate(updatedCfm, false, isLocalOnly);
+        MigrationManager.announceColumnFamilyDrop(cfm.ksName, indexCf, isLocalOnly);
 
         return true;
     }
