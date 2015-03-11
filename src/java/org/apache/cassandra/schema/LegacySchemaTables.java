@@ -1305,11 +1305,29 @@ public class LegacySchemaTables
 
     private static void dropGlobalIndexFromSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
     {
-        ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
-        int ldt = (int) (System.currentTimeMillis() / 1000);
+        {
+            Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
+            ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
+            int ldt = (int) (System.currentTimeMillis() / 1000);
 
-        Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
-        cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
+            cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
+        }
+
+        {
+            Composite prefix = SystemKeyspace.GlobalIndexBuildsInProgress.comparator.make(globalIndex.indexName);
+            ColumnFamily cells = mutation.addOrGet(SystemKeyspace.GLOBAL_INDEX_BUILDS_IN_PROGRESS);
+            int ldt = (int) (System.currentTimeMillis() / 1000);
+
+            cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
+        }
+
+        {
+            Composite prefix = SystemKeyspace.BuiltIndexes.comparator.makeCellName(globalIndex.indexName);
+            ColumnFamily cells = mutation.addOrGet(SystemKeyspace.BUILT_INDEXES);
+            int ldt = (int) (System.currentTimeMillis() / 1000);
+
+            cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
+        }
     }
 
     /**
