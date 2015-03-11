@@ -259,6 +259,7 @@ public final class SystemKeyspace
              + "keyspace_name text,"
              + "index_name text,"
              + "last_key blob,"
+             + "generation_number int,"
              + "PRIMARY KEY ((keyspace_name, index_name)))");
 
     private static CFMetaData compile(String name, String description, String schema)
@@ -434,6 +435,14 @@ public final class SystemKeyspace
         return CompactionHistoryTabularData.from(queryResultSet);
     }
 
+    public static void beginGlobalIndexBuild(String ksname, String indexname, int generationNumber)
+    {
+        executeInternal(String.format("INSERT INTO system.%s (keyspace_name, index_name, generation_number) VALUES (?, ?, ?)", GLOBAL_INDEX_BUILDS_IN_PROGRESS),
+                        ksname,
+                        indexname,
+                        generationNumber);
+    }
+
     public static void finishGlobalIndexBuildStatus(String ksname, String indexname)
     {
         executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
@@ -447,15 +456,24 @@ public final class SystemKeyspace
         executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, key);
     }
 
-    public static ByteBuffer getGlobalIndexBuildStatus(String ksname, String indexname)
+    public static Pair<Integer, ByteBuffer> getGlobalIndexBuildStatus(String ksname, String indexname)
     {
         // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
-        String req = "SELECT last_key FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
+        String req = "SELECT generation_number, last_key FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
         UntypedResultSet queryResultSet = executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
         if (queryResultSet.isEmpty())
             return null;
-        
-        return queryResultSet.one().getBytes("last_key");
+
+        UntypedResultSet.Row row = queryResultSet.one();
+
+        Integer generation = null;
+        ByteBuffer lastKey = null;
+        if (row.has("generate_number"))
+            generation = row.getInt("generation_number");
+        if (row.has("last_key"))
+            lastKey = row.getBytes("last_key");
+
+        return Pair.create(generation, lastKey);
     }
 
     public static synchronized void saveTruncationRecord(ColumnFamilyStore cfs, long truncatedAt, ReplayPosition position)
