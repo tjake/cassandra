@@ -252,15 +252,15 @@ public final class SystemKeyspace
                         + "ranges set<blob>"
                         + ")");
 
-    private static final CFMetaData GlobalIndexBuildsInProgress =
-     compile(GLOBAL_INDEX_BUILDS_IN_PROGRESS,
-             "global index builds remaining",
-             "CREATE TABLE %s ("
-             + "keyspace_name text,"
-             + "index_name text,"
-             + "last_key blob,"
-             + "generation_number int,"
-             + "PRIMARY KEY ((keyspace_name, index_name)))");
+    public static final CFMetaData GlobalIndexBuildsInProgress =
+        compile(GLOBAL_INDEX_BUILDS_IN_PROGRESS,
+                "global index builds remaining",
+                "CREATE TABLE %s ("
+                + "keyspace_name text,"
+                + "index_name text,"
+                + "last_key blob,"
+                + "generation_number int,"
+                + "PRIMARY KEY ((keyspace_name), index_name))");
 
     private static CFMetaData compile(String name, String description, String schema)
     {
@@ -445,6 +445,11 @@ public final class SystemKeyspace
 
     public static void finishGlobalIndexBuildStatus(String ksname, String indexname)
     {
+        // We flush the index built first, because if we fail now, we'll restart at the last place we checkpointed global indexes
+        // If we flush the delete first, we'll have to restart from the beginning.
+        // Also, if the build succeeded, but the global indexes failed, we will be able to skip the global index check next boot.
+        setIndexBuilt(ksname, indexname);
+        forceBlockingFlush(BUILT_INDEXES);
         executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
         forceBlockingFlush(GLOBAL_INDEX_BUILDS_IN_PROGRESS);
     }
@@ -468,7 +473,7 @@ public final class SystemKeyspace
 
         Integer generation = null;
         ByteBuffer lastKey = null;
-        if (row.has("generate_number"))
+        if (row.has("generation_number"))
             generation = row.getInt("generation_number");
         if (row.has("last_key"))
             lastKey = row.getBytes("last_key");
