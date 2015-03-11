@@ -91,6 +91,7 @@ public final class SystemKeyspace
     public static final String SSTABLE_ACTIVITY = "sstable_activity";
     public static final String SIZE_ESTIMATES = "size_estimates";
     public static final String AVAILABLE_RANGES = "available_ranges";
+    public static final String GLOBAL_INDEX_BUILDS_IN_PROGRESS = "global_index_builds_in_progress";
 
     public static final CFMetaData Hints =
         compile(HINTS,
@@ -249,6 +250,15 @@ public final class SystemKeyspace
                         + "ranges set<blob>"
                         + ")");
 
+    private static final CFMetaData GlobalIndexBuildsInProgress =
+     compile(GLOBAL_INDEX_BUILDS_IN_PROGRESS,
+             "global index builds remaining",
+             "CREATE TABLE %s ("
+             + "keyspace_name text,"
+             + "index_name text,"
+             + "last_key blob,"
+             + "PRIMARY KEY ((keyspace_name, index_name)))");
+
     private static CFMetaData compile(String name, String description, String schema)
     {
         return CFMetaData.compile(String.format(schema, name), NAME)
@@ -271,7 +281,8 @@ public final class SystemKeyspace
                                            CompactionHistory,
                                            SSTableActivity,
                                            SizeEstimates,
-                                           AvailableRanges));
+                                           AvailableRanges,
+                                           GlobalIndexBuildsInProgress));
         return new KSMetaData(NAME, LocalStrategy.class, Collections.<String, String>emptyMap(), true, tables);
     }
 
@@ -415,6 +426,13 @@ public final class SystemKeyspace
     {
         UntypedResultSet queryResultSet = executeInternal(String.format("SELECT * from system.%s", COMPACTION_HISTORY));
         return CompactionHistoryTabularData.from(queryResultSet);
+    }
+
+    public static void updateGlobalIndexBuild(String ksname, String indexname, ByteBuffer key)
+    {
+        // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
+        String req = "INSERT INTO system.%s (keyspace_name, index_name, last_key) VALUES (?, ?, ?)";
+        executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, key);
     }
 
     public static synchronized void saveTruncationRecord(ColumnFamilyStore cfs, long truncatedAt, ReplayPosition position)
