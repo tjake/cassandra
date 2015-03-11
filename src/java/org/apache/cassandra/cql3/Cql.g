@@ -735,7 +735,7 @@ indexIdent returns [IndexTarget.Raw id]
     ;
 
 /**
- * CREATE GLOBAL INDEX [indexName] ON <columnFamily> (<columnName>) DENORMALIZED (<columns>|*);
+ * CREATE GLOBAL INDEX [indexName] ON <columnFamily> (<columnName>) INCLUDE (<columns>|*);
  */
 createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
     @init {
@@ -744,11 +744,11 @@ createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
     }
     : K_CREATE K_GLOBAL K_INDEX (K_IF K_NOT K_EXISTS { ifNotExists = true; })?
         (idxName[name])? K_ON cf=columnFamilyName '(' id=indexIdent ')'
-        (K_DENORMALIZED '(' denormalized=denormalizedClause ')')
-      { $expr = new CreateGlobalIndexStatement(cf, name, id, denormalized, ifNotExists); }
+        (K_INCLUDE '(' include=includeColumnsClause ')')
+      { $expr = new CreateGlobalIndexStatement(cf, name, id, include, ifNotExists); }
     ;
 
-denormalizedClause returns [List<ColumnIdentifier.Raw> expr]
+includeColumnsClause returns [List<ColumnIdentifier.Raw> expr]
     : t1=cident { $expr = new ArrayList<ColumnIdentifier.Raw>(); $expr.add(t1); } (',' tN=cident { $expr.add(tN); })*
     | '\*' { $expr = Collections.<ColumnIdentifier.Raw>emptyList();}
     ;
@@ -1623,7 +1623,7 @@ K_INDEX:       I N D E X;
 K_CUSTOM:      C U S T O M;
 K_ON:          O N;
 K_GLOBAL:      G L O B A L;
-K_DENORMALIZED:D E N O R M A L I Z E D;
+K_INCLUDE:     I N C L U D E;
 K_TO:          T O;
 K_DROP:        D R O P;
 K_PRIMARY:     P R I M A R Y;
