@@ -44,7 +44,8 @@ class Cql3ParsingRuleSet(CqlParsingRuleSet):
         'function', 'aggregate', 'keyspace', 'schema', 'columnfamily', 'table', 'index', 'on', 'drop',
         'primary', 'into', 'values', 'date', 'time', 'timestamp', 'ttl', 'alter', 'add', 'type',
         'compact', 'storage', 'order', 'by', 'asc', 'desc', 'clustering',
-        'token', 'writetime', 'map', 'list', 'to', 'custom', 'if', 'not'
+        'token', 'writetime', 'map', 'list', 'to', 'custom', 'if', 'not',
+        'global', 'include'
     ))
 
     unreserved_keywords = set((
@@ -234,6 +235,7 @@ JUNK ::= /([ \t\r\f\v]+|(--|[/][/])[^\n\r]*([\n\r]|$)|[/][*].*?[*][/])/ ;
 <schemaChangeStatement> ::= <createKeyspaceStatement>
                           | <createColumnFamilyStatement>
                           | <createIndexStatement>
+                          | <createGlobalIndexStatement>
                           | <createUserTypeStatement>
                           | <createFunctionStatement>
                           | <createAggregateStatement>
@@ -241,6 +243,7 @@ JUNK ::= /([ \t\r\f\v]+|(--|[/][/])[^\n\r]*([\n\r]|$)|[/][*].*?[*][/])/ ;
                           | <dropKeyspaceStatement>
                           | <dropColumnFamilyStatement>
                           | <dropIndexStatement>
+                          | <dropGlobalIndexStatement>
                           | <dropUserTypeStatement>
                           | <dropFunctionStatement>
                           | <dropAggregateStatement>
@@ -1016,6 +1019,17 @@ syntax_rules += r'''
                                ( "USING" <stringLiteral> ( "WITH" "OPTIONS" "=" <mapLiteral> )? )?
                          ;
 
+<createGlobalIndexStatement> ::= "CREATE" "GLOBAL" "INDEX" ("IF" "NOT" "EXISTS")? indexname=<idxName>? "ON"
+                                     cf=<columnFamilyName> "(" (
+                                         col=<cident>
+                                     ) ")"
+                                     "INCLUDE" "(" include=<includeClause> ")"
+                                     ( "USING" <stringLiteral> ( "WITH" "OPTIONS" "=" <mapLiteral> )? )?
+                               ;
+
+<includeClause> ::= "*" | <cident> ("," <cident>)*
+                  ;
+
 <createUserTypeStatement> ::= "CREATE" "TYPE" ( ks=<nonSystemKeyspaceName> dot="." )? typename=<cfOrKsName> "(" newcol=<cident> <storageType>
                                 ( "," [newcolname]=<cident> <storageType> )*
                             ")"
@@ -1072,6 +1086,11 @@ syntax_rules += r'''
 <dropIndexStatement> ::= "DROP" "INDEX" ("IF" "EXISTS")? idx=<indexName>
                        ;
 
+<globalIndexName> ::= ( ksname=<idxOrKsName> dot="." )? idxname=<idxOrKsName> ;
+
+<dropGlobalIndexStatement> ::= "DROP" "GLOBAL" "INDEX" ("IF" "EXISTS")? idx=<globalIndexName>
+                             ;
+
 <dropUserTypeStatement> ::= "DROP" "TYPE" ut=<userTypeName>
                           ;
 
@@ -1106,6 +1125,30 @@ def idx_ks_idx_name_completer(ctxt, cass):
             return ()
         raise
     return map(maybe_escape_name, idxnames)
+
+@completer_for('globalIndexName', 'ksname')
+def global_idx_ks_name_completer(ctxt, cass):
+    return [maybe_escape_name(ks) + '.' for ks in cass.get_keyspace_names()]
+
+@completer_for('globalIndexName', 'dot')
+def global_idx_ks_dot_completer(ctxt, cass):
+    name = dequote_name(ctxt.get_binding('ksname'))
+    if name in cass.get_keyspace_names():
+        return ['.']
+    return []
+
+@completer_for('globalIndexName', 'idxname')
+def global_idx_ks_idx_name_completer(ctxt, cass):
+    ks = ctxt.get_binding('ksname', None)
+    if ks is not None:
+        ks = dequote_name(ks)
+    try:
+        idxnames = cass.get_global_index_names(ks)
+    except Exception:
+        if ks is None:
+            return ()
+        raise
+    return map(maybe_escape_name, idxnames)    
 
 syntax_rules += r'''
 <alterTableStatement> ::= "ALTER" wat=( "COLUMNFAMILY" | "TABLE" ) cf=<columnFamilyName>

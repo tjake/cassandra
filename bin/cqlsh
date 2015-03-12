@@ -112,7 +112,7 @@ from cassandra.cluster import Cluster, PagedResult
 from cassandra.query import SimpleStatement, ordered_dict_factory
 from cassandra.policies import WhiteListRoundRobinPolicy
 from cassandra.protocol import QueryMessage, ResultMessage
-from cassandra.metadata import protect_name, protect_names, protect_value, KeyspaceMetadata, TableMetadata, ColumnMetadata
+from cassandra.metadata import protect_name, protect_names, protect_value, KeyspaceMetadata, TableMetadata, ColumnMetadata, GlobalIndexMetadata
 from cassandra.auth import PlainTextAuthProvider
 
 # cqlsh should run correctly when run out of a Cassandra source tree,
@@ -756,6 +756,13 @@ class Shell(cmd.Cmd):
             for col in self.get_table_meta(ksname, cfname).columns.values():
                 if col.index:
                     idxnames.append(col.index.name)
+        return idxnames
+
+    def get_global_index_names(self, ksname=None):
+        idxnames = []
+        for cfname in self.get_columnfamily_names(ksname=ksname):
+            for gid in self.get_table_meta(ksname, cfname).global_indexes.values():
+                idxnames.append(gid.name)
         return idxnames
 
     def get_column_names(self, ksname, cfname):
