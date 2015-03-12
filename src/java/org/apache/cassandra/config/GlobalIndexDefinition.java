@@ -28,14 +28,14 @@ public class GlobalIndexDefinition
 {
     public String indexName;
     public ColumnIdentifier target;
-    public Collection<ColumnIdentifier> denormalized;
+    public Collection<ColumnIdentifier> included;
 
-    public GlobalIndexDefinition(String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> denormalized)
+    public GlobalIndexDefinition(String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
     {
         assert target != null;
         this.indexName = indexName;
         this.target = target;
-        this.denormalized = denormalized;
+        this.included = included;
     }
 
     public GlobalIndex resolve(CFMetaData cfm)
@@ -43,14 +43,14 @@ public class GlobalIndexDefinition
         ColumnDefinition targetCd = cfm.getColumnDefinition(target);
         assert targetCd != null;
 
-        Collection<ColumnDefinition> denormalizedCds = new ArrayList<>();
-        for (ColumnIdentifier identifier: denormalized)
+        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
+        for (ColumnIdentifier identifier: included)
         {
             ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
             assert cfDef != null;
-            denormalizedCds.add(cfDef);
+            includedDefs.add(cfDef);
         }
 
-        return new GlobalIndex(targetCd, denormalizedCds, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
+        return new GlobalIndex(targetCd, includedDefs, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
 }

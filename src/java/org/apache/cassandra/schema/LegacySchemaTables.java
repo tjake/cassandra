@@ -150,7 +150,7 @@ public class LegacySchemaTables
               + "columnfamily_name text,"
               + "index_name text,"
               + "indexed_column text,"
-              + "denormalized_columns list<text>,"
+              + "included_columns list<text>,"
               + "PRIMARY KEY ((keyspace_name), columnfamily_name, index_name))");
 
     private static final CFMetaData Usertypes =
@@ -1299,8 +1299,8 @@ public class LegacySchemaTables
         Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
         CFRowAdder adder = new CFRowAdder(cells, prefix, timestamp);
         adder.add("indexed_column", globalIndex.target.toString());
-        for (ColumnIdentifier denormalizedColumn: globalIndex.denormalized)
-            adder.addListEntry("denormalized_columns", denormalizedColumn.toString());
+        for (ColumnIdentifier includedColumn: globalIndex.included)
+            adder.addListEntry("included_columns", includedColumn.toString());
     }
 
     private static void dropGlobalIndexFromSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
@@ -1344,14 +1344,14 @@ public class LegacySchemaTables
         {
             String name = row.getString("index_name");
             String indexedColumn = row.getString("indexed_column");
-            List<String> denormalizedColumnNames = row.getList("denormalized_columns", UTF8Type.instance);
-            List<ColumnIdentifier> denormalizedColumns = new ArrayList<>();
-            if (denormalizedColumnNames != null)
+            List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
+            List<ColumnIdentifier> includedColumns = new ArrayList<>();
+            if (includedColumnNames != null)
             {
-                for (String columnName : denormalizedColumnNames)
-                    denormalizedColumns.add(new ColumnIdentifier(columnName, false));
+                for (String columnName : includedColumnNames)
+                    includedColumns.add(new ColumnIdentifier(columnName, false));
             }
-            globalIndexes.add(new GlobalIndexDefinition(name, new ColumnIdentifier(indexedColumn, false), denormalizedColumns));
+            globalIndexes.add(new GlobalIndexDefinition(name, new ColumnIdentifier(indexedColumn, false), includedColumns));
         }
         return globalIndexes;
     }

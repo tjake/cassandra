@@ -46,20 +46,20 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
     private static final Logger logger = LoggerFactory.getLogger(CreateIndexStatement.class);
     private final String indexName;
     private final IndexTarget.Raw rawTarget;
-    private final List<ColumnIdentifier.Raw> denormalized;
+    private final List<ColumnIdentifier.Raw> included;
     private final boolean ifNotExists;
 
 
     public CreateGlobalIndexStatement(CFName name,
                                       IndexName indexName,
                                       IndexTarget.Raw target,
-                                      List<ColumnIdentifier.Raw> denormalized,
+                                      List<ColumnIdentifier.Raw> included,
                                       boolean ifNotExists)
     {
         super(name);
         this.indexName = indexName.getIdx();
         this.rawTarget = target;
-        this.denormalized = denormalized;
+        this.included = included;
         this.ifNotExists = ifNotExists;
     }
 
@@ -81,8 +81,8 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
         if (cd == null)
             throw new InvalidRequestException("No column definition found for column " + target.column);
 
-        // If the denormalized are specified, make sure that they are in the schema
-        for (ColumnIdentifier.Raw dcolumn: denormalized)
+        // If the included are specified, make sure that they are in the schema
+        for (ColumnIdentifier.Raw dcolumn: included)
         {
             ColumnIdentifier column = dcolumn.prepare(cfm);
             if (cfm.getColumnDefinition(column) == null)
@@ -130,17 +130,17 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
             indexName = createIndexName(target);
 
         Collection<ColumnIdentifier> identifiers = new ArrayList<>();
-        Collection<ColumnDefinition> denormalizedCds = new ArrayList<>();
-        for(ColumnIdentifier.Raw rawIdentifer: denormalized)
+        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
+        for(ColumnIdentifier.Raw rawIdentifer: included)
         {
             ColumnIdentifier identifier = rawIdentifer.prepare(cfm);
             identifiers.add(identifier);
             ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
             assert cfDef != null;
-            denormalizedCds.add(cfDef);
+            includedDefs.add(cfDef);
         }
 
-        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(target.column), denormalizedCds);
+        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(target.column), includedDefs);
         MigrationManager.announceNewColumnFamily(indexCfmd, isLocalOnly);
 
         GlobalIndexDefinition definition = new GlobalIndexDefinition(indexName, target.column, identifiers);
