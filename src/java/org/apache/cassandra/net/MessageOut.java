@@ -18,6 +18,7 @@
 
 package org.apache.cassandra.net;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.Collections;
@@ -34,18 +35,22 @@ import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.UUIDGen;
+import org.apache.cassandra.utils.concurrent.OpOrder;
+import org.apache.cassandra.utils.concurrent.Ref;
+import org.apache.cassandra.utils.concurrent.RefCounted;
 
 import static org.apache.cassandra.tracing.Tracing.TRACE_HEADER;
 import static org.apache.cassandra.tracing.Tracing.TRACE_TYPE;
 import static org.apache.cassandra.tracing.Tracing.isTracing;
 
-public class MessageOut<T>
+public class MessageOut<T> implements Closeable
 {
     public final InetAddress from;
     public final MessagingService.Verb verb;
     public final T payload;
     public final IVersionedSerializer<T> serializer;
     public final Map<String, byte[]> parameters;
+    public final OpOrder.Group opGroup;
 
     // we do support messages that just consist of a verb
     public MessageOut(MessagingService.Verb verb)
@@ -61,29 +66,42 @@ public class MessageOut<T>
              isTracing()
                  ? ImmutableMap.of(TRACE_HEADER, UUIDGen.decompose(Tracing.instance.getSessionId()),
                                    TRACE_TYPE, new byte[] { Tracing.TraceType.serialize(Tracing.instance.getTraceType()) })
-                 : Collections.<String, byte[]>emptyMap());
+                 : Collections.<String, byte[]>emptyMap(), null);
     }
 
-    private MessageOut(MessagingService.Verb verb, T payload, IVersionedSerializer<T> serializer, Map<String, byte[]> parameters)
+    public MessageOut(MessagingService.Verb verb, T payload, IVersionedSerializer<T> serializer, OpOrder.Group opGroup)
     {
-        this(FBUtilities.getBroadcastAddress(), verb, payload, serializer, parameters);
+        this(verb,
+                payload,
+                serializer,
+                isTracing()
+                        ? ImmutableMap.of(TRACE_HEADER, UUIDGen.decompose(Tracing.instance.getSessionId()),
+                        TRACE_TYPE, new byte[] { Tracing.TraceType.serialize(Tracing.instance.getTraceType()) })
+                        : Collections.<String, byte[]>emptyMap(), opGroup);
+    }
+
+    private MessageOut(MessagingService.Verb verb, T payload, IVersionedSerializer<T> serializer, Map<String, byte[]> parameters, OpOrder.Group opGroup)
+    {
+        this(FBUtilities.getBroadcastAddress(), verb, payload, serializer, parameters, opGroup);
     }
 
     @VisibleForTesting
-    public MessageOut(InetAddress from, MessagingService.Verb verb, T payload, IVersionedSerializer<T> serializer, Map<String, byte[]> parameters)
+    public MessageOut(InetAddress from, MessagingService.Verb verb, T payload, IVersionedSerializer<T> serializer, Map<String, byte[]> parameters, final OpOrder.Group opGroup)
     {
         this.from = from;
         this.verb = verb;
         this.payload = payload;
         this.serializer = serializer;
         this.parameters = parameters;
+
+        this.opGroup = opGroup;
     }
 
     public MessageOut<T> withParameter(String key, byte[] value)
     {
         ImmutableMap.Builder<String, byte[]> builder = ImmutableMap.builder();
         builder.putAll(parameters).put(key, value);
-        return new MessageOut<T>(verb, payload, serializer, builder.build());
+        return new MessageOut<T>(verb, payload, serializer, builder.build(), null);
     }
 
     public Stage getStage()
@@ -141,5 +159,12 @@ public class MessageOut<T>
         size += TypeSizes.NATIVE.sizeof((int) longSize);
         size += longSize;
         return size;
+    }
+
+    @Override
+    public void close() throws IOException
+    {
+        if (opGroup != null)
+            opGroup.close();
     }
 }

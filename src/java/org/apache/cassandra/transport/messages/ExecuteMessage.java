@@ -28,7 +28,10 @@ import org.apache.cassandra.cql3.CQLStatement;
 import org.apache.cassandra.cql3.QueryHandler;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.statements.ParsedStatement;
+import org.apache.cassandra.cql3.statements.SelectStatement;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
+import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.exceptions.PreparedQueryNotFoundException;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.tracing.Tracing;
@@ -36,6 +39,7 @@ import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.MD5Digest;
 import org.apache.cassandra.utils.UUIDGen;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 
 public class ExecuteMessage extends Message.Request
 {
@@ -89,6 +93,7 @@ public class ExecuteMessage extends Message.Request
 
     public final MD5Digest statementId;
     public final QueryOptions options;
+    private ParsedStatement.Prepared prepared;
 
     public ExecuteMessage(MD5Digest statementId, QueryOptions options)
     {
@@ -97,14 +102,51 @@ public class ExecuteMessage extends Message.Request
         this.options = options;
     }
 
+    @Override
+    public OpOrder.Group getOpGroup(QueryState state)
+    {
+        OpOrder.Group opGroup = null;
+
+        try
+        {
+            QueryHandler handler = state.getClientState().getCQLQueryHandler();
+            prepared = handler.getPrepared(statementId);
+            if (prepared == null)
+                throw new PreparedQueryNotFoundException(statementId);
+
+
+            if (prepared.statement instanceof SelectStatement)
+            {
+                SelectStatement st = (SelectStatement)prepared.statement;
+                ColumnFamilyStore cfs = Keyspace.open(st.keyspace()).getColumnFamilyStore(st.columnFamily());
+
+                opGroup = cfs.readOrdering.start();
+            }
+        }
+        catch (Throwable t)
+        {
+            if (opGroup != null)
+                opGroup.close();
+
+            throw t;
+        }
+
+        return opGroup;
+    }
+
     public Message.Response execute(QueryState state)
     {
         try
         {
             QueryHandler handler = state.getClientState().getCQLQueryHandler();
-            ParsedStatement.Prepared prepared = handler.getPrepared(statementId);
+
+            //We may have already fetched the prepared statement in getOpGroup()
             if (prepared == null)
-                throw new PreparedQueryNotFoundException(statementId);
+            {
+                prepared = handler.getPrepared(statementId);
+                if (prepared == null)
+                    throw new PreparedQueryNotFoundException(statementId);
+            }
 
             options.prepare(prepared.boundNames);
             CQLStatement statement = prepared.statement;

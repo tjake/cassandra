@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.transport.messages.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.utils.JVMStabilityInspector;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 
 /**
  * A message from the CQL binary protocol.
@@ -195,6 +196,13 @@ public abstract class Message
                 throw new IllegalArgumentException();
         }
 
+        //For some requests we need to get an op order group
+        //to avoid corruption (like reading mmaped data)
+        public OpOrder.Group getOpGroup(QueryState state)
+        {
+            return null;
+        }
+
         public abstract Response execute(QueryState queryState);
 
         public void setTracingRequested()
@@ -340,11 +348,14 @@ public abstract class Message
             final ChannelHandlerContext ctx;
             final Object response;
             final Frame sourceFrame;
-            private FlushItem(ChannelHandlerContext ctx, Object response, Frame sourceFrame)
+            final OpOrder.Group opGroup;
+
+            private FlushItem(ChannelHandlerContext ctx, Object response, Frame sourceFrame, OpOrder.Group opGroup)
             {
                 this.ctx = ctx;
                 this.sourceFrame = sourceFrame;
                 this.response = response;
+                this.opGroup = opGroup;
             }
         }
 
@@ -388,7 +399,11 @@ public abstract class Message
                     for (ChannelHandlerContext channel : channels)
                         channel.flush();
                     for (FlushItem item : flushed)
+                    {
                         item.sourceFrame.release();
+                        if (item.opGroup != null)
+                            item.opGroup.close();
+                    }
 
                     channels.clear();
                     flushed.clear();
@@ -427,6 +442,7 @@ public abstract class Message
 
             final Response response;
             final ServerConnection connection;
+            OpOrder.Group opGroup = null;
 
             try
             {
@@ -435,6 +451,8 @@ public abstract class Message
                 QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
                 logger.debug("Received: {}, v={}", request, connection.getVersion());
+
+                opGroup = request.getOpGroup(qstate);
 
                 response = request.execute(qstate);
                 response.setStreamId(request.getStreamId());
@@ -445,12 +463,12 @@ public abstract class Message
             {
                 JVMStabilityInspector.inspectThrowable(t);
                 UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame(), opGroup));
                 return;
             }
 
             logger.debug("Responding: {}, v={}", response, connection.getVersion());
-            flush(new FlushItem(ctx, response, request.getSourceFrame()));
+            flush(new FlushItem(ctx, response, request.getSourceFrame(), opGroup));
         }
 
         private void flush(FlushItem item)

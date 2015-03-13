@@ -368,6 +368,8 @@
           <dependency groupId="org.openjdk.jmh" artifactId="jmh-core" version="1.1.1"/>
           <dependency groupId="org.openjdk.jmh" artifactId="jmh-generator-annprocess" version="1.1.1"/>
 
+	  <dependency groupId="org.jboss.byteman" artifactId="byteman-bmunit" version="2.2.1"/>
+
           <dependency groupId="org.apache.cassandra" artifactId="cassandra-all" version="${version}" />
           <dependency groupId="org.apache.cassandra" artifactId="cassandra-thrift" version="${version}" />
           <dependency groupId="io.dropwizard.metrics" artifactId="metrics-core" version="3.1.0" />
@@ -422,6 +424,7 @@
                 version="${version}"/>
         <dependency groupId="junit" artifactId="junit"/>
         <dependency groupId="org.apache.rat" artifactId="apache-rat"/>
+	<dependency groupId="org.jboss.byteman" artifactId="byteman-bmunit"/>
         <dependency groupId="org.apache.hadoop" artifactId="hadoop-core"/>
       	<dependency groupId="org.apache.hadoop" artifactId="hadoop-minicluster"/>
         <dependency groupId="org.apache.pig" artifactId="pig"/>
@@ -432,7 +435,7 @@
         <dependency groupId="org.caffinitas.ohc" artifactId="ohc-core"/>
         <dependency groupId="org.openjdk.jmh" artifactId="jmh-core"/>
         <dependency groupId="org.openjdk.jmh" artifactId="jmh-generator-annprocess"/>
-	    <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
+	<dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations"/>
       </artifact:pom>
 
       <artifact:pom id="coverage-deps-pom"
@@ -452,6 +455,7 @@
                 version="${version}"/>
         <!-- do NOT remove this, it breaks pig-test -->
         <dependency groupId="joda-time" artifactId="joda-time" version="2.3" />
+	<dependency groupId="org.jboss.byteman" artifactId="byteman-bmunit" version="2.2.1"/>
       </artifact:pom>
 
       <!-- now the pom's for artifacts being deployed to Maven Central -->
@@ -1132,6 +1136,7 @@
         <jvmarg value="-Dcassandra.test.sstableformatdevelopment=true"/>
 	<optjvmargs/>
         <classpath>
+	  <pathelement path="${java.class.path}"/>
           <path refid="cassandra.classpath" />
           <pathelement location="${test.classes}"/>
           <path refid="cobertura.classpath"/>

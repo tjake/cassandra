@@ -24,14 +24,21 @@ import java.util.UUID;
 import com.google.common.collect.ImmutableMap;
 import io.netty.buffer.ByteBuf;
 
+import org.apache.cassandra.cql3.QueryHandler;
 import org.apache.cassandra.cql3.QueryOptions;
+import org.apache.cassandra.cql3.QueryProcessor;
+import org.apache.cassandra.cql3.statements.ParsedStatement;
+import org.apache.cassandra.cql3.statements.SelectStatement;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
+import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.UUIDGen;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 
 /**
  * A CQL query
@@ -81,6 +88,7 @@ public class QueryMessage extends Message.Request
 
     public final String query;
     public final QueryOptions options;
+    private ParsedStatement.Prepared prepared;
 
     public QueryMessage(String query, QueryOptions options)
     {
@@ -89,10 +97,49 @@ public class QueryMessage extends Message.Request
         this.options = options;
     }
 
+    private void maybePreProcess(QueryState state)
+    {
+        if (prepared != null)
+            return;
+
+        prepared = QueryProcessor.getStatement(query, state.getClientState());
+    }
+
+    @Override
+    public OpOrder.Group getOpGroup(QueryState state)
+    {
+        maybePreProcess(state);
+
+        OpOrder.Group opGroup = null;
+
+        try
+        {
+            if (prepared.statement instanceof SelectStatement)
+            {
+                SelectStatement st = (SelectStatement)prepared.statement;
+                ColumnFamilyStore cfs = Keyspace.open(st.keyspace()).getColumnFamilyStore(st.columnFamily());
+
+                opGroup = cfs.readOrdering.start();
+            }
+        }
+        catch (Throwable t)
+        {
+            if (opGroup != null)
+                opGroup.close();
+
+            throw t;
+        }
+
+        return opGroup;
+    }
+
     public Message.Response execute(QueryState state)
     {
         try
         {
+
+            maybePreProcess(state);
+
             if (options.getPageSize() == 0)
                 throw new ProtocolException("The page size cannot be 0");
 
@@ -115,7 +162,7 @@ public class QueryMessage extends Message.Request
                 Tracing.instance.begin("Execute CQL3 query", state.getClientAddress(), builder.build());
             }
 
-            Message.Response response = state.getClientState().getCQLQueryHandler().process(query, state, options);
+            Message.Response response = state.getClientState().getCQLQueryHandler().processPrepared(prepared.statement, state, options);
             if (options.skipMetadata() && response instanceof ResultMessage.Rows)
                 ((ResultMessage.Rows)response).result.metadata.setSkipMetadata();
 

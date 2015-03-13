@@ -142,7 +142,6 @@ public class OutboundTcpConnection extends Thread
                 {
                     throw new AssertionError(e);
                 }
-
             }
             currentMsgBufferCount = drainedMessages.size();
 
@@ -166,6 +165,9 @@ public class OutboundTcpConnection extends Thread
                     else
                         // clear out the queue, else gossip messages back up.
                         backlog.clear();
+
+                    //FIXME: Need to deal with clearing backlog above
+                    qm.message.close();
                 }
                 catch (Exception e)
                 {

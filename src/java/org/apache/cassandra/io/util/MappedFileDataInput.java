@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MappedFileDataInput extends AbstractDataInput implements FileDataInput, DataInput
@@ -132,11 +133,20 @@ public class MappedFileDataInput extends AbstractDataInput implements FileDataIn
         bytes.position(buffer.position() + position).limit(buffer.position() + position + length);
         position += length;
 
-        // we have to copy the data in case we unreference the underlying sstable.  See CASSANDRA-3179
-        ByteBuffer clone = ByteBuffer.allocate(bytes.remaining());
-        clone.put(bytes);
-        clone.flip();
-        return clone;
+        // We haven't protected the code for thrift reads so this
+        // copys the bytes if thrift server is enabled
+        if (StorageService.instance.isRPCServerRunning())
+        {
+            // we have to copy the data in case we unreference the underlying sstable.  See CASSANDRA-3179
+            ByteBuffer clone = ByteBuffer.allocate(bytes.remaining());
+            clone.put(bytes);
+            clone.flip();
+            return clone;
+        }
+        else
+        {
+            return bytes;
+        }
     }
 
     @Override

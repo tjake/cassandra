@@ -17,12 +17,15 @@
  */
 package org.apache.cassandra.db;
 
+import org.apache.cassandra.config.Config;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.MessageIn;
 import org.apache.cassandra.net.MessageOut;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 
 public class ReadVerbHandler implements IVerbHandler<ReadCommand>
 {
@@ -35,13 +38,29 @@ public class ReadVerbHandler implements IVerbHandler<ReadCommand>
 
         ReadCommand command = message.payload;
         Keyspace keyspace = Keyspace.open(command.ksName);
-        Row row = command.getRow(keyspace);
 
-        MessageOut<ReadResponse> reply = new MessageOut<ReadResponse>(MessagingService.Verb.REQUEST_RESPONSE,
-                                                                      getResponse(command, row),
-                                                                      ReadResponse.serializer);
-        Tracing.trace("Enqueuing response to {}", message.from);
-        MessagingService.instance().sendReply(reply, id, message.from);
+        OpOrder.Group barrier = null;
+        try
+        {
+            // We need to make sure we don't unmap the data before we send the response
+            if (DatabaseDescriptor.getDiskAccessMode() == Config.DiskAccessMode.mmap)
+                barrier = keyspace.getColumnFamilyStore(command.getColumnFamilyName()).readOrdering.start();
+
+            Row row = command.getRow(keyspace);
+
+            MessageOut<ReadResponse> reply = new MessageOut<>(MessagingService.Verb.REQUEST_RESPONSE,
+                    getResponse(command, row),
+                    ReadResponse.serializer, barrier);
+            Tracing.trace("Enqueuing response to {}", message.from);
+            MessagingService.instance().sendReply(reply, id, message.from);
+        }
+        catch (Throwable t)
+        {
+            if (barrier != null)
+                barrier.close();
+
+            throw t;
+        }
     }
 
     public static ReadResponse getResponse(ReadCommand command, Row row)

@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Predicate;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
@@ -69,7 +70,9 @@ public class StorageProxy implements StorageProxyMBean
 {
     public static final String MBEAN_NAME = "org.apache.cassandra.db:type=StorageProxy";
     private static final Logger logger = LoggerFactory.getLogger(StorageProxy.class);
-    static final boolean OPTIMIZE_LOCAL_REQUESTS = true; // set to false to test messagingservice path on single node
+
+    @VisibleForTesting
+    public static boolean OPTIMIZE_LOCAL_REQUESTS = true; // set to false to test messagingservice path on single node
 
     public static final String UNREACHABLE = "UNREACHABLE";
 
@@ -1182,7 +1185,6 @@ public class StorageProxy implements StorageProxyMBean
             readMetrics.unavailables.mark();
             throw new IsBootstrappingException();
         }
-
         return consistencyLevel.isSerialConsistency()
              ? readWithPaxos(commands, consistencyLevel, state)
              : readRegular(commands, consistencyLevel);
