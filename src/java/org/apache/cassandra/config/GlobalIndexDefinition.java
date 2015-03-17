@@ -70,4 +70,14 @@ public class GlobalIndexDefinition
 
         return false;
     }
+
+    public GlobalIndexDefinition copy()
+    {
+        Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included.size());
+        for (ColumnIdentifier include: included)
+        {
+            copyIncluded.add(include);
+        }
+        return new GlobalIndexDefinition(indexName, target, copyIncluded);
+    }
 }

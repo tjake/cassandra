@@ -328,6 +328,20 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     }
                     else
                     {
+                        ColumnIdentifier toDelete = null;
+                        GlobalIndexDefinition copyGi = gi.copy();
+                        for (ColumnIdentifier ci : copyGi.included)
+                        {
+                            if (ci.bytes.compareTo(def.name.bytes) == 0)
+                            {
+                                toDelete = ci;
+                                break;
+                            }
+                        }
+                        copyGi.included.remove(toDelete);
+
+                        cfm.replaceGlobalIndex(copyGi);
+
                         indexCfm.removeColumnDefinition(indexDef);
                         indexCfm.recordColumnDrop(indexDef);
 
