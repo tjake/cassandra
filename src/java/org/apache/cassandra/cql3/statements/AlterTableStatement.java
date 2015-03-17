@@ -26,6 +26,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
@@ -89,19 +90,8 @@ public class AlterTableStatement extends SchemaAlteringStatement
             def = cfm.getColumnDefinition(columnName);
         }
 
-        // Disallow a globally indexed column from being dropped or modified.
-        if (def != null)
-        {
-            for (GlobalIndexDefinition globalIndexDefinition: cfm.getGlobalIndexes().values())
-            {
-                if (globalIndexDefinition.target.bytes.compareTo(def.name.bytes) == 0)
-                    throw new InvalidRequestException(String.format("Cannot %s %s which is globally indexed; drop global index %s.%s first",
-                                                                    oType,
-                                                                    globalIndexDefinition.target.toString(),
-                                                                    cfm.ksName,
-                                                                    globalIndexDefinition.indexName));
-            }
-        }
+        List<CFMetaData> globalIndexUpdates = null;
+        List<CFMetaData> globalIndexDrops = null;
 
         switch (oType)
         {
@@ -160,6 +150,22 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 cfm.addColumnDefinition(isStatic
                                         ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
                                         : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
+
+                for (GlobalIndexDefinition indexDef: cfm.getGlobalIndexes().values())
+                {
+                    if (indexDef.included.isEmpty())
+                    {
+                        CFMetaData indexCfm = indexDef.resolve(meta).indexCfs.metadata.copy();
+                        componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
+                        indexCfm.addColumnDefinition(isStatic
+                                                     ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
+                                                     : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
+                        if (globalIndexUpdates == null)
+                            globalIndexUpdates = new ArrayList<>();
+                        globalIndexUpdates.add(indexCfm);
+                    }
+                }
+
                 break;
 
             case ALTER:
@@ -242,6 +248,35 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 }
                 // In any case, we update the column definition
                 cfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
+
+                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                {
+                    if (!gi.indexes(columnName)) continue;
+                    // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
+                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
+
+                    // see the above rules about changing types
+                    if (indexDef.isPrimaryKeyColumn())
+                    {
+                        indexCfm.keyValidator(validatorType);
+                        indexCfm.addOrReplaceColumnDefinition(indexDef.withNewType(validatorType));
+                    }
+                    else
+                    {
+                        if (indexDef.isClusteringColumn())
+                        {
+                            indexCfm.comparator = indexCfm.comparator.setSubtype(indexDef.position(), validatorType);
+                        }
+
+                        // When handling collections, need to update collection validator
+                        indexCfm.addOrReplaceColumnDefinition(indexDef.withNewType(validatorType));
+                    }
+
+                    if (globalIndexUpdates == null)
+                        globalIndexUpdates = new ArrayList<>();
+                    globalIndexUpdates.add(indexCfm);
+                }
                 break;
 
             case DROP:
@@ -272,6 +307,35 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         cfm.recordColumnDrop(toDelete);
                         break;
                 }
+
+                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                {
+                    if (!gi.indexes(columnName)) continue;
+
+                    // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
+                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
+
+                    assert !indexDef.isClusteringColumn() : "Global Index clustering columns should be undroppable because they are PRIMARY KEY on data table";
+                    // otherwise, at least a column was dropped, at most the whole global index
+                    if (indexDef.isPrimaryKeyColumn())
+                    {
+                        // index must be dropped
+                        if (globalIndexDrops == null)
+                            globalIndexDrops = new ArrayList<>();
+                        globalIndexDrops.add(indexCfm);
+                        cfm.removeGlobalIndex(gi.indexName);
+                    }
+                    else
+                    {
+                        indexCfm.removeColumnDefinition(indexDef);
+                        indexCfm.recordColumnDrop(indexDef);
+
+                        if (globalIndexUpdates == null)
+                            globalIndexUpdates = new ArrayList<>();
+                        globalIndexUpdates.add(indexCfm);
+                    }
+                }
                 break;
             case OPTS:
                 if (cfProps == null)
@@ -283,6 +347,14 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException("Cannot set default_time_to_live on a table with counters");
 
                 cfProps.applyToCFMetadata(cfm);
+                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                {
+                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    cfProps.applyToCFMetadata(indexCfm);
+                    if (globalIndexUpdates == null)
+                        globalIndexUpdates = new ArrayList<>();
+                    globalIndexUpdates.add(indexCfm);
+                }
                 break;
             case RENAME:
                 for (Map.Entry<ColumnIdentifier.Raw, ColumnIdentifier.Raw> entry : renames.entrySet())
@@ -290,8 +362,31 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     ColumnIdentifier from = entry.getKey().prepare(cfm);
                     ColumnIdentifier to = entry.getValue().prepare(cfm);
                     cfm.renameColumn(from, to);
+
+                    for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                    {
+                        CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                        ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
+                        ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
+                        indexCfm.renameColumn(indexFrom, indexTo);
+
+                        if (globalIndexUpdates == null)
+                            globalIndexUpdates = new ArrayList<>();
+                        globalIndexUpdates.add(indexCfm);
+                    }
                 }
                 break;
+        }
+
+        if (globalIndexUpdates != null)
+        {
+            for (CFMetaData giUpdates : globalIndexUpdates)
+                MigrationManager.announceColumnFamilyUpdate(giUpdates, false, isLocalOnly);
+        }
+        if (globalIndexDrops != null)
+        {
+            for (CFMetaData giDrops : globalIndexDrops)
+                MigrationManager.announceColumnFamilyDrop(giDrops.ksName, giDrops.cfName, isLocalOnly);
         }
 
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);

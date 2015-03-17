@@ -53,4 +53,21 @@ public class GlobalIndexDefinition
 
         return new GlobalIndex(targetCd, includedDefs, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
+
+    public boolean indexes(ColumnIdentifier def)
+    {
+        if (target.bytes.compareTo(def.bytes) == 0)
+            return true;
+
+        if (included.isEmpty())
+            return true;
+
+        for (ColumnIdentifier identifier: included)
+        {
+            if (identifier.bytes.compareTo(def.bytes) == 0)
+                return true;
+        }
+
+        return false;
+    }
 }
