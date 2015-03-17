@@ -158,8 +158,8 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         CFMetaData indexCfm = indexDef.resolve(meta).indexCfs.metadata.copy();
                         componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
                         indexCfm.addColumnDefinition(isStatic
-                                                     ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
-                                                     : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
+                                                     ? ColumnDefinition.staticDef(indexCfm, columnName.bytes, type, componentIndex)
+                                                     : ColumnDefinition.regularDef(indexCfm, columnName.bytes, type, componentIndex));
                         if (globalIndexUpdates == null)
                             globalIndexUpdates = new ArrayList<>();
                         globalIndexUpdates.add(indexCfm);
