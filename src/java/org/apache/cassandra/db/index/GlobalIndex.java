@@ -279,7 +279,7 @@ public class GlobalIndex
     private Mutation createTombstone(MutationUnit mutationUnit, long timestamp)
     {
         // Need to generate a tombstone in this case
-        ByteBuffer partitionKey = mutationUnit.value(target);
+        ByteBuffer partitionKey = mutationUnit.oldValueIfUpdated(target.name);
 
         Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
         ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
@@ -319,6 +319,12 @@ public class GlobalIndex
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
         ByteBuffer partitionKey = mutationUnit.value(target);
+        if (partitionKey == null)
+        {
+            // Not having a partition key means we aren't updating anything
+            return null;
+        }
+
         ByteBuffer[] clusteringColumns = new ByteBuffer[clusteringKeys.size()];
         ByteBuffer[] regularColumns = new ByteBuffer[this.regularColumns.size()];
         ByteBuffer[] staticColumns = new ByteBuffer[this.staticColumns.size()];

@@ -61,7 +61,8 @@ public class GlobalIndexBuilder implements Runnable
         {
             ColumnFamily cf = columnFamilies.next();
             Collection<Mutation> mutations = index.createMutations(key.getKey(), cf, ConsistencyLevel.ONE, true);
-            StorageProxy.mutate(mutations, ConsistencyLevel.ONE);
+            if (mutations != null)
+                StorageProxy.mutate(mutations, ConsistencyLevel.ONE);
         }
     }
 
