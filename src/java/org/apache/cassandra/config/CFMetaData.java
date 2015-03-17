@@ -1214,12 +1214,19 @@ public final class CFMetaData
 
     public void addGlobalIndex(GlobalIndexDefinition def)
     {
+        if (globalIndexes.containsKey(def.indexName))
+            throw new InvalidRequestException(String.format("Cannot create global index %s, a global index with the same name already exists", def.indexName));
         globalIndexes.put(def.indexName, def);
     }
 
     public void removeGlobalIndex(String name)
     {
         globalIndexes.remove(name);
+    }
+
+    public void replaceGlobalIndex(GlobalIndexDefinition def)
+    {
+        globalIndexes.put(def.indexName, def);
     }
 
     public void recordColumnDrop(ColumnDefinition def)
