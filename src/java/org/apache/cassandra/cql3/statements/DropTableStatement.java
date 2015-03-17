@@ -18,10 +18,16 @@
 package org.apache.cassandra.cql3.statements;
 
 import org.apache.cassandra.auth.Permission;
+import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.CFName;
+import org.apache.cassandra.db.SystemKeyspace;
+import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.UnauthorizedException;
+import org.apache.cassandra.schema.LegacySchemaTables;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.transport.Event;
@@ -58,6 +64,15 @@ public class DropTableStatement extends SchemaAlteringStatement
     {
         try
         {
+            CFMetaData cfm = Schema.instance.getCFMetaData(keyspace(), columnFamily());
+            if (cfm != null)
+            {
+                for (GlobalIndexDefinition def : cfm.getGlobalIndexes().values())
+                {
+                    CFMetaData indexCFM = def.resolve(cfm).indexCfs.metadata;
+                    MigrationManager.announceColumnFamilyDrop(keyspace(), indexCFM.cfName);
+                }
+            }
             MigrationManager.announceColumnFamilyDrop(keyspace(), columnFamily(), isLocalOnly);
             return true;
         }
