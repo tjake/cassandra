@@ -29,6 +29,8 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
+import org.apache.cassandra.db.index.GlobalIndex;
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -97,6 +99,15 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
      */
     protected abstract boolean isSupportedBy(SecondaryIndex index);
 
+    /**
+     * Check if this type of restriction is supported by the specified index.
+     *
+     * @param index the global index
+     * @return <code>true</code> this type of restriction is supported by the specified index,
+     * <code>false</code> otherwise.
+     */
+    protected abstract boolean isSupportedBy(GlobalIndex index);
+
     public static final class EQ extends SingleColumnRestriction
     {
         private final Term value;
@@ -146,11 +157,11 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         @Override
         public Restriction doMergeWith(Restriction otherRestriction) throws InvalidRequestException
         {
-            throw invalidRequest("%s cannot be restricted by more than one relation if it includes an Equal", columnDef.name);
+            return index.supportsOperator(Operator.EQ);
         }
 
         @Override
-        protected boolean isSupportedBy(SecondaryIndex index)
+        protected boolean isSupportedBy(GlobalIndex index)
         {
             return index.supportsOperator(Operator.EQ);
         }
