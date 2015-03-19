@@ -633,14 +633,14 @@ public class StorageProxy implements StorageProxyMBean
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
         if (augmented != null)
         {
-            Collection<Mutation> giMutations = GlobalIndexManager.instance.createMutations(augmented, consistencyLevel);
+            Collection<Mutation> giMutations = GlobalIndexManager.createMutations(augmented, consistencyLevel);
             if (giMutations != null)
                 mutateAtomically(giMutations, consistencyLevel);
             else mutateAtomically(augmented, consistencyLevel);
         }
         else
         {
-            Collection<Mutation> giMutations = GlobalIndexManager.instance.createMutations(mutations, consistencyLevel);
+            Collection<Mutation> giMutations = GlobalIndexManager.createMutations(mutations, consistencyLevel);
             if (giMutations != null)
                 mutate(giMutations, consistencyLevel);
             else if (mutateAtomically)
