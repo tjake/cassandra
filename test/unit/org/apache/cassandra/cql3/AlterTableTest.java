@@ -21,45 +21,45 @@ import org.junit.Test;
 
 public class AlterTableTest extends CQLTester
 {
-    @Test
-    public void testAddList() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY, content text);");
-        execute("ALTER TABLE %s ADD myCollection list<text>;");
-        execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
+    //@Test
+    //public void testAddList() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY, content text);");
+    //    execute("ALTER TABLE %s ADD myCollection list<text>;");
+    //    execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
 
-        assertRows(execute("SELECT * FROM %s;"), row("test", "first test", list("first element")));
-    }
+    //    assertRows(execute("SELECT * FROM %s;"), row("test", "first test", list("first element")));
+    //}
 
-    @Test
-    public void testDropList() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection list<text>);");
-        execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
-        execute("ALTER TABLE %s DROP myCollection;");
+    //@Test
+    //public void testDropList() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection list<text>);");
+    //    execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
+    //    execute("ALTER TABLE %s DROP myCollection;");
 
-        assertRows(execute("SELECT * FROM %s;"), row("test", "first test"));
-    }
+    //    assertRows(execute("SELECT * FROM %s;"), row("test", "first test"));
+    //}
 
-    @Test
-    public void testAddMap() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY, content text);");
-        execute("ALTER TABLE %s ADD myCollection map<text, text>;");
-        execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', { '1' : 'first element'});");
+    //@Test
+    //public void testAddMap() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY, content text);");
+    //    execute("ALTER TABLE %s ADD myCollection map<text, text>;");
+    //    execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', { '1' : 'first element'});");
 
-        assertRows(execute("SELECT * FROM %s;"), row("test", "first test", map("1", "first element")));
-    }
+    //    assertRows(execute("SELECT * FROM %s;"), row("test", "first test", map("1", "first element")));
+    //}
 
-    @Test
-    public void testDropMap() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection map<text, text>);");
-        execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', { '1' : 'first element'});");
-        execute("ALTER TABLE %s DROP myCollection;");
+    //@Test
+    //public void testDropMap() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection map<text, text>);");
+    //    execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', { '1' : 'first element'});");
+    //    execute("ALTER TABLE %s DROP myCollection;");
 
-        assertRows(execute("SELECT * FROM %s;"), row("test", "first test"));
-    }
+    //    assertRows(execute("SELECT * FROM %s;"), row("test", "first test"));
+    //}
 
     @Test
     public void testDropListAndAddListWithSameName() throws Throwable
@@ -74,22 +74,22 @@ public class AlterTableTest extends CQLTester
         assertRows(execute("SELECT * FROM %s;"), row("test", "first test", list("second element")));
     }
 
-    @Test
-    public void testDropListAndAddMapWithSameName() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection list<text>);");
-        execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
-        execute("ALTER TABLE %s DROP myCollection;");
+    //@Test
+    //public void testDropListAndAddMapWithSameName() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY, content text, myCollection list<text>);");
+    //    execute("INSERT INTO %s (id, content , myCollection) VALUES ('test', 'first test', ['first element']);");
+    //    execute("ALTER TABLE %s DROP myCollection;");
 
-        assertInvalid("ALTER TABLE %s ADD myCollection map<int, int>;");
-    }
+    //    assertInvalid("ALTER TABLE %s ADD myCollection map<int, int>;");
+    //}
 
-    @Test
-    public void testChangeStrategyWithUnquotedAgrument() throws Throwable
-    {
-        createTable("CREATE TABLE %s (id text PRIMARY KEY);");
+    //@Test
+    //public void testChangeStrategyWithUnquotedAgrument() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s (id text PRIMARY KEY);");
 
-        assertInvalidSyntaxMessage("no viable alternative at input '}'",
-                                   "ALTER TABLE %s WITH caching = {'keys' : 'all', 'rows_per_partition' : ALL};");
-    }
+    //    assertInvalidSyntaxMessage("no viable alternative at input '}'",
+    //                               "ALTER TABLE %s WITH caching = {'keys' : 'all', 'rows_per_partition' : ALL};");
+    //}
 }

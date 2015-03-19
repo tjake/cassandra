@@ -531,12 +531,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         {
             if (def.isIndexed())
             {
-                ClusteringComparator cc = SecondaryIndex.getIndexComparator(metadata, def);
-                if (cc != null)
-                {
-                    CFMetaData indexMetadata = CFMetaData.newIndexMetadata(metadata, def, cc);
+                CFMetaData indexMetadata = SecondaryIndex.newIndexMetadata(metadata, def);
+                if (indexMetadata != null)
                     scrubDataDirectories(indexMetadata);
-                }
             }
         }
     }
