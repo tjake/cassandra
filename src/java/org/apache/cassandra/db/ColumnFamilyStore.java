@@ -164,6 +164,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     private final AtomicInteger fileIndexGenerator = new AtomicInteger(0);
 
     public final SecondaryIndexManager indexManager;
+    public final GlobalIndexManager globalIndexManager;
 
     /* These are locally held copies to be changed from the config during runtime */
     private volatile DefaultInteger minCompactionThreshold;
@@ -200,7 +201,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
         indexManager.reload();
 
-        GlobalIndexManager.instance.reload(this);
+        globalIndexManager.reload();
 
         // If the CF comparator has changed, we need to change the memtable,
         // because the old one still aliases the previous comparator.
@@ -309,6 +310,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         this.partitioner = partitioner;
         this.directories = directories;
         this.indexManager = new SecondaryIndexManager(this);
+        this.globalIndexManager = new GlobalIndexManager(this);
         this.metric = new ColumnFamilyMetrics(this);
         fileIndexGenerator.set(generation);
         sampleLatencyNanos = DatabaseDescriptor.getReadRpcTimeout() / 2;
