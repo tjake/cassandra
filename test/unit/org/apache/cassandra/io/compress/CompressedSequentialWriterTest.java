@@ -78,7 +78,7 @@ public class CompressedSequentialWriterTest
 
         try
         {
-            MetadataCollector sstableMetadataCollector = new MetadataCollector(new ClusteringComparator(Arrays.<AbstractType<?>>asList(BytesType.instance), true, false)).replayPosition(null);
+            MetadataCollector sstableMetadataCollector = new MetadataCollector(new ClusteringComparator(Arrays.<AbstractType<?>>asList(BytesType.instance))).replayPosition(null);
             CompressedSequentialWriter writer = new CompressedSequentialWriter(f, filename + ".metadata", new CompressionParameters(compressor), sstableMetadataCollector);
 
             byte[] dataPre = new byte[bytesToTest];
