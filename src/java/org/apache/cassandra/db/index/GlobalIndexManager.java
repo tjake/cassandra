@@ -41,6 +41,11 @@ public class GlobalIndexManager
         this.baseCfs = baseCfs;
     }
 
+    public GlobalIndex getIndexForColumn(ByteBuffer columnName)
+    {
+        return null;
+    }
+
     private GlobalIndex resolveIndex(GlobalIndexDefinition definition)
     {
         if (globalIndexMap.containsKey(definition.indexName))

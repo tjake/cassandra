@@ -28,6 +28,7 @@ import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CompositesBuilder;
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -81,9 +82,9 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
     }
 
     @Override
-    public List<ByteBuffer> values(QueryOptions options) throws InvalidRequestException
+    public boolean hasSupportingIndex(GlobalIndexManager globalIndexManager)
     {
-        return getDelegate().values(options);
+        return getDelegate().hasSupportingIndex(globalIndexManager);
     }
 
     @Override

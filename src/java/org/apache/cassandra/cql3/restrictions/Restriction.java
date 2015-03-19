@@ -26,6 +26,7 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -97,12 +98,20 @@ public interface Restriction
     public Restriction mergeWith(Restriction otherRestriction) throws InvalidRequestException;
 
     /**
-     * Check if the restriction is on indexed columns.
+     * Check if the restriction is on secondary indexed columns.
      *
-     * @param indexManager the index manager
-     * @return <code>true</code> if the restriction is on indexed columns, <code>false</code>
+     * @param indexManager the secondary index manager
+     * @return <code>true</code> if the restriction is on secondary indexed columns, <code>false</code> otherwise
      */
     public boolean hasSupportingIndex(SecondaryIndexManager indexManager);
+
+    /**
+     * Check if the restriction is on globally indexed columns.
+     *
+     * @param indexManager the global index manager
+     * @return <code>true</code> if the restriction is on globally indexed columns, <code>false</code> otherwise
+     */
+    public boolean hasSupportingIndex(GlobalIndexManager indexManager);
 
     /**
      * Adds to the specified list the <code>IndexExpression</code>s corresponding to this <code>Restriction</code>.
