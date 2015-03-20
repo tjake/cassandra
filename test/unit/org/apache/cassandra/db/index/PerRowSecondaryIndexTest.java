@@ -112,12 +112,11 @@ public class PerRowSecondaryIndexTest
         // issue a column delete and test that the configured index instance was notified to update
         CFMetaData cfm = Schema.instance.getCFMetaData(KEYSPACE1, CF_INDEXED);
 
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), "k2");
-        ColumnDefinition cdef = cfm.getColumnDefinition(new ColumnIdentifier("indexed", true));
-
-
-        builder.delete(cdef);
-        builder.build().apply();
+        new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), "k2")
+            .noRowMarker()
+            .delete("indexed")
+            .build()
+            .apply();
 
         AtomIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
         assertNotNull(indexedRow);

@@ -45,14 +45,7 @@ public class CompositesIndexOnCollectionValue extends CompositesIndex
 {
     public static void addClusteringColumns(CFMetaData.Builder indexMetadata, CFMetaData baseMetadata, ColumnDefinition columnDef)
     {
-        indexMetadata.addClusteringColumn("partition_key", SecondaryIndex.keyComparator);
-
-        List<ColumnDefinition> cks = baseMetadata.clusteringColumns();
-        for (int i = 0; i < columnDef.position(); i++)
-        {
-            ColumnDefinition def = cks.get(i);
-            indexMetadata.addClusteringColumn(def.name, def.type);
-        }
+        addGenericClusteringColumns(indexMetadata, baseMetadata, columnDef);
 
         // collection key
         indexMetadata.addClusteringColumn("cell_path", ((CollectionType)columnDef.type).nameComparator());
@@ -73,7 +66,7 @@ public class CompositesIndexOnCollectionValue extends CompositesIndex
     {
         CBuilder builder = CBuilder.create(getIndexComparator());
         builder.add(rowKey);
-        for (int i = 0; i < Math.min(columnDef.position(), prefix.size()); i++)
+        for (int i = 0; i < prefix.size(); i++)
             builder.add(prefix.get(i));
 
         // When indexing, cell will be present, but when searching, it won't  (CASSANDRA-7525)
@@ -85,10 +78,9 @@ public class CompositesIndexOnCollectionValue extends CompositesIndex
 
     public IndexedEntry decodeEntry(DecoratedKey indexedValue, Row indexEntry)
     {
-        int prefixSize = columnDef.position();
         Clustering clustering = indexEntry.clustering();
         CBuilder builder = CBuilder.create(baseCfs.getComparator());
-        for (int i = 0; i < prefixSize; i++)
+        for (int i = 0; i < baseCfs.getComparator().size(); i++)
             builder.add(clustering.get(i + 1));
         return new IndexedEntry(indexedValue, clustering, indexEntry.partitionKeyLivenessInfo().timestamp(), clustering.get(0), builder.build());
     }

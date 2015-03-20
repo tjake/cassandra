@@ -369,8 +369,7 @@ public class SchemaLoader
                                                       SecondaryIndex.CUSTOM_INDEX_OPTION_NAME,
                                                       PerRowSecondaryIndexTest.TestIndex.class.getName());
 
-        //This isn't dense
-        CFMetaData cfm =  CFMetaData.Builder.create(ksName, cfName, false, false, false)
+        CFMetaData cfm =  CFMetaData.Builder.create(ksName, cfName)
                 .addPartitionKey("key", AsciiType.instance)
                 .build();
 
