@@ -34,6 +34,7 @@ import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
+import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -127,13 +128,25 @@ public class CreateTableStatement extends SchemaAlteringStatement
         for (int i = 0; i < columnAliases.size(); i++)
             builder.addClusteringColumn(columnAliases.get(i), clusteringTypes.get(i));
 
+        boolean isCompactStorage = isDense || !isCompound;
         for (Map.Entry<ColumnIdentifier, AbstractType> entry : columns.entrySet())
         {
             ColumnIdentifier name = entry.getKey();
-            if (staticColumns.contains(name))
+            // Note that for "static" no-clustering compact storage we use static for the defined columns
+            if (staticColumns.contains(name) || (!isDense && !isCompound))
                 builder.addStaticColumn(name, entry.getValue());
             else
                 builder.addRegularColumn(name, entry.getValue());
+        }
+
+        // If we're in the compact storage without clustering case, we still want to add a clustering and a regular
+        // column to match our "generic" compact layout (which we'll need if dynamic columns are added through thrift).
+        if (!isDense && !isCompound)
+        {
+            // For the comparator, we use UTF8 because that's what the column names are. For the value, we use
+            // BytesType to be as generic as possible.
+            builder.addClusteringColumn(ThriftConversion.DEFAULT_CLUSTERING_ALIAS + 1, UTF8Type.instance);
+            builder.addRegularColumn(ThriftConversion.DEFAULT_VALUE_ALIAS, BytesType.instance);
         }
         return builder;
     }
@@ -273,29 +286,30 @@ public class CreateTableStatement extends SchemaAlteringStatement
                     if (stmt.columns.isEmpty())
                         throw new InvalidRequestException("No definition found that is not part of the PRIMARY KEY");
                 }
-            }
 
-            if (stmt.clusteringTypes.isEmpty() && !staticColumns.isEmpty())
-            {
-                // Static columns only make sense if we have at least one clustering column. Otherwise everything is static anyway
-                if (columnAliases.isEmpty())
-                    throw new InvalidRequestException("Static columns are only useful (and thus allowed) if the table has at least one clustering column");
-            }
-
-            if (stmt.isDense)
-            {
-                // We can have no columns (only the PK), but we can't have more than one.
-                if (stmt.columns.size() > 1)
-                    throw new InvalidRequestException(String.format("COMPACT STORAGE with composite PRIMARY KEY allows no more than one column not part of the PRIMARY KEY (got: %s)", StringUtils.join(stmt.columns.keySet(), ", ")));
+                if (stmt.isDense)
+                {
+                    // We can have no columns (only the PK), but we can't have more than one.
+                    if (stmt.columns.size() > 1)
+                        throw new InvalidRequestException(String.format("COMPACT STORAGE with composite PRIMARY KEY allows no more than one column not part of the PRIMARY KEY (got: %s)", StringUtils.join(stmt.columns.keySet(), ", ")));
+                }
+                else
+                {
+                    // we are in the "static" case, so we need at least one column defined. For non-compact however, having
+                    // just the PK is fine.
+                    if (stmt.columns.isEmpty())
+                        throw new InvalidRequestException("COMPACT STORAGE with non-composite PRIMARY KEY require one column not part of the PRIMARY KEY, none given");
+                }
             }
             else
             {
-                // For compact, we are in the "static" case, so we need at least one column defined. For non-compact however, having
-                // just the PK is fine.
-                if (useCompactStorage && stmt.columns.isEmpty())
-                    throw new InvalidRequestException("COMPACT STORAGE with non-composite PRIMARY KEY require one column not part of the PRIMARY KEY, none given");
+                if (stmt.clusteringTypes.isEmpty() && !staticColumns.isEmpty())
+                {
+                    // Static columns only make sense if we have at least one clustering column. Otherwise everything is static anyway
+                    if (columnAliases.isEmpty())
+                        throw new InvalidRequestException("Static columns are only useful (and thus allowed) if the table has at least one clustering column");
+                }
             }
-
 
             // If we give a clustering order, we must explicitly do so for all aliases and in the order of the PK
             if (!definedOrdering.isEmpty())

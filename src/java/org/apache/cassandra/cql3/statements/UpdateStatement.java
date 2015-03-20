@@ -68,7 +68,7 @@ public class UpdateStatement extends ModificationStatement
             // the case of a COMPACT TABLE with only a PK: we allow that because we can translate it to a thrift
             // table with a single cell having an empty value. In that case, since we don't have any column, we
             // do want to set the row timestamp.
-            if (type == StatementType.INSERT && (cfm.isCQL3Table() || cfm.partitionColumns().isEmpty()))
+            if (type == StatementType.INSERT && (cfm.isCQLTable() || cfm.partitionColumns().isEmpty()))
                 params.writePartitionKeyLivenessInfo(writer);
 
             List<Operation> updates = getRegularOperations();

@@ -223,7 +223,7 @@ public class ThriftConversion
             AbstractType<?> keyValidator = cf_def.isSetKey_validation_class() ? TypeParser.parse(cf_def.key_validation_class) : BytesType.instance;
             AbstractType<?> defaultValidator = TypeParser.parse(cf_def.default_validation_class);
 
-            // Convert the REGULAR definitions from the input CfDef
+            // Convert the definitions from the input CfDef
             List<ColumnDefinition> defs = fromThrift(cf_def.keyspace, cf_def.name, rawComparator, subComparator, cf_def.column_metadata);
 
             // Add the keyAlias if there is one, since that's a CQL metadata that thrift can actually change (for
@@ -236,7 +236,7 @@ public class ThriftConversion
             for (ColumnDefinition def : previousCQLMetadata)
             {
                 // isPartOfCellName basically means 'is not just a CQL metadata'
-                if (def.isPartOfCellName())
+                if (def.isPartOfCellName(false, isSuper))
                     continue;
 
                 if (def.kind == ColumnDefinition.Kind.PARTITION_KEY && hasKeyAlias)
@@ -261,11 +261,9 @@ public class ThriftConversion
                                       hasKeyAlias ? null : keyValidator,
                                       rawComparator,
                                       subComparator,
-                                      isDense ? defaultValidator : null);
+                                      defaultValidator);
 
             CFMetaData newCFMD = CFMetaData.create(cf_def.keyspace, cf_def.name, cfId, isDense, isCompound, isSuper, isCounter, defs);
-            if (!isDense && !isCompound)
-                newCFMD.columnNameComparator = rawComparator;
 
             if (cf_def.isSetGc_grace_seconds())
                 newCFMD.gcGraceSeconds(cf_def.gc_grace_seconds);
@@ -336,16 +334,12 @@ public class ThriftConversion
 
         if (subComparator == null)
         {
-            if (comparator instanceof CompositeType)
-            {
-                List<AbstractType<?>> subTypes = ((CompositeType)comparator).types;
-                for (int i = 0; i < subTypes.size(); i++)
-                    defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + (i + 1), subTypes.get(i), i));
-            }
-            else
-            {
-                defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS, comparator, null));
-            }
+            List<AbstractType<?>> subTypes = comparator instanceof CompositeType
+                                           ? ((CompositeType)comparator).types
+                                           : Collections.<AbstractType<?>>singletonList(comparator);
+
+            for (int i = 0; i < subTypes.size(); i++)
+                defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + (i + 1), subTypes.get(i), i));
         }
         else
         {
@@ -353,8 +347,7 @@ public class ThriftConversion
             defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + 2, subComparator, 1));
         }
 
-        if (defaultValidator != null)
-            defs.add(ColumnDefinition.regularDef(ks, cf, DEFAULT_VALUE_ALIAS, defaultValidator, null));
+        defs.add(ColumnDefinition.regularDef(ks, cf, DEFAULT_VALUE_ALIAS, defaultValidator, null));
     }
 
     /*
@@ -518,8 +511,9 @@ public class ThriftConversion
                                               ColumnDef thriftColumnDef)
     throws SyntaxException, ConfigurationException
     {
+        boolean isSuper = thriftSubcomparator != null;
         // For super columns, the componentIndex is 1 because the ColumnDefinition applies to the column component.
-        Integer componentIndex = thriftSubcomparator != null ? 1 : null;
+        Integer componentIndex = isSuper ? 1 : null;
         AbstractType<?> comparator = thriftSubcomparator == null ? thriftComparator : thriftSubcomparator;
         try
         {
@@ -530,6 +524,9 @@ public class ThriftConversion
             throw new ConfigurationException(String.format("Column name %s is not valid for comparator %s", ByteBufferUtil.bytesToHex(thriftColumnDef.name), comparator));
         }
 
+        // In our generic layout, we store thrift defined columns as static, but this doesn't work for super columns so we
+        // use a regular definition (and "dynamic" columns are handled in a map).
+        ColumnDefinition.Kind kind = isSuper ? ColumnDefinition.Kind.REGULAR : ColumnDefinition.Kind.STATIC;
         return new ColumnDefinition(ksName,
                                     cfName,
                                     new ColumnIdentifier(ByteBufferUtil.clone(thriftColumnDef.name), comparator),
@@ -538,7 +535,7 @@ public class ThriftConversion
                                     thriftColumnDef.index_options,
                                     thriftColumnDef.index_name,
                                     componentIndex,
-                                    ColumnDefinition.Kind.REGULAR);
+                                    kind);
     }
 
     private static List<ColumnDefinition> fromThrift(String ksName,

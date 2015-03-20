@@ -111,13 +111,21 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
     {
         this(cfm.ksName,
              cfm.cfName,
-             new ColumnIdentifier(name, cfm.getColumnDefinitionComparator(kind)),
+             makeIdentifier(cfm, name, kind),
              validator,
              null,
              null,
              null,
              componentIndex,
              kind);
+    }
+
+    private static ColumnIdentifier makeIdentifier(CFMetaData cfm, ByteBuffer name, Kind kind)
+    {
+        AbstractType<?> comparator = (cfm.isSuper() && kind == Kind.REGULAR) || (cfm.isStaticCompactTable() && kind == Kind.STATIC)
+                                   ? cfm.thriftColumnNameType()
+                                   : UTF8Type.instance;
+        return new ColumnIdentifier(name, comparator);
     }
 
     public ColumnDefinition(String ksName, String cfName, ColumnIdentifier name, AbstractType<?> type, Integer componentIndex, Kind kind)
@@ -281,9 +289,17 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
      * Whether the name of this definition is serialized in the cell nane, i.e. whether
      * it's not just a non-stored CQL metadata.
      */
-    public boolean isPartOfCellName()
+    public boolean isPartOfCellName(boolean isCQL3Table, boolean isSuper)
     {
-        return kind == Kind.REGULAR || kind == Kind.STATIC;
+        // When converting CQL3 tables to thrift, any regular or static column ends up in the cell name.
+        // When it's a compact table however, the REGULAR definition is the name for the cell value of "dynamic"
+        // column (so it's not part of the cell name) and it's static columns that ends up in the cell name.
+        if (isCQL3Table)
+            return kind == Kind.REGULAR || kind == Kind.STATIC;
+        else if (isSuper)
+            return kind == Kind.REGULAR;
+        else
+            return kind == Kind.STATIC;
     }
 
     public ColumnDefinition apply(ColumnDefinition def)  throws ConfigurationException

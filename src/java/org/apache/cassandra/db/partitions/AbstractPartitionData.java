@@ -267,14 +267,15 @@ public abstract class AbstractPartitionData implements Partition
     {
         StringBuilder sb = new StringBuilder();
         CFMetaData metadata = metadata();
-        sb.append(String.format("Partition[%s.%s] key=%s columns=%s\n",
+        sb.append(String.format("Partition[%s.%s] key=%s columns=%s deletion=%s",
                     metadata.ksName,
                     metadata.cfName,
                     metadata.getKeyValidator().getString(partitionKey().getKey()),
-                    columns()));
+                    columns(),
+                    deletionInfo));
 
         if (staticRow() != Rows.EMPTY_STATIC_ROW)
-            sb.append("-----\n").append(staticRow().toString(metadata));
+            sb.append("\n    ").append(staticRow().toString(metadata));
 
         // We use createRowIterator() directly instead of iterator() because that avoids
         // sorting for PartitionUpdate (which inherit this method) and that is useful because
@@ -282,9 +283,8 @@ public abstract class AbstractPartitionData implements Partition
         // be able to print an update while we build it (again for debugging)
         Iterator<Row> iterator = createRowIterator(null, createdAtInSec, false);
         while (iterator.hasNext())
-            sb.append("\n-----\n").append(iterator.next().toString(metadata, true));
+            sb.append("\n    ").append(iterator.next().toString(metadata));
 
-        sb.append("\n-----\n");
         return sb.toString();
     }
 

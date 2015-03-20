@@ -234,7 +234,7 @@ public class Mutation implements IMutation
         }
         else
         {
-            buff.append(StringUtils.join(modifications.values(), ", "));
+            buff.append("\n  ").append(StringUtils.join(modifications.values(), "\n  ")).append("\n");
         }
         return buff.append("])").toString();
     }

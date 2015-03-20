@@ -64,8 +64,9 @@ public class CompositesIndexOnRegular extends CompositesIndex
     public IndexedEntry decodeEntry(DecoratedKey indexedValue, Row indexEntry)
     {
         Clustering clustering = indexEntry.clustering();
-        CBuilder builder = CBuilder.create(baseCfs.getComparator());
-        for (int i = 0; i < columnDef.position(); i++)
+        ClusteringComparator baseComparator = baseCfs.getComparator();
+        CBuilder builder = CBuilder.create(baseComparator);
+        for (int i = 0; i < baseComparator.size(); i++)
             builder.add(clustering.get(i + 1));
         return new IndexedEntry(indexedValue, clustering, indexEntry.partitionKeyLivenessInfo().timestamp(), clustering.get(0), builder.build());
     }

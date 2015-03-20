@@ -25,6 +25,83 @@ import static junit.framework.Assert.*;
 public class SimpleQueryTest extends CQLTester
 {
     @Test
+    public void testStaticCompactTables() throws Throwable
+    {
+        createTable("CREATE TABLE %s (k text PRIMARY KEY, v1 int, v2 text) WITH COMPACT STORAGE");
+
+        execute("INSERT INTO %s (k, v1, v2) values (?, ?, ?)", "first", 1, "value1");
+        execute("INSERT INTO %s (k, v1, v2) values (?, ?, ?)", "second", 2, "value2");
+        execute("INSERT INTO %s (k, v1, v2) values (?, ?, ?)", "third", 3, "value3");
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ?", "first"),
+            row("first", 1, "value1")
+        );
+
+        assertRows(execute("SELECT v2 FROM %s WHERE k = ?", "second"),
+            row("value2")
+        );
+
+        assertRows(execute("SELECT * FROM %s"),
+            row("first",  1, "value1"),
+            row("second", 2, "value2"),
+            row("third",  3, "value3")
+        );
+    }
+
+    @Test
+    public void testDynamicCompactTables() throws Throwable
+    {
+        createTable("CREATE TABLE %s (k text, t int, v text, PRIMARY KEY (k, t));");
+
+        execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 1, "v11");
+        execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 2, "v12");
+        execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 3, "v13");
+
+        flush();
+
+        execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 4, "v14");
+        execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 5, "v15");
+
+        assertRows(execute("SELECT * FROM %s"),
+            row("key",  1, "v11"),
+            row("key",  2, "v12"),
+            row("key",  3, "v13"),
+            row("key",  4, "v14"),
+            row("key",  5, "v15")
+        );
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ? AND t > ?", "key", 3),
+            row("key",  4, "v14"),
+            row("key",  5, "v15")
+        );
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ? AND t >= ? AND t < ?", "key", 2, 4),
+            row("key",  2, "v12"),
+            row("key",  3, "v13")
+        );
+
+        // Reversed queries
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ? ORDER BY t DESC", "key"),
+            row("key",  5, "v15"),
+            row("key",  4, "v14"),
+            row("key",  3, "v13"),
+            row("key",  2, "v12"),
+            row("key",  1, "v11")
+        );
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ? AND t > ? ORDER BY t DESC", "key", 3),
+            row("key",  5, "v15"),
+            row("key",  4, "v14")
+        );
+
+        assertRows(execute("SELECT * FROM %s WHERE k = ? AND t >= ? AND t < ? ORDER BY t DESC", "key", 2, 4),
+            row("key",  3, "v13"),
+            row("key",  2, "v12")
+        );
+    }
+
+    @Test
     public void testTableWithoutClustering() throws Throwable
     {
         createTable("CREATE TABLE %s (k text PRIMARY KEY, v1 int, v2 text);");

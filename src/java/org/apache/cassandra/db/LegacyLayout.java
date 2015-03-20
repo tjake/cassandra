@@ -56,16 +56,8 @@ public abstract class LegacyLayout
         ClusteringComparator comparator = metadata.comparator;
         if (!metadata.isCompound())
         {
-            if (metadata.isDense())
-            {
-                assert comparator.size() == 1;
-                return comparator.subtype(0);
-            }
-            else
-            {
-                assert comparator.size() == 0;
-                return metadata.columnNameComparator;
-            }
+            assert comparator.size() == 1;
+            return comparator.subtype(0);
         }
 
         boolean hasCollections = metadata.hasCollectionColumns();
@@ -75,7 +67,7 @@ public abstract class LegacyLayout
 
         if (!metadata.isDense())
         {
-            types.add(metadata.columnNameComparator);
+            types.add(UTF8Type.instance);
             if (hasCollections)
             {
                 Map<ByteBuffer, CollectionType> defined = new HashMap<>();
@@ -112,6 +104,11 @@ public abstract class LegacyLayout
         return Pair.create(clustering, def);
     }
 
+    public static ByteBuffer encodeCellName(Clustering clustering, ColumnDefinition column, ByteBuffer collectionElement)
+    {
+        throw new UnsupportedOperationException();
+    }
+
     public static Clustering decodeClustering(CFMetaData metadata, ByteBuffer value)
     {
         List<ByteBuffer> components = metadata.isCompound()
@@ -130,6 +127,139 @@ public abstract class LegacyLayout
         for (int i = 0; i < clustering.size(); i++)
             values[i] = clustering.get(i);
         return CompositeType.build(values);
+    }
+
+    // For deserializing old sstables
+    public static AtomIterator toAtomIterator(Iterator<LegacyAtom> atoms)
+    {
+        // TODO
+        throw new UnsupportedOperationException();
+    }
+
+    // For serializing to old wire format
+    public static LegacyPartition fromAtomIterator(AtomIterator iterator)
+    {
+        // TODO
+        throw new UnsupportedOperationException();
+    }
+
+    // For deserializing old wire format
+    public static AtomIterator toAtomIterator(LegacyPartition partition)
+    {
+        // TODO
+        throw new UnsupportedOperationException();
+    }
+
+    public interface LegacyAtom
+    {
+        public boolean isCell();
+
+        public LegacyCell asCell();
+        public LegacyRangeTombstone asRangeTombstone();
+    }
+
+    /**
+     * A legacy cell.
+     * <p>
+     * This is used as a temporary object to facilitate dealing with the legacy format, this
+     * is not meant to be optimal.
+     */
+    public static class LegacyCell implements LegacyAtom
+    {
+        public enum Kind { REGULAR, EXPIRING, DELETED, COUNTER }
+
+        public final Kind kind;
+
+        public final ByteBuffer name;
+        public final ByteBuffer value;
+
+        public final long timestamp;
+        public final int localDeletionTime;
+        public final int ttl;
+
+        // for counters
+        public final long timestampOfLastDelete;
+
+        private LegacyCell(Kind kind, ByteBuffer name, ByteBuffer value, long timestamp, int localDeletionTime, int ttl, long timestampOfLastDelete)
+        {
+            this.kind = kind;
+            this.name = name;
+            this.value = value;
+            this.timestamp = timestamp;
+            this.localDeletionTime = localDeletionTime;
+            this.ttl = ttl;
+            this.timestampOfLastDelete = timestampOfLastDelete;
+        }
+
+        public boolean isCell()
+        {
+            return true;
+        }
+
+        public LegacyCell asCell()
+        {
+            return this;
+        }
+
+        public LegacyRangeTombstone asRangeTombstone()
+        {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    /**
+     * A legacy range tombstone.
+     * <p>
+     * This is used as a temporary object to facilitate dealing with the legacy format, this
+     * is not meant to be optimal.
+     */
+    public static class LegacyRangeTombstone
+    {
+        public final ByteBuffer start;
+        public final ByteBuffer stop;
+        public final DeletionTime deletionTime;
+
+        private LegacyRangeTombstone(ByteBuffer start, ByteBuffer stop, DeletionTime deletionTime)
+        {
+            this.start = start;
+            this.stop = stop;
+            this.deletionTime = deletionTime;
+        }
+
+        public boolean isCell()
+        {
+            return false;
+        }
+
+        public LegacyCell asCell()
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        public LegacyRangeTombstone asRangeTombstone()
+        {
+            return this;
+        }
+    }
+
+    public static class LegacyPartition
+    {
+        public List<LegacyRangeTombstone> rangeTombstones;
+        public List<LegacyCell> cells;
+    }
+
+    public static class DecodedCellName
+    {
+        public final Clustering clustering;
+        public final ColumnDefinition column;
+        public final ByteBuffer collectionElement;
+
+        private DecodedCellName(Clustering clustering, ColumnDefinition column, ByteBuffer collectionElement)
+        {
+            this.clustering = clustering;
+            this.column = column;
+            this.collectionElement = collectionElement;
+        }
     }
 
     //public void deserializeCellBody(DataInput in, DeserializedCell cell, ByteBuffer collectionElement, int mask, Flag flag, int expireBefore)
@@ -504,4 +634,5 @@ public abstract class LegacyLayout
     //        }
     //    }
     //}
+
 }

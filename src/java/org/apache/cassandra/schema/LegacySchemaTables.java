@@ -637,7 +637,8 @@ public class LegacySchemaTables
 
     private static Mutation makeCreateKeyspaceMutation(KSMetaData keyspace, long timestamp, boolean withTablesAndTypesAndFunctions)
     {
-        RowUpdateBuilder adder = new RowUpdateBuilder(Keyspaces, timestamp, keyspace.name).clustering();
+        // Note that because Keyspaces is a COMPACT TABLE, we're really only setting static columns internally and shouldn't set any clustering.
+        RowUpdateBuilder adder = new RowUpdateBuilder(Keyspaces, timestamp, keyspace.name);
 
         adder.add("durable_writes", keyspace.durableWrites);
         adder.add("strategy_class", keyspace.strategyClass.getName());
@@ -1004,10 +1005,9 @@ public class LegacySchemaTables
                                                                         rawComparator,
                                                                         subComparator,
                                                                         isSuper,
-                                                                        isDense);
+                                                                        !isSuper && !isDense && isCompound);
 
         CFMetaData cfm = CFMetaData.create(ksName, cfName, cfId, isDense, isCompound, isSuper, isCounter, columnDefs);
-        cfm.columnNameComparator = isDense ? UTF8Type.instance : getColumnNameComparator(rawComparator, columnDefs);
 
         cfm.readRepairChance(result.getDouble("read_repair_chance"));
         cfm.dcLocalReadRepairChance(result.getDouble("local_read_repair_chance"));
@@ -1047,16 +1047,6 @@ public class LegacySchemaTables
         }
 
         return cfm;
-    }
-
-    private static AbstractType<?> getColumnNameComparator(AbstractType<?> rawComparator, List<ColumnDefinition> defs)
-    {
-        for (ColumnDefinition def : defs)
-        {
-            if (def.isRegular())
-                return getComponentComparator(rawComparator, def.isOnAllComponents() ? null : def.position());
-        }
-        return UTF8Type.instance;
     }
 
     private static void addDroppedColumns(CFMetaData cfm, Map<String, Long> droppedTimes, Map<String, String> types)
@@ -1122,11 +1112,11 @@ public class LegacySchemaTables
                                                                       AbstractType<?> rawComparator,
                                                                       AbstractType<?> rawSubComparator,
                                                                       boolean isSuper,
-                                                                      boolean isDense)
+                                                                      boolean isCQLTable)
     {
         List<ColumnDefinition> columns = new ArrayList<>();
         for (UntypedResultSet.Row row : rows)
-            columns.add(createColumnFromColumnRow(row, keyspace, table, rawComparator, rawSubComparator, isSuper, isDense));
+            columns.add(createColumnFromColumnRow(row, keyspace, table, rawComparator, rawSubComparator, isSuper, isCQLTable));
         return columns;
     }
 
@@ -1136,21 +1126,19 @@ public class LegacySchemaTables
                                                               AbstractType<?> rawComparator,
                                                               AbstractType<?> rawSubComparator,
                                                               boolean isSuper,
-                                                              boolean isDense)
+                                                              boolean isCQLTable)
     {
         ColumnDefinition.Kind kind = deserializeKind(row.getString("type"));
 
         Integer componentIndex = null;
         if (row.has("component_index"))
             componentIndex = row.getInt("component_index");
-        else if (kind == ColumnDefinition.Kind.CLUSTERING_COLUMN && isSuper)
-            componentIndex = 1; // A ColumnDefinition for super columns applies to the column component
 
         // Note: we save the column name as string, but we should not assume that it is an UTF8 name, we
         // we need to use the comparator fromString method
-        AbstractType<?> comparator = isSuper ? rawSubComparator : (!isDense && kind == ColumnDefinition.Kind.REGULAR
-                                                                   ? getComponentComparator(rawComparator, componentIndex)
-                                                                   : UTF8Type.instance);
+        AbstractType<?> comparator = isCQLTable
+                                   ? UTF8Type.instance
+                                   : compactTableColumnDefinitionComparator(kind, isSuper, rawComparator, rawSubComparator);
         ColumnIdentifier name = new ColumnIdentifier(comparator.fromString(row.getString("column_name")), comparator);
 
         AbstractType<?> validator = parseType(row.getString("validator"));
@@ -1170,11 +1158,12 @@ public class LegacySchemaTables
         return new ColumnDefinition(keyspace, table, name, validator, indexType, indexOptions, indexName, componentIndex, kind);
     }
 
-    private static AbstractType<?> getComponentComparator(AbstractType<?> rawComparator, Integer componentIndex)
+    public static AbstractType<?> compactTableColumnDefinitionComparator(ColumnDefinition.Kind kind, boolean isSuper, AbstractType<?> rawComparator, AbstractType<?> rawSubComparator)
     {
-        return (componentIndex == null || (componentIndex == 0 && !(rawComparator instanceof CompositeType)))
-                ? rawComparator
-                : ((CompositeType)rawComparator).types.get(componentIndex);
+        if (isSuper)
+            return kind == ColumnDefinition.Kind.REGULAR ? rawSubComparator : UTF8Type.instance;
+        else
+            return kind == ColumnDefinition.Kind.STATIC ? rawComparator : UTF8Type.instance;
     }
 
     /*

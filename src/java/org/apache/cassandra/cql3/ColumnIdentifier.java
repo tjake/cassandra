@@ -73,8 +73,6 @@ public class ColumnIdentifier extends org.apache.cassandra.cql3.selection.Select
     @Override
     public final boolean equals(Object o)
     {
-        // Note: it's worth checking for reference equality since we intern those
-        // in SparseCellNameType
         if (this == o)
             return true;
 
@@ -137,19 +135,22 @@ public class ColumnIdentifier extends org.apache.cassandra.cql3.selection.Select
 
         public ColumnIdentifier prepare(CFMetaData cfm)
         {
-            if (cfm.columnNameComparator instanceof UTF8Type)
+            if (!cfm.isStaticCompactTable())
                 return new ColumnIdentifier(text, true);
 
-            // We have a Thrift-created table with a non-text comparator.  We need to parse column names with the comparator
-            // to get the correct ByteBuffer representation.  However, this doesn't apply to key aliases, so we need to
-            // make a special check for those and treat them normally.  See CASSANDRA-8178.
+            AbstractType<?> thriftColumnNameType = cfm.thriftColumnNameType();
+            if (thriftColumnNameType instanceof UTF8Type)
+                return new ColumnIdentifier(text, true);
+
+            // We have a Thrift-created table with a non-text comparator. Check if we have a match column, otherwise assume we should use
+            // thriftColumnNameType
             ByteBuffer bufferName = ByteBufferUtil.bytes(text);
-            for (ColumnDefinition def : cfm.partitionKeyColumns())
+            for (ColumnDefinition def : cfm.allColumns())
             {
                 if (def.name.bytes.equals(bufferName))
-                    return new ColumnIdentifier(text, true);
+                    return def.name;
             }
-            return new ColumnIdentifier(cfm.columnNameComparator.fromString(rawText), text);
+            return new ColumnIdentifier(thriftColumnNameType.fromString(rawText), text);
         }
 
         public boolean processesSelection()
