@@ -41,7 +41,7 @@ public class TruncateVerbHandler implements IVerbHandler<Truncation>
             cfs.truncateBlocking();
             for (GlobalIndexDefinition globalIndex: cfs.metadata.getGlobalIndexes().values())
             {
-                globalIndex.resolve(cfs.metadata).indexCfs.truncateBlocking();
+                cfs.globalIndexManager.getIndexForColumn(globalIndex.target.bytes).indexCfs.truncateBlocking();
             }
         }
         catch (Exception e)

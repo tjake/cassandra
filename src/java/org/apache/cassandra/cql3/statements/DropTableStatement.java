@@ -22,6 +22,8 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.CFName;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -69,8 +71,7 @@ public class DropTableStatement extends SchemaAlteringStatement
             {
                 for (GlobalIndexDefinition def : cfm.getGlobalIndexes().values())
                 {
-                    CFMetaData indexCFM = def.resolve(cfm).indexCfs.metadata;
-                    MigrationManager.announceColumnFamilyDrop(keyspace(), indexCFM.cfName);
+                    MigrationManager.announceColumnFamilyDrop(keyspace(), def.getCfName());
                 }
             }
             MigrationManager.announceColumnFamilyDrop(keyspace(), columnFamily(), isLocalOnly);

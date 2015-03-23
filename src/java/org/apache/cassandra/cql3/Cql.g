@@ -306,7 +306,8 @@ selectStatement returns [SelectStatement.RawStatement expr]
           SelectStatement.Parameters params = new SelectStatement.Parameters(orderings,
                                                                              isDistinct,
                                                                              allowFiltering,
-                                                                             isJson);
+                                                                             isJson,
+                                                                             false);
           $expr = new SelectStatement.RawStatement(cf, params, sclause, wclause, limit);
       }
     ;

@@ -21,37 +21,24 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.index.GlobalIndex;
 
 public class GlobalIndexDefinition
 {
+    public String baseCfName;
     public String indexName;
     public ColumnIdentifier target;
     public Collection<ColumnIdentifier> included;
 
-    public GlobalIndexDefinition(String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
+    public GlobalIndexDefinition(String baseCfName, String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
     {
         assert target != null;
+        this.baseCfName = baseCfName;
         this.indexName = indexName;
         this.target = target;
         this.included = included;
-    }
-
-    public GlobalIndex resolve(CFMetaData cfm)
-    {
-        ColumnDefinition targetCd = cfm.getColumnDefinition(target);
-        assert targetCd != null;
-
-        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
-        for (ColumnIdentifier identifier: included)
-        {
-            ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
-            assert cfDef != null;
-            includedDefs.add(cfDef);
-        }
-
-        return new GlobalIndex(this, targetCd, includedDefs, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
 
     public boolean indexes(ColumnIdentifier def)
@@ -78,6 +65,11 @@ public class GlobalIndexDefinition
         {
             copyIncluded.add(include);
         }
-        return new GlobalIndexDefinition(indexName, target, copyIncluded);
+        return new GlobalIndexDefinition(baseCfName, indexName, target, copyIncluded);
+    }
+
+    public String getCfName()
+    {
+        return baseCfName + "_" + indexName;
     }
 }

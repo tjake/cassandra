@@ -21,7 +21,9 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 import org.apache.cassandra.concurrent.ScheduledExecutors;
+import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -77,6 +79,12 @@ public class GlobalIndexManager implements IndexManager
             index.reload();
     }
 
+    public void buildIfRequired()
+    {
+        for (GlobalIndex index: allIndexes)
+            index.build();
+    }
+
     private void removeIndexedColumn(ByteBuffer column)
     {
         GlobalIndex index = indexesByColumn.remove(column);
@@ -89,9 +97,20 @@ public class GlobalIndexManager implements IndexManager
         SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, index.indexName);
     }
 
-    private void addIndexedColumn(GlobalIndexDefinition definition)
+    public void addIndexedColumn(GlobalIndexDefinition definition)
     {
-        GlobalIndex index = definition.resolve(baseCfs.metadata);
+        ColumnDefinition targetCd = baseCfs.metadata.getColumnDefinition(definition.target);
+        assert targetCd != null;
+
+        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
+        for (ColumnIdentifier identifier : definition.included)
+        {
+            ColumnDefinition cfDef = baseCfs.metadata.getColumnDefinition(identifier);
+            assert cfDef != null;
+            includedDefs.add(cfDef);
+        }
+
+        GlobalIndex index = new GlobalIndex(definition, targetCd, includedDefs, baseCfs);
 
         indexesByColumn.put(definition.target.bytes, index);
 

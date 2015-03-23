@@ -34,7 +34,6 @@ import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.messages.ResultMessage;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class DropGlobalIndexStatement extends SchemaAlteringStatement
 {
@@ -84,7 +83,7 @@ public class DropGlobalIndexStatement extends SchemaAlteringStatement
             return false;
 
         CFMetaData updatedCfm = updateCFMetadata(cfm);
-        String indexCf = cfm.cfName + "_" + ByteBufferUtil.bytesToHex(findGlobalIndex(cfm).target.bytes);
+        String indexCf = findGlobalIndex(cfm).getCfName();
         MigrationManager.announceColumnFamilyUpdate(updatedCfm, false, isLocalOnly);
         MigrationManager.announceColumnFamilyDrop(cfm.ksName, indexCf, isLocalOnly);
 

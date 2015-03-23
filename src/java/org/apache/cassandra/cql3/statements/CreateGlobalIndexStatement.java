@@ -130,20 +130,14 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
             indexName = createIndexName(target);
 
         Collection<ColumnIdentifier> identifiers = new ArrayList<>();
-        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
-        for(ColumnIdentifier.Raw rawIdentifer: included)
-        {
-            ColumnIdentifier identifier = rawIdentifer.prepare(cfm);
-            identifiers.add(identifier);
-            ColumnDefinition cfDef = cfm.getColumnDefinition(identifier);
-            assert cfDef != null;
-            includedDefs.add(cfDef);
-        }
+        for (ColumnIdentifier.Raw identifier: included)
+            identifiers.add(identifier.prepare(cfm));
 
-        CFMetaData indexCfmd = GlobalIndex.getCFMetaData(cfm, cfm.getColumnDefinition(target.column), includedDefs);
-        MigrationManager.announceNewColumnFamily(indexCfmd, isLocalOnly);
+        GlobalIndexDefinition definition = new GlobalIndexDefinition(columnFamily(), indexName, target.column, identifiers);
 
-        GlobalIndexDefinition definition = new GlobalIndexDefinition(indexName, target.column, identifiers);
+        CFMetaData indexCf = GlobalIndex.getCFMetaData(definition, cfm);
+        MigrationManager.announceNewColumnFamily(indexCf, isLocalOnly);
+
         cfm.addGlobalIndex(definition);
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);
 

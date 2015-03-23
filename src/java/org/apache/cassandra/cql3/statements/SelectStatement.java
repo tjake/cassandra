@@ -534,7 +534,7 @@ public class SelectStatement implements CQLStatement
 
     public List<IndexExpression> getValidatedIndexExpressions(QueryOptions options) throws InvalidRequestException
     {
-        if (!restrictions.usesSecondaryIndexing())
+        if (!restrictions.usesSecondaryIndexing() || parameters.usesGlobalIndexing)
             return Collections.emptyList();
 
         ColumnFamilyStore cfs = Keyspace.open(keyspace()).getColumnFamilyStore(columnFamily());
@@ -862,12 +862,13 @@ public class SelectStatement implements CQLStatement
             if (globalIndexDefinition == null)
                 return null;
 
-            String name = cfm.cfName + "_" + ByteBufferUtil.bytesToHex(globalIndexDefinition.target.bytes);
+            String name = globalIndexDefinition.getCfName();
             CFName cfName = new CFName();
             cfName.setColumnFamily(name, true);
             cfName.setKeyspace(keyspace(), true);
 
-            RawStatement rawStatement = new RawStatement(cfName, parameters, selectClause, whereClause, limit);
+            Parameters params = new Parameters(parameters.orderings, parameters.isDistinct, parameters.allowFiltering, true);
+            RawStatement rawStatement = new RawStatement(cfName, params, selectClause, whereClause, limit);
             rawStatement.variables = getBoundVariables();
             return rawStatement.prepare();
         }
@@ -1049,16 +1050,19 @@ public class SelectStatement implements CQLStatement
         private final boolean isDistinct;
         private final boolean allowFiltering;
         public final boolean isJson;
+        private final boolean usesGlobalIndexing;
 
         public Parameters(Map<ColumnIdentifier.Raw, Boolean> orderings,
                           boolean isDistinct,
                           boolean allowFiltering,
-                          boolean isJson)
+                          boolean isJson,
+                          boolean usesGlobalIndexing)
         {
             this.orderings = orderings;
             this.isDistinct = isDistinct;
             this.allowFiltering = allowFiltering;
             this.isJson = isJson;
+            this.usesGlobalIndexing = usesGlobalIndexing;
         }
     }
 
