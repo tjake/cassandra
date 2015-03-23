@@ -29,6 +29,7 @@ import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.composites.Composite.EOC;
+import org.apache.cassandra.db.index.IndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -273,7 +274,7 @@ final class PrimaryKeyRestrictionSet extends AbstractPrimaryKeyRestrictions
     }
 
     @Override
-    public boolean hasSupportingIndex(SecondaryIndexManager indexManager)
+    public boolean hasSupportingIndex(IndexManager indexManager)
     {
         return restrictions.hasSupportingIndex(indexManager);
     }

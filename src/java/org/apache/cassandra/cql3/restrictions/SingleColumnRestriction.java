@@ -29,10 +29,7 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
-import org.apache.cassandra.db.index.GlobalIndex;
-import org.apache.cassandra.db.index.GlobalIndexManager;
-import org.apache.cassandra.db.index.SecondaryIndex;
-import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.index.*;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -73,9 +70,9 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
     }
 
     @Override
-    public boolean hasSupportingIndex(SecondaryIndexManager indexManager)
+    public boolean hasSupportingIndex(IndexManager indexManager)
     {
-        SecondaryIndex index = indexManager.getIndexForColumn(columnDef.name.bytes);
+        Index index = indexManager.getIndexForColumn(columnDef.name.bytes);
         return index != null && isSupportedBy(index);
     }
 
@@ -97,7 +94,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
      * @return <code>true</code> this type of restriction is supported by the specified index,
      * <code>false</code> otherwise.
      */
-    protected abstract boolean isSupportedBy(SecondaryIndex index);
+    protected abstract boolean isSupportedBy(Index index);
 
     /**
      * Check if this type of restriction is supported by the specified index.
@@ -161,7 +158,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(GlobalIndex index)
+        protected boolean isSupportedBy(Index index)
         {
             return index.supportsOperator(Operator.EQ);
         }
@@ -208,7 +205,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected final boolean isSupportedBy(SecondaryIndex index)
+        protected final boolean isSupportedBy(Index index)
         {
             return index.supportsOperator(Operator.IN);
         }
@@ -369,7 +366,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(SecondaryIndex index)
+        protected boolean isSupportedBy(Index index)
         {
             return slice.isSupportedBy(index);
         }
@@ -460,7 +457,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(SecondaryIndex index)
+        protected boolean isSupportedBy(Index index)
         {
             boolean supported = false;
 

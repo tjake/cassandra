@@ -61,7 +61,7 @@ import org.apache.cassandra.utils.concurrent.OpOrder;
  * Manages all the indexes associated with a given CFS
  * Different types of indexes can be created across the same CF
  */
-public class SecondaryIndexManager
+public class SecondaryIndexManager implements IndexManager
 {
     private static final Logger logger = LoggerFactory.getLogger(SecondaryIndexManager.class);
 

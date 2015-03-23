@@ -273,17 +273,22 @@ public class CassandraDaemon
         };
         ScheduledExecutors.optionalTasks.schedule(runnable, 5, TimeUnit.MINUTES);
 
-        for (Keyspace keyspace : Keyspace.all())
+        Runnable indexRebuild = new Runnable()
         {
-            for (CFMetaData cfm : keyspace.metadata.cfMetaData().values())
+            @Override
+            public void run()
             {
-                for (GlobalIndexDefinition indexDefinition : cfm.getGlobalIndexes().values())
+                for (Keyspace keyspace : Keyspace.all())
                 {
-                    ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(cfm.cfId);
-                    ScheduledExecutors.optionalTasks.schedule(cfs.globalIndexManager.build(indexDefinition), StorageService.RING_DELAY, TimeUnit.MILLISECONDS);
+                    for (ColumnFamilyStore cf: keyspace.getColumnFamilyStores())
+                    {
+                        cf.globalIndexManager.reload();
+                    }
                 }
             }
-        }
+        };
+        ScheduledExecutors.optionalTasks.schedule(indexRebuild, StorageService.RING_DELAY, TimeUnit.MILLISECONDS);
+
 
         SystemKeyspace.finishStartup();
 

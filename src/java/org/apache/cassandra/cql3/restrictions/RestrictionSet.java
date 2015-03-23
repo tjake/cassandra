@@ -27,6 +27,7 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.SingleColumnRestriction.Contains;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.index.GlobalIndexManager;
+import org.apache.cassandra.db.index.IndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -167,19 +168,7 @@ final class RestrictionSet implements Restrictions, Iterable<Restriction>
     }
 
     @Override
-    public final boolean hasSupportingIndex(SecondaryIndexManager indexManager)
-    {
-        for (Restriction restriction : restrictions.values())
-        {
-            if (restriction.hasSupportingIndex(indexManager))
-                return true;
-        }
-        return false;
-    }
-
-
-    @Override
-    public final boolean hasSupportingIndex(GlobalIndexManager indexManager)
+    public final boolean hasSupportingIndex(IndexManager indexManager)
     {
         for (Restriction restriction : restrictions.values())
         {
