@@ -26,54 +26,87 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.utils.Pair;
+import org.apache.mina.util.ConcurrentHashSet;
 
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
-public class GlobalIndexManager
+public class GlobalIndexManager implements IndexManager
 {
-    private final ConcurrentHashMap<String, GlobalIndex> globalIndexMap = new ConcurrentHashMap<>();
+    /**
+     * Organizes the indexes by column name
+     */
+    private final ConcurrentNavigableMap<ByteBuffer, GlobalIndex> indexesByColumn;
+
+    private final Set<GlobalIndex> allIndexes;
+
     private final ColumnFamilyStore baseCfs;
 
     public GlobalIndexManager(ColumnFamilyStore baseCfs)
     {
+        this.indexesByColumn = new ConcurrentSkipListMap<>();
+        this.allIndexes = Collections.newSetFromMap(new ConcurrentHashMap<GlobalIndex, Boolean>());
+
         this.baseCfs = baseCfs;
     }
 
-    public GlobalIndex getIndexForColumn(ByteBuffer columnName)
+    public void reload()
     {
-        return null;
-    }
-
-    private GlobalIndex resolveIndex(GlobalIndexDefinition definition)
-    {
-        if (globalIndexMap.containsKey(definition.indexName))
-            return globalIndexMap.get(definition.indexName);
-
-        GlobalIndex index = definition.resolve(baseCfs.metadata);
-        GlobalIndex previousIndex = globalIndexMap.putIfAbsent(definition.indexName, index);
-        if (previousIndex != null)
-            return previousIndex;
-        return index;
-    }
-
-    private Collection<GlobalIndex> resolveIndexes(Collection<GlobalIndexDefinition> definitions)
-    {
-        List<GlobalIndex> indexes = new ArrayList<>(definitions.size());
-
-        for (GlobalIndexDefinition definition: definitions) {
-            indexes.add(resolveIndex(definition));
+        Map<ByteBuffer, GlobalIndexDefinition> newIndexesByColumn = new HashMap<>();
+        for (GlobalIndexDefinition definition: baseCfs.metadata.getGlobalIndexes().values())
+        {
+            newIndexesByColumn.put(definition.target.bytes, definition);
         }
-        return indexes;
+
+        for (ByteBuffer indexedColumn: indexesByColumn.keySet())
+        {
+            if (!newIndexesByColumn.containsKey(indexedColumn))
+                removeIndexedColumn(indexedColumn);
+        }
+
+        for (ByteBuffer indexedColumn: newIndexesByColumn.keySet())
+        {
+            if (!indexesByColumn.containsKey(indexedColumn))
+                addIndexedColumn(newIndexesByColumn.get(indexedColumn));
+        }
+
+        for (GlobalIndex index: allIndexes)
+            index.reload();
+    }
+
+    private void removeIndexedColumn(ByteBuffer column)
+    {
+        GlobalIndex index = indexesByColumn.remove(column);
+
+        if (index == null)
+            return;
+
+        allIndexes.remove(index);
+
+        SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, index.indexName);
+    }
+
+    private void addIndexedColumn(GlobalIndexDefinition definition)
+    {
+        GlobalIndex index = definition.resolve(baseCfs.metadata);
+
+        indexesByColumn.put(definition.target.bytes, index);
+
+        allIndexes.add(index);
+    }
+
+    public GlobalIndex getIndexForColumn(ByteBuffer column)
+    {
+        return indexesByColumn.get(column);
     }
 
     private List<Mutation> createMutationsInternal(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
     {
-        Collection<GlobalIndexDefinition> indexDefs = cf.metadata().getGlobalIndexes().values();
-
         List<Mutation> tmutations = null;
-        for (GlobalIndex index: resolveIndexes(indexDefs))
+        for (GlobalIndex index: allIndexes)
         {
             Collection<Mutation> mutations = index.createMutations(key, cf, consistency, false);
             if (mutations != null) {
@@ -98,7 +131,9 @@ public class GlobalIndexManager
 
             for (ColumnFamily cf : mutation.getColumnFamilies())
             {
-                GlobalIndexManager indexManager = Keyspace.open(cf.metadata().ksName).getColumnFamilyStore(cf.metadata().cfId).globalIndexManager;
+                GlobalIndexManager indexManager = Keyspace.open(cf.metadata().ksName)
+                                                          .getColumnFamilyStore(cf.metadata().cfId).globalIndexManager;
+
                 List<Mutation> augmentations = indexManager.createMutationsInternal(mutation.key(), cf, consistency);
                 if (augmentations == null || augmentations.isEmpty())
                     continue;
@@ -122,7 +157,6 @@ public class GlobalIndexManager
     }
 
 
-
     private static Collection<Mutation> mergeMutations(Iterable<Mutation> mutations)
     {
         Map<Pair<String, ByteBuffer>, Mutation> groupedMutations = new HashMap<>();
@@ -143,25 +177,5 @@ public class GlobalIndexManager
         }
 
         return groupedMutations.values();
-    }
-
-    public void reload()
-    {
-        globalIndexMap.clear();
-
-        for (GlobalIndexDefinition definition: baseCfs.metadata.getGlobalIndexes().values())
-        {
-            ScheduledExecutors.optionalTasks.execute(build(definition));
-        }
-    }
-
-    public Runnable build(GlobalIndexDefinition indexDefinition)
-    {
-        GlobalIndex index = resolveIndex(indexDefinition);
-        index.stopBuilder();
-
-        GlobalIndexBuilder builder = new GlobalIndexBuilder(baseCfs, indexDefinition);
-        index.setBuilder(builder);
-        return builder;
     }
 }

@@ -33,6 +33,7 @@ import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CType;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CompositesBuilder;
+import org.apache.cassandra.db.index.IndexManager;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -85,7 +86,7 @@ public abstract class TokenRestriction extends AbstractPrimaryKeyRestrictions
     }
 
     @Override
-    public boolean hasSupportingIndex(SecondaryIndexManager secondaryIndexManager)
+    public boolean hasSupportingIndex(IndexManager indexManager)
     {
         return false;
     }

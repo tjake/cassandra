@@ -22,10 +22,13 @@ import java.util.*;
 
 import com.google.common.collect.Iterables;
 
+import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.composites.*;
@@ -37,9 +40,10 @@ import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.thrift.ColumnDef;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
-public class GlobalIndex
+public class GlobalIndex implements Index
 {
     private static class MutationUnit
     {
@@ -156,6 +160,8 @@ public class GlobalIndex
         }
     }
 
+    private final GlobalIndexDefinition definition;
+
     private ColumnDefinition target;
     private boolean includeAll;
     private Collection<ColumnDefinition> included;
@@ -171,9 +177,16 @@ public class GlobalIndex
     ColumnFamilyStore baseCfs;
     public ColumnFamilyStore indexCfs;
     GlobalIndexBuilder builder;
+    public final String indexName;
 
-    public GlobalIndex(ColumnDefinition target, Collection<ColumnDefinition> included, ColumnFamilyStore baseCfs)
+    public GlobalIndex(GlobalIndexDefinition definition,
+                       ColumnDefinition target,
+                       Collection<ColumnDefinition> included,
+                       ColumnFamilyStore baseCfs)
     {
+        this.definition = definition;
+        this.indexName = definition.indexName;
+
         this.target = target;
         this.included = included;
         this.includeAll = included.isEmpty();
@@ -601,6 +614,34 @@ public class GlobalIndex
         return mutations;
     }
 
+    public boolean supportsOperator(Operator operator)
+    {
+        return operator == Operator.EQ;
+    }
+
+    synchronized void setBuilder(GlobalIndexBuilder builder)
+    {
+        this.builder = builder;
+    }
+
+    synchronized void stopBuilder()
+    {
+        if (this.builder != null)
+        {
+            this.builder.stop();
+            this.builder = null;
+        }
+    }
+
+    public synchronized void reload()
+    {
+        if (this.builder != null)
+            stopBuilder();
+
+        this.builder = new GlobalIndexBuilder(baseCfs, this);
+        ScheduledExecutors.optionalTasks.execute(builder);
+    }
+
     public static CFMetaData getCFMetaData(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnDefinition> included)
     {
         String name = baseCFMD.cfName + "_" + ByteBufferUtil.bytesToHex(target.name.bytes);
@@ -672,19 +713,5 @@ public class GlobalIndex
             }
         }
         return new CompoundSparseCellNameType(types);
-    }
-
-    synchronized void setBuilder(GlobalIndexBuilder builder)
-    {
-        this.builder = builder;
-    }
-
-    synchronized void stopBuilder()
-    {
-        if (this.builder != null)
-        {
-            this.builder.stop();
-            this.builder = null;
-        }
     }
 }

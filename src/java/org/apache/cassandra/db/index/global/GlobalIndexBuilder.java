@@ -42,16 +42,14 @@ import org.apache.cassandra.utils.Pair;
 public class GlobalIndexBuilder implements Runnable
 {
     private final ColumnFamilyStore baseCfs;
-    private final GlobalIndexDefinition definition;
     private final GlobalIndex index;
 
     private volatile boolean isStopped = false;
 
-    public GlobalIndexBuilder(ColumnFamilyStore baseCfs, GlobalIndexDefinition definition)
+    public GlobalIndexBuilder(ColumnFamilyStore baseCfs, GlobalIndex index)
     {
         this.baseCfs = baseCfs;
-        this.definition = definition;
-        this.index = definition.resolve(baseCfs.metadata);
+        this.index = index;
     }
 
     private void indexKey(DecoratedKey key)
@@ -68,7 +66,7 @@ public class GlobalIndexBuilder implements Runnable
 
     public void run()
     {
-        String ksname = baseCfs.metadata.ksName, indexname = definition.indexName;
+        String ksname = baseCfs.metadata.ksName, indexname = index.indexName;
 
         if (SystemKeyspace.isIndexBuilt(ksname, indexname))
             return;

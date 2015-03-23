@@ -51,7 +51,7 @@ public class GlobalIndexDefinition
             includedDefs.add(cfDef);
         }
 
-        return new GlobalIndex(targetCd, includedDefs, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
+        return new GlobalIndex(this, targetCd, includedDefs, Keyspace.open(cfm.ksName).getColumnFamilyStore(cfm.cfName));
     }
 
     public boolean indexes(ColumnIdentifier def)
