@@ -1344,6 +1344,7 @@ public class LegacySchemaTables
         {
             String name = row.getString("index_name");
             String indexedColumn = row.getString("indexed_column");
+            String cfName = row.getString("columnfamily_name");
             List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
             List<ColumnIdentifier> includedColumns = new ArrayList<>();
             if (includedColumnNames != null)
@@ -1351,7 +1352,7 @@ public class LegacySchemaTables
                 for (String columnName : includedColumnNames)
                     includedColumns.add(new ColumnIdentifier(columnName, false));
             }
-            globalIndexes.add(new GlobalIndexDefinition(name, new ColumnIdentifier(indexedColumn, false), includedColumns));
+            globalIndexes.add(new GlobalIndexDefinition(cfName, name, new ColumnIdentifier(indexedColumn, false), includedColumns));
         }
         return globalIndexes;
     }

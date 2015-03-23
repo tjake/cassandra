@@ -40,25 +40,21 @@ import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
-import org.apache.cassandra.thrift.ColumnDef;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class GlobalIndex implements Index
 {
     private static class MutationUnit
     {
         private final ColumnFamilyStore baseCfs;
-        private final ColumnFamilyStore indexCfs;
         private final ByteBuffer partitionKey;
         private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
         private Map<ColumnIdentifier, ByteBuffer> oldRegularColumnValues = new HashMap<>();
         private Map<ColumnIdentifier, ByteBuffer> newRegularColumnValues = new HashMap<>();
         private int ttl = 0;
 
-        public MutationUnit(ColumnFamilyStore baseCfs, ColumnFamilyStore indexCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
+        public MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
         {
             this.baseCfs = baseCfs;
-            this.indexCfs = indexCfs;
             this.partitionKey = key;
             this.clusteringColumns = clusteringColumns;
         }
@@ -199,16 +195,17 @@ public class GlobalIndex implements Index
         clusteringKeys = new ArrayList<>();
         regularColumns = new ArrayList<>();
         staticColumns = new ArrayList<>();
-
-        createIndexCfsAndSelectors();
     }
 
     private void createIndexCfsAndSelectors()
     {
+        if (indexCfs != null)
+            return;
+
         assert baseCfs != null;
         assert target != null;
 
-        CFMetaData indexedCfMetadata = getCFMetaData(baseCfs.metadata, target, included);
+        CFMetaData indexedCfMetadata = getCFMetaData(definition, baseCfs.metadata);
         targetSelector = GlobalIndexSelector.create(baseCfs, target);
 
         // All partition and clustering columns are included in the index, whether they are specified in the included columns or not
@@ -441,7 +438,7 @@ public class GlobalIndex implements Index
                         clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                     }
 
-                    MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+                    MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
                     if (mutationUnits.containsKey(mutationUnit))
                     {
                         MutationUnit previous = mutationUnits.get(mutationUnit);
@@ -519,7 +516,7 @@ public class GlobalIndex implements Index
                     clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                 }
 
-                MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+                MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
                 if (mapMutationUnits.containsKey(mutationUnit))
                 {
                     MutationUnit previous = mapMutationUnits.get(mutationUnit);
@@ -545,7 +542,7 @@ public class GlobalIndex implements Index
                 clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
             }
 
-            MutationUnit mutationUnit = new MutationUnit(baseCfs, indexCfs, key, clusteringColumns);
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
             if (cell instanceof ExpiringCell)
             {
                 mutationUnit.ttl = ((ExpiringCell)cell).getTimeToLive();
@@ -567,6 +564,8 @@ public class GlobalIndex implements Index
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency, boolean isBuilding)
     {
+        createIndexCfsAndSelectors();
+
         if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !modifiesIndexedColumn(cf))
         {
             return null;
@@ -619,45 +618,53 @@ public class GlobalIndex implements Index
         return operator == Operator.EQ;
     }
 
-    synchronized void setBuilder(GlobalIndexBuilder builder)
-    {
-        this.builder = builder;
-    }
-
-    synchronized void stopBuilder()
+    public synchronized void build()
     {
         if (this.builder != null)
         {
             this.builder.stop();
             this.builder = null;
         }
-    }
 
-    public synchronized void reload()
-    {
-        if (this.builder != null)
-            stopBuilder();
+        createIndexCfsAndSelectors();
 
         this.builder = new GlobalIndexBuilder(baseCfs, this);
         ScheduledExecutors.optionalTasks.execute(builder);
     }
 
-    public static CFMetaData getCFMetaData(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnDefinition> included)
+    public void reload()
     {
-        String name = baseCFMD.cfName + "_" + ByteBufferUtil.bytesToHex(target.name.bytes);
-        UUID cfId = Schema.instance.getId(baseCFMD.ksName, name);
+        createIndexCfsAndSelectors();
+
+        build();
+    }
+
+    public static CFMetaData getCFMetaData(GlobalIndexDefinition definition,
+                                           CFMetaData baseCf)
+    {
+        Collection<ColumnDefinition> included = new ArrayList<>();
+        for(ColumnIdentifier identifier: definition.included)
+        {
+            ColumnDefinition cfDef = baseCf.getColumnDefinition(identifier);
+            assert cfDef != null;
+            included.add(cfDef);
+        }
+        ColumnDefinition target = baseCf.getColumnDefinition(definition.target);
+
+        String name = definition.getCfName();
+        UUID cfId = Schema.instance.getId(baseCf.ksName, name);
         if (cfId != null)
             return Schema.instance.getCFMetaData(cfId);
 
-        CellNameType comparator = getIndexComparator(baseCFMD, target);
-        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCFMD, target, comparator);
+        CellNameType comparator = getIndexComparator(baseCf, target);
+        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCf, target, comparator);
 
         indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
 
         boolean includeAll = included.isEmpty();
         Integer position = 0;
         // All partition and clustering columns are included in the index, whether they are specified in the included columns or not
-        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
+        for (ColumnDefinition column: baseCf.partitionKeyColumns())
         {
             if (column != target)
             {
@@ -665,7 +672,7 @@ public class GlobalIndex implements Index
             }
         }
 
-        for (ColumnDefinition column: baseCFMD.clusteringColumns())
+        for (ColumnDefinition column: baseCf.clusteringColumns())
         {
             if (column != target)
             {
@@ -674,7 +681,7 @@ public class GlobalIndex implements Index
         }
 
         Integer componentIndex = comparator.isCompound() ? comparator.clusteringPrefixSize() : null;
-        for (ColumnDefinition column: baseCFMD.regularColumns())
+        for (ColumnDefinition column: baseCf.regularColumns())
         {
             if (column != target && (includeAll || included.contains(column)))
             {
@@ -682,7 +689,7 @@ public class GlobalIndex implements Index
             }
         }
 
-        for (ColumnDefinition column: baseCFMD.staticColumns())
+        for (ColumnDefinition column: baseCf.staticColumns())
         {
             if (column != target && (includeAll || included.contains(column)))
             {

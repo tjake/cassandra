@@ -155,7 +155,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 {
                     if (indexDef.included.isEmpty())
                     {
-                        CFMetaData indexCfm = indexDef.resolve(meta).indexCfs.metadata.copy();
+                        CFMetaData indexCfm = GlobalIndex.getCFMetaData(indexDef, meta).copy();
                         componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
                         indexCfm.addColumnDefinition(isStatic
                                                      ? ColumnDefinition.staticDef(indexCfm, columnName.bytes, type, componentIndex)
@@ -253,7 +253,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 {
                     if (!gi.indexes(columnName)) continue;
                     // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
-                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                     ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
 
                     // see the above rules about changing types
@@ -313,7 +313,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     if (!gi.indexes(columnName)) continue;
 
                     // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
-                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                     ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
 
                     assert !indexDef.isClusteringColumn() : "Global Index clustering columns should be undroppable because they are PRIMARY KEY on data table";
@@ -363,7 +363,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 cfProps.applyToCFMetadata(cfm);
                 for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                 {
-                    CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                     cfProps.applyToCFMetadata(indexCfm);
                     if (globalIndexUpdates == null)
                         globalIndexUpdates = new ArrayList<>();
@@ -379,7 +379,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
 
                     for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                     {
-                        CFMetaData indexCfm = gi.resolve(meta).indexCfs.metadata.copy();
+                        CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                         ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
                         ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
                         indexCfm.renameColumn(indexFrom, indexTo);

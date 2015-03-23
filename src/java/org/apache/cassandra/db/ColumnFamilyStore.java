@@ -348,6 +348,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                 indexManager.addIndexedColumn(info);
         }
 
+        for (GlobalIndexDefinition definition: metadata.getGlobalIndexes().values())
+        {
+            globalIndexManager.addIndexedColumn(definition);
+        }
+
         // register the mbean
         String type = this.partitioner instanceof LocalPartitioner ? "IndexColumnFamilies" : "ColumnFamilies";
         mbeanName = "org.apache.cassandra.db:type=" + type + ",keyspace=" + this.keyspace.getName() + ",columnfamily=" + name;
