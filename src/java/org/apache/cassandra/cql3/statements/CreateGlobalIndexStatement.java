@@ -81,12 +81,19 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
         if (cd == null)
             throw new InvalidRequestException("No column definition found for column " + target.column);
 
+        if (cd.type.isCollection())
+            throw new InvalidRequestException("Cannot create global index on a collection");
+
         // If the included are specified, make sure that they are in the schema
         for (ColumnIdentifier.Raw dcolumn: included)
         {
             ColumnIdentifier column = dcolumn.prepare(cfm);
-            if (cfm.getColumnDefinition(column) == null)
+            ColumnDefinition def = cfm.getColumnDefinition(column);
+            if (def == null)
                 throw new InvalidRequestException("Must use defined columns for Global Indexes");
+
+            if (def.type.isCollection())
+                throw new InvalidRequestException("Cannot create global index on a collection");
         }
 
         if (cd.isIndexed())
