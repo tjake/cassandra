@@ -155,6 +155,9 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 {
                     if (indexDef.included.isEmpty())
                     {
+                        if (type.isCollection())
+                            throw new InvalidRequestException(String.format("Cannot add a collection because global index %s includes all columns",
+                                                                            indexDef.indexName));
                         CFMetaData indexCfm = GlobalIndex.getCFMetaData(indexDef, meta).copy();
                         componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
                         indexCfm.addColumnDefinition(isStatic
