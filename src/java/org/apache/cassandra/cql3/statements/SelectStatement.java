@@ -534,7 +534,7 @@ public class SelectStatement implements CQLStatement
 
     public List<IndexExpression> getValidatedIndexExpressions(QueryOptions options) throws InvalidRequestException
     {
-        if (!restrictions.usesSecondaryIndexing() || parameters.usesGlobalIndexing)
+        if (!restrictions.usesSecondaryIndexing())
             return Collections.emptyList();
 
         ColumnFamilyStore cfs = Keyspace.open(keyspace()).getColumnFamilyStore(columnFamily());
@@ -741,6 +741,9 @@ public class SelectStatement implements CQLStatement
 
             StatementRestrictions restrictions = prepareRestrictions(cfm, boundNames, selection);
 
+            if (globalIndexRestriction(cfm, restrictions))
+                return prepareGlobalIndex(cfm, restrictions);
+
             if (parameters.isDistinct)
                 validateDistinctSelection(cfm, selection, restrictions);
 
@@ -758,9 +761,6 @@ public class SelectStatement implements CQLStatement
                 restrictions.reverse();
 
             checkNeedsFiltering(restrictions);
-
-            if (globalIndexRestriction(cfm, restrictions))
-                return prepareGlobalIndex(cfm, restrictions);
 
             SelectStatement stmt = new SelectStatement(cfm,
                                                         boundNames.size(),
@@ -968,6 +968,15 @@ public class SelectStatement implements CQLStatement
         /** If ALLOW FILTERING was not specified, this verifies that it is not needed */
         private void checkNeedsFiltering(StatementRestrictions restrictions) throws InvalidRequestException
         {
+            // non-key-range global index queries cannot involve filtering underneath
+            if (parameters.usesGlobalIndexing && (restrictions.isKeyRange() || restrictions.usesSecondaryIndexing()))
+            {
+                // We will potentially filter data if either:
+                //  - Have more than one IndexExpression
+                //  - Have no index expression and the column filter is not the identity
+                throw invalidRequest("Cannot execute this query as it targets a global index and might involve data filtering.");
+            }
+
             // non-key-range non-indexed queries cannot involve filtering underneath
             if (!parameters.allowFiltering && (restrictions.isKeyRange() || restrictions.usesSecondaryIndexing()))
             {
