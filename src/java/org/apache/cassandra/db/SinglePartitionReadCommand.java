@@ -47,6 +47,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
     private final F partitionFilter;
 
     protected SinglePartitionReadCommand(boolean isDigest,
+                                         boolean isForThrift,
                                          CFMetaData metadata,
                                          int nowInSec,
                                          ColumnFilter columnFilter,
@@ -54,7 +55,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                                          DecoratedKey partitionKey,
                                          F partitionFilter)
     {
-        super(Kind.SINGLE_PARTITION, isDigest, metadata, nowInSec, columnFilter, limits);
+        super(Kind.SINGLE_PARTITION, isDigest, isForThrift, metadata, nowInSec, columnFilter, limits);
         this.partitionKey = partitionKey;
         this.partitionFilter = partitionFilter;
     }
@@ -156,6 +157,8 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      */
     public SinglePartitionReadCommand forPaging(Clustering lastReturned, int pageSize)
     {
+        // We don't page on thrift, and we shouldn't have set digest yet when reaching that point
+        assert !isDigestQuery() && !isForThrift();
         return create(metadata(),
                       nowInSec(),
                       columnFilter(),
@@ -459,15 +462,15 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
 
     private static class Deserializer extends SelectionDeserializer
     {
-        public ReadCommand deserialize(DataInput in, int version, boolean isDigest, CFMetaData metadata, int nowInSec, ColumnFilter columnFilter, DataLimits limits)
+        public ReadCommand deserialize(DataInput in, int version, boolean isDigest, boolean isForThrift, CFMetaData metadata, int nowInSec, ColumnFilter columnFilter, DataLimits limits)
         throws IOException
         {
             DecoratedKey key = StorageService.getPartitioner().decorateKey(metadata.getKeyValidator().readValue(in));
             PartitionFilter filter = PartitionFilter.serializer.deserialize(in, version, metadata);
             if (filter instanceof NamesPartitionFilter)
-                return new SinglePartitionNamesCommand(isDigest, metadata, nowInSec, columnFilter, limits, key, (NamesPartitionFilter)filter);
+                return new SinglePartitionNamesCommand(isDigest, isForThrift, metadata, nowInSec, columnFilter, limits, key, (NamesPartitionFilter)filter);
             else
-                return new SinglePartitionSliceCommand(isDigest, metadata, nowInSec, columnFilter, limits, key, (SlicePartitionFilter)filter);
+                return new SinglePartitionSliceCommand(isDigest, isForThrift, metadata, nowInSec, columnFilter, limits, key, (SlicePartitionFilter)filter);
         }
     };
 }

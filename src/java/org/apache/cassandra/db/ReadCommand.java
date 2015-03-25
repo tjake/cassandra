@@ -61,10 +61,11 @@ public abstract class ReadCommand extends ReadQuery
     private final DataLimits limits;
 
     private boolean isDigestQuery;
+    private final boolean isForThrift;
 
     protected static abstract class SelectionDeserializer
     {
-        public abstract ReadCommand deserialize(DataInput in, int version, boolean isDigest, CFMetaData metadata, int nowInSec, ColumnFilter columnFilter, DataLimits limits) throws IOException;
+        public abstract ReadCommand deserialize(DataInput in, int version, boolean isDigest, boolean isForThrift, CFMetaData metadata, int nowInSec, ColumnFilter columnFilter, DataLimits limits) throws IOException;
     }
 
     protected enum Kind
@@ -82,6 +83,7 @@ public abstract class ReadCommand extends ReadQuery
 
     protected ReadCommand(Kind kind,
                           boolean isDigestQuery,
+                          boolean isForThrift,
                           CFMetaData metadata,
                           int nowInSec,
                           ColumnFilter columnFilter,
@@ -89,6 +91,7 @@ public abstract class ReadCommand extends ReadQuery
     {
         this.kind = kind;
         this.isDigestQuery = isDigestQuery;
+        this.isForThrift = isForThrift;
         this.metadata = metadata;
         this.nowInSec = nowInSec;
         this.columnFilter = columnFilter;
@@ -179,6 +182,16 @@ public abstract class ReadCommand extends ReadQuery
     {
         this.isDigestQuery = isDigestQuery;
         return this;
+    }
+
+    /**
+     * Whether this query is for thrift or not.
+     *
+     * @return whether this query is for thrift.
+     */
+    public boolean isForThrift()
+    {
+        return isForThrift;
     }
 
     /**
@@ -405,12 +418,33 @@ public abstract class ReadCommand extends ReadQuery
 
     private static class Serializer implements IVersionedSerializer<ReadCommand>
     {
+        private static int digestFlag(boolean isDigest)
+        {
+            return isDigest ? 0x01 : 0;
+        }
+
+        private static boolean isDigest(int flags)
+        {
+            return (flags & 0x01) != 0;
+        }
+
+        private static int thriftFlag(boolean isForThrift)
+        {
+            return isForThrift ? 0x02 : 0;
+        }
+
+        private static boolean isForThrift(int flags)
+        {
+            return (flags & 0x02) != 0;
+        }
+
         public void serialize(ReadCommand command, DataOutputPlus out, int version) throws IOException
         {
             if (version < MessagingService.VERSION_30)
                 throw new UnsupportedOperationException();
 
-            out.writeByte((command.kind.ordinal() | (command.isDigestQuery ? 0x80 : 0)));
+            out.writeByte(command.kind.ordinal());
+            out.writeByte(digestFlag(command.isDigestQuery()) | thriftFlag(command.isForThrift()));
             CFMetaData.serializer.serialize(command.metadata(), out, version);
             out.writeInt(command.nowInSec());
             ColumnFilter.serializer.serialize(command.columnFilter(), out, version);
@@ -424,15 +458,16 @@ public abstract class ReadCommand extends ReadQuery
             if (version < MessagingService.VERSION_30)
                 throw new UnsupportedOperationException();
 
-            int kindAndDigest = in.readByte();
-            Kind kind = Kind.values()[kindAndDigest & 0x7F];
-            boolean isDigest = (kindAndDigest & 0x80) != 0;
+            Kind kind = Kind.values()[in.readByte()];
+            int flags = in.readByte();
+            boolean isDigest = isDigest(flags);
+            boolean isForThrift = isForThrift(flags);
             CFMetaData metadata = CFMetaData.serializer.deserialize(in, version);
             int nowInSec = in.readInt();
             ColumnFilter columnFilter = ColumnFilter.serializer.deserialize(in, version, metadata);
             DataLimits limits = DataLimits.serializer.deserialize(in, version);
 
-            return kind.selectionDeserializer.deserialize(in, version, isDigest, metadata, nowInSec, columnFilter, limits);
+            return kind.selectionDeserializer.deserialize(in, version, isDigest, isForThrift, metadata, nowInSec, columnFilter, limits);
         }
 
         public long serializedSize(ReadCommand command, int version)
@@ -442,7 +477,7 @@ public abstract class ReadCommand extends ReadQuery
 
             TypeSizes sizes = TypeSizes.NATIVE;
 
-            return 1 // kind + isDigestQuery
+            return 2 // kind + flags
                  + CFMetaData.serializer.serializedSize(command.metadata(), version, sizes)
                  + sizes.sizeof(command.nowInSec())
                  + ColumnFilter.serializer.serializedSize(command.columnFilter(), version)
