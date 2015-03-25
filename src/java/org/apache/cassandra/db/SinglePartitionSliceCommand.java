@@ -40,6 +40,7 @@ import org.apache.cassandra.utils.memory.HeapAllocator;
 public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<SlicePartitionFilter>
 {
     public SinglePartitionSliceCommand(boolean isDigest,
+                                       boolean isForThrift,
                                        CFMetaData metadata,
                                        int nowInSec,
                                        ColumnFilter columnFilter,
@@ -47,7 +48,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                                        DecoratedKey partitionKey,
                                        SlicePartitionFilter partitionFilter)
     {
-        super(isDigest, metadata, nowInSec, columnFilter, limits, partitionKey, partitionFilter);
+        super(isDigest, isForThrift, metadata, nowInSec, columnFilter, limits, partitionKey, partitionFilter);
     }
 
     public SinglePartitionSliceCommand(CFMetaData metadata,
@@ -57,7 +58,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                                        DecoratedKey partitionKey,
                                        SlicePartitionFilter partitionFilter)
     {
-        this(false, metadata, nowInSec, columnFilter, limits, partitionKey, partitionFilter);
+        this(false, false, metadata, nowInSec, columnFilter, limits, partitionKey, partitionFilter);
     }
 
     /**
@@ -95,9 +96,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
 
     public SinglePartitionSliceCommand copy()
     {
-        SinglePartitionSliceCommand copy = new SinglePartitionSliceCommand(metadata(), nowInSec(), columnFilter(), limits(), partitionKey(), partitionFilter());
-        copy.setIsDigestQuery(isDigestQuery());
-        return copy;
+        return new SinglePartitionSliceCommand(isDigestQuery(), isForThrift(), metadata(), nowInSec(), columnFilter(), limits(), partitionKey(), partitionFilter());
     }
 
     protected AtomIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap)
