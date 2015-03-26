@@ -27,6 +27,8 @@ import org.apache.cassandra.Util;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.atoms.Cell;
+import org.apache.cassandra.db.partitions.ArrayBackedPartition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -45,15 +47,15 @@ public class SSTableUtils
         CFNAME = cfname;
     }
 
-    /**/
-   /* public static ColumnFamily createCF(long mfda, int ldt, Cell... cols)
+    /*
+    public static ColumnFamily createCF(long mfda, int ldt, Cell... cols)
     {
         return createCF(KEYSPACENAME, CFNAME, mfda, ldt, cols);
     }
 
     public static ColumnFamily createCF(String ksname, String cfname, long mfda, int ldt, Cell... cols)
     {
-        ColumnFamily cf = ArrayBackedSortedColumns.factory.create(ksname, cfname);
+        ColumnFamily cf = ArrayBackedPartition.factory.create(ksname, cfname);
         cf.delete(new DeletionInfo(mfda, ldt));
         for (Cell col : cols)
             cf.addColumn(col);
@@ -120,7 +122,7 @@ public class SSTableUtils
             assertEquals("Mismatched columns for " + lhs.getKey(), clhs, crhs);
         }
         assert !rhs.hasNext() : "RHS contained more columns than LHS for " + lhs.getKey();
-    } */
+    }*/
 
     /**
      * @return A Context with chainable methods to configure and write a SSTable.
@@ -153,9 +155,9 @@ public class SSTableUtils
         }
 
 
-         //Set an alternate path for the written SSTable: if unset, the SSTable will
-         //be cleaned up on JVM exit.
-         //
+        //Set an alternate path for the written SSTable: if unset, the SSTable will
+        //be cleaned up on JVM exit.
+        //
         public Context dest(Descriptor dest)
         {
             this.dest = dest;
@@ -231,6 +233,5 @@ public class SSTableUtils
     {
         // Called with an open writer until it returns false.
         public abstract boolean append(SSTableWriter writer) throws IOException;
-    }
-    */
+    }*/
 }

@@ -125,6 +125,11 @@ public class Util
         return row.getCell(column);
     }
 
+    public static ClusteringPrefix clustering(ClusteringComparator comparator, Object... o)
+    {
+        return comparator.make(o).clustering();
+    }
+
     /*
     public static CellName cellname(String... strs)
     {
@@ -227,8 +232,8 @@ public class Util
         ColumnFilter filter = ColumnFilter.create();
         if (superColumn != null)
             filter.add(cfs.metadata.compactValueColumn(), Operator.EQ, superColumn);
-
-        ReadCommand command = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds() +1 , filter, DataLimits.cqlLimits(100000), DataRange.allData(cfs.metadata, cfs.partitioner));
+        
+        ReadCommand command = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), filter, DataLimits.cqlLimits(100000), DataRange.allData(cfs.metadata, cfs.partitioner));
 
         return command.executeLocally(cfs);
     }
@@ -241,6 +246,7 @@ public class Util
     {
         return makeReadCommand(cfs, startKey, endKey, superColumn, filter, columns).executeLocally();
     }
+
     public static ReadCommand makeReadCommand(ColumnFamilyStore cfs,
                                               ByteBuffer startKey,
                                               ByteBuffer endKey,
