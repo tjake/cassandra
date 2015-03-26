@@ -415,12 +415,16 @@ public class SchemaLoader
     }
     public static CFMetaData indexCFMD(String ksName, String cfName, final Boolean withIdxType) throws ConfigurationException
     {
-        CFMetaData cfm = CFMetaData.Builder.create(ksName, cfName).addPartitionKey("key",AsciiType.instance).build();
+        CFMetaData cfm = CFMetaData.Builder.create(ksName, cfName)
+                .addPartitionKey("key", AsciiType.instance)
+                .addClusteringColumn("cols", AsciiType.instance)
+                .addRegularColumn("birthdate", LongType.instance)
+                .build();
 
         ByteBuffer cName = ByteBufferUtil.bytes("birthdate");
         IndexType keys = withIdxType ? IndexType.KEYS : null;
-        return cfm.addColumnDefinition(ColumnDefinition.regularDef(cfm, cName, LongType.instance, null)
-                                                       .setIndex(withIdxType ? ByteBufferUtil.bytesToHex(cName) : null, keys, null));
+        return cfm.addOrReplaceColumnDefinition(ColumnDefinition.regularDef(cfm, cName, LongType.instance, null)
+                .setIndex(withIdxType ? ByteBufferUtil.bytesToHex(cName) : null, keys, null));
     }
     public static CFMetaData compositeIndexCFMD(String ksName, String cfName, final Boolean withIdxType) throws ConfigurationException
     {
