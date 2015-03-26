@@ -77,7 +77,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
 
     public static final PartitionUpdateSerializer serializer = new PartitionUpdateSerializer();
 
-    private final Writer writer = new RegularWriter();
+    private final Writer writer;
     private RangeTombstoneMarker.Writer markerWriter;
 
     // Used by compare for the sake of implementing the Sorting.Sortable interface (which is in turn used
@@ -94,6 +94,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
                             int nowInSec)
     {
         super(metadata, key, delInfo, columns, data, initialRowCapacity, nowInSec);
+        this.writer = createWriter();
     }
 
     public PartitionUpdate(CFMetaData metadata,
@@ -124,6 +125,11 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
              columns,
              initialRowCapacity,
              nowInSec);
+    }
+
+    protected Writer createWriter()
+    {
+        return new RegularWriter();
     }
 
     /**
@@ -559,7 +565,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         }
     }
 
-    private class RegularWriter extends Writer
+    public class RegularWriter extends Writer
     {
         // For complex column, the writer assumptions is that for a given row, cells of different
         // complex columns are not intermingled (they also should be in cellPath order). We however
