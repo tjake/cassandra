@@ -31,6 +31,7 @@ import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
 import org.apache.cassandra.service.DataResolver;
+import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.memory.HeapAllocator;
 
@@ -118,7 +119,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                 AtomIterator iter = filter.getAtomIterator(partition, nowInSec());
                 if (copyOnHeap)
                     iter = AtomIterators.cloningIterator(iter, HeapAllocator.instance);
-                iterators.add(iter);
+                iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter) : iter);
             }
 
             /*
@@ -165,7 +166,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                 AtomIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec()));
                 mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone, iter.partitionLevelDeletion().markedForDeleteAt());
                 sstablesIterated++;
-                iterators.add(iter);
+                iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter) : iter);
             }
 
             int includedDueToTombstones = 0;

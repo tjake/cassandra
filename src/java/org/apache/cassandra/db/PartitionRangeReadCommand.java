@@ -34,6 +34,7 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.service.*;
+import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 
@@ -179,10 +180,16 @@ public class PartitionRangeReadCommand extends ReadCommand
         final List<PartitionIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
 
         for (Memtable memtable : view.memtables)
-            iterators.add(memtable.makePartitionIterator(dataRange(), nowInSec()));
+        {
+            PartitionIterator iter = memtable.makePartitionIterator(dataRange(), nowInSec());
+            iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
+        }
 
         for (SSTableReader sstable : view.sstables)
-            iterators.add(sstable.getScanner(dataRange(), nowInSec()));
+        {
+            PartitionIterator iter = sstable.getScanner(dataRange(), nowInSec());
+            iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
+        }
 
         return checkCacheFilter(PartitionIterators.mergeLazily(iterators), cfs);
     }
