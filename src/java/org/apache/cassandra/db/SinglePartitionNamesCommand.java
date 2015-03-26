@@ -31,6 +31,7 @@ import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
 import org.apache.cassandra.service.DataResolver;
+import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.SearchIterator;
 import org.apache.cassandra.utils.memory.HeapAllocator;
@@ -90,7 +91,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
                 AtomIterator clonedFilter = copyOnHeap
                                           ? AtomIterators.cloningIterator(iter, HeapAllocator.instance)
                                           : iter;
-                result = add(clonedFilter, result);
+                result = add(isForThrift() ? ThriftResultsMerger.maybeWrap(clonedFilter) : clonedFilter, result);
             }
         }
 
@@ -120,7 +121,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
                     continue;
 
                 sstablesIterated++;
-                result = add(iter, result);
+                result = add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter) : iter, result);
             }
         }
 

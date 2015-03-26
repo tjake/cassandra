@@ -136,6 +136,11 @@ public abstract class Rows
             writer.writeClusteringValue(clustering.get(i));
     }
 
+    public static void merge(Row row1, Row row2, Columns mergedColumns, Row.Writer writer, int nowInSec)
+    {
+        merge(row1, row2, mergedColumns, writer, nowInSec, SecondaryIndexManager.nullUpdater);
+    }
+
     // Merge rows in memtable
     // Return the minimum timestamp delta between existing and update
     public static long merge(Row existing,
