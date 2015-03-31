@@ -24,7 +24,7 @@ import com.google.common.collect.Iterables;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.functions.Function;
-import org.apache.cassandra.cql3.restrictions.SingleColumnRestriction.Contains;
+import org.apache.cassandra.cql3.restrictions.SingleColumnRestriction.ContainsRestriction;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -253,7 +253,7 @@ final class RestrictionSet implements Restrictions, Iterable<Restriction>
         {
             if (restriction.isContains())
             {
-                Contains contains = (Contains) restriction;
+                ContainsRestriction contains = (ContainsRestriction) restriction;
                 numberOfContains += (contains.numberOfValues() + contains.numberOfKeys() + contains.numberOfEntries());
             }
         }

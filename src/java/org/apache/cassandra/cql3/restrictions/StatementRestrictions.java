@@ -209,7 +209,9 @@ public final class StatementRestrictions
     {
         Set<ColumnDefinition> columns = new HashSet<>();
         for (Restrictions r : indexRestrictions)
-            columns.addAll(r.getColumnDefs());
+            for (ColumnDefinition def : r.getColumnDefs())
+                if (!def.isPrimaryKeyColumn())
+                    columns.add(def);
         return columns;
     }
 
