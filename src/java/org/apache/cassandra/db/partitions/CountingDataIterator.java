@@ -22,9 +22,9 @@ import org.apache.cassandra.db.filter.DataLimits;
 
 public class CountingDataIterator extends WrappingDataIterator
 {
-    protected final DataLimits.RowCounter counter;
+    protected final DataLimits.Counter counter;
 
-    public CountingDataIterator(DataIterator result, DataLimits.RowCounter counter)
+    public CountingDataIterator(DataIterator result, DataLimits.Counter counter)
     {
         super(result);
         this.counter = counter;
@@ -32,10 +32,10 @@ public class CountingDataIterator extends WrappingDataIterator
 
     public CountingDataIterator(DataIterator result, DataLimits limits)
     {
-        this(result, limits.newRowCounter(true));
+        this(result, limits.newCounter(true));
     }
 
-    public DataLimits.RowCounter counter()
+    public DataLimits.Counter counter()
     {
         return counter;
     }

@@ -143,6 +143,21 @@ public abstract class DataIterators
         return new SingletonDataIterator(iterator);
     }
 
+    public static void consume(DataIterator iterator)
+    {
+        try (DataIterator iter = iterator)
+        {
+            while (iter.hasNext())
+            {
+                try (RowIterator partition = iter.next())
+                {
+                    while (partition.hasNext())
+                        partition.next();
+                }
+            }
+        }
+    }
+
     /**
      * Wraps the provided iterator so it logs the returned rows for debugging purposes.
      * <p>

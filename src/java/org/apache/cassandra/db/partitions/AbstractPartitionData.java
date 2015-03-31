@@ -250,7 +250,7 @@ public abstract class AbstractPartitionData implements Partition
 
     public boolean isEmpty()
     {
-        return deletionInfo.isLive() && rows == 0 && staticRow == null;
+        return deletionInfo.isLive() && rows == 0 && staticRow().isEmpty();
     }
 
     protected void clear()
@@ -276,7 +276,7 @@ public abstract class AbstractPartitionData implements Partition
                     deletionInfo));
 
         if (staticRow() != Rows.EMPTY_STATIC_ROW)
-            sb.append("\n    ").append(staticRow().toString(metadata));
+            sb.append("\n    ").append(staticRow().toString(metadata, true));
 
         // We use createRowIterator() directly instead of iterator() because that avoids
         // sorting for PartitionUpdate (which inherit this method) and that is useful because
@@ -284,7 +284,7 @@ public abstract class AbstractPartitionData implements Partition
         // be able to print an update while we build it (again for debugging)
         Iterator<Row> iterator = createRowIterator(null, createdAtInSec, false);
         while (iterator.hasNext())
-            sb.append("\n    ").append(iterator.next().toString(metadata));
+            sb.append("\n    ").append(iterator.next().toString(metadata, true));
 
         return sb.toString();
     }

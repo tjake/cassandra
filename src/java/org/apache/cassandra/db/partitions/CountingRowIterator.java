@@ -24,9 +24,9 @@ import org.apache.cassandra.db.filter.DataLimits;
 
 public class CountingRowIterator extends WrappingRowIterator
 {
-    protected final DataLimits.RowCounter counter;
+    protected final DataLimits.Counter counter;
 
-    public CountingRowIterator(RowIterator iter, DataLimits.RowCounter counter)
+    public CountingRowIterator(RowIterator iter, DataLimits.Counter counter)
     {
         super(iter);
         this.counter = counter;

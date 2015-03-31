@@ -293,10 +293,17 @@ public final class CFMetaData
         this.keyValidator = keyTypes.size() == 1 ? keyTypes.get(0) : CompositeType.getInstance(keyTypes);
 
         Columns regulars = partitionColumns.regulars;
-        if (isDense && !regulars.isEmpty())
+        if (isCompactTable())
         {
-            assert partitionColumns.statics.isEmpty() && regulars.simpleColumnCount() == 1 && regulars.complexColumnCount() == 0;
-            this.compactValueColumn = regulars.getSimple(0);
+            if (isSuper())
+            {
+                this.compactValueColumn = columnMetadata.get(ThriftConversion.SUPER_COLUMN_MAP_COLUMN);
+            }
+            else
+            {
+                assert regulars.simpleColumnCount() == 1 && regulars.complexColumnCount() == 0;
+                this.compactValueColumn = regulars.getSimple(0);
+            }
         }
     }
 
@@ -548,6 +555,13 @@ public final class CFMetaData
         return ReadRepairDecision.NONE;
     }
 
+    public AbstractType<?> getColumnDefinitionNameComparator(ColumnDefinition.Kind kind)
+    {
+        return (isSuper() && kind == ColumnDefinition.Kind.REGULAR) || (isStaticCompactTable() && kind == ColumnDefinition.Kind.STATIC)
+             ? thriftColumnNameType()
+             : UTF8Type.instance;
+    }
+
     public int getGcGraceSeconds()
     {
         return gcGraceSeconds;
@@ -584,13 +598,16 @@ public final class CFMetaData
     public Iterator<ColumnDefinition> allColumnsInSelectOrder()
     {
         final boolean isStaticCompactTable = !isCompound() && !isDense();
+        final boolean noNonPkColumns = isDense && (compactValueColumn().type instanceof EmptyType);
         return new AbstractIterator<ColumnDefinition>()
         {
             private final Iterator<ColumnDefinition> partitionKeyIter = partitionKeyColumns.iterator();
             private final Iterator<ColumnDefinition> clusteringIter = isStaticCompactTable ? Collections.<ColumnDefinition>emptyIterator() : clusteringColumns.iterator();
-            private final Iterator<ColumnDefinition> otherColumns = isStaticCompactTable
-                                                                  ?  partitionColumns.statics.selectOrderIterator()
-                                                                  :  partitionColumns.selectOrderIterator();
+            private final Iterator<ColumnDefinition> otherColumns = noNonPkColumns
+                                                                  ? Collections.<ColumnDefinition>emptyIterator()
+                                                                  : (isStaticCompactTable
+                                                                     ?  partitionColumns.statics.selectOrderIterator()
+                                                                     :  partitionColumns.selectOrderIterator());
 
             protected ColumnDefinition computeNext()
             {
@@ -1032,7 +1049,7 @@ public final class CFMetaData
         if (isCounter)
         {
             for (ColumnDefinition def : partitionColumns())
-                if (!(def.type instanceof CounterColumnType))
+                if (!(def.type instanceof CounterColumnType) && !def.isSuperColumnMap())
                     throw new ConfigurationException("Cannot add a non counter column (" + def.name + ") in a counter column family");
         }
         else
@@ -1133,13 +1150,10 @@ public final class CFMetaData
     public AbstractType<?> thriftColumnNameType()
     {
         if (isSuper())
-            // TODO
-            throw new UnsupportedOperationException();
-
-        if (isStaticCompactTable())
         {
-            assert comparator.size() == 1;
-            return comparator.subtype(0);
+            ColumnDefinition def = compactValueColumn();
+            assert def != null && def.type instanceof MapType;
+            return ((MapType)def.type).nameComparator();
         }
 
         return UTF8Type.instance;
@@ -1489,6 +1503,11 @@ public final class CFMetaData
         {
             this.regularColumns.add(Pair.create(name, type));
             return this;
+        }
+
+        public boolean hasRegulars()
+        {
+            return !this.regularColumns.isEmpty();
         }
 
         public Builder addStaticColumn(String name, AbstractType type)

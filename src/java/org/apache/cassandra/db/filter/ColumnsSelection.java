@@ -199,6 +199,12 @@ public class ColumnsSelection
 
     private void appendColumnDef(StringBuilder sb, ColumnDefinition column)
     {
+        if (subSelections == null)
+        {
+            sb.append(column.name);
+            return;
+        }
+
         SortedSet<ColumnSubselection> s = subSelections.get(column.name);
         if (s.isEmpty())
         {

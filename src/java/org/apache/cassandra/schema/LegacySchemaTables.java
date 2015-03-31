@@ -49,6 +49,7 @@ import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -795,7 +796,7 @@ public class LegacySchemaTables
             // we won't know at deserialization if the subcomparator should be taken into account
             // TODO: we should implement an on-start migration if we want to get rid of that.
             adder.add("comparator", table.comparator.subtype(0).toString());
-            adder.add("subcomparator", table.comparator.subtype(1).toString());
+            adder.add("subcomparator", ((MapType)table.compactValueColumn().type).getKeysType().toString());
         }
         else
         {

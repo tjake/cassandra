@@ -698,7 +698,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
             if (version < MessagingService.VERSION_30)
             {
                 // TODO
-                throw new UnsupportedOperationException();
+                throw new UnsupportedOperationException("Version is " + version);
                 //if (cf == null)
                 //{
                 //    return typeSizes.sizeof(false);

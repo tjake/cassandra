@@ -38,6 +38,9 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
     private int cachedLiveRows;
     private int rowsWithNonExpiringCells;
 
+    private int nonTombstoneCellCount;
+    private int nonExpiringLiveCells;
+
     protected ArrayBackedPartition(CFMetaData metadata,
                                    DecoratedKey partitionKey,
                                    DeletionTime deletionTime,
@@ -148,7 +151,18 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
         return rowsWithNonExpiringCells;
     }
 
-    // Writers that collect the values for 'cachedLiveRows' and 'rowsWithNonExpiringCells'.
+    public int nonTombstoneCellCount()
+    {
+        return nonTombstoneCellCount;
+    }
+
+    public int nonExpiringLiveCells()
+    {
+        return nonExpiringLiveCells;
+    }
+
+    // Writers that collect the values for 'cachedLiveRows', 'rowsWithNonExpiringCells', 'nonTombstoneCellCount'
+    // and 'nonExpiringLiveCells'.
     protected class Writer extends AbstractPartitionData.Writer
     {
         private final int nowInSec;
@@ -178,8 +192,14 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             {
                 hasLiveData = true;
                 if (!info.hasTTL())
+                {
                     hasNonExpiringCell = true;
+                    ++ArrayBackedPartition.this.nonExpiringLiveCells;
+                }
             }
+
+            if (!info.hasLocalDeletionTime() || info.hasTTL())
+                ++ArrayBackedPartition.this.nonTombstoneCellCount;
         }
 
         @Override

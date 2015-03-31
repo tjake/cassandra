@@ -207,7 +207,7 @@ public abstract class Cells
             else if (value == c2.value() && mergedInfo == c2.livenessInfo())
                 return c2;
             else // merge clocks and timestamps.
-                return new SimpleCounter(c1.column(), value, mergedInfo);
+                return create(c1.column(), true, value, mergedInfo, null);
         }
 
         long ts1 = c1.livenessInfo().timestamp(), ts2 = c2.livenessInfo().timestamp();
@@ -308,21 +308,38 @@ public abstract class Cells
     }
 
     /**
-     * A simple implementation of a counter cell used when reconciling two counter cell
-     * requires to allocate a new cell object (that is when the value of the reconciled
-     * counter cells needs to be merged).
+     * Creates a simple cell.
+     * <p>
+     * Note that in general cell objects are created by the container they are in and so this method should
+     * only be used in a handful of cases when we know it's the right thing to do.
+     *
+     * @param column the column for the cell to create.
+     * @param isCounter whether the create cell should be a counter one.
+     * @param value the value for the cell.
+     * @param info the liveness info for the cell.
+     * @param path the cell path for the cell.
+     * @return the newly allocated cell object.
      */
-    private static class SimpleCounter extends AbstractCell
+    public static Cell create(ColumnDefinition column, boolean isCounter, ByteBuffer value, LivenessInfo info, CellPath path)
+    {
+        return new SimpleCell(column, isCounter, value, info, path);
+    }
+
+    private static class SimpleCell extends AbstractCell
     {
         private final ColumnDefinition column;
+        private final boolean isCounter;
         private final ByteBuffer value;
         private final LivenessInfo info;
+        private final CellPath path;
 
-        private SimpleCounter(ColumnDefinition column, ByteBuffer value, LivenessInfo info)
+        private SimpleCell(ColumnDefinition column, boolean isCounter, ByteBuffer value, LivenessInfo info, CellPath path)
         {
             this.column = column;
+            this.isCounter = isCounter;
             this.value = value;
             this.info = info.takeAlias();
+            this.path = path;
         }
 
         public ColumnDefinition column()
@@ -332,7 +349,7 @@ public abstract class Cells
 
         public boolean isCounterCell()
         {
-            return true;
+            return isCounter;
         }
 
         public ByteBuffer value()
@@ -347,7 +364,7 @@ public abstract class Cells
 
         public CellPath path()
         {
-            return null;
+            return path;
         }
     }
 }

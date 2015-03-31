@@ -125,14 +125,14 @@ class MultiPartitionPager implements QueryPager
     {
         private final int pageSize;
         private DataIterator result;
-        private DataLimits.RowCounter counter;
+        private DataLimits.Counter counter;
 
         public PagersIterator(int pageSize)
         {
             this.pageSize = pageSize;
         }
 
-        public void setCounter(DataLimits.RowCounter counter)
+        public void setCounter(DataLimits.Counter counter)
         {
             this.counter = counter;
         }

@@ -96,7 +96,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      *
      * @return a newly created read command. The returned command will use no column filter and have no limits.
      */
-    public static SinglePartitionReadCommand create(CFMetaData metadata, int nowInSec, DecoratedKey key, PartitionFilter filter)
+    public static SinglePartitionReadCommand<?> create(CFMetaData metadata, int nowInSec, DecoratedKey key, PartitionFilter filter)
     {
         return create(metadata, nowInSec, ColumnFilter.NONE, DataLimits.NONE, key, filter);
     }

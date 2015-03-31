@@ -30,6 +30,7 @@ import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.exceptions.*;
+import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class ColumnDefinition extends ColumnSpecification implements Comparable<ColumnDefinition>
@@ -111,21 +112,13 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
     {
         this(cfm.ksName,
              cfm.cfName,
-             makeIdentifier(cfm, name, kind),
+             new ColumnIdentifier(name, cfm.getColumnDefinitionNameComparator(kind)),
              validator,
              null,
              null,
              null,
              componentIndex,
              kind);
-    }
-
-    private static ColumnIdentifier makeIdentifier(CFMetaData cfm, ByteBuffer name, Kind kind)
-    {
-        AbstractType<?> comparator = (cfm.isSuper() && kind == Kind.REGULAR) || (cfm.isStaticCompactTable() && kind == Kind.STATIC)
-                                   ? cfm.thriftColumnNameType()
-                                   : UTF8Type.instance;
-        return new ColumnIdentifier(name, comparator);
     }
 
     public ColumnDefinition(String ksName, String cfName, ColumnIdentifier name, AbstractType<?> type, Integer componentIndex, Kind kind)
@@ -164,6 +157,15 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
         {
             public int compare(CellPath path1, CellPath path2)
             {
+                if (path1.size() == 0 || path2.size() == 0)
+                {
+                    if (path1 == CellPath.BOTTOM)
+                        return path2 == CellPath.BOTTOM ? 0 : -1;
+                    if (path1 == CellPath.TOP)
+                        return path2 == CellPath.TOP ? 0 : 1;
+                    return path2 == CellPath.BOTTOM ? 1 : -1;
+                }
+
                 // This will get more complicated once we have non-frozen UDT and nested collections
                 assert path1.size() == 1 && path2.size() == 1;
                 return type.nameComparator().compare(path1.get(0), path2.get(0));
@@ -428,6 +430,12 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
     public boolean isComplex()
     {
         return cellPathComparator != null;
+    }
+
+    public boolean isSuperColumnMap()
+    {
+        // We use a special map column with an empty name to store "dynamic" values for super columns.
+        return kind == Kind.REGULAR && name.bytes.equals(ThriftConversion.SUPER_COLUMN_MAP_COLUMN);
     }
 
     public CellPath.Serializer cellPathSerializer()

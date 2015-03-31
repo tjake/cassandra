@@ -230,6 +230,8 @@ public abstract class PartitionIterators
         if (iterators.size() == 1)
             return iterators.get(0);
 
+        final boolean isForThrift = iterators.get(0).isForThrift();
+
         final MergeIterator<AtomIterator, AtomIterator> merged = MergeIterator.get(iterators, partitionComparator, new MergeIterator.Reducer<AtomIterator, AtomIterator>()
         {
             private final List<AtomIterator> toMerge = new ArrayList<>(iterators.size());

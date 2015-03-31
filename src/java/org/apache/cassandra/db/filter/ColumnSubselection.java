@@ -54,7 +54,7 @@ public abstract class ColumnSubselection
     public static ColumnSubselection slice(ColumnDefinition column, CellPath from, CellPath to)
     {
         assert column.isComplex() && column.type instanceof CollectionType;
-        assert from.size() == 1 && to.size() == 1;
+        assert from.size() <= 1 && to.size() <= 1;
         return new Slice(column, from, to);
     }
 
@@ -114,7 +114,7 @@ public abstract class ColumnSubselection
         {
             // This assert we're dealing with a collection since that's the only thing it's used for so far.
             AbstractType<?> type = ((CollectionType)column().type).nameComparator();
-            return String.format("[%s:%s]", type.getString(from.get(0)), type.getString(to.get(0)));
+            return String.format("[%s:%s]", from == CellPath.BOTTOM ? "" : type.getString(from.get(0)), to == CellPath.TOP ? "" : type.getString(to.get(0)));
         }
     }
 

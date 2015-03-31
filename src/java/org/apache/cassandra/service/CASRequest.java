@@ -17,7 +17,7 @@
  */
 package org.apache.cassandra.service;
 
-import org.apache.cassandra.db.filter.PartitionFilter;
+import org.apache.cassandra.db.SinglePartitionReadCommand;
 import org.apache.cassandra.db.partitions.ReadPartition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -28,9 +28,9 @@ import org.apache.cassandra.exceptions.InvalidRequestException;
 public interface CASRequest
 {
     /**
-     * The filter to use to fetch the value to compare for the CAS.
+     * The command to use to fetch the value to compare for the CAS.
      */
-    public PartitionFilter readFilter();
+    public SinglePartitionReadCommand readCommand(int nowInSec);
 
     /**
      * Returns whether the provided CF, that represents the values fetched using the

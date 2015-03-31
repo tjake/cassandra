@@ -230,7 +230,7 @@ public class StorageProxy implements StorageProxyMBean
 
                 // read the current values and check they validate the conditions
                 Tracing.trace("Reading existing values for CAS precondition");
-                SinglePartitionReadCommand readCommand = SinglePartitionReadCommand.create(metadata, FBUtilities.nowInSeconds(), key, request.readFilter());
+                SinglePartitionReadCommand readCommand = request.readCommand(FBUtilities.nowInSeconds());
                 ConsistencyLevel readConsistency = consistencyForPaxos == ConsistencyLevel.LOCAL_SERIAL ? ConsistencyLevel.LOCAL_QUORUM : ConsistencyLevel.QUORUM;
 
                 ReadPartition current;
@@ -1577,7 +1577,7 @@ public class StorageProxy implements StorageProxyMBean
      * range in the ring based on our local data.  This assumes that ranges are uniformly distributed across the cluster
      * and that the queried data is also uniformly distributed.
      */
-    private static float estimateResultRowsPerRange(PartitionRangeReadCommand command, Keyspace keyspace)
+    private static float estimateResultsPerRange(PartitionRangeReadCommand command, Keyspace keyspace)
     {
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(command.metadata().cfId);
         SecondaryIndexSearcher searcher = cfs.indexManager.getBestIndexSearcherFor(command);
@@ -1748,7 +1748,7 @@ public class StorageProxy implements StorageProxyMBean
         private int concurrencyFactor;
         // The two following "metric" are maintained to improve the concurrencyFactor
         // when it was not good enough initially.
-        private int liveRowsReturned;
+        private int liveReturned;
         private int rangesQueried;
 
         public RangeCommandIterator(RangeIterator ranges, PartitionRangeReadCommand command, int concurrencyFactor, Keyspace keyspace, ConsistencyLevel consistency)
@@ -1773,7 +1773,7 @@ public class StorageProxy implements StorageProxyMBean
                 // else, sends the next batch of concurrent queries (after having close the previous iterator)
                 if (sentQueryIterator != null)
                 {
-                    liveRowsReturned += sentQueryIterator.counter().counted();
+                    liveReturned += sentQueryIterator.counter().counted();
                     sentQueryIterator.close();
 
                     // It's not the first batch of queries and we're not done, so we we can use what has been
@@ -1788,7 +1788,7 @@ public class StorageProxy implements StorageProxyMBean
 
         private void updateConcurrencyFactor()
         {
-            if (liveRowsReturned == 0)
+            if (liveReturned == 0)
             {
                 // we haven't actually gotten any results, so query all remaining ranges at once
                 concurrencyFactor = totalRangeCount - rangesQueried;
@@ -1797,8 +1797,8 @@ public class StorageProxy implements StorageProxyMBean
 
             // Otherwise, compute how many rows per range we got on average and pick a concurrency factor
             // that should allow us to fetch all remaining rows with the next batch of (concurrent) queries.
-            int remainingRows = command.limits().count() - liveRowsReturned;
-            float rowsPerRange = (float)liveRowsReturned / (float)rangesQueried;
+            int remainingRows = command.limits().count() - liveReturned;
+            float rowsPerRange = (float)liveReturned / (float)rangesQueried;
             concurrencyFactor = Math.max(1, Math.min(totalRangeCount - rangesQueried, Math.round(remainingRows / rowsPerRange)));
             logger.debug("Didn't get enough response rows; actual rows per range: {}; remaining rows: {}, new concurrent requests: {}",
                          rowsPerRange, (int) remainingRows, concurrencyFactor);
@@ -1875,16 +1875,16 @@ public class StorageProxy implements StorageProxyMBean
         RangeIterator ranges = new RangeIterator(command, keyspace, consistencyLevel);
 
         // our estimate of how many result rows there will be per-range
-        float resultRowsPerRange = estimateResultRowsPerRange(command, keyspace);
+        float resultsPerRange = estimateResultsPerRange(command, keyspace);
         // underestimate how many rows we will get per-range in order to increase the likelihood that we'll
         // fetch enough rows in the first round
-        resultRowsPerRange -= resultRowsPerRange * CONCURRENT_SUBREQUESTS_MARGIN;
-        int concurrencyFactor = resultRowsPerRange == 0.0
+        resultsPerRange -= resultsPerRange * CONCURRENT_SUBREQUESTS_MARGIN;
+        int concurrencyFactor = resultsPerRange == 0.0
                               ? 1
-                              : Math.max(1, Math.min(ranges.rangeCount(), (int) Math.ceil(command.limits().count() / resultRowsPerRange)));
+                              : Math.max(1, Math.min(ranges.rangeCount(), (int) Math.ceil(command.limits().count() / resultsPerRange)));
         logger.debug("Estimated result rows per range: {}; requested rows: {}, ranges.size(): {}; concurrent range requests: {}",
-                     resultRowsPerRange, command.limits().count(), ranges.rangeCount(), concurrencyFactor);
-        Tracing.trace("Submitting range requests on {} ranges with a concurrency of {} ({} rows per range expected)", ranges.rangeCount(), concurrencyFactor, resultRowsPerRange);
+                     resultsPerRange, command.limits().count(), ranges.rangeCount(), concurrencyFactor);
+        Tracing.trace("Submitting range requests on {} ranges with a concurrency of {} ({} rows per range expected)", ranges.rangeCount(), concurrencyFactor, resultsPerRange);
 
         // Note that in general, a RangeCommandIterator will honor the command limit for each range, but will not enforce it globally.
         return command.postReconciliationProcessing(command.limits().filter(new RangeCommandIterator(ranges, command, concurrencyFactor, keyspace, consistencyLevel)));

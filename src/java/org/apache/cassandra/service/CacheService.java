@@ -371,14 +371,11 @@ public class CacheService implements CacheServiceMBean
                 public Pair<CounterCacheKey, ClockAndCount> call() throws Exception
                 {
                     DecoratedKey key = cfs.partitioner.decorateKey(partitionKey);
-                    // TODO
-                    // Split cellName into prefix & column name
-                    Pair<Clustering, ColumnDefinition> p = LegacyLayout.decodeCellName(cfs.metadata, cellName);
-                    Clustering clustering = p.left;
-                    ColumnDefinition column = p.right;
+                    LegacyLayout.LegacyCellName name = LegacyLayout.decodeCellName(cfs.metadata, cellName);
+                    ColumnDefinition column = name.column;
 
                     int nowInSec = FBUtilities.nowInSeconds();
-                    PartitionFilter filter = PartitionFilters.singleCellRead(cfs.metadata, clustering, column);
+                    PartitionFilter filter = PartitionFilters.singleCellRead(cfs.metadata, name.clustering, column);
                     SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, nowInSec, key, filter);
                     try (RowIterator iter = AtomIterators.asRowIterator(cmd.queryMemtableAndDisk(cfs)))
                     {
@@ -398,7 +395,7 @@ public class CacheService implements CacheServiceMBean
                             return null;
 
                         ClockAndCount clockAndCount = CounterContext.instance().getLocalClockAndCount(cell.value());
-                        return Pair.create(CounterCacheKey.create(cfs.metadata.cfId, partitionKey, clustering, column), clockAndCount);
+                        return Pair.create(CounterCacheKey.create(cfs.metadata.cfId, partitionKey, name.clustering, column), clockAndCount);
                     }
                 }
             });

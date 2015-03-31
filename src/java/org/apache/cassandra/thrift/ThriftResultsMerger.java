@@ -17,15 +17,24 @@
  */
 package org.apache.cassandra.thrift;
 
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Iterators;
+import com.google.common.collect.PeekingIterator;
+
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.db.partitions.*;
 
 /**
- * Given an iterator on a partition of a compact table (a "static" compact in fact), this
+ * Given an iterator on a partition of a compact table (a "static" compact or a super columns table), this
  * return an iterator that merges the static row columns with the other results.
  */
 public class ThriftResultsMerger extends WrappingPartitionIterator
@@ -37,7 +46,7 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
 
     public static PartitionIterator maybeWrap(PartitionIterator iterator, CFMetaData metadata)
     {
-        if (!metadata.isStaticCompactTable())
+        if (!metadata.isStaticCompactTable() && !metadata.isSuper())
             return iterator;
 
         return new ThriftResultsMerger(iterator);
@@ -45,15 +54,19 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
 
     public static AtomIterator maybeWrap(AtomIterator iterator)
     {
-        if (!iterator.metadata().isStaticCompactTable())
+        if (!iterator.metadata().isStaticCompactTable() && !iterator.metadata().isSuper())
             return iterator;
 
-        return new PartitionMerger(iterator);
+        return iterator.metadata().isSuper()
+             ? new SuperColumnsPartitionMerger(iterator)
+             : new PartitionMerger(iterator);
     }
 
     protected AtomIterator computeNext(AtomIterator iter)
     {
-        return new PartitionMerger(iter);
+        return iter.metadata().isSuper()
+             ? new SuperColumnsPartitionMerger(iter)
+             : new PartitionMerger(iter);
     }
 
     private static class PartitionMerger extends WrappingAtomIterator
@@ -170,6 +183,102 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
             }
             // Nothing more to merge.
             nextToMerge = null;
+        }
+    }
+
+    private static class SuperColumnsPartitionMerger extends WrappingAtomIterator
+    {
+        private final ReusableRow reusableRow;
+        private final ColumnDefinition superColumnMapColumn;
+        private final AbstractType<?> columnComparator;
+
+        private SuperColumnsPartitionMerger(AtomIterator results)
+        {
+            super(results);
+            assert results.metadata().isSuper();
+
+            this.superColumnMapColumn = results.metadata().compactValueColumn();
+            assert superColumnMapColumn != null && superColumnMapColumn.type instanceof MapType;
+
+            this.reusableRow = new ReusableRow(results.metadata().clusteringColumns().size(), Columns.of(superColumnMapColumn), results.nowInSec());
+            this.columnComparator = ((MapType)superColumnMapColumn.type).nameComparator();
+        }
+
+        @Override
+        public Atom next()
+        {
+            Atom next = super.next();
+            if (next.kind() != Atom.Kind.ROW)
+                return next;
+
+            Row row = (Row)next;
+            Row.Writer writer = reusableRow.writer();
+            row.clustering().writeTo(writer);
+
+            PeekingIterator<Cell> staticCells = Iterators.peekingIterator(makeStaticCellIterator(row));
+            if (!staticCells.hasNext())
+                return row;
+
+            Iterator<Cell> cells = row.getCells(superColumnMapColumn);
+            PeekingIterator<Cell> dynamicCells = Iterators.peekingIterator(cells.hasNext() ? cells : Collections.<Cell>emptyIterator());
+
+            while (staticCells.hasNext() && dynamicCells.hasNext())
+            {
+                Cell staticCell = staticCells.peek();
+                Cell dynamicCell = dynamicCells.peek();
+                int cmp = columnComparator.compare(staticCell.column().name.bytes, dynamicCell.path().get(0));
+                if (cmp < 0)
+                {
+                    staticCell = staticCells.next();
+                    writer.writeCell(superColumnMapColumn, staticCell.isCounterCell(), staticCell.value(), staticCell.livenessInfo(), CellPath.create(staticCell.column().name.bytes));
+                }
+                else if (cmp > 0)
+                {
+                    dynamicCells.next().writeTo(writer);
+                }
+                else
+                {
+                    staticCell = staticCells.next();
+                    Cell toMerge = Cells.create(superColumnMapColumn,
+                                                 staticCell.isCounterCell(),
+                                                 staticCell.value(),
+                                                 staticCell.livenessInfo(),
+                                                 CellPath.create(staticCell.column().name.bytes));
+                    Cells.reconcile(toMerge, dynamicCells.next(), nowInSec()).writeTo(writer);
+                }
+            }
+
+            while (staticCells.hasNext())
+            {
+                Cell staticCell = staticCells.next();
+                writer.writeCell(superColumnMapColumn, staticCell.isCounterCell(), staticCell.value(), staticCell.livenessInfo(), CellPath.create(staticCell.column().name.bytes));
+            }
+            while (dynamicCells.hasNext())
+            {
+                dynamicCells.next().writeTo(writer);
+            }
+
+            writer.endOfRow();
+            return reusableRow;
+        }
+
+        private static Iterator<Cell> makeStaticCellIterator(final Row row)
+        {
+            return new AbstractIterator<Cell>()
+            {
+                private int i;
+
+                protected Cell computeNext()
+                {
+                    while (i < row.columns().simpleColumnCount())
+                    {
+                        Cell cell = row.getCell(row.columns().getSimple(i++));
+                        if (cell != null)
+                            return cell;
+                    }
+                    return endOfData();
+                }
+            };
         }
     }
 }

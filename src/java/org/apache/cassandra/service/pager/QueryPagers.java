@@ -21,9 +21,11 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
 
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.*;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
@@ -83,25 +85,25 @@ public class QueryPagers
     /**
      * Convenience method that count (live) cells/rows for a given slice of a row, but page underneath.
      */
-    // TODO
-    //public static int countPaged(String keyspace,
-    //                             String columnFamily,
-    //                             ByteBuffer key,
-    //                             SliceQueryFilter filter,
-    //                             ConsistencyLevel consistencyLevel,
-    //                             final int pageSize,
-    //                             long now) throws RequestValidationException, RequestExecutionException
-    //{
-    //    SliceFromReadCommand command = new SliceFromReadCommand(keyspace, key, columnFamily, now, filter);
-    //    final SliceQueryPager pager = new SliceQueryPager(command, consistencyLevel, false);
+    public static int countPaged(CFMetaData metadata,
+                                 DecoratedKey key,
+                                 PartitionFilter filter,
+                                 DataLimits limits,
+                                 ConsistencyLevel consistencyLevel,
+                                 ClientState state,
+                                 final int pageSize,
+                                 int nowInSec) throws RequestValidationException, RequestExecutionException
+    {
+        SinglePartitionReadCommand command = SinglePartitionReadCommand.create(metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
+        final SinglePartitionPager pager = new SinglePartitionPager(command, consistencyLevel, state, false);
 
-    //    ColumnCounter counter = filter.columnCounter(Schema.instance.getCFMetaData(keyspace, columnFamily).comparator, now);
-    //    while (!pager.isExhausted())
-    //    {
-    //        List<Row> next = pager.fetchPage(pageSize);
-    //        if (!next.isEmpty())
-    //            counter.countAll(next.get(0).cf);
-    //    }
-    //    return counter.live();
-    //}
+        int count = 0;
+        while (!pager.isExhausted())
+        {
+            CountingDataIterator iter = new CountingDataIterator(pager.fetchPage(pageSize), limits);
+            DataIterators.consume(iter);
+            count += iter.counter().counted();
+        }
+        return count;
+    }
 }

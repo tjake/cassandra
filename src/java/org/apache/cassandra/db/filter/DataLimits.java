@@ -60,7 +60,7 @@ public abstract class DataLimits
     };
     public static final DataLimits DISTINCT_NONE = new CQLLimits(Integer.MAX_VALUE, 1);
 
-    private enum Kind { CQL_LIMIT, CQL_PAGING_LIMIT, THRIFT_LIMIT }
+    private enum Kind { CQL_LIMIT, CQL_PAGING_LIMIT, THRIFT_LIMIT, SUPER_COLUMN_COUNTING_LIMIT }
 
     public static DataLimits cqlLimits(int cqlRowLimit)
     {
@@ -79,8 +79,12 @@ public abstract class DataLimits
 
     public static DataLimits thriftLimits(int partitionLimit, int cellPerPartitionLimit)
     {
-        // TODO
-        throw new UnsupportedOperationException();
+        return new ThriftLimits(partitionLimit, cellPerPartitionLimit);
+    }
+
+    public static DataLimits superColumnCountingLimits(int partitionLimit, int cellPerPartitionLimit)
+    {
+        return new SuperColumnCountingLimits(partitionLimit, cellPerPartitionLimit);
     }
 
     protected abstract Kind kind();
@@ -95,28 +99,38 @@ public abstract class DataLimits
     public abstract boolean hasEnoughLiveData(CachedPartition cached, int nowInSec);
 
     /**
-     * Returns a new {@code RowCounter} for this limits.
+     * Returns a new {@code Counter} for this limits.
      *
      * @param assumeLiveData if true, the counter will assume that every row passed is live and won't
      * thus check for liveness, otherwise it will. This should be {@code true} when used on a
      * {@code RowIterator} (since it only returns live rows), false otherwise.
-     * @return a new {@code RowCounter} for this limits.
+     * @return a new {@code Counter} for this limits.
      */
-    public abstract RowCounter newRowCounter(boolean assumeLiveData);
+    public abstract Counter newCounter(boolean assumeLiveData);
 
+    /**
+     * The max number of results this limits enforces.
+     * <p>
+     * Note that the actual definition of "results" depends a bit: for CQL, it's always rows, but for
+     * thrift, it means cells. The {@link #countCells} allows to distinguish between the two cases if
+     * needed.
+     *
+     * @return the maximum number of results this limits enforces.
+     */
     public abstract int count();
+
     public abstract int perPartitionCount();
 
     public abstract boolean countCells();
 
     public PartitionIterator filter(PartitionIterator iter)
     {
-        return new CountingPartitionIterator(iter, newRowCounter(false));
+        return new CountingPartitionIterator(iter, newCounter(false));
     }
 
     public AtomIterator filter(AtomIterator iter)
     {
-        return new CountingAtomIterator(iter, newRowCounter(false));
+        return new CountingAtomIterator(iter, newCounter(false));
     }
 
     public DataIterator filter(DataIterator iter)
@@ -130,18 +144,29 @@ public abstract class DataLimits
      */
     public abstract float estimateTotalResults(ColumnFamilyStore cfs);
 
-    public interface RowCounter
+    public interface Counter
     {
         public void newPartition(DecoratedKey partitionKey);
         public void newRow(Row row);
 
+        /**
+         * The number of results counted.
+         * <p>
+         * Note that the definition of "results" should be the same that for {@link #count}.
+         *
+         * @return the number of results counted.
+         */
         public int counted();
+
         public int countedInCurrentPartition();
 
         public boolean isDone();
         public boolean isDoneForPartition();
     }
 
+    /**
+     * Limits used by CQL; this count rows.
+     */
     private static class CQLLimits extends DataLimits
     {
         protected final int rowLimit;
@@ -192,13 +217,16 @@ public abstract class DataLimits
 
         public DataLimits forShortReadRetry(int toFetch)
         {
+            // When we do a short read retry, we're only ever querying the single partition on which we have a short read. So
+            // we use toFetch as the row limit and use no perPartitionLimit (it would be equivalent in practice to use toFetch
+            // for both argument or just for perPartitionLimit with no limit on rowLimit).
             return new CQLLimits(toFetch, Integer.MAX_VALUE, isDistinct);
         }
 
         public boolean hasEnoughLiveData(CachedPartition cached, int nowInSec)
         {
             // We want the number of row that are currently live. Getting that precise number forces
-            // us to iterator the cached partition in general, but we can avoid that if:
+            // us to iterate the cached partition in general, but we can avoid that if:
             //   - The number of rows with at least one non-expiring cell is greater than what we ask,
             //     in which case we know we have enough live.
             //   - The number of rows is less than requested, in which case we  know we won't have enough.
@@ -210,7 +238,7 @@ public abstract class DataLimits
 
             // Otherwise, we need to re-count
             try (AtomIterator cacheIter = cached.atomIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
-                 CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newRowCounter(false)))
+                 CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newCounter(false)))
             {
                 // Consume the iterator until we've counted enough
                 while (iter.hasNext() && !iter.counter().isDone())
@@ -219,9 +247,9 @@ public abstract class DataLimits
             }
         }
 
-        public RowCounter newRowCounter(boolean assumeLiveData)
+        public Counter newCounter(boolean assumeLiveData)
         {
-            return new Counter(assumeLiveData);
+            return new CQLCounter(assumeLiveData);
         }
 
         public int count()
@@ -243,18 +271,18 @@ public abstract class DataLimits
         {
             // TODO: we should start storing stats on the number of rows (instead of the number of cells, which
             // is what getMeanColumns returns)
-            float resultRowsPerStorageRow = ((float) cfs.getMeanColumns()) / cfs.metadata.partitionColumns().regulars.columnCount();
-            return resultRowsPerStorageRow * (cfs.estimateKeys());
+            float rowsPerPartition = ((float) cfs.getMeanColumns()) / cfs.metadata.partitionColumns().regulars.columnCount();
+            return rowsPerPartition * (cfs.estimateKeys());
         }
 
-        protected class Counter implements RowCounter
+        protected class CQLCounter implements Counter
         {
             protected final boolean assumeLiveData;
 
             protected int rowCounted;
             protected int rowInCurrentPartition;
 
-            public Counter(boolean assumeLiveData)
+            public CQLCounter(boolean assumeLiveData)
             {
                 this.assumeLiveData = assumeLiveData;
             }
@@ -344,12 +372,12 @@ public abstract class DataLimits
         }
 
         @Override
-        public RowCounter newRowCounter(boolean assumeLiveData)
+        public Counter newCounter(boolean assumeLiveData)
         {
             return new PagingAwareCounter(assumeLiveData);
         }
 
-        private class PagingAwareCounter extends Counter
+        private class PagingAwareCounter extends CQLCounter
         {
             private PagingAwareCounter(boolean assumeLiveData)
             {
@@ -371,8 +399,8 @@ public abstract class DataLimits
      */
     private static class ThriftLimits extends DataLimits
     {
-        private final int partitionLimit;
-        private final int cellPerPartitionLimit;
+        protected final int partitionLimit;
+        protected final int cellPerPartitionLimit;
 
         private ThriftLimits(int partitionLimit, int cellPerPartitionLimit)
         {
@@ -520,8 +548,65 @@ public abstract class DataLimits
         @Override
         public String toString()
         {
-            // This is not valid CQL, but that's ok since it's not use for CQL queries.
+            // This is not valid CQL, but that's ok since it's not used for CQL queries.
             return String.format("THRIFT LIMIT (partitions=%d, cells_per_partition=%d)", partitionLimit, cellPerPartitionLimit);
+        }
+    }
+
+    /**
+     * Limits used for thrift get_count when we only want to count super columns.
+     */
+    private static class SuperColumnCountingLimits extends ThriftLimits
+    {
+        private SuperColumnCountingLimits(int partitionLimit, int cellPerPartitionLimit)
+        {
+            super(partitionLimit, cellPerPartitionLimit);
+        }
+
+        protected Kind kind()
+        {
+            return Kind.SUPER_COLUMN_COUNTING_LIMIT;
+        }
+
+        public DataLimits forPaging(int pageSize)
+        {
+            // We don't support paging on thrift in general but do use paging under the hood for get_count. For
+            // that case, we only care about limiting cellPerPartitionLimit (since it's paging over a single
+            // partition). We do check that the partition limit is 1 however to make sure this is not misused
+            // (as this wouldn't work properly for range queries).
+            assert partitionLimit == 1;
+            return new SuperColumnCountingLimits(partitionLimit, pageSize);
+        }
+
+        public DataLimits forShortReadRetry(int toFetch)
+        {
+            // Short read retries are always done for a single partition at a time, so it's ok to ignore the
+            // partition limit for those
+            return new SuperColumnCountingLimits(1, toFetch);
+        }
+
+        public Counter newCounter(boolean assumeLiveData)
+        {
+            return new SuperColumnCountingCounter(assumeLiveData);
+        }
+
+        protected class SuperColumnCountingCounter extends ThriftCounter
+        {
+            public SuperColumnCountingCounter(boolean assumeLiveData)
+            {
+                super(assumeLiveData);
+            }
+
+            public void newRow(Row row)
+            {
+                // When we count super columns, we only query the underlying row but not any cells, so just
+                // count how many row we get as this correspond to how many super columns we have.
+                if (assumeLiveData || row.hasLiveData())
+                {
+                    ++cellsCounted;
+                    ++cellsInCurrentPartition;
+                }
+            }
         }
     }
 
@@ -546,7 +631,11 @@ public abstract class DataLimits
                     }
                     break;
                 case THRIFT_LIMIT:
-                    throw new UnsupportedOperationException();
+                case SUPER_COLUMN_COUNTING_LIMIT:
+                    ThriftLimits thriftLimits = (ThriftLimits)limits;
+                    out.writeInt(thriftLimits.partitionLimit);
+                    out.writeInt(thriftLimits.cellPerPartitionLimit);
+                    break;
                 default:
                     throw new AssertionError();
             }
@@ -569,7 +658,12 @@ public abstract class DataLimits
                     int lastRemaining = in.readInt();
                     return new CQLPagingLimits(rowLimit, perPartitionLimit, isDistinct, lastKey, lastRemaining);
                 case THRIFT_LIMIT:
-                    throw new UnsupportedOperationException();
+                case SUPER_COLUMN_COUNTING_LIMIT:
+                    int partitionLimit = in.readInt();
+                    int cellPerPartitionLimit = in.readInt();
+                    return kind == Kind.THRIFT_LIMIT
+                         ? new ThriftLimits(partitionLimit, cellPerPartitionLimit)
+                         : new SuperColumnCountingLimits(partitionLimit, cellPerPartitionLimit);
             }
             throw new AssertionError();
         }
@@ -594,7 +688,11 @@ public abstract class DataLimits
                     }
                     break;
                 case THRIFT_LIMIT:
-                    throw new UnsupportedOperationException();
+                case SUPER_COLUMN_COUNTING_LIMIT:
+                    ThriftLimits thriftLimits = (ThriftLimits)limits;
+                    size += sizes.sizeof(thriftLimits.partitionLimit);
+                    size += sizes.sizeof(thriftLimits.cellPerPartitionLimit);
+                    break;
                 default:
                     throw new AssertionError();
             }
