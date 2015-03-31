@@ -27,7 +27,7 @@ public class SimpleClustering extends Clustering
 
     private final ByteBuffer[] values;
 
-    public SimpleClustering(ByteBuffer[] values)
+    public SimpleClustering(ByteBuffer... values)
     {
         this.values = values;
     }

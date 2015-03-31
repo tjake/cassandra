@@ -23,6 +23,8 @@ import java.util.*;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.cache.CachingOptions;
 import org.apache.cassandra.config.*;
@@ -46,9 +48,15 @@ import org.apache.cassandra.utils.UUIDGen;
  */
 public class ThriftConversion
 {
+    private static final Logger logger = LoggerFactory.getLogger(ThriftConversion.class);
+
     public static final String DEFAULT_KEY_ALIAS = "key";
     public static final String DEFAULT_CLUSTERING_ALIAS = "column";
     public static final String DEFAULT_VALUE_ALIAS = "value";
+
+    // We use an empty value for the 1) this can't conflict with a user-defined column and 2) this actually
+    // validate with any comparator which avoid having to bother with this in LegacySchemaTables.compactTableColumnDefinitionComparator
+    public static final ByteBuffer SUPER_COLUMN_MAP_COLUMN = ByteBufferUtil.EMPTY_BYTE_BUFFER;
 
     public static org.apache.cassandra.db.ConsistencyLevel fromThrift(ConsistencyLevel cl)
     {
@@ -138,12 +146,9 @@ public class ThriftConversion
         return new TimedOutException();
     }
 
-    public static ColumnFilter indexExpressionsFromThrift(CFMetaData metadata, List<IndexExpression> exprs)
+    public static ColumnFilter columnFilterFromThrift(CFMetaData metadata, List<IndexExpression> exprs)
     {
-        if (exprs == null)
-            return null;
-
-        if (exprs.isEmpty())
+        if (exprs == null || exprs.isEmpty())
             return ColumnFilter.NONE;
 
         ColumnFilter converted = new ColumnFilter(exprs.size());
@@ -250,7 +255,8 @@ public class ThriftConversion
                 cfId = UUIDGen.getTimeUUID();
 
             boolean isDense = isSuper ? false : calculateIsDense(rawComparator, defs);
-            boolean isCompound = isSuper ? true : (rawComparator instanceof CompositeType);
+
+            boolean isCompound = isSuper ? false : (rawComparator instanceof CompositeType);
             boolean isCounter = defaultValidator instanceof CounterColumnType;
 
             // If it's a thrift table creation, adds the default CQL metadata for the new table
@@ -332,7 +338,13 @@ public class ThriftConversion
             }
         }
 
-        if (subComparator == null)
+        if (subComparator != null)
+        {
+            // SuperColumn tables: we use a special map to hold dynamic values within a given super column
+            defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + 1, comparator, 0));
+            defs.add(ColumnDefinition.regularDef(ks, cf, UTF8Type.instance.compose(SUPER_COLUMN_MAP_COLUMN), MapType.getInstance(subComparator, defaultValidator, true), null));
+        }
+        else
         {
             List<AbstractType<?>> subTypes = comparator instanceof CompositeType
                                            ? ((CompositeType)comparator).types
@@ -340,14 +352,9 @@ public class ThriftConversion
 
             for (int i = 0; i < subTypes.size(); i++)
                 defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + (i + 1), subTypes.get(i), i));
-        }
-        else
-        {
-            defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + 1, comparator, 0));
-            defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + 2, subComparator, 1));
-        }
 
-        defs.add(ColumnDefinition.regularDef(ks, cf, DEFAULT_VALUE_ALIAS, defaultValidator, null));
+            defs.add(ColumnDefinition.regularDef(ks, cf, DEFAULT_VALUE_ALIAS, defaultValidator, null));
+        }
     }
 
     /*
@@ -379,7 +386,7 @@ public class ThriftConversion
          * in which case it should not be dense. However, we can limit our margin of error by assuming we are
          * in the latter case only if the comparator is exactly CompositeType(UTF8Type).
          */
-        boolean hasRegular = false;
+        boolean hasRegularOrStatic = false;
         int maxClusteringIdx = -1;
         for (ColumnDefinition def : defs)
         {
@@ -389,14 +396,15 @@ public class ThriftConversion
                     maxClusteringIdx = Math.max(maxClusteringIdx, def.position());
                     break;
                 case REGULAR:
-                    hasRegular = true;
+                case STATIC:
+                    hasRegularOrStatic = true;
                     break;
             }
         }
 
         return maxClusteringIdx >= 0
              ? maxClusteringIdx == comparator.componentsCount() - 1
-             : !hasRegular && !CFMetaData.isCQL3OnlyPKComparator(comparator);
+             : !hasRegularOrStatic && !CFMetaData.isCQL3OnlyPKComparator(comparator);
     }
 
     /** applies implicit defaults to cf definition. useful in updates */
@@ -469,11 +477,11 @@ public class ThriftConversion
         if (cfm.isSuper())
         {
             def.setComparator_type(cfm.comparator.subtype(0).toString());
-            def.setSubcomparator_type(cfm.comparator.subtype(1).toString());
+            def.setSubcomparator_type(cfm.thriftColumnNameType().toString());
         }
         else
         {
-            def.setComparator_type(cfm.comparator.toString());
+            def.setComparator_type(LegacyLayout.makeLegacyComparator(cfm).toString());
         }
 
         def.setComment(Strings.nullToEmpty(cfm.getComment()));

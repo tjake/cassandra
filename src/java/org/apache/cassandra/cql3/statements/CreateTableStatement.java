@@ -128,26 +128,30 @@ public class CreateTableStatement extends SchemaAlteringStatement
         for (int i = 0; i < columnAliases.size(); i++)
             builder.addClusteringColumn(columnAliases.get(i), clusteringTypes.get(i));
 
-        boolean isCompactStorage = isDense || !isCompound;
+        boolean isStaticCompact = !isDense && !isCompound;
         for (Map.Entry<ColumnIdentifier, AbstractType> entry : columns.entrySet())
         {
             ColumnIdentifier name = entry.getKey();
             // Note that for "static" no-clustering compact storage we use static for the defined columns
-            if (staticColumns.contains(name) || (!isDense && !isCompound))
+            if (staticColumns.contains(name) || isStaticCompact)
                 builder.addStaticColumn(name, entry.getValue());
             else
                 builder.addRegularColumn(name, entry.getValue());
         }
 
-        // If we're in the compact storage without clustering case, we still want to add a clustering and a regular
-        // column to match our "generic" compact layout (which we'll need if dynamic columns are added through thrift).
-        if (!isDense && !isCompound)
+        // Compact tables always have a clustering and a single regular value.
+        if (isStaticCompact)
         {
-            // For the comparator, we use UTF8 because that's what the column names are. For the value, we use
-            // BytesType to be as generic as possible.
             builder.addClusteringColumn(ThriftConversion.DEFAULT_CLUSTERING_ALIAS + 1, UTF8Type.instance);
             builder.addRegularColumn(ThriftConversion.DEFAULT_VALUE_ALIAS, BytesType.instance);
         }
+        else if (isDense && !builder.hasRegulars())
+        {
+            // Even for dense, we might not have our regular column if it wasn't part of the declaration. If
+            // that's the case, add it but with a specific EmptyType so we can recognize that case later
+            builder.addRegularColumn(ThriftConversion.DEFAULT_VALUE_ALIAS, EmptyType.instance);
+        }
+
         return builder;
     }
 

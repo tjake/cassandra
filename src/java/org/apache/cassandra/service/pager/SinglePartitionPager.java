@@ -49,22 +49,20 @@ public class SinglePartitionPager extends AbstractQueryPager
     private volatile Clustering lastReturned;
 
     // Don't use directly, use QueryPagers method instead
-    SinglePartitionPager(SinglePartitionReadCommand command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery)
+    SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery)
     {
         super(consistencyLevel, localQuery, command.metadata(), command.limits());
         this.command = command;
         this.cstate = cstate;
     }
 
-    SinglePartitionPager(SinglePartitionReadCommand command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
+    SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
     {
         this(command, consistencyLevel, cstate, localQuery);
 
         if (state != null)
         {
-            // Note that while we only encode the clustering in the state, we used to encode the full cellname
-            // pre-3.0 so make sure we're backward compatible (as it doesn't cost us much).
-            lastReturned = LegacyLayout.decodeCellName(cfm, state.cellName).left;
+            lastReturned = LegacyLayout.decodeClustering(cfm, state.cellName);
             restoreState(command.partitionKey(), state.remaining, state.remainingInPartition);
         }
     }

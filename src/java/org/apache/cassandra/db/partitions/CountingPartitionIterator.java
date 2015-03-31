@@ -24,15 +24,15 @@ import org.apache.cassandra.db.filter.DataLimits;
 
 public class CountingPartitionIterator extends WrappingPartitionIterator
 {
-    protected final DataLimits.RowCounter counter;
+    protected final DataLimits.Counter counter;
 
-    public CountingPartitionIterator(PartitionIterator result, DataLimits.RowCounter counter)
+    public CountingPartitionIterator(PartitionIterator result, DataLimits.Counter counter)
     {
         super(result);
         this.counter = counter;
     }
 
-    public DataLimits.RowCounter counter()
+    public DataLimits.Counter counter()
     {
         return counter;
     }

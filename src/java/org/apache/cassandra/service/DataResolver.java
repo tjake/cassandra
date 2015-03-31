@@ -70,11 +70,11 @@ public class DataResolver extends ResponseResolver
 
         // Even though every responses should honor the limit, we might have more than requested post reconciliation,
         // so ensure we're respecting the limit.
-        DataLimits.RowCounter counter = command.limits().newRowCounter(true);
+        DataLimits.Counter counter = command.limits().newCounter(true);
         return new CountingDataIterator(mergeWithShortReadProtection(iters, sources, counter), counter);
     }
 
-    private DataIterator mergeWithShortReadProtection(List<PartitionIterator> results, InetAddress[] sources, DataLimits.RowCounter resultCounter)
+    private DataIterator mergeWithShortReadProtection(List<PartitionIterator> results, InetAddress[] sources, DataLimits.Counter resultCounter)
     {
         // If we have only one results, there is no read repair to do and we can't get short reads
         if (results.size() == 1)
@@ -284,11 +284,11 @@ public class DataResolver extends ResponseResolver
     private class ShortReadProtectedIterator extends CountingPartitionIterator
     {
         private final InetAddress source;
-        private final DataLimits.RowCounter postReconciliationCounter;
+        private final DataLimits.Counter postReconciliationCounter;
 
-        private ShortReadProtectedIterator(InetAddress source, PartitionIterator iterator, DataLimits.RowCounter postReconciliationCounter)
+        private ShortReadProtectedIterator(InetAddress source, PartitionIterator iterator, DataLimits.Counter postReconciliationCounter)
         {
-            super(iterator, command.limits().newRowCounter(false));
+            super(iterator, command.limits().newCounter(false));
             this.source = source;
             this.postReconciliationCounter = postReconciliationCounter;
         }

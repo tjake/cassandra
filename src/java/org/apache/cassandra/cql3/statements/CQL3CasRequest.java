@@ -130,7 +130,7 @@ public class CQL3CasRequest implements CASRequest
         return conditionColumns;
     }
 
-    public PartitionFilter readFilter()
+    public SinglePartitionReadCommand readCommand(int nowInSec)
     {
         assert !conditions.isEmpty();
         Slices.Builder builder = new Slices.Builder(cfm.comparator, conditions.size());
@@ -143,7 +143,8 @@ public class CQL3CasRequest implements CASRequest
                 builder.add(Slice.make(cfm.comparator, clustering));
         }
 
-        return new SlicePartitionFilter(columnsToRead(), builder.build(), false);
+        SlicePartitionFilter filter = new SlicePartitionFilter(columnsToRead(), builder.build(), false);
+        return SinglePartitionReadCommand.create(cfm, nowInSec, key, filter);
     }
 
     public boolean appliesTo(ReadPartition current) throws InvalidRequestException

@@ -24,15 +24,15 @@ import org.apache.cassandra.db.filter.DataLimits;
 
 public class CountingAtomIterator extends WrappingAtomIterator
 {
-    private final DataLimits.RowCounter counter;
+    private final DataLimits.Counter counter;
 
-    public CountingAtomIterator(AtomIterator iter, DataLimits.RowCounter counter)
+    public CountingAtomIterator(AtomIterator iter, DataLimits.Counter counter)
     {
         super(iter);
         this.counter = counter;
     }
 
-    public DataLimits.RowCounter counter()
+    public DataLimits.Counter counter()
     {
         return counter;
     }

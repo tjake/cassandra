@@ -330,11 +330,20 @@ public class CompositeType extends AbstractCompositeType
 
     public static ByteBuffer build(ByteBuffer... buffers)
     {
-        int totalLength = 0;
+        return build(false, buffers);
+    }
+
+    public static ByteBuffer build(boolean isStatic, ByteBuffer... buffers)
+    {
+        int totalLength = isStatic ? 2 : 0;
         for (ByteBuffer bb : buffers)
             totalLength += 2 + bb.remaining() + 1;
 
         ByteBuffer out = ByteBuffer.allocate(totalLength);
+
+        if (isStatic)
+            out.putShort((short)STATIC_MARKER);
+
         for (ByteBuffer bb : buffers)
         {
             ByteBufferUtil.writeShortLength(out, bb.remaining());

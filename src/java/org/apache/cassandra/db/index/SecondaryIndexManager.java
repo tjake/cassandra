@@ -184,7 +184,7 @@ public class SecondaryIndexManager
         logger.info("Index build of {} complete", idxNames);
     }
 
-    private boolean indexes(ColumnDefinition column)
+    public boolean indexes(ColumnDefinition column)
     {
         for (SecondaryIndex index : allIndexes)
             if (index.indexes(column))

@@ -31,12 +31,16 @@ import org.apache.cassandra.io.util.DataOutputPlus;
  */
 public abstract class CellPath
 {
+    public static final CellPath BOTTOM = new EmptyCellPath();
+    public static final CellPath TOP = new EmptyCellPath();
+
     public abstract int size();
     public abstract ByteBuffer get(int i);
 
     // The only complex we currently have are collections that have only one value.
     public static CellPath create(ByteBuffer value)
     {
+        assert value != null && value.hasRemaining();
         return new SimpleCellPath(new ByteBuffer[]{ value });
     }
 
@@ -108,4 +112,16 @@ public abstract class CellPath
         }
     }
 
+    private static class EmptyCellPath extends CellPath
+    {
+        public int size()
+        {
+            return 0;
+        }
+
+        public ByteBuffer get(int i)
+        {
+            throw new UnsupportedOperationException();
+        }
+    }
 }
