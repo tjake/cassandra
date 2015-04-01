@@ -151,6 +151,8 @@ public class AlterTableStatement extends SchemaAlteringStatement
                                         ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
                                         : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
 
+                // Adding a column to a table which has an INCLUDE ALL global index requires the column to be
+                // added to the global index as well
                 for (GlobalIndexDefinition indexDef: cfm.getGlobalIndexes().values())
                 {
                     if (indexDef.included.isEmpty())
@@ -252,6 +254,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 // In any case, we update the column definition
                 cfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
 
+                // We have to alter the schema of the global index table as well; it doesn't affect the definition however
                 for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                 {
                     if (!gi.indexes(columnName)) continue;
@@ -311,6 +314,9 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         break;
                 }
 
+                // If a globally indexed column is dropped, then we need to drop the indexed table.
+                // If an included column is dropped, we need to drop that column from
+                // the included global index table and definition. 
                 for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                 {
                     if (!gi.indexes(columnName)) continue;
@@ -364,6 +370,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException("Cannot set default_time_to_live on a table with counters");
 
                 cfProps.applyToCFMetadata(cfm);
+                // If there are global indexes, need to apply the modifications to those tables as well.
                 for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                 {
                     CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
@@ -380,12 +387,20 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     ColumnIdentifier to = entry.getValue().prepare(cfm);
                     cfm.renameColumn(from, to);
 
+                    // If the global index includes a renamed column, it must be renamed in the index table and the definition.
                     for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                     {
+                        if (!gi.indexes(from)) continue;
+                        
                         CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                         ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
                         ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
                         indexCfm.renameColumn(indexFrom, indexTo);
+
+                        GlobalIndexDefinition giCopy = gi.copy();
+                        gi.renameColumn(from, to);
+
+                        cfm.replaceGlobalIndex(gi);
 
                         if (globalIndexUpdates == null)
                             globalIndexUpdates = new ArrayList<>();

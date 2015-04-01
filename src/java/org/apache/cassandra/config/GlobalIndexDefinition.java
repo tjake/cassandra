@@ -58,6 +58,28 @@ public class GlobalIndexDefinition
         return false;
     }
 
+    public void renameColumn(ColumnIdentifier from, ColumnIdentifier to)
+    {
+        if (target == from)
+            target = from;
+        else if (!included.isEmpty())
+        {
+            Collection<ColumnIdentifier> columns = new ArrayList<>();
+            for (ColumnIdentifier column: included)
+            {
+                if (column.bytes.compareTo(to.bytes) == 0)
+                {
+                    columns.add(to);
+                }
+                else
+                {
+                    columns.add(column);
+                }
+            }
+            included = columns;
+        }
+    }
+
     public GlobalIndexDefinition copy()
     {
         Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included.size());

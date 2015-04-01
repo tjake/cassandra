@@ -26,9 +26,7 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
-import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.db.index.IndexManager;
-import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 /**
