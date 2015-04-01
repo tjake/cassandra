@@ -1511,6 +1511,7 @@ public final class CFMetaData
             .append("speculativeRetry", speculativeRetry)
             .append("droppedColumns", droppedColumns)
             .append("triggers", triggers.values())
+            .append("globalIndexes", globalIndexes.values())
             .append("isDense", isDense)
             .toString();
     }

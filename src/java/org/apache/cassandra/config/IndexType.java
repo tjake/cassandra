@@ -21,5 +21,5 @@ public enum IndexType
 {
     KEYS,
     CUSTOM,
-    GLOBAL, COMPOSITES
+    COMPOSITES
 }

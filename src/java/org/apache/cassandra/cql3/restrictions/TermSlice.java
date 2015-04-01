@@ -26,7 +26,6 @@ import org.apache.cassandra.cql3.Term;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.index.Index;
-import org.apache.cassandra.db.index.SecondaryIndex;
 
 final class TermSlice
 {

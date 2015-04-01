@@ -30,7 +30,6 @@ import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.composites.Composite.EOC;
 import org.apache.cassandra.db.index.IndexManager;
-import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
