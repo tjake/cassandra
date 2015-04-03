@@ -351,6 +351,11 @@ public class Slice
             writer.writeBoundKind(kind());
         }
 
+        public Bound invert()
+        {
+            return withNewKind(kind().invert());
+        }
+
         // For use by intersects, it's called with the sstable bound opposite to the slice bound
         // (so if the slice bound is a start, it's call with the max sstable bound)
         private int compareTo(ClusteringComparator comparator, List<ByteBuffer> sstableBound)

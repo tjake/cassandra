@@ -326,14 +326,26 @@ public class StreamingTransferTest
                 .apply();
 
         // add RangeTombstones
-        //updates = new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros() + 1 , key);
-        //updates.addRangeTombstone(Slice.make(comparator, comparator.make(2), comparator.make(4)))
-        //        .build()
-        //        .apply();
+        updates = new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros() + 1 , key);
+        updates.addRangeTombstone(Slice.make(comparator, comparator.make(2), comparator.make(4)))
+                .build()
+                .apply();
 
 
         updates = new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros() + 1, key);
         updates.addRangeTombstone(Slice.make(comparator, comparator.make(5), comparator.make(7)))
+                .build()
+                .apply();
+
+        //Overlapping Range tombstone (start overlaps prev end)
+        updates = new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros() + 1, key);
+        updates.addRangeTombstone(Slice.make(comparator, comparator.make(4), comparator.make(10)))
+                .build()
+                .apply();
+
+        //Overlapping Range tombstone (end overlaps prev start)
+        updates = new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros() + 1, key);
+        updates.addRangeTombstone(Slice.make(comparator, comparator.make(3), comparator.make(4)))
                 .build()
                 .apply();
 
