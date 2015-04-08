@@ -135,7 +135,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         return DatabaseDescriptor.getReadRpcTimeout();
     }
 
-    public PartitionColumns queriedColumns()
+    public ColumnsSelection queriedColumns()
     {
         return partitionFilter().queriedColumns();
     }

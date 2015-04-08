@@ -32,6 +32,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.io.IVersionedSerializer;
@@ -377,7 +378,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
     }
 
     @Override
-    protected SliceableAtomIterator sliceableAtomIterator(PartitionColumns columns, boolean reversed, int nowInSec)
+    protected SliceableAtomIterator sliceableAtomIterator(ColumnsSelection columns, boolean reversed, int nowInSec)
     {
         maybeSort();
         return super.sliceableAtomIterator(columns, reversed, nowInSec);
@@ -631,7 +632,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
                 // assert count == written: "Table had " + count + " columns, but " + written + " written";
             }
 
-            try (AtomIterator iter = update.sliceableAtomIterator(update.columns(), false, update.createdAtInSec))
+            try (AtomIterator iter = update.sliceableAtomIterator())
             {
                 assert !iter.isReverseOrder();
                 AtomIteratorSerializer.serializer.serialize(iter, out, version, update.rows);
@@ -710,7 +711,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
                 //}
             }
 
-            try (AtomIterator iter = update.sliceableAtomIterator(update.columns(), false, update.createdAtInSec))
+            try (AtomIterator iter = update.sliceableAtomIterator())
             {
                 return AtomIteratorSerializer.serializer.serializedSize(iter, version, update.rows, sizes);
             }

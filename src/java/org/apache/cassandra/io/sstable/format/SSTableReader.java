@@ -42,6 +42,7 @@ import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.dht.*;
@@ -1470,8 +1471,8 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
      */
     protected abstract RowIndexEntry getPosition(RowPosition key, Operator op, boolean updateCacheAndStats, boolean permitMatchPastLast);
 
-    public abstract SliceableAtomIterator iterator(DecoratedKey key, PartitionColumns selectedColumns, boolean reversed, int nowInSec);
-    public abstract SliceableAtomIterator iterator(FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry, PartitionColumns selectedColumns, boolean reversed, int nowInSec);
+    public abstract SliceableAtomIterator iterator(DecoratedKey key, ColumnsSelection selectedColumns, boolean reversed, int nowInSec);
+    public abstract SliceableAtomIterator iterator(FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry, ColumnsSelection selectedColumns, boolean reversed, int nowInSec);
 
     /**
      * Finds and returns the first key beyond a given token in this SSTable or null if no such key exists.

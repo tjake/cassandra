@@ -21,6 +21,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.Slices;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.SearchIterator;
 
 /**
@@ -49,11 +50,16 @@ public interface Partition
     /**
      * Return the row corresponding to the provided clustering, or null if there is not such row.
      */
-    public SearchIterator<Clustering, Row> searchIterator(PartitionColumns columns, boolean reversed, int nowInSec);
+    public SearchIterator<Clustering, Row> searchIterator(ColumnsSelection columns, boolean reversed, int nowInSec);
+
+    /**
+     * Returns an AtomIterator over all the atoms contained by this partition.
+     */
+    public AtomIterator atomIterator(int nowInSec);
 
     /**
      * Returns an AtomIterator over the atoms contained by this partition
      * selected by the provided slices.
      */
-    public AtomIterator atomIterator(PartitionColumns columns, Slices slices, boolean reversed, int nowInSec);
+    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec);
 }

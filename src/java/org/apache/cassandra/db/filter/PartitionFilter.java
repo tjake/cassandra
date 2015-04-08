@@ -45,7 +45,7 @@ public interface PartitionFilter
      *
      * @return the non-PK columns that are selected by the filter.
      */
-    public PartitionColumns queriedColumns();
+    public ColumnsSelection queriedColumns();
 
     /**
      * Whether the filter query rows in reversed clustering order or not.

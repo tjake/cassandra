@@ -285,7 +285,7 @@ public class Scrubber implements Closeable
                 try (SSTableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);)
                 {
                     for (Partition partition : outOfOrder)
-                        inOrderWriter.append(partition.atomIterator(partition.columns(), Slices.ALL, false, nowInSec));
+                        inOrderWriter.append(partition.atomIterator(nowInSec));
                     newInOrderSstable = inOrderWriter.finish(-1, sstable.maxDataAge, true);
                 }
                 if (!isOffline)

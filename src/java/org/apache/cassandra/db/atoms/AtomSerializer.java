@@ -342,17 +342,6 @@ public class AtomSerializer
                                  RangeTombstoneMarker.Writer markerWriter)
     throws IOException
     {
-        return deserialize(in, header, helper, null, rowWriter, markerWriter);
-    }
-
-    public Atom.Kind deserialize(DataInput in,
-                                 SerializationHeader header,
-                                 SerializationHelper helper,
-                                 Columns columnsToFetch,
-                                 Row.Writer rowWriter,
-                                 RangeTombstoneMarker.Writer markerWriter)
-    throws IOException
-    {
         int flags = in.readUnsignedByte();
         if (isEndOfPartition(flags))
             return null;
@@ -368,7 +357,7 @@ public class AtomSerializer
         {
             assert !isStatic(flags); // deserializeStaticRow should be used for that.
             Clustering.serializer.deserialize(in, helper.version, header.clusteringTypes(), rowWriter);
-            deserializeRowBody(in, header, helper, columnsToFetch, flags, rowWriter);
+            deserializeRowBody(in, header, helper, flags, rowWriter);
             return Atom.Kind.ROW;
         }
     }
@@ -376,16 +365,10 @@ public class AtomSerializer
     public Row deserializeStaticRow(DataInput in, SerializationHeader header, SerializationHelper helper)
     throws IOException
     {
-        return deserializeStaticRow(in, header, helper, null);
-    }
-
-    public Row deserializeStaticRow(DataInput in, SerializationHeader header, SerializationHelper helper, Columns columnsToFetch)
-    throws IOException
-    {
         int flags = in.readUnsignedByte();
         assert !isEndOfPartition(flags) && kind(flags) == Atom.Kind.ROW && isStatic(flags);
         StaticRow.Builder builder = StaticRow.builder(header.columns().statics, helper.nowInSec);
-        deserializeRowBody(in, header, helper, columnsToFetch, flags, builder);
+        deserializeRowBody(in, header, helper, flags, builder);
         return builder.build();
     }
 
@@ -419,17 +402,6 @@ public class AtomSerializer
                                    Row.Writer writer)
     throws IOException
     {
-        deserializeRowBody(in, header, helper, null, flags, writer);
-    }
-
-    public void deserializeRowBody(DataInput in,
-                                   SerializationHeader header,
-                                   SerializationHelper helper,
-                                   Columns columnsToFetch,
-                                   int flags,
-                                   Row.Writer writer)
-    throws IOException
-    {
         boolean isStatic = isStatic(flags);
         boolean hasTimestamp = (flags & HAS_TIMESTAMP) != 0;
         boolean hasTTL = (flags & HAS_TTL) != 0;
@@ -454,42 +426,46 @@ public class AtomSerializer
             while ((i = in.readShort()) >= 0)
             {
                 if (i < simpleCount)
-                    readSimpleColumn(columns.getSimple(i), in, header, helper, columnsToFetch, writer);
+                    readSimpleColumn(columns.getSimple(i), in, header, helper, writer);
                 else
-                    readComplexColumn(columns.getComplex(i - simpleCount), in, header, helper, hasComplexDeletion, columnsToFetch, writer);
+                    readComplexColumn(columns.getComplex(i - simpleCount), in, header, helper, hasComplexDeletion, writer);
             }
         }
         else
         {
             for (int i = 0; i < columns.simpleColumnCount(); i++)
-                readSimpleColumn(columns.getSimple(i), in, header, helper, columnsToFetch, writer);
+                readSimpleColumn(columns.getSimple(i), in, header, helper, writer);
 
             for (int i = 0; i < columns.complexColumnCount(); i++)
-                readComplexColumn(columns.getComplex(i), in, header, helper, hasComplexDeletion, columnsToFetch, writer);
+                readComplexColumn(columns.getComplex(i), in, header, helper, hasComplexDeletion, writer);
         }
 
         writer.writeMaxLiveTimestamp(Math.max(maxLiveTimestamp, helper.getMaxLiveTimestamp()));
         writer.endOfRow();
     }
 
-    private void readSimpleColumn(ColumnDefinition column, DataInput in, SerializationHeader header, SerializationHelper helper, Columns columnsToFetch, Row.Writer writer)
+    private void readSimpleColumn(ColumnDefinition column, DataInput in, SerializationHeader header, SerializationHelper helper, Row.Writer writer)
     throws IOException
     {
-        if (columnsToFetch == null || columnsToFetch.contains(column))
+        if (helper.includes(column))
             readCell(column, in, header, helper, writer);
         else
             skipCell(column, in, header, helper);
     }
 
-    private void readComplexColumn(ColumnDefinition column, DataInput in, SerializationHeader header, SerializationHelper helper, boolean hasComplexDeletion, Columns columnsToFetch, Row.Writer writer)
+    private void readComplexColumn(ColumnDefinition column, DataInput in, SerializationHeader header, SerializationHelper helper, boolean hasComplexDeletion, Row.Writer writer)
     throws IOException
     {
-        if (columnsToFetch == null || columnsToFetch.contains(column))
+        if (helper.includes(column))
         {
+            helper.startOfComplexColumn(column);
+
             if (hasComplexDeletion)
                 writer.writeComplexDeletion(column, AtomIteratorSerializer.readDelTime(in, header));
 
             while (readCell(column, in, header, helper, writer));
+
+            helper.endOfComplexColumn(column);
         }
         else
         {

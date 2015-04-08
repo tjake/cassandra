@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
@@ -43,7 +44,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
     protected final SSTableReader sstable;
     protected final DecoratedKey key;
     protected final DeletionTime partitionLevelDeletion;
-    protected final PartitionColumns columns;
+    protected final ColumnsSelection columns;
     protected final SerializationHelper helper;
 
     protected final Row staticRow;
@@ -53,13 +54,13 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
                                       FileDataInput file,
                                       DecoratedKey key,
                                       RowIndexEntry indexEntry,
-                                      PartitionColumns columns,
+                                      ColumnsSelection columnsSelection,
                                       int nowInSec)
     {
         this.sstable = sstable;
         this.key = key;
-        this.columns = columns;
-        this.helper = new SerializationHelper(sstable.descriptor.version.correspondingMessagingVersion(), SerializationHelper.Flag.LOCAL, nowInSec);
+        this.columns = columnsSelection;
+        this.helper = new SerializationHelper(sstable.descriptor.version.correspondingMessagingVersion(), SerializationHelper.Flag.LOCAL, nowInSec, columnsSelection);
 
         if (indexEntry == null)
         {
@@ -77,7 +78,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
                 //   - the partition is not indexed; we then have a single block to read anyway
                 //     and we need to read the partition deletion time.
                 //   - we're querying static columns.
-                if (indexEntry.isIndexed() && columns.statics.isEmpty())
+                if (indexEntry.isIndexed() && columns.columns().statics.isEmpty())
                 {
                     this.partitionLevelDeletion = indexEntry.deletionTime();
                     this.staticRow = Rows.EMPTY_STATIC_ROW;
@@ -94,14 +95,14 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
                     this.partitionLevelDeletion = DeletionTime.serializer.deserialize(file);
                     if (sstable.header.hasStatic())
                     {
-                        if (columns.statics.isEmpty())
+                        if (columns.columns().statics.isEmpty())
                         {
                             this.staticRow = Rows.EMPTY_STATIC_ROW;
                             AtomSerializer.serializer.skipStaticRow(file, sstable.header, helper);
                         }
                         else
                         {
-                            this.staticRow = AtomSerializer.serializer.deserializeStaticRow(file, sstable.header, helper, columns.statics);
+                            this.staticRow = AtomSerializer.serializer.deserializeStaticRow(file, sstable.header, helper);
                         }
                     }
                     else
@@ -130,7 +131,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
 
     public PartitionColumns columns()
     {
-        return columns;
+        return columns.columns();
     }
 
     public DecoratedKey partitionKey()
@@ -242,7 +243,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         private void createDeserializer()
         {
             assert file != null && deserializer == null;
-            deserializer = AtomDeserializer.create(sstable.metadata, file, sstable.header, helper, columns.regulars);
+            deserializer = AtomDeserializer.create(sstable.metadata, file, sstable.header, helper);
         }
 
         protected void seekToPosition(long position) throws IOException

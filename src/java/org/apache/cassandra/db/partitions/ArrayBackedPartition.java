@@ -203,7 +203,7 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             assert partition instanceof ArrayBackedPartition;
             ArrayBackedPartition p = (ArrayBackedPartition)partition;
 
-            try (AtomIterator iter = p.sliceableAtomIterator(p.columns(), false, p.createdAtInSec))
+            try (AtomIterator iter = p.sliceableAtomIterator())
             {
                 AtomIteratorSerializer.serializer.serialize(iter, out, MessagingService.current_version, p.rows);
             }
@@ -236,7 +236,7 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             assert partition instanceof ArrayBackedPartition;
             ArrayBackedPartition p = (ArrayBackedPartition)partition;
 
-            try (AtomIterator iter = p.sliceableAtomIterator(p.columns(), false, p.createdAtInSec))
+            try (AtomIterator iter = p.sliceableAtomIterator())
             {
                 return AtomIteratorSerializer.serializer.serializedSize(iter, MessagingService.current_version, p.rows, sizes);
             }

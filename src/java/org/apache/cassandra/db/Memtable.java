@@ -356,7 +356,7 @@ public class Memtable
 
                     if (!partition.isEmpty())
                     {
-                        try (AtomIterator iter = partition.atomIterator(partition.columns(), Slices.ALL, false, nowInSec))
+                        try (AtomIterator iter = partition.atomIterator(nowInSec))
                         {
                             writer.append(iter);
                         }

@@ -24,6 +24,7 @@ import com.google.common.collect.UnmodifiableIterator;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 
 public abstract class FilteringRow extends WrappingRow
 {
@@ -39,14 +40,20 @@ public abstract class FilteringRow extends WrappingRow
         };
     }
 
-    public static FilteringRow columnsFilteringRow(final PartitionColumns toInclude)
+    public static FilteringRow columnsFilteringRow(final ColumnsSelection toInclude)
     {
         return new FilteringRow()
         {
             @Override
             protected boolean include(ColumnDefinition column)
             {
-                return toInclude.contains(column);
+                return toInclude.columns().contains(column);
+            }
+
+            @Override
+            protected boolean include(Cell cell)
+            {
+                return toInclude.includes(cell);
             }
         };
     }

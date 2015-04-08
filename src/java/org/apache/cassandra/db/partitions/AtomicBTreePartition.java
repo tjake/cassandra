@@ -33,6 +33,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.utils.btree.BTree;
@@ -146,7 +147,7 @@ public class AtomicBTreePartition implements Partition
         return ref.stats;
     }
 
-    public SearchIterator<Clustering, Row> searchIterator(final PartitionColumns columns, final boolean reversed, final int nowInSec)
+    public SearchIterator<Clustering, Row> searchIterator(final ColumnsSelection columns, final boolean reversed, final int nowInSec)
     {
         // TODO: we could optimize comparison for "NativeRow" à la #6755
         final Holder current = ref;
@@ -154,7 +155,7 @@ public class AtomicBTreePartition implements Partition
         {
             private final SearchIterator<Clustering, MemtableRowData> rawIter = new BTreeSearchIterator<>(current.tree, metadata.comparator, !reversed);
             private final MemtableRowData.ReusableRow row = allocator.newReusableRow(nowInSec);
-            private final ReusableFilteringRow filter = new ReusableFilteringRow(columns.regulars);
+            private final ReusableFilteringRow filter = new ReusableFilteringRow(columns.columns().regulars, columns);
             private final long partitionDeletion = current.deletionInfo.getPartitionDeletion().markedForDeleteAt();
 
             public boolean hasNext()
@@ -183,19 +184,24 @@ public class AtomicBTreePartition implements Partition
         };
     }
 
-    public AtomIterator atomIterator(PartitionColumns columns, Slices slices, boolean reversed, int nowInSec)
+    public AtomIterator atomIterator(int nowInSec)
+    {
+        return atomIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
+    }
+
+    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
     {
         if (slices.size() == 0)
         {
             Holder current = ref;
             DeletionTime partitionDeletion = current.deletionInfo.getPartitionDeletion();
-            if (columns.statics.isEmpty() && partitionDeletion.isLive())
+            if (columns.columns().statics.isEmpty() && partitionDeletion.isLive())
                 return AtomIterators.emptyIterator(metadata, partitionKey, reversed, nowInSec);
 
             return new AbstractAtomIterator(metadata,
                                             partitionKey,
                                             partitionDeletion,
-                                            columns,
+                                            columns.columns(),
                                             makeStatic(columns, current, allocator, nowInSec),
                                             reversed,
                                             current.stats,
@@ -213,12 +219,12 @@ public class AtomicBTreePartition implements Partition
              : new SlicesIterator(metadata, partitionKey, ref, columns, slices, reversed, allocator, nowInSec);
     }
 
-    private static Row makeStatic(PartitionColumns columns, Holder holder, MemtableAllocator allocator, int nowInSec)
+    private static Row makeStatic(ColumnsSelection columns, Holder holder, MemtableAllocator allocator, int nowInSec)
     {
-        if (columns.statics.isEmpty() || holder.staticRow == null)
+        if (columns.columns().statics.isEmpty() || holder.staticRow == null)
             return Rows.EMPTY_STATIC_ROW;
 
-        return new ReusableFilteringRow(columns.statics)
+        return new ReusableFilteringRow(columns.columns().statics, columns)
                .setDeletionTimestamp(holder.deletionInfo.getPartitionDeletion().markedForDeleteAt())
                .setTo(allocator.newReusableRow(nowInSec).setTo(holder.staticRow));
     }
@@ -226,11 +232,14 @@ public class AtomicBTreePartition implements Partition
     private static class ReusableFilteringRow extends FilteringRow
     {
         private final Columns columns;
+        private final ColumnsSelection selection;
+        private ColumnsSelection.Tester tester;
         private long deletionTimestamp;
 
-        public ReusableFilteringRow(Columns columns)
+        public ReusableFilteringRow(Columns columns, ColumnsSelection selection)
         {
             this.columns = columns;
+            this.selection = selection;
         }
 
         public ReusableFilteringRow setDeletionTimestamp(long timestamp)
@@ -269,6 +278,12 @@ public class AtomicBTreePartition implements Partition
         {
             return dt.markedForDeleteAt() > deletionTimestamp;
         }
+
+        @Override
+        protected boolean include(Cell cell)
+        {
+            return selection.includes(cell);
+        }
     }
 
     private static class SingleSliceIterator extends AbstractAtomIterator
@@ -279,7 +294,7 @@ public class AtomicBTreePartition implements Partition
         private SingleSliceIterator(CFMetaData metadata,
                                     DecoratedKey key,
                                     Holder holder,
-                                    PartitionColumns columns,
+                                    ColumnsSelection columns,
                                     Slice slice,
                                     boolean isReversed,
                                     MemtableAllocator allocator,
@@ -288,7 +303,7 @@ public class AtomicBTreePartition implements Partition
             super(metadata,
                   key,
                   holder.deletionInfo.getPartitionDeletion(),
-                  columns,
+                  columns.columns(),
                   makeStatic(columns, holder, allocator, nowInSec),
                   isReversed,
                   holder.stats,
@@ -304,7 +319,7 @@ public class AtomicBTreePartition implements Partition
             this.atomIter = new RowAndTombstoneMergeIterator(metadata.comparator, isReversed)
                             .setTo(rowIter, holder.deletionInfo.rangeIterator(slice, isReversed));
 
-            this.row = new ReusableFilteringRow(columns.regulars)
+            this.row = new ReusableFilteringRow(columns.columns().regulars, columns)
                        .setDeletionTimestamp(partitionLevelDeletion.markedForDeleteAt());
         }
 
@@ -363,6 +378,7 @@ public class AtomicBTreePartition implements Partition
     {
         private final Holder holder;
         private final MemtableAllocator allocator;
+        private final ColumnsSelection selection;
         private final Slices slices;
         private final int nowInSec;
 
@@ -372,14 +388,15 @@ public class AtomicBTreePartition implements Partition
         private SlicesIterator(CFMetaData metadata,
                                DecoratedKey key,
                                Holder holder,
-                               PartitionColumns columns,
+                               ColumnsSelection columns,
                                Slices slices,
                                boolean isReversed,
                                MemtableAllocator allocator,
                                int nowInSec)
         {
-            super(metadata, key, holder.deletionInfo.getPartitionDeletion(), columns, makeStatic(columns, holder, allocator, nowInSec), isReversed, holder.stats, nowInSec);
+            super(metadata, key, holder.deletionInfo.getPartitionDeletion(), columns.columns(), makeStatic(columns, holder, allocator, nowInSec), isReversed, holder.stats, nowInSec);
             this.holder = holder;
+            this.selection = columns;
             this.allocator = allocator;
             this.slices = slices;
             this.nowInSec = nowInSec;
@@ -398,7 +415,7 @@ public class AtomicBTreePartition implements Partition
                     currentSlice = new SingleSliceIterator(metadata,
                                                            partitionKey,
                                                            holder,
-                                                           columns,
+                                                           selection,
                                                            slices.get(sliceIdx),
                                                            isReverseOrder,
                                                            allocator,

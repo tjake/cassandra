@@ -209,7 +209,7 @@ public abstract class DataLimits
                 return false;
 
             // Otherwise, we need to re-count
-            try (AtomIterator cacheIter = cached.atomIterator(cached.columns(), Slices.ALL, false, nowInSec);
+            try (AtomIterator cacheIter = cached.atomIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
                  CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newRowCounter(false)))
             {
                 // Consume the iterator until we've counted enough
@@ -363,6 +363,165 @@ public abstract class DataLimits
                                       ? perPartitionLimit - lastReturnedKeyRemaining
                                       : 0;
             }
+        }
+    }
+
+    /**
+     * Limits used by thrift; this count partition and cells.
+     */
+    private static class ThriftLimits extends DataLimits
+    {
+        private final int partitionLimit;
+        private final int cellPerPartitionLimit;
+
+        private ThriftLimits(int partitionLimit, int cellPerPartitionLimit)
+        {
+            this.partitionLimit = partitionLimit;
+            this.cellPerPartitionLimit = cellPerPartitionLimit;
+        }
+
+        protected Kind kind()
+        {
+            return Kind.THRIFT_LIMIT;
+        }
+
+        public boolean isUnlimited()
+        {
+            return partitionLimit == Integer.MAX_VALUE && cellPerPartitionLimit == Integer.MAX_VALUE;
+        }
+
+        public DataLimits forPaging(int pageSize)
+        {
+            // We don't support paging on thrift in general but do use paging under the hood for get_count. For
+            // that case, we only care about limiting cellPerPartitionLimit (since it's paging over a single
+            // partition). We do check that the partition limit is 1 however to make sure this is not misused
+            // (as this wouldn't work properly for range queries).
+            assert partitionLimit == 1;
+            return new ThriftLimits(partitionLimit, pageSize);
+        }
+
+        public DataLimits forPaging(int pageSize, ByteBuffer lastReturnedKey, int lastReturnedKeyRemaining)
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        public DataLimits forShortReadRetry(int toFetch)
+        {
+            // Short read retries are always done for a single partition at a time, so it's ok to ignore the
+            // partition limit for those
+            return new ThriftLimits(1, toFetch);
+        }
+
+        public boolean hasEnoughLiveData(CachedPartition cached, int nowInSec)
+        {
+            // We want the number of cells that are currently live. Getting that precise number forces
+            // us to iterate the cached partition in general, but we can avoid that if:
+            //   - The number of non-expiring live cells is greater than the number of cells asked (we then
+            //     know we have enough live cells).
+            //   - The number of cells cached is less than requested, in which case we know we won't have enough.
+            if (cached.nonExpiringLiveCells() >= cellPerPartitionLimit)
+                return true;
+
+            if (cached.nonTombstoneCellCount() < cellPerPartitionLimit)
+                return false;
+
+            // Otherwise, we need to re-count
+            try (AtomIterator cacheIter = cached.atomIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
+                 CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newCounter(false)))
+            {
+                // Consume the iterator until we've counted enough
+                while (iter.hasNext() && !iter.counter().isDone())
+                    iter.next();
+                return iter.counter().isDone();
+            }
+        }
+
+        public Counter newCounter(boolean assumeLiveData)
+        {
+            return new ThriftCounter(assumeLiveData);
+        }
+
+        public int count()
+        {
+            return partitionLimit * cellPerPartitionLimit;
+        }
+
+        public int perPartitionCount()
+        {
+            return cellPerPartitionLimit;
+        }
+
+        public boolean countCells()
+        {
+            return true;
+        }
+
+        public float estimateTotalResults(ColumnFamilyStore cfs)
+        {
+            // remember that getMeansColumns returns a number of cells: we should clean nomenclature
+            float cellsPerPartition = ((float) cfs.getMeanColumns()) / cfs.metadata.partitionColumns().regulars.columnCount();
+            return cellsPerPartition * cfs.estimateKeys();
+        }
+
+        protected class ThriftCounter implements Counter
+        {
+            protected final boolean assumeLiveData;
+
+            protected int partitionsCounted;
+            protected int cellsCounted;
+            protected int cellsInCurrentPartition;
+
+            public ThriftCounter(boolean assumeLiveData)
+            {
+                this.assumeLiveData = assumeLiveData;
+            }
+
+            public void newPartition(DecoratedKey partitionKey)
+            {
+                cellsInCurrentPartition = 0;
+                ++partitionsCounted;
+            }
+
+            public int counted()
+            {
+                return cellsCounted;
+            }
+
+            public int countedInCurrentPartition()
+            {
+                return cellsInCurrentPartition;
+            }
+
+            public boolean isDone()
+            {
+                // Note that we increment partitionsCounted at the begining of counting the partition, so we're done
+                // when we have strictly more than the limit.
+                return partitionsCounted > partitionLimit;
+            }
+
+            public boolean isDoneForPartition()
+            {
+                return isDone() || cellsInCurrentPartition >= cellPerPartitionLimit;
+            }
+
+            public void newRow(Row row)
+            {
+                for (Cell cell : row)
+                {
+                    if (assumeLiveData || cell.isLive(row.nowInSec()))
+                    {
+                        ++cellsCounted;
+                        ++cellsInCurrentPartition;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public String toString()
+        {
+            // This is not valid CQL, but that's ok since it's not use for CQL queries.
+            return String.format("THRIFT LIMIT (partitions=%d, cells_per_partition=%d)", partitionLimit, cellPerPartitionLimit);
         }
     }
 

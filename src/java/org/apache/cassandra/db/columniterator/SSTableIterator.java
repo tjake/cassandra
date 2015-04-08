@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
@@ -44,7 +45,7 @@ public class SSTableIterator extends AbstractSSTableIterator
 {
     private static final Logger logger = LoggerFactory.getLogger(SSTableIterator.class);
 
-    public SSTableIterator(SSTableReader sstable, DecoratedKey key, PartitionColumns columns, int nowInSec)
+    public SSTableIterator(SSTableReader sstable, DecoratedKey key, ColumnsSelection columns, int nowInSec)
     {
         this(sstable, null, key, sstable.getPosition(key, SSTableReader.Operator.EQ), columns, nowInSec);
     }
@@ -53,7 +54,7 @@ public class SSTableIterator extends AbstractSSTableIterator
                            FileDataInput file,
                            DecoratedKey key,
                            RowIndexEntry indexEntry,
-                           PartitionColumns columns,
+                           ColumnsSelection columns,
                            int nowInSec)
     {
         super(sstable, file, key, indexEntry, columns, nowInSec);

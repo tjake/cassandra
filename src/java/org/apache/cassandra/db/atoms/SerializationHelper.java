@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class SerializationHelper
@@ -53,11 +54,20 @@ public class SerializationHelper
     private int rowTTL;
     private int rowLocalDeletionTime;
 
-    public SerializationHelper(int version, Flag flag, int nowInSec)
+    private final ColumnsSelection columnsToFetch;
+    private ColumnsSelection.Tester tester;
+
+    public SerializationHelper(int version, Flag flag, int nowInSec, ColumnsSelection columnsToFetch)
     {
         this.flag = flag;
         this.nowInSec = nowInSec;
         this.version = version;
+        this.columnsToFetch = columnsToFetch;
+    }
+
+    public SerializationHelper(int version, Flag flag, int nowInSec)
+    {
+        this(version, flag, nowInSec, null);
     }
 
     public void writePartitionKeyLivenessInfo(Row.Writer writer, long timestamp, int ttl, int localDeletionTime)
@@ -99,6 +109,21 @@ public class SerializationHelper
             && !info.isLive(nowInSec);
     }
 
+    public boolean includes(ColumnDefinition column)
+    {
+        return columnsToFetch == null || columnsToFetch.columns().contains(column);
+    }
+
+    public void startOfComplexColumn(ColumnDefinition column)
+    {
+        this.tester = columnsToFetch == null ? null : columnsToFetch.newTester(column);
+    }
+
+    public void endOfComplexColumn(ColumnDefinition column)
+    {
+        this.tester = null;
+    }
+
     public void writeCell(Row.Writer writer,
                           ColumnDefinition column,
                           boolean isCounter,
@@ -132,7 +157,8 @@ public class SerializationHelper
         if (livenessInfo.isLive(nowInSec) && timestamp > maxLiveTimestamp)
             maxLiveTimestamp = timestamp;
 
-        writer.writeCell(column, isCounter, value, livenessInfo, path);
+        if (!column.isComplex() || tester == null || tester.includes(path))
+            writer.writeCell(column, isCounter, value, livenessInfo, path);
     }
 
     public void updateForSkippedCell(long timestamp, int localDelTime)

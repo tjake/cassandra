@@ -26,6 +26,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -185,6 +186,6 @@ public class UpdateParameters
             return null;
 
         Partition partition = prefetchedRows.get(key);
-        return partition == null ? null : partition.searchIterator(partition.columns(), false, nowInSec()).next(clustering);
+        return partition == null ? null : partition.searchIterator(ColumnsSelection.withoutSubselection(partition.columns()), false, nowInSec()).next(clustering);
     }
 }

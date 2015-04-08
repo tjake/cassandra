@@ -43,10 +43,15 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
 
     private final Slices slices;
 
-    public SlicePartitionFilter(PartitionColumns columns, Slices slices, boolean reversed)
+    public SlicePartitionFilter(ColumnsSelection columns, Slices slices, boolean reversed)
     {
         super(Kind.SLICE, columns, reversed);
         this.slices = slices;
+    }
+
+    public SlicePartitionFilter(PartitionColumns columns, Slices slices, boolean reversed)
+    {
+        this(ColumnsSelection.withoutSubselection(columns), slices, reversed);
     }
 
     public Slices requestedSlices()
@@ -173,7 +178,7 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
 
     private static class SliceDeserializer extends InternalDeserializer
     {
-        public PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, PartitionColumns columns, boolean reversed) throws IOException
+        public PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, ColumnsSelection columns, boolean reversed) throws IOException
         {
             Slices slices = Slices.serializer.deserialize(in, version, metadata);
             return new SlicePartitionFilter(columns, slices, reversed);

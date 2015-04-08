@@ -27,6 +27,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.SearchIterator;
 
 import org.slf4j.Logger;
@@ -293,7 +294,7 @@ public abstract class AbstractPartitionData implements Partition
         return createRowIterator(null, nowInSec, false);
     }
 
-    public SearchIterator<Clustering, Row> searchIterator(final PartitionColumns columns, boolean reversed, int nowInSec)
+    public SearchIterator<Clustering, Row> searchIterator(final ColumnsSelection columns, boolean reversed, int nowInSec)
     {
         final RowIterator iter = createRowIterator(columns, nowInSec, reversed);
         return new SearchIterator<Clustering, Row>()
@@ -307,10 +308,10 @@ public abstract class AbstractPartitionData implements Partition
             {
                 if (key == Clustering.STATIC_CLUSTERING)
                 {
-                    if (columns.statics.isEmpty() || staticRow().isEmpty())
+                    if (columns.columns().statics.isEmpty() || staticRow().isEmpty())
                         return Rows.EMPTY_STATIC_ROW;
 
-                    return FilteringRow.columnsFilteringRow(columns.statics).setTo(staticRow());
+                    return FilteringRow.columnsFilteringRow(columns).setTo(staticRow());
                 }
 
                 return iter.seekTo(key) ? iter.next() : null;
@@ -320,19 +321,29 @@ public abstract class AbstractPartitionData implements Partition
 
     public AtomIterator atomIterator()
     {
-        return atomIterator(columns(), Slices.ALL, false, nowInSec());
+        return atomIterator(nowInSec());
     }
 
-    public AtomIterator atomIterator(PartitionColumns columns, Slices slices, boolean reversed, int nowInSec)
+    public AtomIterator atomIterator(int nowInSec)
+    {
+        return atomIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
+    }
+
+    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
     {
         return slices.makeSliceIterator(sliceableAtomIterator(columns, reversed, nowInSec));
     }
 
-    protected SliceableAtomIterator sliceableAtomIterator(final PartitionColumns columns, final boolean reversed, final int nowInSec)
+    protected SliceableAtomIterator sliceableAtomIterator()
     {
-        return new AbstractSliceableIterator(this, columns, nowInSec, reversed)
+        return sliceableAtomIterator(ColumnsSelection.withoutSubselection(columns()), false, nowInSec());
+    }
+
+    protected SliceableAtomIterator sliceableAtomIterator(final ColumnsSelection selection, final boolean reversed, final int nowInSec)
+    {
+        return new AbstractSliceableIterator(this, selection.columns(), nowInSec, reversed)
         {
-            private final RowIterator rowIterator = createRowIterator(columns, nowInSec, reversed);
+            private final RowIterator rowIterator = createRowIterator(selection, nowInSec, reversed);
             private RowAndTombstoneMergeIterator mergeIterator = new RowAndTombstoneMergeIterator(metadata.comparator, reversed);
 
             protected Atom computeNext()
@@ -350,7 +361,7 @@ public abstract class AbstractPartitionData implements Partition
         };
     }
 
-    private RowIterator createRowIterator(PartitionColumns columns, int nowInSec, boolean reversed)
+    private RowIterator createRowIterator(ColumnsSelection columns, int nowInSec, boolean reversed)
     {
         return reversed ? new ReverseRowIterator(columns, nowInSec) : new ForwardRowIterator(columns, nowInSec);
     }
@@ -366,7 +377,7 @@ public abstract class AbstractPartitionData implements Partition
 
         protected int next;
 
-        protected RowIterator(final PartitionColumns columns, int nowInSec)
+        protected RowIterator(final ColumnsSelection columns, int nowInSec)
         {
             this.reusableRow = new InternalReusableRow(clustering, nowInSec);
             this.filter = columns == null ? null : FilteringRow.columnsFilteringRow(columns);
@@ -412,7 +423,7 @@ public abstract class AbstractPartitionData implements Partition
 
     private class ForwardRowIterator extends RowIterator
     {
-        private ForwardRowIterator(PartitionColumns columns, int nowInSec)
+        private ForwardRowIterator(ColumnsSelection columns, int nowInSec)
         {
             super(columns, nowInSec);
             this.next = 0;
@@ -472,7 +483,7 @@ public abstract class AbstractPartitionData implements Partition
 
     private class ReverseRowIterator extends RowIterator
     {
-        private ReverseRowIterator(PartitionColumns columns, int nowInSec)
+        private ReverseRowIterator(ColumnsSelection columns, int nowInSec)
         {
             super(columns, nowInSec);
             this.next = rows - 1;

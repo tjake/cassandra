@@ -41,30 +41,26 @@ public abstract class AtomDeserializer
     protected final CFMetaData metadata;
     protected final DataInput in;
     protected final SerializationHelper helper;
-    protected final Columns columns;
 
     protected AtomDeserializer(CFMetaData metadata,
                                DataInput in,
-                               SerializationHelper helper,
-                               Columns columns)
+                               SerializationHelper helper)
     {
         this.metadata = metadata;
         this.in = in;
         this.helper = helper;
-        this.columns = columns;
     }
 
     public static AtomDeserializer create(CFMetaData metadata,
                                           DataInput in,
                                           SerializationHeader header,
-                                          SerializationHelper helper,
-                                          Columns columns)
+                                          SerializationHelper helper)
     {
         if (helper.version >= MessagingService.VERSION_30)
-            return new CurrentDeserializer(metadata, in, header, helper, columns);
+            return new CurrentDeserializer(metadata, in, header, helper);
         else
             throw new UnsupportedOperationException();
-            //return new LegacyLayout.LegacyAtomDeserializer(metadata, in, flag, expireBefore, version, columns);
+            //return new LegacyLayout.LegacyAtomDeserializer(metadata, in, flag, expireBefore, version);
     }
 
     /**
@@ -116,10 +112,9 @@ public abstract class AtomDeserializer
         private CurrentDeserializer(CFMetaData metadata,
                                     DataInput in,
                                     SerializationHeader header,
-                                    SerializationHelper helper,
-                                    Columns columns)
+                                    SerializationHelper helper)
         {
-            super(metadata, in, helper, columns);
+            super(metadata, in, helper);
             this.header = header;
             this.clusteringDeserializer = new ClusteringPrefix.Deserializer(metadata.comparator, in, header);
             this.row = new ReusableRow(metadata.clusteringColumns().size(), header.columns().regulars, helper.nowInSec);
@@ -184,7 +179,7 @@ public abstract class AtomDeserializer
             {
                 Row.Writer writer = row.writer();
                 clusteringDeserializer.deserializeNextClustering(writer);
-                AtomSerializer.serializer.deserializeRowBody(in, header, helper, columns, nextFlags, writer);
+                AtomSerializer.serializer.deserializeRowBody(in, header, helper, nextFlags, writer);
                 return row;
             }
         }

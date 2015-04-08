@@ -27,6 +27,7 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.FBUtilities;
 
 // TODO: find a better name
@@ -135,7 +136,7 @@ public class ReadPartition extends ArrayBackedPartition implements Iterable<Row>
 
     public Row getRow(Clustering clustering)
     {
-        Row row = searchIterator(columns(), false, createdAtInSec).next(clustering);
+        Row row = searchIterator(ColumnsSelection.withoutSubselection(columns()), false, createdAtInSec).next(clustering);
         // Note that for statics, this will never return null, this will return an empty row. However,
         // it's more consistent for this method to return null if we don't really have a static row.
         return row == null || (clustering == Clustering.STATIC_CLUSTERING && row.isEmpty()) ? null : row;
