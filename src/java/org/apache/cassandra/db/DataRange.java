@@ -160,7 +160,7 @@ public class DataRange
      *
      * @return the columns queried by the underlying partition filter.
      */
-    public PartitionColumns queriedColumns()
+    public ColumnsSelection queriedColumns()
     {
         return partitionFilter.queriedColumns();
     }

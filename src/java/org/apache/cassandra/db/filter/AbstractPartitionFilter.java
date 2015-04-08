@@ -23,6 +23,7 @@ import java.io.IOException;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -47,17 +48,17 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
     static final Serializer serializer = new FilterSerializer();
 
     private final Kind kind;
-    protected final PartitionColumns queriedColumns;
+    protected final ColumnsSelection queriedColumns;
     protected final boolean reversed;
 
-    protected AbstractPartitionFilter(Kind kind, PartitionColumns queriedColumns, boolean reversed)
+    protected AbstractPartitionFilter(Kind kind, ColumnsSelection queriedColumns, boolean reversed)
     {
         this.kind = kind;
         this.queriedColumns = queriedColumns;
         this.reversed = reversed;
     }
 
-    public PartitionColumns queriedColumns()
+    public ColumnsSelection queriedColumns()
     {
         return queriedColumns;
     }
@@ -77,8 +78,7 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
             AbstractPartitionFilter filter = (AbstractPartitionFilter)pfilter;
 
             out.writeByte(filter.kind.ordinal());
-            Columns.serializer.serialize(filter.queriedColumns().statics, out);
-            Columns.serializer.serialize(filter.queriedColumns().regulars, out);
+            ColumnsSelection.serializer.serialize(filter.queriedColumns(), out, version);
             out.writeBoolean(filter.isReversed());
 
             filter.serializeInternal(out, version);
@@ -86,10 +86,8 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
 
         public PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata) throws IOException
         {
-            Kind kind = Kind.values()[in.readByte()];
-            Columns statics = Columns.serializer.deserialize(in, metadata);
-            Columns regulars = Columns.serializer.deserialize(in, metadata);
-            PartitionColumns columns = new PartitionColumns(statics, regulars);
+            Kind kind = Kind.values()[in.readUnsignedByte()];
+            ColumnsSelection columns = ColumnsSelection.serializer.deserialize(in, version, metadata);
             boolean reversed = in.readBoolean();
 
             return kind.deserializer.deserialize(in, version, metadata, columns, reversed);
@@ -101,8 +99,7 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
 
             TypeSizes sizes = TypeSizes.NATIVE;
             return 1
-                 + Columns.serializer.serializedSize(filter.queriedColumns().statics, sizes)
-                 + Columns.serializer.serializedSize(filter.queriedColumns().regulars, sizes)
+                 + ColumnsSelection.serializer.serializedSize(filter.queriedColumns(), version, sizes)
                  + sizes.sizeof(filter.isReversed())
                  + filter.serializedSizeInternal(version, sizes);
         }
@@ -110,7 +107,6 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
 
     protected static abstract class InternalDeserializer
     {
-        public abstract PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, PartitionColumns columns, boolean reversed) throws IOException;
+        public abstract PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, ColumnsSelection columns, boolean reversed) throws IOException;
     }
 }
-

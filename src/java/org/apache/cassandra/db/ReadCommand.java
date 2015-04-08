@@ -199,7 +199,7 @@ public abstract class ReadCommand extends ReadQuery
      *
      * @return the columns queried by this command.
      */
-    public abstract PartitionColumns queriedColumns();
+    public abstract ColumnsSelection queriedColumns();
 
     /**
      * The partition filter this command to use for the provided key.
@@ -405,7 +405,7 @@ public abstract class ReadCommand extends ReadQuery
         {
             sb.append(ColumnDefinition.toCQLString(Iterables.concat(metadata().partitionKeyColumns(), metadata().clusteringColumns())));
             if (!queriedColumns().isEmpty())
-                sb.append(", ").append(ColumnDefinition.toCQLString(queriedColumns().selectOrderIterator()));
+                sb.append(", ").append(queriedColumns());
         }
 
         sb.append(" FROM ").append(metadata().ksName).append(".").append(metadata.cfName);

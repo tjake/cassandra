@@ -270,7 +270,7 @@ public class Scrubber implements Closeable
                 long repairedAt = badRows > 0 ? ActiveRepairService.UNREPAIRED_SSTABLE : sstable.getSSTableMetadata().repairedAt;
                 SSTableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);
                 for (Partition partition : outOfOrder)
-                    inOrderWriter.append(partition.atomIterator(partition.columns(), Slices.ALL, false, nowInSec));
+                    inOrderWriter.append(partition.atomIterator(nowInSec));
                 newInOrderSstable = inOrderWriter.closeAndOpenReader(sstable.maxDataAge);
                 if (!isOffline)
                     cfs.getDataTracker().addSSTables(Collections.singleton(newInOrderSstable));

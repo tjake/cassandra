@@ -120,7 +120,7 @@ public class PartitionRangeReadCommand extends ReadCommand
         return DatabaseDescriptor.getRangeRpcTimeout();
     }
 
-    public PartitionColumns queriedColumns()
+    public ColumnsSelection queriedColumns()
     {
         return dataRange().queriedColumns();
     }

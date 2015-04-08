@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.partitions.AbstractPartitionData;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
@@ -43,7 +44,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
 {
     private static final Logger logger = LoggerFactory.getLogger(SSTableReversedIterator.class);
 
-    public SSTableReversedIterator(SSTableReader sstable, DecoratedKey key, PartitionColumns columns, int nowInSec)
+    public SSTableReversedIterator(SSTableReader sstable, DecoratedKey key, ColumnsSelection columns, int nowInSec)
     {
         this(sstable, null, key, sstable.getPosition(key, SSTableReader.Operator.EQ), columns, nowInSec);
     }
@@ -52,7 +53,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                                    FileDataInput file,
                                    DecoratedKey key,
                                    RowIndexEntry indexEntry,
-                                   PartitionColumns columns,
+                                   ColumnsSelection columns,
                                    int nowInSec)
     {
         super(sstable, file, key, indexEntry, columns, nowInSec);
@@ -148,7 +149,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                 });
             }
 
-            return partition.atomIterator(columns(), Slices.with(metadata().comparator, slice), true, nowInSec());
+            return partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
         }
     }
 
@@ -252,7 +253,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
 
             return new AbstractIterator<Atom>()
             {
-                private Iterator<Atom> currentBlockIterator = partition.atomIterator(columns(), Slices.with(metadata().comparator, slice), true, nowInSec());
+                private Iterator<Atom> currentBlockIterator = partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
 
                 protected Atom computeNext()
                 {
@@ -267,7 +268,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
 
                         // Note that since we know we're read blocks backward, there is no point in checking the slice end, so we pass null
                         prepareBlock(currentIndexIdx, slice.start(), null);
-                        currentBlockIterator = partition.atomIterator(columns(), Slices.with(metadata().comparator, slice), true, nowInSec());
+                        currentBlockIterator = partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
                         return computeNext();
                     }
                     catch (IOException e)

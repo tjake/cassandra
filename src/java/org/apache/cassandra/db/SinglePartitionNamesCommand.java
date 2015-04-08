@@ -142,7 +142,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
             //               we will need to track the lifetime of this mutation as well
             Tracing.trace("Defragmenting requested data");
 
-            try (AtomIterator iter = result.atomIterator(result.columns(), Slices.ALL, false, nowInSec()))
+            try (AtomIterator iter = result.atomIterator(queriedColumns(), Slices.ALL, false, nowInSec()))
             {
                 final Mutation mutation = new Mutation(AtomIterators.toUpdate(iter));
                 StageManager.getStage(Stage.MUTATION).execute(new Runnable()
@@ -156,7 +156,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
             }
         }
 
-        return result.atomIterator(result.columns(), Slices.ALL, partitionFilter().isReversed(), nowInSec());
+        return result.atomIterator(queriedColumns(), Slices.ALL, partitionFilter().isReversed(), nowInSec());
     }
 
     private ArrayBackedPartition add(AtomIterator iter, ArrayBackedPartition result)
@@ -165,7 +165,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
         if (result == null)
             return ArrayBackedPartition.create(iter, maxRows);
 
-        AtomIterator merged = AtomIterators.merge(Arrays.asList(iter, result.atomIterator(result.columns(), Slices.ALL, false, nowInSec())));
+        AtomIterator merged = AtomIterators.merge(Arrays.asList(iter, result.atomIterator(queriedColumns(), Slices.ALL, false, nowInSec())));
         return ArrayBackedPartition.create(merged, maxRows);
     }
 
@@ -174,9 +174,9 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
         if (result == null)
             return filter;
 
-        SearchIterator<Clustering, Row> searchIter = result.searchIterator(result.columns(), false, nowInSec());
+        SearchIterator<Clustering, Row> searchIter = result.searchIterator(queriedColumns(), false, nowInSec());
 
-        PartitionColumns columns = filter.queriedColumns();
+        PartitionColumns columns = filter.queriedColumns().columns();
         SortedSet<Clustering> clusterings = filter.requestedRows();
 
         // We want to remove rows for which we have values for all requested columns. We have to deal with

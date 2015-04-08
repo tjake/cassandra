@@ -50,13 +50,18 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
     // reversed), so we keep that too for simplicity.
     private final SortedSet<Clustering> clusteringsInQueryOrder;
 
-    public NamesPartitionFilter(PartitionColumns columns, SortedSet<Clustering> clusterings, boolean reversed)
+    public NamesPartitionFilter(ColumnsSelection columns, SortedSet<Clustering> clusterings, boolean reversed)
     {
         super(Kind.NAMES, columns, reversed);
-        assert !clusterings.isEmpty() || !columns.statics.isEmpty();
+        assert !clusterings.isEmpty() || !columns.columns().statics.isEmpty();
         assert !clusterings.contains(Clustering.STATIC_CLUSTERING);
         this.clusterings = clusterings;
         this.clusteringsInQueryOrder = reversed ? reverse(clusterings) : clusterings;
+    }
+
+    public NamesPartitionFilter(PartitionColumns columns, SortedSet<Clustering> clusterings, boolean reversed)
+    {
+        this(ColumnsSelection.withoutSubselection(columns), clusterings, reversed);
     }
 
     private static SortedSet<Clustering> reverse(SortedSet<Clustering> set)
@@ -87,7 +92,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
     public boolean selects(Clustering clustering)
     {
         return clustering == Clustering.STATIC_CLUSTERING
-             ? !queriedColumns.statics.isEmpty()
+             ? !queriedColumns.columns().statics.isEmpty()
              : clusterings.contains(clustering);
     }
 
@@ -195,7 +200,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
         return new AbstractAtomIterator(partition.metadata(),
                                         partition.partitionKey(),
                                         partition.partitionLevelDeletion(),
-                                        queriedColumns,
+                                        queriedColumns.columns(),
                                         searcher.next(Clustering.STATIC_CLUSTERING),
                                         reversed,
                                         partition.stats(),
@@ -226,9 +231,9 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
     {
         // Note that empty clustering still mean we're querying the static row.
         if (clusterings.isEmpty())
-            return countCells ? queriedColumns.statics.columnCount() : 1;
+            return countCells ? queriedColumns.columns().statics.columnCount() : 1;
 
-        return countCells ? clusterings.size() * queriedColumns.regulars.columnCount() : clusterings.size();
+        return countCells ? clusterings.size() * queriedColumns.columns().regulars.columnCount() : clusterings.size();
     }
 
     public String toString(CFMetaData metadata)
@@ -286,7 +291,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
 
     private static class NamesDeserializer extends InternalDeserializer
     {
-        public PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, PartitionColumns columns, boolean reversed) throws IOException
+        public PartitionFilter deserialize(DataInput in, int version, CFMetaData metadata, ColumnsSelection columns, boolean reversed) throws IOException
         {
             ClusteringComparator comparator = metadata.comparator;
             SortedSet<Clustering> clusterings = new TreeSet(comparator);
