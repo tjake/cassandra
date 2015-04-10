@@ -94,10 +94,10 @@ public class ColumnsSelection
             return true;
 
         for (ColumnSubselection subSel : s)
-            if (!subSel.includes(cell.path()))
-                return false;
+            if (subSel.includes(cell.path()))
+                return true;
 
-        return true;
+        return false;
     }
 
     public Tester newTester(ColumnDefinition column)
