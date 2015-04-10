@@ -392,23 +392,45 @@ public class CassandraServer implements Cassandra.Iface
     {
         if (predicate.column_names != null)
         {
-            if (metadata.isSuper() && !parent.isSetSuper_column())
+            if (metadata.isSuper())
+            {
+                if (parent.isSetSuper_column())
+                {
+                    ColumnsSelection.Builder builder = ColumnsSelection.builder();
+                    ColumnDefinition dynamicDef = metadata.compactValueColumn();
+                    for (ByteBuffer bb : predicate.column_names)
+                    {
+                        ColumnDefinition staticDef = metadata.getColumnDefinition(bb);
+                        if (staticDef == null)
+                            builder.select(dynamicDef, CellPath.create(bb));
+                        else
+                            builder.add(staticDef);
+                    }
+
+                    return new NamesPartitionFilter(builder.build(),
+                                                    FBUtilities.<Clustering>singleton(new SimpleClustering(parent.bufferForSuper_column()), metadata.comparator),
+                                                    false);
+                }
+                else
+                {
+                    SortedSet<Clustering> clusterings = new TreeSet<>(metadata.comparator);
+                    for (ByteBuffer bb : predicate.column_names)
+                        clusterings.add(new SimpleClustering(bb));
+                    return new NamesPartitionFilter(metadata.partitionColumns(), clusterings, false);
+                }
+            }
+            else
             {
                 SortedSet<Clustering> clusterings = new TreeSet<>(metadata.comparator);
+                PartitionColumns.Builder builder = new PartitionColumns.Builder();
                 for (ByteBuffer bb : predicate.column_names)
-                    clusterings.add(new SimpleClustering(bb));
-                return new NamesPartitionFilter(metadata.partitionColumns(), clusterings, false);
+                {
+                    LegacyLayout.LegacyCellName name = LegacyLayout.decodeCellName(metadata, parent.bufferForSuper_column(), bb);
+                    clusterings.add(name.clustering);
+                    builder.add(name.column);
+                }
+                return new NamesPartitionFilter(builder.build(), clusterings, false);
             }
-
-            SortedSet<Clustering> clusterings = new TreeSet<>(metadata.comparator);
-            PartitionColumns.Builder builder = new PartitionColumns.Builder();
-            for (ByteBuffer bb : predicate.column_names)
-            {
-                LegacyLayout.LegacyCellName name = LegacyLayout.decodeCellName(metadata, parent.bufferForSuper_column(), bb);
-                clusterings.add(name.clustering);
-                builder.add(name.column);
-            }
-            return new NamesPartitionFilter(builder.build(), clusterings, false);
         }
         else
         {
@@ -416,10 +438,12 @@ public class CassandraServer implements Cassandra.Iface
         }
     }
 
-    private DataLimits getLimits(int partitionLimit, SlicePredicate predicate)
+    private DataLimits getLimits(int partitionLimit, boolean countSuperColumns, SlicePredicate predicate)
     {
         int cellsPerPartition = predicate.slice_range == null ? Integer.MAX_VALUE : predicate.slice_range.count;
-        return DataLimits.thriftLimits(partitionLimit, cellsPerPartition);
+        return countSuperColumns
+             ? DataLimits.superColumnCountingLimits(partitionLimit, cellsPerPartition)
+             : DataLimits.thriftLimits(partitionLimit, cellsPerPartition);
     }
 
     private Map<ByteBuffer, List<ColumnOrSuperColumn>> multigetSliceInternal(String keyspace,
@@ -445,7 +469,8 @@ public class CassandraServer implements Cassandra.Iface
         {
             ThriftValidation.validateKey(metadata, key);
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
-            commands.add(SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, getLimits(1, predicate), dk, filter));
+            DataLimits limits = getLimits(1, metadata.isSuper() && !column_parent.isSetSuper_column(), predicate);
+            commands.add(SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, limits, dk, filter));
         }
 
         return getSlice(commands, column_parent.isSetSuper_column(), consistencyLevel, cState);
@@ -585,21 +610,19 @@ public class CassandraServer implements Cassandra.Iface
                                   : predicate.slice_range;
 
             PartitionFilter filter;
-            DataLimits limits;
             if (cfs.metadata.isSuper() && !column_parent.isSetSuper_column())
             {
                 // If we count on a super column table without having set the super column name, we're in fact interested by the cound
                 // of super columns, so we must make sure we don't actually query any non-pk columns otherwise this would translate in
                 // more cells that we care about.
                 filter = new SlicePartitionFilter(PartitionColumns.NONE, makeSlices(cfs.metadata, sliceRange), sliceRange.reversed);
-                limits = DataLimits.superColumnCountingLimits(1, sliceRange.count);
             }
             else
             {
                 filter = toInternalFilter(cfs.metadata, column_parent, sliceRange);
-                limits = getLimits(1, predicate);
             }
 
+            DataLimits limits = getLimits(1, cfs.metadata.isSuper() && !column_parent.isSetSuper_column(), predicate);
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
 
             return QueryPagers.countPaged(cfs.metadata,
@@ -886,7 +909,7 @@ public class CassandraServer implements Cassandra.Iface
     private List<IMutation> createMutationList(ConsistencyLevel consistency_level,
                                                Map<ByteBuffer,Map<String,List<Mutation>>> mutation_map,
                                                boolean allowCounterMutations)
-    throws RequestValidationException
+    throws RequestValidationException, InvalidRequestException
     {
         List<IMutation> mutations = new ArrayList<>();
         ThriftClientState cState = state();
@@ -999,6 +1022,7 @@ public class CassandraServer implements Cassandra.Iface
     }
 
     private void deleteColumnOrSuperColumn(PartitionUpdate update, List<LegacyLayout.LegacyCell> cells, CFMetaData cfm, Deletion del)
+    throws InvalidRequestException
     {
         if (del.predicate != null && del.predicate.column_names != null)
         {
@@ -1015,15 +1039,22 @@ public class CassandraServer implements Cassandra.Iface
         else if (del.predicate != null && del.predicate.slice_range != null)
         {
             if (del.super_column == null)
+            {
                 addRange(update,
                          Slice.Bound.inclusiveStartOf(del.predicate.getSlice_range().start),
                          Slice.Bound.inclusiveEndOf(del.predicate.getSlice_range().finish),
                          del.timestamp);
+            }
             else
-                addRange(update,
-                         Slice.Bound.inclusiveStartOf(del.super_column, del.predicate.getSlice_range().start),
-                         Slice.Bound.inclusiveEndOf(del.super_column, del.predicate.getSlice_range().finish),
-                         del.timestamp);
+            {
+                // Since we use a map for subcolumns, we would need range tombstone for collections to support this.
+                // And while we may want those some day, this require a bit of additional work. And since super columns
+                // are basically deprecated since a long time, and range tombstone on them has been only very recently
+                // added so that no thrift driver actually supports it to the best of my knowledge, it's likely ok to
+                // discontinue support for this. If it turns out that this is blocking the update of someone, we can
+                // decide then if we want to tackle the addition of range tombstone for collections then.
+                throw new InvalidRequestException("Cannot delete a range of subcolumns in a super column");
+            }
         }
         else
         {
@@ -1287,14 +1318,14 @@ public class CassandraServer implements Cassandra.Iface
             try
             {
                 PartitionFilter filter = toInternalFilter(metadata, column_parent, predicate);
+                DataLimits limits = getLimits(range.count, metadata.isSuper() && !column_parent.isSetSuper_column(), predicate);
                 PartitionRangeReadCommand cmd = new PartitionRangeReadCommand(false,
                                                                               true,
                                                                               metadata,
                                                                               nowInSec,
                                                                               ThriftConversion.columnFilterFromThrift(metadata, range.row_filter),
-                                                                              getLimits(range.count, predicate),
+                                                                              limits,
                                                                               new DataRange(bounds, filter));
-                logger.info("Doing get_range_slice_query");
                 results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
             }
             finally

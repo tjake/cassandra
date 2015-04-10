@@ -277,11 +277,6 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
                       .toString();
     }
 
-    public boolean isThriftCompatible()
-    {
-        return kind == ColumnDefinition.Kind.REGULAR && componentIndex == null;
-    }
-
     public boolean isPrimaryKeyColumn()
     {
         return kind.isPrimaryKeyKind();

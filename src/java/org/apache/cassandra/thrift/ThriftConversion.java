@@ -191,13 +191,15 @@ public class ThriftConversion
     public static CFMetaData fromThrift(CfDef cf_def)
     throws org.apache.cassandra.exceptions.InvalidRequestException, ConfigurationException
     {
-        return internalFromThrift(cf_def, Collections.<ColumnDefinition>emptyList(), true);
+        // This is a creation: the table is dense if it doesn't define any column_metadata
+        boolean isDense = cf_def.column_metadata == null || cf_def.column_metadata.isEmpty();
+        return internalFromThrift(cf_def, true, Collections.<ColumnDefinition>emptyList(), isDense);
     }
 
     public static CFMetaData fromThriftForUpdate(CfDef cf_def, CFMetaData toUpdate)
     throws org.apache.cassandra.exceptions.InvalidRequestException, ConfigurationException
     {
-        return internalFromThrift(cf_def, toUpdate.allColumns(), false);
+        return internalFromThrift(cf_def, false, toUpdate.allColumns(), toUpdate.isDense());
     }
 
     private static boolean isSuper(String thriftColumnType)
@@ -211,8 +213,24 @@ public class ThriftConversion
         }
     }
 
-    // Convert a thrift CfDef, given a list of ColumnDefinitions to copy over to the created CFMetadata before the CQL metadata are rebuild
-    private static CFMetaData internalFromThrift(CfDef cf_def, Collection<ColumnDefinition> previousCQLMetadata, boolean isCreation)
+    /**
+     * Convert a thrift CfDef.
+     * <p>,
+     * This is used both for creation and update of CF.
+     *
+     * @param cf_def the thrift CfDef to convert.
+     * @param isCreation whether that is a new table creation or not.
+     * @param previousCQLMetadata if it is not a table creation, the previous
+     * definitions of the tables (which we use to preserve the CQL metadata).
+     * If it is a table creation, this will be empty.
+     * @param isDense whether the table is dense or not.
+     *
+     * @return the converted table definition.
+     */
+    private static CFMetaData internalFromThrift(CfDef cf_def,
+                                                 boolean isCreation,
+                                                 Collection<ColumnDefinition> previousCQLMetadata,
+                                                 boolean isDense)
     throws org.apache.cassandra.exceptions.InvalidRequestException, ConfigurationException
     {
         applyImplicitDefaults(cf_def);
@@ -253,8 +271,6 @@ public class ThriftConversion
             UUID cfId = Schema.instance.getId(cf_def.keyspace, cf_def.name);
             if (cfId == null)
                 cfId = UUIDGen.getTimeUUID();
-
-            boolean isDense = isSuper ? false : calculateIsDense(rawComparator, defs);
 
             boolean isCompound = isSuper ? false : (rawComparator instanceof CompositeType);
             boolean isCounter = defaultValidator instanceof CounterColumnType;
@@ -357,56 +373,6 @@ public class ThriftConversion
         }
     }
 
-    /*
-     * We call dense a CF for which each component of the comparator is a clustering column, i.e. no
-     * component is used to store a regular column names. In other words, non-composite static "thrift"
-     * and CQL3 CF are *not* dense.
-     * We save whether the table is dense or not during table creation through CQL, but we don't have this
-     * information for table just created through thrift, nor for table prior to CASSANDRA-7744, so this
-     * method does its best to infer whether the table is dense or not based on other elements.
-     */
-    public static boolean calculateIsDense(AbstractType<?> comparator, Collection<ColumnDefinition> defs)
-    {
-        /*
-         * As said above, this method is only here because we need to deal with thrift upgrades.
-         * Once a CF has been "upgraded", i.e. we've rebuilt and save its CQL3 metadata at least once,
-         * then we'll have saved the "is_dense" value and will be good to go.
-         *
-         * But non-upgraded thrift CF (and pre-7744 CF) will have no value for "is_dense", so we need
-         * to infer that information without relying on it in that case. And for the most part this is
-         * easy, a CF that has at least one REGULAR definition is not dense. But the subtlety is that not
-         * having a REGULAR definition may not mean dense because of CQL3 definitions that have only the
-         * PRIMARY KEY defined.
-         *
-         * So we need to recognize those special case CQL3 table with only a primary key. If we have some
-         * clustering columns, we're fine as said above. So the only problem is that we cannot decide for
-         * sure if a CF without REGULAR columns nor CLUSTERING_COLUMN definition is meant to be dense, or if it
-         * has been created in CQL3 by say:
-         *    CREATE TABLE test (k int PRIMARY KEY)
-         * in which case it should not be dense. However, we can limit our margin of error by assuming we are
-         * in the latter case only if the comparator is exactly CompositeType(UTF8Type).
-         */
-        boolean hasRegularOrStatic = false;
-        int maxClusteringIdx = -1;
-        for (ColumnDefinition def : defs)
-        {
-            switch (def.kind)
-            {
-                case CLUSTERING_COLUMN:
-                    maxClusteringIdx = Math.max(maxClusteringIdx, def.position());
-                    break;
-                case REGULAR:
-                case STATIC:
-                    hasRegularOrStatic = true;
-                    break;
-            }
-        }
-
-        return maxClusteringIdx >= 0
-             ? maxClusteringIdx == comparator.componentsCount() - 1
-             : !hasRegularOrStatic && !CFMetaData.isCQL3OnlyPKComparator(comparator);
-    }
-
     /** applies implicit defaults to cf definition. useful in updates */
     private static void applyImplicitDefaults(org.apache.cassandra.thrift.CfDef cf_def)
     {
@@ -495,7 +461,7 @@ public class ThriftConversion
         // We only return the alias if only one is set since thrift don't know about multiple key aliases
         if (cfm.partitionKeyColumns().size() == 1)
             def.setKey_alias(cfm.partitionKeyColumns().get(0).name.bytes);
-        def.setColumn_metadata(columnDefinitionsToThrift(cfm.allColumns()));
+        def.setColumn_metadata(columnDefinitionsToThrift(cfm, cfm.allColumns()));
         def.setCompaction_strategy(cfm.compactionStrategyClass.getName());
         def.setCompaction_strategy_options(new HashMap<>(cfm.compactionStrategyOptions));
         def.setCompression_options(cfm.compressionParameters.asThriftOptions());
@@ -577,11 +543,11 @@ public class ThriftConversion
         return cd;
     }
 
-    private static List<ColumnDef> columnDefinitionsToThrift(Collection<ColumnDefinition> columns)
+    private static List<ColumnDef> columnDefinitionsToThrift(CFMetaData metadata, Collection<ColumnDefinition> columns)
     {
         List<ColumnDef> thriftDefs = new ArrayList<>(columns.size());
         for (ColumnDefinition def : columns)
-            if (def.kind == ColumnDefinition.Kind.REGULAR)
+            if (def.isPartOfCellName(metadata.isCQLTable(), metadata.isSuper()))
                 thriftDefs.add(ThriftConversion.toThrift(def));
         return thriftDefs;
     }
