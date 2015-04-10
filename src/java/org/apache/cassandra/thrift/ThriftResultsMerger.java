@@ -105,7 +105,7 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
 
         private ReusableRow createReusableRow()
         {
-            return new ReusableRow(metadata().clusteringColumns().size(), metadata().partitionColumns().regulars, nowInSec());
+            return new ReusableRow(metadata().clusteringColumns().size(), metadata().partitionColumns().regulars, nowInSec(), metadata().isCounter());
         }
 
         @Override
@@ -200,7 +200,10 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
             this.superColumnMapColumn = results.metadata().compactValueColumn();
             assert superColumnMapColumn != null && superColumnMapColumn.type instanceof MapType;
 
-            this.reusableRow = new ReusableRow(results.metadata().clusteringColumns().size(), Columns.of(superColumnMapColumn), results.nowInSec());
+            this.reusableRow = new ReusableRow(results.metadata().clusteringColumns().size(),
+                                               Columns.of(superColumnMapColumn),
+                                               results.nowInSec(),
+                                               results.metadata().isCounter());
             this.columnComparator = ((MapType)superColumnMapColumn.type).nameComparator();
         }
 

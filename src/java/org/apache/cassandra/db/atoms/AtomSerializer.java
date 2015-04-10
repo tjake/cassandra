@@ -367,7 +367,7 @@ public class AtomSerializer
     {
         int flags = in.readUnsignedByte();
         assert !isEndOfPartition(flags) && kind(flags) == Atom.Kind.ROW && isStatic(flags);
-        StaticRow.Builder builder = StaticRow.builder(header.columns().statics, helper.nowInSec);
+        StaticRow.Builder builder = StaticRow.builder(header.columns().statics, helper.nowInSec, header.columns().statics.hasCounters());
         deserializeRowBody(in, header, helper, flags, builder);
         return builder.build();
     }

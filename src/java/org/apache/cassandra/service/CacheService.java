@@ -373,9 +373,16 @@ public class CacheService implements CacheServiceMBean
                     DecoratedKey key = cfs.partitioner.decorateKey(partitionKey);
                     LegacyLayout.LegacyCellName name = LegacyLayout.decodeCellName(cfs.metadata, cellName);
                     ColumnDefinition column = name.column;
+                    CellPath path = name.collectionElement == null ? null : CellPath.create(name.collectionElement);
 
                     int nowInSec = FBUtilities.nowInSeconds();
-                    PartitionFilter filter = PartitionFilters.singleCellRead(cfs.metadata, name.clustering, column);
+                    ColumnsSelection.Builder builder = ColumnsSelection.builder();
+                    if (path == null)
+                        builder.add(column);
+                    else
+                        builder.select(column, path);
+
+                    PartitionFilter filter = new NamesPartitionFilter(builder.build(), FBUtilities.<Clustering>singleton(name.clustering, cfs.metadata.comparator), false);
                     SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, nowInSec, key, filter);
                     try (RowIterator iter = AtomIterators.asRowIterator(cmd.queryMemtableAndDisk(cfs)))
                     {
@@ -395,7 +402,7 @@ public class CacheService implements CacheServiceMBean
                             return null;
 
                         ClockAndCount clockAndCount = CounterContext.instance().getLocalClockAndCount(cell.value());
-                        return Pair.create(CounterCacheKey.create(cfs.metadata.cfId, partitionKey, name.clustering, column), clockAndCount);
+                        return Pair.create(CounterCacheKey.create(cfs.metadata.cfId, partitionKey, name.clustering, column, path), clockAndCount);
                     }
                 }
             });

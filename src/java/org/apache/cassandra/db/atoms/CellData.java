@@ -94,24 +94,31 @@ class CellData
     public void mergeCell(int i, int j, int nowInSec)
     {
         if (isCounter)
-            mergeCounterCell(i, j, nowInSec);
+            mergeCounterCell(this, i, this, j, this, j, nowInSec);
         else
             mergeRegularCell(this, i, this, j, this, j, nowInSec);
     }
 
-    public static void mergeRegularCell(CellData d1, int i1, CellData d2, int i2, CellData merged, int iMerged, int nowInSec)
+    private static boolean handleNoCellCase(CellData d1, int i1, CellData d2, int i2, CellData merged, int iMerged)
     {
         if (!d1.hasCell(i1))
         {
             if (d2.hasCell(i2))
                 d2.moveCell(i2, merged, iMerged);
-            return;
+            return true;
         }
         if (!d2.hasCell(i2))
         {
             d1.moveCell(i1, merged, iMerged);
-            return;
+            return true;
         }
+        return false;
+    }
+
+    public static void mergeRegularCell(CellData d1, int i1, CellData d2, int i2, CellData merged, int iMerged, int nowInSec)
+    {
+        if (handleNoCellCase(d1, i1, d2, i2, merged, iMerged))
+            return;
 
         long ts1 = d1.livenessInfos.timestamp(i1), ts2 = d2.livenessInfos.timestamp(i2);
         if (ts1 != ts2)
@@ -145,35 +152,36 @@ class CellData
             d1.moveCell(i1, merged, iMerged);
     }
 
-    private void mergeCounterCell(int i, int j, int nowInSec)
+    public static void mergeCounterCell(CellData d1, int i1, CellData d2, int i2, CellData merged, int iMerged, int nowInSec)
     {
-        if (!hasCell(i))
+        if (handleNoCellCase(d1, i1, d2, i2, merged, iMerged))
             return;
 
-        if (!hasCell(j))
-        {
-            moveCell(i, j);
-            return;
-        }
-
-        boolean iLive = livenessInfos.isLive(i, nowInSec);
-        boolean jLive = livenessInfos.isLive(j, nowInSec);
+        boolean live1 = d1.livenessInfos.isLive(i1, nowInSec);
+        boolean live2 = d2.livenessInfos.isLive(i2, nowInSec);
 
         // No matter what the counter cell's timestamp is, a tombstone always takes precedence. See CASSANDRA-7346.
-        if (!iLive)
+        if (!live1)
         {
-            // i is a tombstone: it has precedence over j if either j is not a tombstone, or it i has a greater timestamp
-            if (jLive || livenessInfos.timestamp(i) > livenessInfos.timestamp(j))
-                moveCell(i, j);
+            // i1 is a tombstone: it has precedence over i2 if either i2 is not a tombstone, or it has a greater timestamp
+            if (live2 || d1.livenessInfos.timestamp(i1) > d2.livenessInfos.timestamp(i2))
+                d1.moveCell(i1, merged, iMerged);
+            else
+                d2.moveCell(i2, merged, iMerged);
             return;
         }
-        // If j is a tombstone, since i isn't one, it has precendence
-        if (!jLive)
+        // If i2 is a tombstone, since i1 isn't one, i2 has precendence
+        if (!live2)
+        {
+            d2.moveCell(i2, merged, iMerged);
             return;
+        }
 
-        values[j] = Cells.counterContextManager.merge(values[i], values[j]);
-        if (livenessInfos.timestamp(i) > livenessInfos.timestamp(j))
-            livenessInfos.set(j, livenessInfos.timestamp(i), livenessInfos.ttl(i), livenessInfos.localDeletionTime(i));
+        merged.values[iMerged] = Cells.counterContextManager.merge(d1.values[i1], d2.values[i2]);
+        if (d1.livenessInfos.timestamp(i1) > d2.livenessInfos.timestamp(i2))
+            merged.livenessInfos.set(iMerged, d1.livenessInfos.timestamp(i1), d1.livenessInfos.ttl(i1), d1.livenessInfos.localDeletionTime(i1));
+        else
+            merged.livenessInfos.set(iMerged, d2.livenessInfos.timestamp(i2), d2.livenessInfos.ttl(i2), d2.livenessInfos.localDeletionTime(i2));
     }
 
     // Move cell i into j

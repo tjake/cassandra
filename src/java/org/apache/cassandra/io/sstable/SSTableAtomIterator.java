@@ -45,13 +45,13 @@ public abstract class SSTableAtomIterator extends AbstractIterator<Atom> impleme
     private final ReusableRow row;
     private final ReusableRangeTombstoneMarker marker;
 
-    public SSTableAtomIterator(DataInput in, SerializationHeader header, SerializationHelper helper)
+    public SSTableAtomIterator(DataInput in, SerializationHeader header, SerializationHelper helper, boolean isCounter)
     {
         this.in = in;
         this.helper = helper;
         this.header = header;
 
-        this.row = new ReusableRow(header.clusteringTypes().size(), header.columns().regulars, helper.nowInSec);
+        this.row = new ReusableRow(header.clusteringTypes().size(), header.columns().regulars, helper.nowInSec, isCounter);
         this.marker = new ReusableRangeTombstoneMarker(header.clusteringTypes().size());
     }
 

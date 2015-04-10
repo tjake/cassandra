@@ -34,10 +34,10 @@ public class ReusableRow extends AbstractReusableRow
     private final RowDataBlock data;
     private final Writer writer;
 
-    public ReusableRow(int clusteringSize, Columns columns, int nowInSec)
+    public ReusableRow(int clusteringSize, Columns columns, int nowInSec, boolean isCounter)
     {
         this.clustering = new ReusableClustering(clusteringSize);
-        this.data = new RowDataBlock(columns, 1, false);
+        this.data = new RowDataBlock(columns, 1, false, isCounter);
         this.nowInSec = nowInSec;
         this.writer = new Writer(data);
     }
@@ -71,7 +71,7 @@ public class ReusableRow extends AbstractReusableRow
 
             ByteBuffer marked = Cells.counterContextManager.markLocalToBeCleared(cell.value());
             if (marked != cell.value())
-                data.setValue(row(), cell.column(), marked);
+                data.setValue(row(), cell.column(), cell.path(), marked);
         }
         return this;
     }

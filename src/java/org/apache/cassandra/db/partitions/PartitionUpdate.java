@@ -106,7 +106,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         this(metadata,
              key,
              delInfo,
-             new RowDataBlock(columns.regulars, initialRowCapacity, true),
+             new RowDataBlock(columns.regulars, initialRowCapacity, true, metadata.isCounter()),
              columns,
              initialRowCapacity,
              nowInSec);
@@ -225,7 +225,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         return new PartitionUpdate(metadata,
                                    key,
                                    new DeletionInfo(timestamp, nowInSec),
-                                   new RowDataBlock(Columns.NONE, 0, true),
+                                   new RowDataBlock(Columns.NONE, 0, true, metadata.isCounter()),
                                    PartitionColumns.NONE,
                                    0,
                                    nowInSec);
@@ -426,7 +426,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         {
             for (Cell cell : row)
                 if (cell.isCounterCell())
-                    l.add(new CounterMark(clustering, i, cell.column()));
+                    l.add(new CounterMark(clustering, i, cell.column(), cell.path()));
             i++;
         }
         return l;
@@ -548,7 +548,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
     {
         private StaticWriter()
         {
-            super(columns.statics, createdAtInSec);
+            super(columns.statics, createdAtInSec, metadata().isCounter());
         }
 
         @Override
@@ -677,7 +677,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
             PartitionUpdate upd = new PartitionUpdate(h.metadata,
                                                       h.key,
                                                       new DeletionInfo(h.partitionDeletion),
-                                                      new RowDataBlock(h.sHeader.columns().regulars, h.rowEstimate, false),
+                                                      new RowDataBlock(h.sHeader.columns().regulars, h.rowEstimate, false, h.metadata.isCounter()),
                                                       h.sHeader.columns(),
                                                       h.rowEstimate,
                                                       h.nowInSec);
@@ -728,12 +728,14 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         private final InternalReusableClustering clustering;
         private final int row;
         private final ColumnDefinition column;
+        private final CellPath path;
 
-        private CounterMark(InternalReusableClustering clustering, int row, ColumnDefinition column)
+        private CounterMark(InternalReusableClustering clustering, int row, ColumnDefinition column, CellPath path)
         {
             this.clustering = clustering;
             this.row = row;
             this.column = column;
+            this.path = path;
         }
 
         public Clustering clustering()
@@ -746,14 +748,19 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
             return column;
         }
 
+        public CellPath path()
+        {
+            return path;
+        }
+
         public ByteBuffer value()
         {
-            return data.getValue(row, column);
+            return data.getValue(row, column, path);
         }
 
         public void setValue(ByteBuffer value)
         {
-            data.setValue(row, column, value);
+            data.setValue(row, column, path, value);
         }
     }
 }

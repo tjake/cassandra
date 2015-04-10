@@ -117,7 +117,7 @@ public abstract class AtomDeserializer
             super(metadata, in, helper);
             this.header = header;
             this.clusteringDeserializer = new ClusteringPrefix.Deserializer(metadata.comparator, in, header);
-            this.row = new ReusableRow(metadata.clusteringColumns().size(), header.columns().regulars, helper.nowInSec);
+            this.row = new ReusableRow(metadata.clusteringColumns().size(), header.columns().regulars, helper.nowInSec, metadata.isCounter());
             this.marker = new ReusableRangeTombstoneMarker(metadata.clusteringColumns().size());
         }
 

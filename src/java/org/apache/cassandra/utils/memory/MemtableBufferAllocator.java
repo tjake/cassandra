@@ -74,7 +74,7 @@ public abstract class MemtableBufferAllocator extends MemtableAllocator
 
         public void allocateNewRow(int clusteringSize, Columns columns, boolean isStatic)
         {
-            data = new RowDataBlock(columns, 1, false);
+            data = new RowDataBlock(columns, 1, false, isCounter);
             clustering = isStatic ? null : new MemtableRowData.BufferClustering(clusteringSize);
             clusteringIdx = 0;
             updateWriter(data);

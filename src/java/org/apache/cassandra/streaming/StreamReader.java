@@ -199,7 +199,7 @@ public class StreamReader
             staticRow = header.hasStatic()
                       ? AtomSerializer.serializer.deserializeStaticRow(in, header, helper)
                       : Rows.EMPTY_STATIC_ROW;
-            atomIter = new SSTableAtomIterator(in, header, helper)
+            atomIter = new SSTableAtomIterator(in, header, helper, metadata.isCounter())
             {
                 @Override
                 protected Row updateRow(ReusableRow row)

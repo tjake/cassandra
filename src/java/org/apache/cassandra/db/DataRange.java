@@ -98,7 +98,7 @@ public class DataRange
      */
     public static DataRange forKeyRange(CFMetaData metadata, Range<RowPosition> keyRange)
     {
-        return new DataRange(keyRange, PartitionFilters.fullPartitionFilter(metadata));
+        return new DataRange(keyRange, new SlicePartitionFilter(metadata.partitionColumns(), Slices.ALL, false));
     }
 
     /**

@@ -29,6 +29,7 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.marshal.UTF8Type;
+import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -225,6 +226,29 @@ public class Columns implements Iterable<ColumnDefinition>
     public boolean contains(ColumnDefinition c)
     {
         return c.isComplex() ? complexIdx(c) >= 0 : simpleIdx(c) >= 0;
+    }
+
+    /**
+     * Whether or not there is some counter columns within those columns.
+     *
+     * @return whether or not there is some counter columns within those columns.
+     */
+    public boolean hasCounters()
+    {
+        for (int i = 0; i < complexIdx; i++)
+        {
+            if (columns[i].type.isCounter())
+                return true;
+        }
+
+        for (int i = complexIdx; i < columns.length; i++)
+        {
+            // We only support counter in maps because that's all we need for now (and we need it for the sake of thrift super columns of counter)
+            if (columns[i].type instanceof MapType && (((MapType)columns[i].type).valueComparator().isCounter()))
+                return true;
+        }
+
+        return false;
     }
 
     /**

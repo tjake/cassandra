@@ -38,7 +38,7 @@ import org.apache.cassandra.utils.ObjectSizes;
  */
 public class RowDataBlock
 {
-    private static final long EMPTY_SIZE = ObjectSizes.measure(new RowDataBlock(Columns.NONE, 0, false));
+    private static final long EMPTY_SIZE = ObjectSizes.measure(new RowDataBlock(Columns.NONE, 0, false, false));
 
     // We distinguish 2 sub-objects: SimpleRowDataBlock that contains the data for the simple columns only,
     // and ComplexRowDataBlock that only contains data for complex columns. The reason for having 2 separate
@@ -47,10 +47,10 @@ public class RowDataBlock
     final SimpleRowDataBlock simpleData;
     final ComplexRowDataBlock complexData;
 
-    public RowDataBlock(Columns columns, int rows, boolean sortable)
+    public RowDataBlock(Columns columns, int rows, boolean sortable, boolean isCounter)
     {
-        this.simpleData = columns.hasSimple() ? new SimpleRowDataBlock(columns, rows) : null;
-        this.complexData = columns.hasComplex() ? ComplexRowDataBlock.create(columns, rows, sortable) : null;
+        this.simpleData = columns.hasSimple() ? new SimpleRowDataBlock(columns, rows, isCounter) : null;
+        this.complexData = columns.hasComplex() ? ComplexRowDataBlock.create(columns, rows, sortable, isCounter) : null;
     }
 
     public Columns columns()
@@ -63,21 +63,28 @@ public class RowDataBlock
     }
 
     /**
-     * Return the cell value for a given simple column of a given row.
+     * Return the cell value for a given column of a given row.
      *
      * @param row the row for which to return the cell value.
-     * @param column the simple column for which to return the cell value.
+     * @param column the column for which to return the cell value.
+     * @param path the cell path for which to return the cell value. Can be null for
+     * simple columns.
      *
-     * @return the value of the cell for {@code column} in row {@code row}, or
+     * @return the value of the cell of path {@code path} for {@code column} in row {@code row}, or
      * {@code null} if their is no such cell.
      */
-    public ByteBuffer getValue(int row, ColumnDefinition column)
+    public ByteBuffer getValue(int row, ColumnDefinition column, CellPath path)
     {
-        assert !column.isComplex();
-
-        int idx = columns().simpleIdx(column);
-        assert idx >= 0;
-        return simpleData.data.value((row * columns().simpleColumnCount()) + idx);
+        if (column.isComplex())
+        {
+            return complexData.getValue(row, column, path);
+        }
+        else
+        {
+            int idx = columns().simpleIdx(column);
+            assert idx >= 0;
+            return simpleData.data.value((row * columns().simpleColumnCount()) + idx);
+        }
     }
 
     /**
@@ -85,15 +92,22 @@ public class RowDataBlock
      *
      * @param row the row for which to set the cell value.
      * @param column the simple column for which to set the cell value.
+     * @param path the cell path for which to return the cell value. Can be null for
+     * simple columns.
      * @param value the value to set.
      */
-    public void setValue(int row, ColumnDefinition column, ByteBuffer value)
+    public void setValue(int row, ColumnDefinition column, CellPath path, ByteBuffer value)
     {
-        assert !column.isComplex();
-
-        int idx = columns().simpleIdx(column);
-        assert idx >= 0;
-        simpleData.data.setValue((row * columns().simpleColumnCount()) + idx, value);
+        if (column.isComplex())
+        {
+            complexData.setValue(row, column, path, value);
+        }
+        else
+        {
+            int idx = columns().simpleIdx(column);
+            assert idx >= 0;
+            simpleData.data.setValue((row * columns().simpleColumnCount()) + idx, value);
+        }
     }
 
     public static ReusableIterator reusableIterator()
