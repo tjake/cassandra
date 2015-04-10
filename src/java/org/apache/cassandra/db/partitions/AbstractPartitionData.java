@@ -145,7 +145,7 @@ public abstract class AbstractPartitionData implements Partition
              key,
              new DeletionInfo(partitionDeletion.takeAlias()),
              columns,
-             new RowDataBlock(columns.regulars, initialRowCapacity, sortable),
+             new RowDataBlock(columns.regulars, initialRowCapacity, sortable, metadata.isCounter()),
              initialRowCapacity,
              nowInSec);
     }

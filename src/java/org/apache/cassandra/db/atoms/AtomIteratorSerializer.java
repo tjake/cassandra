@@ -233,7 +233,7 @@ public class AtomIteratorSerializer
 
         return new AbstractAtomIterator(h.metadata, h.key, h.partitionDeletion, h.sHeader.columns(), h.staticRow, h.isReversed, h.sHeader.stats(), h.nowInSec)
         {
-            private final ReusableRow row = new ReusableRow(clusteringSize, h.sHeader.columns().regulars, helper.nowInSec);
+            private final ReusableRow row = new ReusableRow(clusteringSize, h.sHeader.columns().regulars, helper.nowInSec, h.metadata.isCounter());
             private final ReusableRangeTombstoneMarker marker = new ReusableRangeTombstoneMarker(clusteringSize);
 
             protected Atom computeNext()

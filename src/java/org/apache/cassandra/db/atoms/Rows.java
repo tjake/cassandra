@@ -443,7 +443,7 @@ public abstract class Rows
             private StaticMerger(CFMetaData metadata, int size, int nowInSec, Columns columns, AtomIterators.MergeListener listener)
             {
                 super(metadata, size, nowInSec, columns, listener);
-                this.builder = StaticRow.builder(columns, nowInSec);
+                this.builder = StaticRow.builder(columns, nowInSec, metadata.isCounter());
             }
 
             protected Row.Writer getWriter()
@@ -464,7 +464,7 @@ public abstract class Rows
             private RegularMerger(CFMetaData metadata, int size, int nowInSec, Columns columns, AtomIterators.MergeListener listener)
             {
                 super(metadata, size, nowInSec, columns, listener);
-                this.row = new ReusableRow(metadata.clusteringColumns().size(), columns, nowInSec);
+                this.row = new ReusableRow(metadata.clusteringColumns().size(), columns, nowInSec, metadata.isCounter());
             }
 
             protected Row.Writer getWriter()

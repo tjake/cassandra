@@ -69,11 +69,11 @@ public abstract class ComplexRowDataBlock
         this.complexDelTimes = new DeletionTimeArray(columnCount);
     }
 
-    public static ComplexRowDataBlock create(Columns columns, int rows, boolean sortable)
+    public static ComplexRowDataBlock create(Columns columns, int rows, boolean sortable, boolean isCounter)
     {
         return sortable
-             ? new SortableComplexRowDataBlock(columns, rows)
-             : new SimpleComplexRowDataBlock(columns, rows);
+             ? new SortableComplexRowDataBlock(columns, rows, isCounter)
+             : new SimpleComplexRowDataBlock(columns, rows, isCounter);
     }
 
     public Columns columns()
@@ -193,6 +193,22 @@ public abstract class ComplexRowDataBlock
         return false;
     }
 
+    public ByteBuffer getValue(int row, ColumnDefinition column, CellPath path)
+    {
+        CellData data = cellData(row);
+        assert data != null;
+        int idx = cellIdx(row, column, path);
+        return data.value(idx);
+    }
+
+    public void setValue(int row, ColumnDefinition column, CellPath path, ByteBuffer value)
+    {
+        CellData data = cellData(row);
+        assert data != null;
+        int idx = cellIdx(row, column, path);
+        data.setValue(idx, value);
+    }
+
     public static ReusableIterator reusableComplexCells()
     {
         return new ReusableIterator();
@@ -231,14 +247,14 @@ public abstract class ComplexRowDataBlock
      */
     private static class SimpleComplexRowDataBlock extends ComplexRowDataBlock
     {
-        private static final long EMPTY_SIZE = ObjectSizes.measure(new SimpleComplexRowDataBlock(Columns.NONE, 0));
+        private static final long EMPTY_SIZE = ObjectSizes.measure(new SimpleComplexRowDataBlock(Columns.NONE, 0, false));
 
         private final ComplexCellBlock cells;
 
-        private SimpleComplexRowDataBlock(Columns columns, int rows)
+        private SimpleComplexRowDataBlock(Columns columns, int rows, boolean isCounter)
         {
             super(columns, rows);
-            this.cells = new ComplexCellBlock(columns, rows);
+            this.cells = new ComplexCellBlock(columns, rows, isCounter);
         }
 
         protected ComplexCellBlock cellBlock(int row)
@@ -298,15 +314,17 @@ public abstract class ComplexRowDataBlock
      */
     private static class SortableComplexRowDataBlock extends ComplexRowDataBlock
     {
-        private static final long EMPTY_SIZE = ObjectSizes.measure(new SortableComplexRowDataBlock(Columns.NONE, 0));
+        private static final long EMPTY_SIZE = ObjectSizes.measure(new SortableComplexRowDataBlock(Columns.NONE, 0, false));
 
         // The cell data for each row.
         private final List<ComplexCellBlock> cells;
+        private final boolean isCounter;
 
-        private SortableComplexRowDataBlock(Columns columns, int rows)
+        private SortableComplexRowDataBlock(Columns columns, int rows, boolean isCounter)
         {
             super(columns, rows);
             this.cells = new ArrayList<>(rows);
+            this.isCounter = isCounter;
         }
 
         protected ComplexCellBlock cellBlockForWritting(int row)
@@ -319,7 +337,7 @@ public abstract class ComplexRowDataBlock
             ensureCapacity(row-1);
 
             assert row == cells.size();
-            ComplexCellBlock block = new ComplexCellBlock(columns(), 1);
+            ComplexCellBlock block = new ComplexCellBlock(columns(), 1, isCounter);
             cells.add(block);
             return block;
         }
@@ -370,7 +388,7 @@ public abstract class ComplexRowDataBlock
                 return;
             }
 
-            ComplexCellBlock merged = new ComplexCellBlock(columns(), 1);
+            ComplexCellBlock merged = new ComplexCellBlock(columns(), 1, isCounter);
 
             int idxMerged = 0;
             int s = columns().complexColumnCount();
@@ -415,7 +433,10 @@ public abstract class ComplexRowDataBlock
 
         private void merge(ComplexCellBlock b1, int idx1, ComplexCellBlock b2, int idx2, ComplexCellBlock mergedBlock, int mergedIdx, int nowInSec)
         {
-            CellData.mergeRegularCell(b1.data, idx1, b2.data, idx2, mergedBlock.data, mergedIdx, nowInSec);
+            if (isCounter)
+                CellData.mergeCounterCell(b1.data, idx1, b2.data, idx2, mergedBlock.data, mergedIdx, nowInSec);
+            else
+                CellData.mergeRegularCell(b1.data, idx1, b2.data, idx2, mergedBlock.data, mergedIdx, nowInSec);
             mergedBlock.ensureComplexPathsCapacity(mergedIdx);
             mergedBlock.complexPaths[mergedIdx] = b1.complexPaths[idx1];
         }
@@ -486,7 +507,7 @@ public abstract class ComplexRowDataBlock
         // THe (complex) cells path. This is indexed exactly like the cells in data (so through cellIdx).
         private CellPath[] complexPaths;
 
-        public ComplexCellBlock(Columns columns, int rows)
+        public ComplexCellBlock(Columns columns, int rows, boolean isCounter)
         {
             this.columns = columns;
 
@@ -496,7 +517,7 @@ public abstract class ComplexRowDataBlock
             // We start with an estimated 4 cells per complex column. The arrays
             // will grow if needed so this is just a somewhat random estimation.
             int cellCount =  columnCount * 4;
-            this.data = new CellData(cellCount, false);
+            this.data = new CellData(cellCount, isCounter);
             this.complexPaths = new CellPath[cellCount];
         }
 

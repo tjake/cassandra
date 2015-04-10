@@ -42,24 +42,15 @@ import org.apache.cassandra.utils.ObjectSizes;
  */
 public class SimpleRowDataBlock
 {
-    private static final long EMPTY_SIZE = ObjectSizes.measure(new SimpleRowDataBlock(Columns.NONE, 0));
+    private static final long EMPTY_SIZE = ObjectSizes.measure(new SimpleRowDataBlock(Columns.NONE, 0, false));
 
     final Columns columns;
     final CellData data;
 
-    public SimpleRowDataBlock(Columns columns, int rows)
+    public SimpleRowDataBlock(Columns columns, int rows, boolean isCounter)
     {
         this.columns = columns;
-        this.data = new CellData(rows * columns.simpleColumnCount(), isCounter(columns));
-    }
-
-    private static boolean isCounter(Columns columns)
-    {
-        // We generally won't call this if there is no columns, but the empty instance used for EMPTY_SIZE does.
-        if (columns.isEmpty())
-            return false;
-
-        return columns.getSimple(0).type.isCounter();
+        this.data = new CellData(rows * columns.simpleColumnCount(), isCounter);
     }
 
     public Columns columns()

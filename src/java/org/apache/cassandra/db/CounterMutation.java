@@ -171,7 +171,7 @@ public class CounterMutation implements IMutation
                         {
                             public Object apply(final Cell cell)
                             {
-                                return Objects.hashCode(update.metadata().cfId, key(), row.clustering(), cell.column());
+                                return Objects.hashCode(update.metadata().cfId, key(), row.clustering(), cell.column(), cell.path());
                             }
                         }));
                     }
@@ -212,7 +212,7 @@ public class CounterMutation implements IMutation
         mark.setValue(CounterContext.instance().createGlobal(CounterId.getLocalId(), clock, count));
 
         // Cache the newly updated value
-        cfs.putCachedCounter(key().getKey(), mark.clustering(), mark.column(), ClockAndCount.create(clock, count));
+        cfs.putCachedCounter(key().getKey(), mark.clustering(), mark.column(), mark.path(), ClockAndCount.create(clock, count));
     }
 
     // Returns the count of cache misses.
@@ -222,7 +222,7 @@ public class CounterMutation implements IMutation
         while (iter.hasNext())
         {
             PartitionUpdate.CounterMark mark = iter.next();
-            ClockAndCount cached = cfs.getCachedCounter(key().getKey(), mark.clustering(), mark.column());
+            ClockAndCount cached = cfs.getCachedCounter(key().getKey(), mark.clustering(), mark.column(), mark.path());
             if (cached != null)
             {
                 updateWithCurrentValue(mark, cached, cfs);
@@ -234,12 +234,15 @@ public class CounterMutation implements IMutation
     // Reads the missing current values from the CFS.
     private void updateWithCurrentValuesFromCFS(List<PartitionUpdate.CounterMark> marks, ColumnFamilyStore cfs)
     {
-        PartitionColumns.Builder builder = PartitionColumns.builder();
+        ColumnsSelection.Builder builder = ColumnsSelection.builder();
         SortedSet<Clustering> names = new TreeSet<>(cfs.metadata.comparator);
         for (PartitionUpdate.CounterMark mark : marks)
         {
             names.add(mark.clustering().takeAlias());
-            builder.add(mark.column());
+            if (mark.path() == null)
+                builder.add(mark.column());
+            else
+                builder.select(mark.column(), mark.path());
         }
 
         int nowInSec = FBUtilities.nowInSeconds();
@@ -274,20 +277,26 @@ public class CounterMutation implements IMutation
 
     private void updateForRow(PeekingIterator<PartitionUpdate.CounterMark> markIter, Row row, ColumnFamilyStore cfs)
     {
-        int cmp;
+        int cmp = 0;
         // If the mark is before the row, we have no value for this mark, just consume it
-        while ((cmp = compare(markIter.peek().clustering(), row.clustering(), cfs)) < 0)
+        while (markIter.hasNext() && (cmp = compare(markIter.peek().clustering(), row.clustering(), cfs)) < 0)
             markIter.next();
+
+        if (!markIter.hasNext())
+            return;
 
         while (cmp == 0)
         {
             PartitionUpdate.CounterMark mark = markIter.next();
-            Cell cell = row.getCell(mark.column());
+            Cell cell = mark.path() == null ? row.getCell(mark.column()) : row.getCell(mark.column(), mark.path());
             if (cell != null)
             {
                 updateWithCurrentValue(mark, CounterContext.instance().getLocalClockAndCount(cell.value()), cfs);
                 markIter.remove();
             }
+            if (!markIter.hasNext())
+                return;
+
             cmp = compare(markIter.peek().clustering(), row.clustering(), cfs);
         }
     }

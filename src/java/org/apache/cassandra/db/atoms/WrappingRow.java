@@ -122,15 +122,16 @@ public abstract class WrappingRow extends AbstractRow
 
     public Row takeAlias()
     {
+        boolean isCounter = columns().hasCounters();
         if (isStatic())
         {
-            StaticRow.Builder builder = StaticRow.builder(columns(), nowInSec());
+            StaticRow.Builder builder = StaticRow.builder(columns(), nowInSec(), isCounter);
             copyTo(builder);
             return builder.build();
         }
         else
         {
-            ReusableRow copy = new ReusableRow(clustering().size(), columns(), nowInSec());
+            ReusableRow copy = new ReusableRow(clustering().size(), columns(), nowInSec(), isCounter);
             copyTo(copy.writer());
             return copy;
         }

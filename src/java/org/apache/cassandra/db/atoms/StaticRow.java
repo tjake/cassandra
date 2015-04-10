@@ -72,9 +72,9 @@ public class StaticRow extends AbstractReusableRow
         return nowInSec;
     }
 
-    public static Builder builder(Columns columns, int nowInSec)
+    public static Builder builder(Columns columns, int nowInSec, boolean isCounter)
     {
-        return new Builder(columns, nowInSec);
+        return new Builder(columns, nowInSec, isCounter);
     }
 
     public static class Builder extends RowDataBlock.Writer
@@ -84,9 +84,9 @@ public class StaticRow extends AbstractReusableRow
         private long maxLiveTimestamp;
         private final int nowInSec;
 
-        public Builder(Columns columns, int nowInSec)
+        public Builder(Columns columns, int nowInSec, boolean isCounter)
         {
-            this.data = new RowDataBlock(columns, 1, false);
+            this.data = new RowDataBlock(columns, 1, false, isCounter);
             this.nowInSec = nowInSec;
             updateWriter(data);
         }

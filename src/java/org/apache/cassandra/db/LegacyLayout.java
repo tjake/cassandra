@@ -317,7 +317,7 @@ public abstract class LegacyLayout
     {
         return new RowIterator()
         {
-            private final ReusableRow row = new ReusableRow(metadata.clusteringColumns().size(), metadata.partitionColumns().regulars, nowInSec);
+            private final ReusableRow row = new ReusableRow(metadata.clusteringColumns().size(), metadata.partitionColumns().regulars, nowInSec, metadata.isCounter());
             private LegacyCell nextCell;
 
             public CFMetaData metadata()

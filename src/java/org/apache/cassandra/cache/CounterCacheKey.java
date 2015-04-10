@@ -23,6 +23,7 @@ import java.util.UUID;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.atoms.CellPath;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.utils.*;
 
@@ -42,17 +43,21 @@ public class CounterCacheKey implements CacheKey
         this.cellName = ByteBufferUtil.getArray(cellName);
     }
 
-    public static CounterCacheKey create(UUID cfId, ByteBuffer partitionKey, Clustering clustering, ColumnDefinition c)
+    public static CounterCacheKey create(UUID cfId, ByteBuffer partitionKey, Clustering clustering, ColumnDefinition c, CellPath path)
     {
-        return new CounterCacheKey(cfId, partitionKey, makeCellName(clustering, c));
+        return new CounterCacheKey(cfId, partitionKey, makeCellName(clustering, c, path));
     }
 
-    private static ByteBuffer makeCellName(Clustering clustering, ColumnDefinition c)
+    private static ByteBuffer makeCellName(Clustering clustering, ColumnDefinition c, CellPath path)
     {
-        ByteBuffer[] values = new ByteBuffer[clustering.size() + 1];
-        for (int i = 0; i < clustering.size(); i++)
+        int cs = clustering.size();
+        ByteBuffer[] values = new ByteBuffer[cs + 1 + (path == null ? 0 : path.size())];
+        for (int i = 0; i < cs; i++)
             values[i] = clustering.get(i);
-        values[clustering.size()] = c.name.bytes;
+        values[cs] = c.name.bytes;
+        if (path != null)
+            for (int i = 0; i < path.size(); i++)
+                values[cs + 1 + i] = path.get(i);
         return CompositeType.build(values);
     }
 
