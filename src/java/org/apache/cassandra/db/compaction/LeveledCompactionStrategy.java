@@ -328,6 +328,11 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
             return filtered;
         }
 
+        public boolean isForThrift()
+        {
+            return false;
+        }
+
         protected AtomIterator computeNext()
         {
             if (currentScanner == null)

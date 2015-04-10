@@ -445,7 +445,7 @@ public class CassandraServer implements Cassandra.Iface
         {
             ThriftValidation.validateKey(metadata, key);
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
-            commands.add(SinglePartitionReadCommand.create(metadata, nowInSec, ColumnFilter.NONE, getLimits(1, predicate), dk, filter));
+            commands.add(SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, getLimits(1, predicate), dk, filter));
         }
 
         return getSlice(commands, column_parent.isSetSuper_column(), consistencyLevel, cState);
@@ -516,7 +516,7 @@ public class CassandraServer implements Cassandra.Iface
 
             long now = System.currentTimeMillis();
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
-            SinglePartitionReadCommand<?> command = SinglePartitionReadCommand.create(metadata, FBUtilities.nowInSeconds(), dk, filter);
+            SinglePartitionReadCommand<?> command = SinglePartitionReadCommand.create(true, metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, dk, filter);
 
             RowIterator result = DataIterators.getOnlyElement(read(Arrays.<SinglePartitionReadCommand<?>>asList(command), consistencyLevel, cState), command);
             if (!result.hasNext())
@@ -609,7 +609,8 @@ public class CassandraServer implements Cassandra.Iface
                                           ThriftConversion.fromThrift(consistency_level),
                                           cState,
                                           pageSize,
-                                          nowInSec);
+                                          nowInSec,
+                                          true);
         }
         catch (IllegalArgumentException e)
         {
@@ -1286,11 +1287,14 @@ public class CassandraServer implements Cassandra.Iface
             try
             {
                 PartitionFilter filter = toInternalFilter(metadata, column_parent, predicate);
-                PartitionRangeReadCommand cmd = new PartitionRangeReadCommand(metadata,
+                PartitionRangeReadCommand cmd = new PartitionRangeReadCommand(false,
+                                                                              true,
+                                                                              metadata,
                                                                               nowInSec,
                                                                               ThriftConversion.columnFilterFromThrift(metadata, range.row_filter),
                                                                               getLimits(range.count, predicate),
                                                                               new DataRange(bounds, filter));
+                logger.info("Doing get_range_slice_query");
                 results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
             }
             finally
@@ -2267,7 +2271,7 @@ public class CassandraServer implements Cassandra.Iface
                                      ? metadata.partitionColumns().withoutStatics()
                                      : metadata.partitionColumns();
             NamesPartitionFilter filter = new NamesPartitionFilter(columns, clusterings, false);
-            return SinglePartitionReadCommand.create(metadata, nowInSec, key, filter);
+            return SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, DataLimits.NONE, key, filter);
         }
 
         public boolean appliesTo(ReadPartition current)

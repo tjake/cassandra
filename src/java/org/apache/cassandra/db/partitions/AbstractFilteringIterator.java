@@ -67,7 +67,7 @@ public abstract class AbstractFilteringIterator extends WrappingPartitionIterato
             if (shouldFilter(atomIter))
             {
                 next = new FilteringIterator(atomIter);
-                if (AtomIterators.isEmpty(next))
+                if (!isForThrift() && AtomIterators.isEmpty(next))
                 {
                     atomIter.close();
                     next = null;

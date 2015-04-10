@@ -42,8 +42,6 @@ import static org.apache.cassandra.io.sstable.IndexHelper.IndexInfo;
 
 /**
  * Represents the legacy layouts: dense/sparse and simple/compound.
- *
- * This is only use to serialize/deserialize the old format.
  */
 public abstract class LegacyLayout
 {

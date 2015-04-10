@@ -522,14 +522,14 @@ public abstract class DataLimits
 
             public boolean isDone()
             {
-                // Note that we increment partitionsCounted at the begining of counting the partition, so we're done
-                // when we have strictly more than the limit.
-                return partitionsCounted > partitionLimit;
+                return partitionsCounted >= partitionLimit;
             }
 
             public boolean isDoneForPartition()
             {
-                return isDone() || cellsInCurrentPartition >= cellPerPartitionLimit;
+                // Note that as we count partition at the beginning while this is called withing a partition, we don't want to
+                // check isDone() as this would make use stop too early.
+                return cellsInCurrentPartition >= cellPerPartitionLimit;
             }
 
             public void newRow(Row row)

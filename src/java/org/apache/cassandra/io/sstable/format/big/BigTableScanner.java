@@ -60,18 +60,19 @@ public class BigTableScanner implements ISSTableScanner
     private final DataRange dataRange;
     private final RowIndexEntry.IndexSerializer rowIndexEntrySerializer;
     private final int nowInSec;
+    private final boolean isForThrift;
 
     protected PartitionIterator iterator;
 
     // Full scan of the sstables
     public static ISSTableScanner getScanner(SSTableReader sstable, RateLimiter limiter, int nowInSec)
     {
-        return new BigTableScanner(sstable, null, limiter, nowInSec, Iterators.singletonIterator(fullRange(sstable)));
+        return new BigTableScanner(sstable, null, limiter, nowInSec, false, Iterators.singletonIterator(fullRange(sstable)));
     }
 
-    public static ISSTableScanner getScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter, int nowInSec)
+    public static ISSTableScanner getScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter, int nowInSec, boolean isForThrift)
     {
-        return new BigTableScanner(sstable, dataRange, limiter, nowInSec, makeBounds(sstable, dataRange).iterator());
+        return new BigTableScanner(sstable, dataRange, limiter, nowInSec, isForThrift, makeBounds(sstable, dataRange).iterator());
     }
 
     public static ISSTableScanner getScanner(SSTableReader sstable, Collection<Range<Token>> tokenRanges, RateLimiter limiter, int nowInSec)
@@ -81,10 +82,10 @@ public class BigTableScanner implements ISSTableScanner
         if (positions.isEmpty())
             return new EmptySSTableScanner(sstable.getFilename());
 
-        return new BigTableScanner(sstable, null, limiter, nowInSec, makeBounds(sstable, tokenRanges).iterator());
+        return new BigTableScanner(sstable, null, limiter, nowInSec, false, makeBounds(sstable, tokenRanges).iterator());
     }
 
-    private BigTableScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter, int nowInSec, Iterator<AbstractBounds<RowPosition>> rangeIterator)
+    private BigTableScanner(SSTableReader sstable, DataRange dataRange, RateLimiter limiter, int nowInSec, boolean isForThrift, Iterator<AbstractBounds<RowPosition>> rangeIterator)
     {
         assert sstable != null;
 
@@ -96,6 +97,7 @@ public class BigTableScanner implements ISSTableScanner
                                                                                                         sstable.descriptor.version,
                                                                                                         sstable.header);
         this.nowInSec = nowInSec;
+        this.isForThrift = isForThrift;
         this.rangeIterator = rangeIterator;
     }
 
@@ -219,6 +221,11 @@ public class BigTableScanner implements ISSTableScanner
         return sstable.toString();
     }
 
+    public boolean isForThrift()
+    {
+        return isForThrift;
+    }
+
     public boolean hasNext()
     {
         if (iterator == null)
@@ -249,6 +256,11 @@ public class BigTableScanner implements ISSTableScanner
         private RowIndexEntry nextEntry;
         private DecoratedKey currentKey;
         private RowIndexEntry currentEntry;
+
+        public boolean isForThrift()
+        {
+            return isForThrift;
+        }
 
         protected AtomIterator computeNext()
         {
@@ -371,6 +383,11 @@ public class BigTableScanner implements ISSTableScanner
         public String getBackingFiles()
         {
             return filename;
+        }
+
+        public boolean isForThrift()
+        {
+            return false;
         }
 
         public boolean hasNext()

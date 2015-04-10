@@ -92,9 +92,10 @@ public class QueryPagers
                                  ConsistencyLevel consistencyLevel,
                                  ClientState state,
                                  final int pageSize,
-                                 int nowInSec) throws RequestValidationException, RequestExecutionException
+                                 int nowInSec,
+                                 boolean isForThrift) throws RequestValidationException, RequestExecutionException
     {
-        SinglePartitionReadCommand command = SinglePartitionReadCommand.create(metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
+        SinglePartitionReadCommand command = SinglePartitionReadCommand.create(isForThrift, metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
         final SinglePartitionPager pager = new SinglePartitionPager(command, consistencyLevel, state, false);
 
         int count = 0;

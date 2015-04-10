@@ -45,6 +45,11 @@ public abstract class WrappingPartitionIterator extends AbstractPartitionIterato
         this.wrapped = wrapped;
     }
 
+    public boolean isForThrift()
+    {
+        return wrapped.isForThrift();
+    }
+
     public boolean hasNext()
     {
         prepareNext();
@@ -70,7 +75,7 @@ public abstract class WrappingPartitionIterator extends AbstractPartitionIterato
 
             // As the wrappd iterator shouldn't return an empty iterator, if computeNext
             // gave us back it's input we save the isEmpty check.
-            if (maybeNext != null && (maybeNext == wrappedNext || !AtomIterators.isEmpty(maybeNext)))
+            if (maybeNext != null && (isForThrift() || maybeNext == wrappedNext || !AtomIterators.isEmpty(maybeNext)))
             {
                 next = maybeNext;
                 return;

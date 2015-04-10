@@ -233,7 +233,7 @@ public class Memtable
                              cfs.name, hashCode(), liveDataSize, currentOperations, 100 * allocator.onHeap().ownershipRatio(), 100 * allocator.offHeap().ownershipRatio());
     }
 
-    public PartitionIterator makePartitionIterator(final DataRange dataRange, final int nowInSec)
+    public PartitionIterator makePartitionIterator(final DataRange dataRange, final int nowInSec, final boolean isForThrift)
     {
         AbstractBounds<RowPosition> keyRange = dataRange.keyRange();
 
@@ -255,6 +255,11 @@ public class Memtable
 
         return new AbstractPartitionIterator()
         {
+            public boolean isForThrift()
+            {
+                return isForThrift;
+            }
+
             public boolean hasNext()
             {
                 return iter.hasNext();

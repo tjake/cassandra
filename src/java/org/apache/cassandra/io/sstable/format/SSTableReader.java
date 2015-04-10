@@ -1588,9 +1588,9 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
      * @param dataRange filter to use when reading the columns
      * @return A Scanner for seeking over the rows of the SSTable.
      */
-    public ISSTableScanner getScanner(DataRange dataRange, int nowInSec)
+    public ISSTableScanner getScanner(DataRange dataRange, int nowInSec, boolean isForThrift)
     {
-        return getScanner(dataRange, null, nowInSec);
+        return getScanner(dataRange, null, nowInSec, isForThrift);
     }
 
     /**
@@ -1626,7 +1626,7 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
      * @param dataRange filter to use when reading the columns
      * @return A Scanner for seeking over the rows of the SSTable.
      */
-    public abstract ISSTableScanner getScanner(DataRange dataRange, RateLimiter limiter, int expireBefore);
+    public abstract ISSTableScanner getScanner(DataRange dataRange, RateLimiter limiter, int nowInSec, boolean isForThrift);
 
 
 
