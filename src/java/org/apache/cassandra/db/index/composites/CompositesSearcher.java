@@ -221,6 +221,11 @@ public class CompositesSearcher extends SecondaryIndexSearcher
 
             private AtomIterator next;
 
+            public boolean isForThrift()
+            {
+                return command.isForThrift();
+            }
+
             public boolean hasNext()
             {
                 return prepareNext();

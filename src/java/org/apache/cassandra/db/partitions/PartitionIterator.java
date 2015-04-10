@@ -31,5 +31,16 @@ import org.apache.cassandra.db.atoms.AtomIterator;
  */
 public interface PartitionIterator extends Iterator<AtomIterator>, AutoCloseable
 {
+    /**
+     * Whether that partition iterator is for a thrift queries.
+     * <p>
+     * If this is true, the partition iterator may return some empty AtomIterator and those
+     * should be preserved as thrift include partitions that "exists" (have some cells even
+     * if this are actually deleted) but have nothing matching the query.
+     *
+     * @return whether the iterator is for a thrift query.
+     */
+    public boolean isForThrift();
+
     public void close();
 }

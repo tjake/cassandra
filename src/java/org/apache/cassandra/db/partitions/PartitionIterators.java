@@ -34,25 +34,17 @@ import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.MergeIterator;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Static methods to work with partition iterators.
  */
 public abstract class PartitionIterators
 {
+    private static final Logger logger = LoggerFactory.getLogger(PartitionIterators.class);
+
     private static final Serializer serializer = new Serializer();
-
-    public static final PartitionIterator EMPTY = new AbstractPartitionIterator()
-    {
-        public boolean hasNext()
-        {
-            return false;
-        }
-
-        public AtomIterator next()
-        {
-            throw new NoSuchElementException();
-        }
-    };
 
     private static final Comparator<AtomIterator> partitionComparator = new Comparator<AtomIterator>()
     {
@@ -121,7 +113,7 @@ public abstract class PartitionIterators
                 {
                     AtomIterator atomIter = iterator.next();
                     next = new RowIteratorFromAtomIterator(atomIter);
-                    if (RowIterators.isEmpty(next))
+                    if (!iterator.isForThrift() && RowIterators.isEmpty(next))
                     {
                         atomIter.close();
                         next = null;
@@ -163,6 +155,9 @@ public abstract class PartitionIterators
     public static PartitionIterator merge(final List<? extends PartitionIterator> iterators, final MergeListener listener)
     {
         assert listener != null;
+        assert !iterators.isEmpty();
+
+        final boolean isForThrift = iterators.get(0).isForThrift();
 
         final MergeIterator<AtomIterator, AtomIterator> merged = MergeIterator.get(iterators, partitionComparator, new MergeIterator.Reducer<AtomIterator, AtomIterator>()
         {
@@ -207,6 +202,11 @@ public abstract class PartitionIterators
 
         return new AbstractPartitionIterator()
         {
+            public boolean isForThrift()
+            {
+                return isForThrift;
+            }
+
             public boolean hasNext()
             {
                 return merged.hasNext();
@@ -227,6 +227,8 @@ public abstract class PartitionIterators
 
     public static PartitionIterator mergeLazily(final List<? extends PartitionIterator> iterators)
     {
+        assert !iterators.isEmpty();
+
         if (iterators.size() == 1)
             return iterators.get(0);
 
@@ -266,6 +268,11 @@ public abstract class PartitionIterators
 
         return new AbstractPartitionIterator()
         {
+            public boolean isForThrift()
+            {
+                return isForThrift;
+            }
+
             public boolean hasNext()
             {
                 return merged.hasNext();
@@ -377,6 +384,7 @@ public abstract class PartitionIterators
             if (version < MessagingService.VERSION_30)
                 throw new UnsupportedOperationException();
 
+            out.writeBoolean(iter.isForThrift());
             while (iter.hasNext())
             {
                 out.writeBoolean(true);
@@ -393,11 +401,18 @@ public abstract class PartitionIterators
             if (version < MessagingService.VERSION_30)
                 throw new UnsupportedOperationException();
 
+            final boolean isForThrift = in.readBoolean();
+
             return new AbstractPartitionIterator()
             {
                 private AtomIterator next;
                 private boolean hasNext;
                 private boolean nextReturned = true;
+
+                public boolean isForThrift()
+                {
+                    return isForThrift;
+                }
 
                 public boolean hasNext()
                 {

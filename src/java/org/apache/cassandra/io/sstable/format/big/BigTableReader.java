@@ -77,9 +77,9 @@ public class BigTableReader extends SSTableReader
      * @param dataRange filter to use when reading the columns
      * @return A Scanner for seeking over the rows of the SSTable.
      */
-    public ISSTableScanner getScanner(DataRange dataRange, RateLimiter limiter, int nowInSec)
+    public ISSTableScanner getScanner(DataRange dataRange, RateLimiter limiter, int nowInSec, boolean isForThrift)
     {
-        return BigTableScanner.getScanner(this, dataRange, limiter, nowInSec);
+        return BigTableScanner.getScanner(this, dataRange, limiter, nowInSec, isForThrift);
     }
 
     /**

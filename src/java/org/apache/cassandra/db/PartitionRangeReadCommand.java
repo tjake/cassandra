@@ -47,13 +47,13 @@ public class PartitionRangeReadCommand extends ReadCommand
 
     private final DataRange dataRange;
 
-    private PartitionRangeReadCommand(boolean isDigest,
-                                      boolean isForThrift,
-                                      CFMetaData metadata,
-                                      int nowInSec,
-                                      ColumnFilter columnFilter,
-                                      DataLimits limits,
-                                      DataRange dataRange)
+    public PartitionRangeReadCommand(boolean isDigest,
+                                     boolean isForThrift,
+                                     CFMetaData metadata,
+                                     int nowInSec,
+                                     ColumnFilter columnFilter,
+                                     DataLimits limits,
+                                     DataRange dataRange)
     {
         super(Kind.PARTITION_RANGE, isDigest, isForThrift, metadata, nowInSec, columnFilter, limits);
         this.dataRange = dataRange;
@@ -181,13 +181,13 @@ public class PartitionRangeReadCommand extends ReadCommand
 
         for (Memtable memtable : view.memtables)
         {
-            PartitionIterator iter = memtable.makePartitionIterator(dataRange(), nowInSec());
+            PartitionIterator iter = memtable.makePartitionIterator(dataRange(), nowInSec(), isForThrift());
             iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
         }
 
         for (SSTableReader sstable : view.sstables)
         {
-            PartitionIterator iter = sstable.getScanner(dataRange(), nowInSec());
+            PartitionIterator iter = sstable.getScanner(dataRange(), nowInSec(), isForThrift());
             iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
         }
 

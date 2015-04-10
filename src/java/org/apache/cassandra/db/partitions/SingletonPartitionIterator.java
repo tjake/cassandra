@@ -25,11 +25,18 @@ import org.apache.cassandra.db.atoms.AtomIterator;
 public class SingletonPartitionIterator implements PartitionIterator
 {
     private final AtomIterator iter;
+    private final boolean isForThrift;
     private boolean returned;
 
-    public SingletonPartitionIterator(AtomIterator iter)
+    public SingletonPartitionIterator(AtomIterator iter, boolean isForThrift)
     {
         this.iter = iter;
+        this.isForThrift = isForThrift;
+    }
+
+    public boolean isForThrift()
+    {
+        return isForThrift;
     }
 
     public boolean hasNext()

@@ -79,11 +79,35 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                                                        DecoratedKey partitionKey,
                                                        PartitionFilter partitionFilter)
     {
+        return create(false, metadata, nowInSec, columnFilter, limits, partitionKey, partitionFilter);
+    }
+
+    /**
+     * Creates a new read command on a single partition for thrift.
+     *
+     * @param isForThrift whether the query is for thrift or not.
+     * @param metadata the table to query.
+     * @param nowInSec the time in seconds to use are "now" for this query.
+     * @param columnFilter the column filter to use for the query.
+     * @param limits the limits to use for the query.
+     * @param partitionKey the partition key for the partition to query.
+     * @param partitionFilter the partition filter to use for the query.
+     *
+     * @return a newly created read command.
+     */
+    public static SinglePartitionReadCommand<?> create(boolean isForThrift,
+                                                       CFMetaData metadata,
+                                                       int nowInSec,
+                                                       ColumnFilter columnFilter,
+                                                       DataLimits limits,
+                                                       DecoratedKey partitionKey,
+                                                       PartitionFilter partitionFilter)
+    {
         if (partitionFilter instanceof SlicePartitionFilter)
-            return new SinglePartitionSliceCommand(metadata, nowInSec, columnFilter, limits, partitionKey, (SlicePartitionFilter)partitionFilter);
+            return new SinglePartitionSliceCommand(false, isForThrift, metadata, nowInSec, columnFilter, limits, partitionKey, (SlicePartitionFilter)partitionFilter);
 
         assert partitionFilter instanceof NamesPartitionFilter;
-        return new SinglePartitionNamesCommand(metadata, nowInSec, columnFilter, limits, partitionKey, (NamesPartitionFilter)partitionFilter);
+        return new SinglePartitionNamesCommand(false, isForThrift, metadata, nowInSec, columnFilter, limits, partitionKey, (NamesPartitionFilter)partitionFilter);
     }
 
     /**
@@ -188,7 +212,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                 result = queryMemtableAndDisk(cfs);
             }
 
-            return new SingletonPartitionIterator(result)
+            return new SingletonPartitionIterator(result, isForThrift())
             {
                 @Override
                 public void close()

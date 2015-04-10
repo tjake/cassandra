@@ -54,6 +54,11 @@ public abstract class AbstractCompactionIterable extends CompactionInfo.Holder i
             mergeCounters[i] = new AtomicLong();
     }
 
+    public boolean isForThrift()
+    {
+        return false;
+    }
+
     public CompactionInfo getCompactionInfo()
     {
         return new CompactionInfo(controller.cfs.metadata,
