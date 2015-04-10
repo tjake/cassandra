@@ -181,9 +181,10 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      */
     public SinglePartitionReadCommand forPaging(Clustering lastReturned, int pageSize)
     {
-        // We don't page on thrift, and we shouldn't have set digest yet when reaching that point
-        assert !isDigestQuery() && !isForThrift();
-        return create(metadata(),
+        // We shouldn't have set digest yet when reaching that point
+        assert !isDigestQuery();
+        return create(isForThrift(),
+                      metadata(),
                       nowInSec(),
                       columnFilter(),
                       limits().forPaging(pageSize),

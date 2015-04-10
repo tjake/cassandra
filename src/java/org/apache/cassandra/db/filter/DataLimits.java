@@ -599,8 +599,7 @@ public abstract class DataLimits
 
             public void newRow(Row row)
             {
-                // When we count super columns, we only query the underlying row but not any cells, so just
-                // count how many row we get as this correspond to how many super columns we have.
+                // In the internal format, a row == a super column, so that's what we want to count.
                 if (assumeLiveData || row.hasLiveData())
                 {
                     ++cellsCounted;

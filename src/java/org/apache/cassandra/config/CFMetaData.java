@@ -1305,33 +1305,7 @@ public final class CFMetaData
      */
     public boolean isThriftCompatible()
     {
-        // Super CF are always "thrift compatible". But since they may have defs with a componentIndex != null,
-        // we have to special case here.
-        if (isSuper())
-            return true;
-
-        for (ColumnDefinition def : allColumns())
-        {
-            // Non-REGULAR ColumnDefinition are not "thrift compatible" per-se, but it's ok because they hold metadata
-            // this is only of use to CQL3, so we will just skip them in toThrift.
-            if (def.kind == ColumnDefinition.Kind.REGULAR && !def.isThriftCompatible())
-                return false;
-        }
-
-        // The table might also have no REGULAR columns (be PK-only), but still be "thrift incompatible". See #7832.
-        if (isCQL3OnlyPKComparator(LegacyLayout.makeLegacyComparator(this)) && !isDense())
-            return false;
-
-        return true;
-    }
-
-    public static boolean isCQL3OnlyPKComparator(AbstractType<?> comparator)
-    {
-        if (!(comparator instanceof CompositeType))
-            return false;
-
-        CompositeType ct = (CompositeType)comparator;
-        return ct.types.size() == 1 && ct.types.get(0) instanceof UTF8Type;
+        return isCompactTable();
     }
 
     public boolean isCounter()
