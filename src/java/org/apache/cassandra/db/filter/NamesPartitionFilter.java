@@ -96,25 +96,23 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
              : clusterings.contains(clustering);
     }
 
-    public NamesPartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned)
+    public NamesPartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
     {
         int cmp = comparator.compare(lastReturned, clusteringsInQueryOrder.first());
-        if (cmp < 0)
+        if (cmp < 0 && (inclusive && cmp == 0))
             return this;
 
         SortedSet<Clustering> newClusterings;
         if (reversed)
         {
             newClusterings = new TreeSet<>(clusterings.headSet(lastReturned));
-            // We don't want to include what we have already returned
-            if (comparator.compare(newClusterings.last(), lastReturned) == 0)
+            if (!inclusive && comparator.compare(newClusterings.last(), lastReturned) == 0)
                 newClusterings.remove(lastReturned);
         }
         else
         {
             newClusterings = new TreeSet<>(clusterings.tailSet(lastReturned));
-            // We don't want to include what we have already returned
-            if (comparator.compare(newClusterings.first(), lastReturned) == 0)
+            if (!inclusive && comparator.compare(newClusterings.first(), lastReturned) == 0)
                 newClusterings.remove(lastReturned);
         }
 

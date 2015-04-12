@@ -220,12 +220,13 @@ public class DataRange
      * @param lastReturned the clustering for the last result returned by the previous page, i.e. the result we want to start our new page
      * from. This last returned must <b>must</b> correspond to left bound of {@code range} (in other words, {@code range.left} must be the
      * partition key for that {@code lastReturned} result).
+     * @param inclusive whether or not we want to include the {@code lastReturned} in the newly returned page of results.
      *
      * @return a new {@code DataRange} suitable for paging {@code this} range given the {@code lastRetuned} result of the previous page.
      */
-    public DataRange forPaging(AbstractBounds<RowPosition> range, ClusteringComparator comparator, Clustering lastReturned)
+    public DataRange forPaging(AbstractBounds<RowPosition> range, ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
     {
-        return new Paging(range, partitionFilter, comparator, lastReturned);
+        return new Paging(range, partitionFilter, comparator, lastReturned, inclusive);
     }
 
     /**
@@ -326,11 +327,13 @@ public class DataRange
     {
         private final ClusteringComparator comparator;
         private final Clustering lastReturned;
+        private final boolean inclusive;
 
         private Paging(AbstractBounds<RowPosition> range,
                        PartitionFilter filter,
                        ClusteringComparator comparator,
-                       Clustering lastReturned)
+                       Clustering lastReturned,
+                       boolean inclusive)
         {
             super(range, filter);
 
@@ -341,13 +344,14 @@ public class DataRange
 
             this.comparator = comparator;
             this.lastReturned = lastReturned;
+            this.inclusive = inclusive;
         }
 
         @Override
         public PartitionFilter partitionFilter(DecoratedKey key)
         {
             return key.equals(startKey())
-                 ? partitionFilter.forPaging(comparator, lastReturned)
+                 ? partitionFilter.forPaging(comparator, lastReturned, inclusive)
                  : partitionFilter;
         }
 
@@ -357,7 +361,7 @@ public class DataRange
             // This is called for subrange of the initial range. So either it's the beginning of the initial range,
             // and we need to preserver lastReturned, or it's not, and we don't care about it anymore.
             return range.left.equals(keyRange().left)
-                 ? new Paging(range, partitionFilter, comparator, lastReturned)
+                 ? new Paging(range, partitionFilter, comparator, lastReturned, inclusive)
                  : new DataRange(range, partitionFilter);
         }
 
@@ -377,7 +381,10 @@ public class DataRange
             boolean isPaging = range instanceof Paging;
             out.writeBoolean(isPaging);
             if (isPaging)
+            {
                 Clustering.serializer.serialize(((Paging)range).lastReturned, out, version, metadata.comparator.subtypes());
+                out.writeBoolean(((Paging)range).inclusive);
+            }
         }
 
         public DataRange deserialize(DataInput in, int version, CFMetaData metadata) throws IOException
@@ -388,7 +395,8 @@ public class DataRange
             {
                 ClusteringComparator comparator = metadata.comparator;
                 Clustering lastReturned = Clustering.serializer.deserialize(in, version, comparator.subtypes());
-                return new Paging(range, filter, comparator, lastReturned);
+                boolean inclusive = in.readBoolean();
+                return new Paging(range, filter, comparator, lastReturned, inclusive);
             }
             else
             {
@@ -403,7 +411,10 @@ public class DataRange
                       + 1; // isPaging boolean
 
             if (range instanceof Paging)
+            {
                 size += Clustering.serializer.serializedSize(((Paging)range).lastReturned, version, metadata.comparator.subtypes(), TypeSizes.NATIVE);
+                size += 1; // inclusive boolean
+            }
             return size;
         }
     }

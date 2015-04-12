@@ -189,7 +189,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                       columnFilter(),
                       limits().forPaging(pageSize),
                       partitionKey(),
-                      lastReturned == null ? partitionFilter() : partitionFilter.forPaging(metadata().comparator, lastReturned));
+                      lastReturned == null ? partitionFilter() : partitionFilter.forPaging(metadata().comparator, lastReturned, false));
     }
 
     public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException

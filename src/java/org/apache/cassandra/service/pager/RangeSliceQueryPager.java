@@ -91,7 +91,7 @@ public class RangeSliceQueryPager extends AbstractQueryPager
             AbstractBounds<RowPosition> bounds = makeKeyBounds(lastReturnedKey, includeLastKey);
             if (includeLastKey)
             {
-                range = command.dataRange().forPaging(bounds, command.metadata().comparator, lastReturnedClustering);
+                range = command.dataRange().forPaging(bounds, command.metadata().comparator, lastReturnedClustering, false);
                 limits = command.limits().forPaging(pageSize, lastReturnedKey.getKey(), remainingInPartition());
             }
             else

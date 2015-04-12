@@ -69,9 +69,9 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
         return slices.selects(clustering);
     }
 
-    public SlicePartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned)
+    public SlicePartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
     {
-        Slices newSlices = slices.forPaging(comparator, lastReturned, reversed);
+        Slices newSlices = slices.forPaging(comparator, lastReturned, inclusive, reversed);
         return slices == newSlices
              ? this
              : new SlicePartitionFilter(queriedColumns, newSlices, reversed);
