@@ -377,7 +377,26 @@ public class CassandraServer implements Cassandra.Iface
                                             FBUtilities.<Clustering>singleton(new SimpleClustering(parent.bufferForSuper_column()), metadata.comparator),
                                             false);
         }
-        return new SlicePartitionFilter(metadata.partitionColumns(), makeSlices(metadata, range), range.reversed);
+        return toInternalFilter(metadata, makeSlices(metadata, range), range.reversed);
+    }
+
+    private SlicePartitionFilter toInternalFilter(CFMetaData metadata, Slices slices, boolean reversed)
+    {
+        PartitionColumns columns = metadata.partitionColumns();
+        if (metadata.isStaticCompactTable() && !columns.statics.isEmpty())
+        {
+            PartitionColumns.Builder builder = PartitionColumns.builder();
+            builder.addAll(columns.regulars);
+            // We only want to include the static columns that are selected by the slices
+            for (ColumnDefinition def : columns.statics)
+            {
+                if (slices.selects(new SimpleClustering(def.name.bytes)))
+                    builder.add(def);
+            }
+            columns = builder.build();
+        }
+
+        return new SlicePartitionFilter(metadata.partitionColumns(), slices, reversed);
     }
 
     private Slices makeSlices(CFMetaData metadata, SliceRange range)
@@ -441,9 +460,14 @@ public class CassandraServer implements Cassandra.Iface
     private DataLimits getLimits(int partitionLimit, boolean countSuperColumns, SlicePredicate predicate)
     {
         int cellsPerPartition = predicate.slice_range == null ? Integer.MAX_VALUE : predicate.slice_range.count;
+        return getLimits(partitionLimit, countSuperColumns, cellsPerPartition);
+    }
+
+    private DataLimits getLimits(int partitionLimit, boolean countSuperColumns, int perPartitionCount)
+    {
         return countSuperColumns
-             ? DataLimits.superColumnCountingLimits(partitionLimit, cellsPerPartition)
-             : DataLimits.thriftLimits(partitionLimit, cellsPerPartition);
+             ? DataLimits.superColumnCountingLimits(partitionLimit, perPartitionCount)
+             : DataLimits.thriftLimits(partitionLimit, perPartitionCount);
     }
 
     private Map<ByteBuffer, List<ColumnOrSuperColumn>> multigetSliceInternal(String keyspace,
@@ -1353,85 +1377,92 @@ public class CassandraServer implements Cassandra.Iface
     public List<KeySlice> get_paged_slice(String column_family, KeyRange range, ByteBuffer start_column, ConsistencyLevel consistency_level)
     throws InvalidRequestException, UnavailableException, TimedOutException, TException
     {
-        // TODO
-        throw new UnsupportedOperationException();
-        //if (startSessionIfRequested())
-        //{
-        //    Map<String, String> traceParameters = ImmutableMap.of("column_family", column_family,
-        //                                                          "range", range.toString(),
-        //                                                          "start_column", ByteBufferUtil.bytesToHex(start_column),
-        //                                                          "consistency_level", consistency_level.name());
-        //    Tracing.instance.begin("get_paged_slice", traceParameters);
-        //}
-        //else
-        //{
-        //    logger.debug("get_paged_slice");
-        //}
+        if (startSessionIfRequested())
+        {
+            Map<String, String> traceParameters = ImmutableMap.of("column_family", column_family,
+                                                                  "range", range.toString(),
+                                                                  "start_column", ByteBufferUtil.bytesToHex(start_column),
+                                                                  "consistency_level", consistency_level.name());
+            Tracing.instance.begin("get_paged_slice", traceParameters);
+        }
+        else
+        {
+            logger.debug("get_paged_slice");
+        }
 
-        //try
-        //{
+        try
+        {
 
-        //    ThriftClientState cState = state();
-        //    String keyspace = cState.getKeyspace();
-        //    cState.hasColumnFamilyAccess(keyspace, column_family, Permission.SELECT);
+            ThriftClientState cState = state();
+            String keyspace = cState.getKeyspace();
+            cState.hasColumnFamilyAccess(keyspace, column_family, Permission.SELECT);
 
-        //    CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_family);
-        //    ThriftValidation.validateKeyRange(metadata, null, range);
+            CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_family);
+            ThriftValidation.validateKeyRange(metadata, null, range);
 
-        //    org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(consistency_level);
-        //    consistencyLevel.validateForRead(keyspace);
+            org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(consistency_level);
+            consistencyLevel.validateForRead(keyspace);
 
-        //    SlicePredicate predicate = new SlicePredicate().setSlice_range(new SliceRange(start_column, ByteBufferUtil.EMPTY_BYTE_BUFFER, false, -1));
+            IPartitioner p = StorageService.getPartitioner();
+            AbstractBounds<RowPosition> bounds;
+            if (range.start_key == null)
+            {
+                // (token, key) is unsupported, assume (token, token)
+                Token.TokenFactory tokenFactory = p.getTokenFactory();
+                Token left = tokenFactory.fromString(range.start_token);
+                Token right = tokenFactory.fromString(range.end_token);
+                bounds = Range.makeRowRange(left, right);
+            }
+            else
+            {
+                RowPosition end = range.end_key == null
+                                ? p.getTokenFactory().fromString(range.end_token).maxKeyBound()
+                                : RowPosition.ForKey.get(range.end_key, p);
+                bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(range.start_key, p), end);
+            }
 
-        //    IPartitioner p = StorageService.getPartitioner();
-        //    AbstractBounds<RowPosition> bounds;
-        //    if (range.start_key == null)
-        //    {
-        //        // (token, key) is unsupported, assume (token, token)
-        //        Token.TokenFactory tokenFactory = p.getTokenFactory();
-        //        Token left = tokenFactory.fromString(range.start_token);
-        //        Token right = tokenFactory.fromString(range.end_token);
-        //        bounds = Range.makeRowRange(left, right);
-        //    }
-        //    else
-        //    {
-        //        RowPosition end = range.end_key == null
-        //                        ? p.getTokenFactory().fromString(range.end_token).maxKeyBound()
-        //                        : RowPosition.ForKey.get(range.end_key, p);
-        //        bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(range.start_key, p), end);
-        //    }
+            if (range.row_filter != null && !range.row_filter.isEmpty())
+                throw new InvalidRequestException("Cross-row paging is not supported along with index clauses");
 
-        //    if (range.row_filter != null && !range.row_filter.isEmpty())
-        //        throw new InvalidRequestException("Cross-row paging is not supported along with index clauses");
+            DataIterator results = null;
+            int nowInSec = FBUtilities.nowInSeconds();
+            schedule(DatabaseDescriptor.getRangeRpcTimeout());
+            try
+            {
+                PartitionFilter filter = new SlicePartitionFilter(metadata.partitionColumns(), Slices.ALL, false);
+                DataLimits limits = getLimits(range.count, true, Integer.MAX_VALUE);
+                Clustering pageFrom = metadata.isSuper()
+                                    ? new SimpleClustering(start_column)
+                                    : LegacyLayout.decodeCellName(metadata, start_column).clustering;
+                PartitionRangeReadCommand cmd = new PartitionRangeReadCommand(false,
+                                                                              true,
+                                                                              metadata,
+                                                                              nowInSec,
+                                                                              ColumnFilter.NONE,
+                                                                              limits,
+                                                                              new DataRange(bounds, filter).forPaging(bounds, metadata.comparator, pageFrom, true));
+                results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
+            }
+            finally
+            {
+                release();
+            }
+            assert results != null;
 
-        //    List<Row> rows;
-        //    long now = System.currentTimeMillis();
-        //    schedule(DatabaseDescriptor.getRangeRpcTimeout());
-        //    try
-        //    {
-        //        IDiskAtomFilter filter = ThriftValidation.asIFilter(predicate, metadata, null);
-        //        rows = StorageProxy.getRangeSlice(new RangeSliceCommand(keyspace, column_family, now, filter, bounds, null, range.count, true, true), consistencyLevel);
-        //    }
-        //    finally
-        //    {
-        //        release();
-        //    }
-        //    assert rows != null;
-
-        //    return thriftifyKeySlices(rows, new ColumnParent(column_family), predicate, now);
-        //}
-        //catch (RequestValidationException e)
-        //{
-        //    throw ThriftConversion.toThrift(e);
-        //}
-        //catch (RequestExecutionException e)
-        //{
-        //    throw ThriftConversion.rethrow(e);
-        //}
-        //finally
-        //{
-        //    Tracing.instance.stopSession();
-        //}
+            return thriftifyKeySlices(results, new ColumnParent(column_family));
+        }
+        catch (RequestValidationException e)
+        {
+            throw ThriftConversion.toThrift(e);
+        }
+        catch (RequestExecutionException e)
+        {
+            throw ThriftConversion.rethrow(e);
+        }
+        finally
+        {
+            Tracing.instance.stopSession();
+        }
     }
 
     private List<KeySlice> thriftifyKeySlices(DataIterator results, ColumnParent column_parent)
@@ -1455,62 +1486,60 @@ public class CassandraServer implements Cassandra.Iface
     public List<KeySlice> get_indexed_slices(ColumnParent column_parent, IndexClause index_clause, SlicePredicate column_predicate, ConsistencyLevel consistency_level)
     throws InvalidRequestException, UnavailableException, TimedOutException, TException
     {
-        // TODO
-        throw new UnsupportedOperationException();
-        //if (startSessionIfRequested())
-        //{
-        //    Map<String, String> traceParameters = ImmutableMap.of("column_parent", column_parent.toString(),
-        //                                                          "index_clause", index_clause.toString(),
-        //                                                          "slice_predicate", column_predicate.toString(),
-        //                                                          "consistency_level", consistency_level.name());
-        //    Tracing.instance.begin("get_indexed_slices", traceParameters);
-        //}
-        //else
-        //{
-        //    logger.debug("scan");
-        //}
+        if (startSessionIfRequested())
+        {
+            Map<String, String> traceParameters = ImmutableMap.of("column_parent", column_parent.toString(),
+                                                                  "index_clause", index_clause.toString(),
+                                                                  "slice_predicate", column_predicate.toString(),
+                                                                  "consistency_level", consistency_level.name());
+            Tracing.instance.begin("get_indexed_slices", traceParameters);
+        }
+        else
+        {
+            logger.debug("scan");
+        }
 
-        //try
-        //{
-        //    ThriftClientState cState = state();
-        //    String keyspace = cState.getKeyspace();
-        //    cState.hasColumnFamilyAccess(keyspace, column_parent.column_family, Permission.SELECT);
-        //    CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_parent.column_family, false);
-        //    ThriftValidation.validateColumnParent(metadata, column_parent);
-        //    ThriftValidation.validatePredicate(metadata, column_parent, column_predicate);
-        //    ThriftValidation.validateIndexClauses(metadata, index_clause);
-        //    org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(consistency_level);
-        //    consistencyLevel.validateForRead(keyspace);
+        try
+        {
+            ThriftClientState cState = state();
+            String keyspace = cState.getKeyspace();
+            cState.hasColumnFamilyAccess(keyspace, column_parent.column_family, Permission.SELECT);
+            CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_parent.column_family, false);
+            ThriftValidation.validateColumnParent(metadata, column_parent);
+            ThriftValidation.validatePredicate(metadata, column_parent, column_predicate);
+            ThriftValidation.validateIndexClauses(metadata, index_clause);
+            org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(consistency_level);
+            consistencyLevel.validateForRead(keyspace);
 
-        //    IPartitioner p = StorageService.getPartitioner();
-        //    AbstractBounds<RowPosition> bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(index_clause.start_key, p),
-        //                                                                 p.getMinimumToken().minKeyBound());
+            IPartitioner p = StorageService.getPartitioner();
+            AbstractBounds<RowPosition> bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(index_clause.start_key, p),
+                                                                         p.getMinimumToken().minKeyBound());
 
-        //    IDiskAtomFilter filter = ThriftValidation.asIFilter(column_predicate, metadata, column_parent.super_column);
-        //    long now = System.currentTimeMillis();
-        //    RangeSliceCommand command = new RangeSliceCommand(keyspace,
-        //                                                      column_parent.column_family,
-        //                                                      now,
-        //                                                      filter,
-        //                                                      bounds,
-        //                                                      ThriftConversion.indexExpressionsFromThrift(index_clause.expressions),
-        //                                                      index_clause.count);
-
-        //    List<Row> rows = StorageProxy.getRangeSlice(command, consistencyLevel);
-        //    return thriftifyKeySlices(rows, column_parent, column_predicate, now);
-        //}
-        //catch (RequestValidationException e)
-        //{
-        //    throw ThriftConversion.toThrift(e);
-        //}
-        //catch (RequestExecutionException e)
-        //{
-        //    throw ThriftConversion.rethrow(e);
-        //}
-        //finally
-        //{
-        //    Tracing.instance.stopSession();
-        //}
+            int nowInSec = FBUtilities.nowInSeconds();
+            PartitionFilter filter = toInternalFilter(metadata, column_parent, column_predicate);
+            DataLimits limits = getLimits(index_clause.count, metadata.isSuper() && !column_parent.isSetSuper_column(), column_predicate);
+            PartitionRangeReadCommand cmd = new PartitionRangeReadCommand(false,
+                                                                          true,
+                                                                          metadata,
+                                                                          nowInSec,
+                                                                          ThriftConversion.columnFilterFromThrift(metadata, index_clause.expressions),
+                                                                          limits,
+                                                                          new DataRange(bounds, filter));
+            DataIterator results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
+            return thriftifyKeySlices(results, column_parent);
+        }
+        catch (RequestValidationException e)
+        {
+            throw ThriftConversion.toThrift(e);
+        }
+        catch (RequestExecutionException e)
+        {
+            throw ThriftConversion.rethrow(e);
+        }
+        finally
+        {
+            Tracing.instance.stopSession();
+        }
     }
 
     public List<KsDef> describe_keyspaces() throws TException, InvalidRequestException
@@ -1960,32 +1989,30 @@ public class CassandraServer implements Cassandra.Iface
     public void remove_counter(ByteBuffer key, ColumnPath path, ConsistencyLevel consistency_level)
     throws InvalidRequestException, UnavailableException, TimedOutException, TException
     {
-        // TODO
-        throw new UnsupportedOperationException();
-        //if (startSessionIfRequested())
-        //{
-        //    Map<String, String> traceParameters = ImmutableMap.of("key", ByteBufferUtil.bytesToHex(key),
-        //                                                          "column_path", path.toString(),
-        //                                                          "consistency_level", consistency_level.name());
-        //    Tracing.instance.begin("remove_counter", traceParameters);
-        //}
-        //else
-        //{
-        //    logger.debug("remove_counter");
-        //}
+        if (startSessionIfRequested())
+        {
+            Map<String, String> traceParameters = ImmutableMap.of("key", ByteBufferUtil.bytesToHex(key),
+                                                                  "column_path", path.toString(),
+                                                                  "consistency_level", consistency_level.name());
+            Tracing.instance.begin("remove_counter", traceParameters);
+        }
+        else
+        {
+            logger.debug("remove_counter");
+        }
 
-        //try
-        //{
-        //    internal_remove(key, path, System.currentTimeMillis(), consistency_level, true);
-        //}
-        //catch (RequestValidationException e)
-        //{
-        //    throw ThriftConversion.toThrift(e);
-        //}
-        //finally
-        //{
-        //    Tracing.instance.stopSession();
-        //}
+        try
+        {
+            internal_remove(key, path, FBUtilities.timestampMicros(), consistency_level, true);
+        }
+        catch (RequestValidationException e)
+        {
+            throw ThriftConversion.toThrift(e);
+        }
+        finally
+        {
+            Tracing.instance.stopSession();
+        }
     }
 
     private static String uncompress(ByteBuffer query, Compression compression) throws InvalidRequestException
@@ -2162,63 +2189,66 @@ public class CassandraServer implements Cassandra.Iface
     public List<ColumnOrSuperColumn> get_multi_slice(MultiSliceRequest request)
             throws InvalidRequestException, UnavailableException, TimedOutException
     {
-        // TODO
-        throw new UnsupportedOperationException();
-        //if (startSessionIfRequested())
-        //{
-        //    Map<String, String> traceParameters = ImmutableMap.of("key", ByteBufferUtil.bytesToHex(request.key),
-        //                                                          "column_parent", request.column_parent.toString(),
-        //                                                          "consistency_level", request.consistency_level.name(),
-        //                                                          "count", String.valueOf(request.count),
-        //                                                          "column_slices", request.column_slices.toString());
-        //    Tracing.instance.begin("get_multi_slice", traceParameters);
-        //}
-        //else
-        //{
-        //    logger.debug("get_multi_slice");
-        //}
-        //try 
-        //{
-        //    ClientState cState = state();
-        //    String keyspace = cState.getKeyspace();
-        //    state().hasColumnFamilyAccess(keyspace, request.getColumn_parent().column_family, Permission.SELECT);
-        //    CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, request.getColumn_parent().column_family);
-        //    if (metadata.cfType == ColumnFamilyType.Super)
-        //        throw new org.apache.cassandra.exceptions.InvalidRequestException("get_multi_slice does not support super columns");
-        //    ThriftValidation.validateColumnParent(metadata, request.getColumn_parent());
-        //    org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(request.getConsistency_level());
-        //    consistencyLevel.validateForRead(keyspace);
-        //    List<ReadCommand> commands = new ArrayList<>(1);
-        //    ColumnSlice[] slices = new ColumnSlice[request.getColumn_slices().size()];
-        //    for (int i = 0 ; i < request.getColumn_slices().size() ; i++)
-        //    {
-        //        fixOptionalSliceParameters(request.getColumn_slices().get(i));
-        //        Composite start = metadata.comparator.fromByteBuffer(request.getColumn_slices().get(i).start);
-        //        Composite finish = metadata.comparator.fromByteBuffer(request.getColumn_slices().get(i).finish);
-        //        if (!start.isEmpty() && !finish.isEmpty())
-        //        {
-        //            int compare = metadata.comparator.compare(start, finish);
-        //            if (!request.reversed && compare > 0)
-        //                throw new InvalidRequestException(String.format("Column slice at index %d had start greater than finish", i));
-        //            else if (request.reversed && compare < 0)
-        //                throw new InvalidRequestException(String.format("Reversed column slice at index %d had start less than finish", i));
-        //        }
-        //        slices[i] = new ColumnSlice(start, finish);
-        //    }
-        //    ColumnSlice[] deoverlapped = ColumnSlice.deoverlapSlices(slices, request.reversed ? metadata.comparator.reverseComparator() : metadata.comparator);
-        //    SliceQueryFilter filter = new SliceQueryFilter(deoverlapped, request.reversed, request.count);
-        //    ThriftValidation.validateKey(metadata, request.key);
-        //    commands.add(ReadCommand.create(keyspace, request.key, request.column_parent.getColumn_family(), System.currentTimeMillis(), filter));
-        //    return getSlice(commands, request.column_parent.isSetSuper_column(), consistencyLevel, cState).entrySet().iterator().next().getValue();
-        //}
-        //catch (RequestValidationException e)
-        //{
-        //    throw ThriftConversion.toThrift(e);
-        //} 
-        //finally 
-        //{
-        //    Tracing.instance.stopSession();
-        //}
+        if (startSessionIfRequested())
+        {
+            Map<String, String> traceParameters = ImmutableMap.of("key", ByteBufferUtil.bytesToHex(request.key),
+                                                                  "column_parent", request.column_parent.toString(),
+                                                                  "consistency_level", request.consistency_level.name(),
+                                                                  "count", String.valueOf(request.count),
+                                                                  "column_slices", request.column_slices.toString());
+            Tracing.instance.begin("get_multi_slice", traceParameters);
+        }
+        else
+        {
+            logger.debug("get_multi_slice");
+        }
+        try 
+        {
+            ClientState cState = state();
+            String keyspace = cState.getKeyspace();
+            state().hasColumnFamilyAccess(keyspace, request.getColumn_parent().column_family, Permission.SELECT);
+            CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, request.getColumn_parent().column_family);
+            if (metadata.isSuper())
+                throw new org.apache.cassandra.exceptions.InvalidRequestException("get_multi_slice does not support super columns");
+            ThriftValidation.validateColumnParent(metadata, request.getColumn_parent());
+            org.apache.cassandra.db.ConsistencyLevel consistencyLevel = ThriftConversion.fromThrift(request.getConsistency_level());
+            consistencyLevel.validateForRead(keyspace);
+
+            Slices.Builder builder = new Slices.Builder(metadata.comparator, request.getColumn_slices().size());
+            for (int i = 0 ; i < request.getColumn_slices().size() ; i++)
+            {
+                fixOptionalSliceParameters(request.getColumn_slices().get(i));
+                Slice.Bound start = LegacyLayout.decodeBound(metadata, request.getColumn_slices().get(i).start, true);
+                Slice.Bound finish = LegacyLayout.decodeBound(metadata, request.getColumn_slices().get(i).finish, false);
+
+                int compare = metadata.comparator.compare(start, finish);
+                if (!request.reversed && compare > 0)
+                    throw new InvalidRequestException(String.format("Column slice at index %d had start greater than finish", i));
+                else if (request.reversed && compare < 0)
+                    throw new InvalidRequestException(String.format("Reversed column slice at index %d had start less than finish", i));
+
+                builder.add(request.reversed ? Slice.make(finish, start) : Slice.make(start, finish));
+            }
+
+            SlicePartitionFilter filter = toInternalFilter(metadata, builder.build(), request.reversed);
+            DataLimits limits = getLimits(1, false, request.count);
+
+            ThriftValidation.validateKey(metadata, request.key);
+            DecoratedKey dk = StorageService.getPartitioner().decorateKey(request.key);
+            SinglePartitionReadCommand<?> cmd = SinglePartitionReadCommand.create(true, metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, limits, dk, filter);
+            return getSlice(Collections.<SinglePartitionReadCommand<?>>singletonList(cmd),
+                            false,
+                            consistencyLevel,
+                            cState).entrySet().iterator().next().getValue();
+        }
+        catch (RequestValidationException e)
+        {
+            throw ThriftConversion.toThrift(e);
+        } 
+        finally 
+        {
+            Tracing.instance.stopSession();
+        }
     }
 
     /**
@@ -2291,7 +2321,7 @@ public class CassandraServer implements Cassandra.Iface
                 // We want to know if the partition exists, so just fetch a single cell.
                 SlicePartitionFilter filter = new SlicePartitionFilter(metadata.partitionColumns(), Slices.ALL, false);
                 DataLimits limits = DataLimits.thriftLimits(1, 1);
-                return new SinglePartitionSliceCommand(metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
+                return new SinglePartitionSliceCommand(false, true, metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
             }
 
             // Gather the clustering for the expected values and query those.

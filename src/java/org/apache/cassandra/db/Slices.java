@@ -102,11 +102,12 @@ public abstract class Slices implements Iterable<Slice>
      * @param lastReturned the last clustering that was returned for the query we are paging for. The
      * resulting slices will be such that only results coming stricly after {@code lastReturned} are returned
      * (where coming after means "greater than" if {@code !reversed} and "lesser than" otherwise).
+     * @param inclusive whether or not we want to include the {@code lastReturned} in the newly returned page of results.
      * @param reversed whether the query we're paging for is reversed or not.
      *
      * @return new slices that select results coming after {@code lastReturned}.
      */
-    public abstract Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean reversed);
+    public abstract Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive, boolean reversed);
 
     /**
      * An object that allows to test whether rows are selected by this {@code Slices} objects assuming those rows
@@ -173,6 +174,8 @@ public abstract class Slices implements Iterable<Slice>
 
         private final List<Slice> slices;
 
+        private boolean needsNormalizing;
+
         public Builder(ClusteringComparator comparator)
         {
             this.comparator = comparator;
@@ -192,8 +195,9 @@ public abstract class Slices implements Iterable<Slice>
 
         public Builder add(Slice slice)
         {
-            assert slices.size() == 0 || comparator.compare(slices.get(slices.size()-1).end(), slice.start()) <= 0;
             assert comparator.compare(slice.start(), slice.end()) <= 0;
+            if (slices.size() > 0 && comparator.compare(slices.get(slices.size()-1).end(), slice.start()) > 0)
+                needsNormalizing = true;
             slices.add(slice);
             return this;
         }
@@ -205,7 +209,78 @@ public abstract class Slices implements Iterable<Slice>
 
         public Slices build()
         {
-            return slices.isEmpty() ? NONE : new ArrayBackedSlices(comparator, slices.toArray(new Slice[slices.size()]));
+            if (slices.isEmpty())
+                return NONE;
+
+            if (slices.size() == 1 && slices.get(0) == Slice.ALL)
+                return ALL;
+
+            List<Slice> normalized = needsNormalizing
+                                   ? normalize(slices)
+                                   : slices;
+
+            return new ArrayBackedSlices(comparator, normalized.toArray(new Slice[normalized.size()]));
+        }
+
+        /**
+         * Given an array of slices (potentially overlapping and in any order) and return an equivalent array
+         * of non-overlapping slices in clustering order.
+         *
+         * @param slices an array of slices. This may be modified by this method.
+         * @return the smallest possible array of non-overlapping slices in clustering order. If the original
+         * slices are already non-overlapping and in comparator order, this may or may not return the provided slices
+         * directly.
+         */
+        private List<Slice> normalize(List<Slice> slices)
+        {
+            if (slices.size() <= 1)
+                return slices;
+
+            Collections.sort(slices, new Comparator<Slice>()
+            {
+                @Override
+                public int compare(Slice s1, Slice s2)
+                {
+                    int c = comparator.compare(s1.start(), s2.start());
+                    if (c != 0)
+                        return c;
+
+                    return comparator.compare(s1.end(), s2.end());
+                }
+            });
+
+            List<Slice> slicesCopy = new ArrayList<>(slices.size());
+
+            Slice last = slices.get(0);
+
+            for (int i = 1; i < slices.size(); i++)
+            {
+                Slice s2 = slices.get(i);
+
+                boolean includesStart = last.includes(comparator, s2.start());
+                boolean includesFinish = last.includes(comparator, s2.end());
+
+                if (includesStart && includesFinish)
+                    continue;
+
+                if (!includesStart && !includesFinish)
+                {
+                    slicesCopy.add(last);
+                    last = s2;
+                    continue;
+                }
+
+                if (includesStart)
+                {
+                    last = Slice.make(last.start(), s2.end());
+                    continue;
+                }
+
+                assert !includesFinish;
+            }
+
+            slicesCopy.add(last);
+            return slicesCopy;
         }
     }
 
@@ -316,17 +391,17 @@ public abstract class Slices implements Iterable<Slice>
             return reversed ? new InReverseOrderTester() : new InForwardOrderTester();
         }
 
-        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean reversed)
+        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive, boolean reversed)
         {
-            return reversed ? forReversePaging(comparator, lastReturned) : forForwardPaging(comparator, lastReturned);
+            return reversed ? forReversePaging(comparator, lastReturned, inclusive) : forForwardPaging(comparator, lastReturned, inclusive);
         }
 
-        private Slices forForwardPaging(ClusteringComparator comparator, Clustering lastReturned)
+        private Slices forForwardPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
         {
             for (int i = 0; i < slices.length; i++)
             {
                 Slice slice = slices[i];
-                Slice newSlice = slice.forPaging(comparator, lastReturned, false);
+                Slice newSlice = slice.forPaging(comparator, lastReturned, inclusive, false);
                 if (newSlice == null)
                     continue;
 
@@ -340,12 +415,12 @@ public abstract class Slices implements Iterable<Slice>
             return Slices.NONE;
         }
 
-        private Slices forReversePaging(ClusteringComparator comparator, Clustering lastReturned)
+        private Slices forReversePaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
         {
             for (int i = slices.length - 1; i >= 0; i--)
             {
                 Slice slice = slices[i];
-                Slice newSlice = slice.forPaging(comparator, lastReturned, true);
+                Slice newSlice = slice.forPaging(comparator, lastReturned, inclusive, true);
                 if (newSlice == null)
                     continue;
 
@@ -705,9 +780,9 @@ public abstract class Slices implements Iterable<Slice>
             return true;
         }
 
-        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean reversed)
+        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive, boolean reversed)
         {
-            return new ArrayBackedSlices(comparator, new Slice[]{ Slice.ALL.forPaging(comparator, lastReturned, reversed) });
+            return new ArrayBackedSlices(comparator, new Slice[]{ Slice.ALL.forPaging(comparator, lastReturned, inclusive, reversed) });
         }
 
         public InOrderTester inOrderTester(boolean reversed)
@@ -780,7 +855,7 @@ public abstract class Slices implements Iterable<Slice>
             return false;
         }
 
-        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean reversed)
+        public Slices forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive, boolean reversed)
         {
             return this;
         }

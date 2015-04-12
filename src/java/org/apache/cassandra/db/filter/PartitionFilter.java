@@ -61,10 +61,11 @@ public interface PartitionFilter
      * @param lastReturned the last clustering that was returned for the query we are paging for. The
      * resulting filter will be such that only results coming stricly after {@code lastReturned} are returned
      * (where coming after means "greater than" if the filter is not reversed, "lesser than" otherwise).
+     * @param inclusive whether or not we want to include the {@code lastReturned} in the newly returned page of results.
      *
      * @return a new filter that selects results coming after {@code lastReturned}.
      */
-    public PartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned);
+    public PartitionFilter forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive);
 
     /**
      * Returns whether we can guarantee that a given cached partition contains all the data selected by this filter.

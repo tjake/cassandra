@@ -171,36 +171,58 @@ public class Slice
     }
 
     /**
+     * Returns whether a given bound is included in this slice.
+     *
+     * @param comparator the comparator for the table this is a slice of.
+     * @param bound the bound to test inclusion of.
+     *
+     * @return whether {@code bound} is within the bounds of this slice.
+     */
+    public boolean includes(ClusteringComparator comparator, Bound bound)
+    {
+        return comparator.compare(start, bound) <= 0 && comparator.compare(bound, end) <= 0;
+    }
+
+    /**
      * Returns a slice for continuing paging from the last returned clustering prefix.
      *
      * @param comparator the comparator for the table this is a filter for.
      * @param lastReturned the last clustering that was returned for the query we are paging for. The
      * resulting slices will be such that only results coming stricly after {@code lastReturned} are returned
      * (where coming after means "greater than" if {@code !reversed} and "lesser than" otherwise).
+     * @param inclusive whether or not we want to include the {@code lastReturned} in the newly returned page of results.
      * @param reversed whether the query we're paging for is reversed or not.
      *
-     * @return a new slice that selects results coming strictly after {@code lastReturned}, or {@code null} if paging
+     * @return a new slice that selects results coming after {@code lastReturned}, or {@code null} if paging
      * the resulting slice selects nothing (i.e. if it originally selects nothing coming after {@code lastReturned}).
      */
-    public Slice forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean reversed)
+    public Slice forPaging(ClusteringComparator comparator, Clustering lastReturned, boolean inclusive, boolean reversed)
     {
         if (reversed)
         {
-            if (comparator.compare(lastReturned, start) <= 0)
+            int cmp = comparator.compare(lastReturned, start);
+            if (cmp < 0 || (!inclusive && cmp == 0))
                 return null;
 
-            return comparator.compare(end, lastReturned) < 0
-                 ? this
-                 : new Slice(start, Bound.exclusiveEndOf(extractValues(lastReturned)));
+            cmp = comparator.compare(end, lastReturned);
+            if (cmp < 0 || (inclusive && cmp == 0))
+                return this;
+
+            ByteBuffer[] values = extractValues(lastReturned);
+            return new Slice(start, inclusive ? Bound.inclusiveEndOf(values) : Bound.exclusiveEndOf(values));
         }
         else
         {
-            if (comparator.compare(end, lastReturned) <= 0)
+            int cmp = comparator.compare(end, lastReturned);
+            if (cmp < 0 || (!inclusive && cmp == 0))
                 return null;
 
-            return comparator.compare(lastReturned, start) < 0
-                 ? this
-                 : new Slice(Bound.exclusiveStartOf(extractValues(lastReturned)), end);
+            cmp = comparator.compare(lastReturned, start);
+            if (cmp < 0 || (inclusive && cmp == 0))
+                return this;
+
+            ByteBuffer[] values = extractValues(lastReturned);
+            return new Slice(inclusive ? Bound.inclusiveStartOf(values) : Bound.exclusiveStartOf(values), end);
         }
     }
 

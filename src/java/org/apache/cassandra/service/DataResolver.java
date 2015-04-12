@@ -384,7 +384,7 @@ public class DataResolver extends ResponseResolver
 
                 DataLimits retryLimits = command.limits().forShortReadRetry(toQuery);
                 PartitionFilter filter = command.partitionFilter(partitionKey());
-                PartitionFilter retryFilter = lastClustering == null ? filter : filter.forPaging(metadata().comparator, lastClustering);
+                PartitionFilter retryFilter = lastClustering == null ? filter : filter.forPaging(metadata().comparator, lastClustering, false);
                 SinglePartitionReadCommand<?> cmd = SinglePartitionReadCommand.create(command.metadata(),
                                                                                       command.nowInSec(),
                                                                                       command.columnFilter(),
