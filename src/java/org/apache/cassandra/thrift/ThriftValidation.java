@@ -590,7 +590,12 @@ public class ThriftValidation
 
             ColumnDefinition def = metadata.getColumnDefinition(expression.column_name);
             if (def == null)
-                throw new org.apache.cassandra.exceptions.InvalidRequestException(String.format("Unknown column %s", nameValidator.getString(expression.column_name)));
+            {
+                if (!metadata.isCompactTable())
+                    throw new org.apache.cassandra.exceptions.InvalidRequestException(String.format("Unknown column %s", nameValidator.getString(expression.column_name)));
+
+                def = metadata.compactValueColumn();
+            }
 
             try
             {

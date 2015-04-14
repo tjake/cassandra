@@ -20,13 +20,16 @@ package org.apache.cassandra.db.index.keys;
 import java.nio.ByteBuffer;
 import java.util.Set;
 
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.index.AbstractSimplePerColumnSecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 
 /**
  * Implements a secondary index for a column family using a second column family.
@@ -38,14 +41,42 @@ import org.apache.cassandra.exceptions.ConfigurationException;
  */
 public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
 {
+    public static void addIndexClusteringColumns(CFMetaData.Builder indexMetadata, CFMetaData baseMetadata, ColumnDefinition cfDef)
+    {
+        indexMetadata.addClusteringColumn("partition_key", SecondaryIndex.keyComparator);
+    }
+
+    @Override
+    public void indexRow(DecoratedKey key, Row row, OpOrder.Group opGroup, int nowInSec)
+    {
+        super.indexRow(key, row, opGroup, nowInSec);
+
+        // This is used when building indexes, in particular when the index is first created. On thrift, this
+        // potentially means the column definition just got created, and so we need to check if's not a "dynamic"
+        // row that actually correspond to the index definition.
+        assert baseCfs.metadata.isCompactTable();
+        if (!row.isStatic())
+        {
+            Clustering clustering = row.clustering();
+            if (clustering.get(0).equals(columnDef.name.bytes))
+            {
+                Cell cell = row.getCell(baseCfs.metadata.compactValueColumn());
+                if (cell != null && cell.isLive(nowInSec))
+                    insert(key.getKey(), clustering, cell, opGroup, nowInSec);
+            }
+        }
+    }
+
     protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Clustering clustering, ByteBuffer cellValue, CellPath path)
     {
         return cellValue;
     }
 
-    protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, Cell cell)
+    protected CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, CellPath path)
     {
-        return new SimpleClustering(rowKey);
+        CBuilder builder = CBuilder.create(getIndexComparator());
+        builder.add(rowKey);
+        return builder;
     }
 
     public SecondaryIndexSearcher createSecondaryIndexSearcher(Set<ColumnDefinition> columns)
@@ -53,20 +84,8 @@ public class KeysIndex extends AbstractSimplePerColumnSecondaryIndex
         return new KeysSearcher(baseCfs.indexManager, columns);
     }
 
-    // TODO
-    //public boolean isIndexEntryStale(ByteBuffer indexedValue, ColumnFamily data, long now)
-    //{
-    //    Cell cell = data.getColumn(data.getComparator().makeCellName(columnDef.name.bytes));
-    //    return cell == null || !cell.isLive(now) || columnDef.type.compare(indexedValue, cell.value()) != 0;
-    //}
-
     public void validateOptions() throws ConfigurationException
     {
         // no options used
     }
-
-    //protected AbstractType getExpressionComparator()
-    //{
-    //    return baseCfs.getComparator().asAbstractType();
-    //}
 }

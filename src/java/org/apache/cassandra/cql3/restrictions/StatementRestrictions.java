@@ -331,7 +331,7 @@ public final class StatementRestrictions
         if (indexRestrictions.isEmpty())
             return ColumnFilter.NONE;
 
-        ColumnFilter filter = new ColumnFilter();
+        ColumnFilter filter = ColumnFilter.create();
         for (Restrictions restrictions : indexRestrictions)
             restrictions.addColumnFilterTo(filter, indexManager, options);
 

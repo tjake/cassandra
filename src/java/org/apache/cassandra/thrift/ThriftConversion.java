@@ -151,13 +151,9 @@ public class ThriftConversion
         if (exprs == null || exprs.isEmpty())
             return ColumnFilter.NONE;
 
-        ColumnFilter converted = new ColumnFilter(exprs.size());
+        ColumnFilter converted = ColumnFilter.forThrift(exprs.size());
         for (IndexExpression expr : exprs)
-        {
-            converted.add(metadata.getColumnDefinition(expr.column_name),
-                          Operator.valueOf(expr.op.name()),
-                          expr.value);
-        }
+            converted.addThriftExpression(metadata, expr.column_name, Operator.valueOf(expr.op.name()), expr.value);
         return converted;
     }
 

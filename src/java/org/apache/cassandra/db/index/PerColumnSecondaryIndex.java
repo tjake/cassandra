@@ -75,6 +75,20 @@ public abstract class PerColumnSecondaryIndex extends SecondaryIndex
      */
     public abstract void update(ByteBuffer rowKey, Clustering clustering, Cell oldCell, Cell cell, OpOrder.Group opGroup, int nowInSec);
 
+    public void indexRow(DecoratedKey key, Row row, OpOrder.Group opGroup, int nowInSec)
+    {
+        Clustering clustering = row.clustering();
+        maybeIndex(key.getKey(), clustering, row.maxLiveTimestamp(), row.partitionKeyLivenessInfo().ttl(), opGroup, nowInSec);
+        for (Cell cell : row)
+        {
+            if (!indexes(cell.column()))
+                continue;
+
+            if (cell.isLive(nowInSec))
+                insert(key.getKey(), clustering, cell, opGroup, nowInSec);
+        }
+    }
+
     public String getNameForSystemKeyspace(ByteBuffer column)
     {
         return getIndexName();

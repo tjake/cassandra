@@ -66,13 +66,33 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         return columnDef.type;
     }
 
+    public ColumnDefinition indexedColumn()
+    {
+        return columnDef;
+    }
+
     @Override
     String indexTypeForGrouping()
     {
         return "_internal_";
     }
 
-    protected abstract Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, Cell cell);
+    protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, Cell cell)
+    {
+        return makeIndexClustering(rowKey, clustering, cell.path());
+    }
+
+    protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, CellPath path)
+    {
+        return buildIndexClusteringPrefix(rowKey, clustering, path).build();
+    }
+
+    protected Slice.Bound makeIndexBound(ByteBuffer rowKey, Slice.Bound bound)
+    {
+        return buildIndexClusteringPrefix(rowKey, bound, null).buildBound(bound.isStart(), bound.isInclusive());
+    }
+
+    protected abstract CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, CellPath path);
 
     protected ByteBuffer getIndexedValue(ByteBuffer rowKey, Clustering clustering, Cell cell)
     {
@@ -90,17 +110,15 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     public void deleteForCleanup(ByteBuffer rowKey, Clustering clustering, Cell cell, OpOrder.Group opGroup, int nowInSec)
     {
-        delete(rowKey, clustering, cell, new SimpleDeletionTime(cell.livenessInfo().timestamp(), nowInSec), opGroup, nowInSec);
+        delete(rowKey, clustering, cell.value(), cell.path(), new SimpleDeletionTime(cell.livenessInfo().timestamp(), nowInSec), opGroup, nowInSec);
     }
 
-    public void delete(ByteBuffer rowKey, Clustering clustering, Cell cell, DeletionTime deletion, OpOrder.Group opGroup, int nowInSec)
+    public void delete(ByteBuffer rowKey, Clustering clustering, ByteBuffer cellValue, CellPath path, DeletionTime deletion, OpOrder.Group opGroup, int nowInSec)
     {
-        assert columnDef.equals(cell.column());
-
-        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(rowKey, clustering, cell));
+        DecoratedKey valueKey = getIndexKeyFor(getIndexedValue(rowKey, clustering, cellValue, path));
         PartitionUpdate upd = new PartitionUpdate(indexCfs.metadata, valueKey, PartitionColumns.NONE, 1, nowInSec);
         Row.Writer writer = upd.writer();
-        Rows.writeClustering(makeIndexClustering(rowKey, clustering, cell), writer);
+        Rows.writeClustering(makeIndexClustering(rowKey, clustering, path), writer);
         writer.writeRowDeletion(deletion);
         writer.endOfRow();
         indexCfs.apply(upd, SecondaryIndexManager.nullUpdater, opGroup, null);
@@ -171,6 +189,12 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
     public ColumnFamilyStore getIndexCfs()
     {
        return indexCfs;
+    }
+
+    protected ClusteringComparator getIndexComparator()
+    {
+        assert indexCfs != null;
+        return indexCfs.metadata.comparator;
     }
 
     public String getIndexName()
