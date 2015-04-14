@@ -26,6 +26,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
@@ -108,6 +109,15 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
 
         return partition;
     }
+
+    public Row getRow(Clustering clustering)
+    {
+        Row row = searchIterator(ColumnsSelection.withoutSubselection(columns()), false, createdAtInSec).next(clustering);
+        // Note that for statics, this will never return null, this will return an empty row. However,
+        // it's more consistent for this method to return null if we don't really have a static row.
+        return row == null || (clustering == Clustering.STATIC_CLUSTERING && row.isEmpty()) ? null : row;
+    }
+
 
     protected void reverse()
     {

@@ -45,7 +45,7 @@ import org.apache.cassandra.db.marshal.*;
  */
 public abstract class CompositesIndexIncludingCollectionKey extends CompositesIndex
 {
-    protected CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, Cell cell)
+    protected CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, CellPath path)
     {
         CBuilder builder = CBuilder.create(getIndexComparator());
         builder.add(rowKey);

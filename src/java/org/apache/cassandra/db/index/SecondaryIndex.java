@@ -385,7 +385,14 @@ public abstract class SecondaryIndex
                                                        .addPartitionKey(def.name, def.type);
 
         if (def.getIndexType() == IndexType.COMPOSITES)
+        {
             CompositesIndex.addIndexClusteringColumns(builder, baseMetadata, def);
+        }
+        else
+        {
+            assert def.getIndexType() == IndexType.KEYS;
+            KeysIndex.addIndexClusteringColumns(builder, baseMetadata, def);
+        }
 
         return builder.build().reloadIndexMetadataProperties(baseMetadata);
     }

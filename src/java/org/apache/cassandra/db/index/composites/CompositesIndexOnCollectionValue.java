@@ -62,7 +62,7 @@ public class CompositesIndexOnCollectionValue extends CompositesIndex
         return cellValue;
     }
 
-    protected CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, Cell cell)
+    protected CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, CellPath path)
     {
         CBuilder builder = CBuilder.create(getIndexComparator());
         builder.add(rowKey);
@@ -70,8 +70,8 @@ public class CompositesIndexOnCollectionValue extends CompositesIndex
             builder.add(prefix.get(i));
 
         // When indexing, cell will be present, but when searching, it won't  (CASSANDRA-7525)
-        if (prefix.size() == baseCfs.metadata.clusteringColumns().size() && cell != null)
-            builder.add(cell.path().get(0));
+        if (prefix.size() == baseCfs.metadata.clusteringColumns().size() && path != null)
+            builder.add(path.get(0));
 
         return builder;
     }

@@ -37,16 +37,10 @@ import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.exceptions.ConfigurationException;
 
 /**
- * Base class for secondary indexes where composites are involved.
+ * Base class for internal secondary indexes (this could be merged with AbstractSimplePerColumnSecondaryIndex).
  */
 public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIndex
 {
-    protected ClusteringComparator getIndexComparator()
-    {
-        assert indexCfs != null;
-        return indexCfs.metadata.comparator;
-    }
-
     public static CompositesIndex create(ColumnDefinition cfDef)
     {
         if (cfDef.type.isCollection() && cfDef.type.isMultiCell())
@@ -112,18 +106,6 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
         for (ColumnDefinition def : baseMetadata.clusteringColumns())
             indexMetadata.addClusteringColumn(def.name, def.type);
     }
-
-    protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, Cell cell)
-    {
-        return buildIndexClusteringPrefix(rowKey, clustering, cell).build();
-    }
-
-    protected Slice.Bound makeIndexBound(ByteBuffer rowKey, Slice.Bound bound)
-    {
-        return buildIndexClusteringPrefix(rowKey, bound, null).buildBound(bound.isStart(), bound.isInclusive());
-    }
-
-    protected abstract CBuilder buildIndexClusteringPrefix(ByteBuffer rowKey, ClusteringPrefix prefix, Cell cell);
 
     public abstract IndexedEntry decodeEntry(DecoratedKey indexedValue, Row indexEntry);
 

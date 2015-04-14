@@ -29,6 +29,8 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.index.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.PartitionIterator;
@@ -45,171 +47,108 @@ public class KeysSearcher extends SecondaryIndexSearcher
         super(indexManager, columns);
     }
 
-    public PartitionIterator search(ReadCommand command)
+    protected PartitionIterator queryDataFromIndex(final AbstractSimplePerColumnSecondaryIndex index,
+                                                   final DecoratedKey indexKey,
+                                                   final RowIterator indexHits,
+                                                   final ReadCommand command,
+                                                   final OpOrder.Group writeOp)
     {
-        // TODO
-        throw new UnsupportedOperationException();
+        assert indexHits.staticRow() == Rows.EMPTY_STATIC_ROW;
+
+        return new PartitionIterator()
+        {
+            private AtomIterator next;
+
+            public boolean isForThrift()
+            {
+                return command.isForThrift();
+            }
+
+            public boolean hasNext()
+            {
+                return prepareNext();
+            }
+
+            public AtomIterator next()
+            {
+                if (next == null)
+                    prepareNext();
+
+                AtomIterator toReturn = next;
+                next = null;
+                return toReturn;
+            }
+
+            private boolean prepareNext()
+            {
+                while (next == null && indexHits.hasNext())
+                {
+                    Row hit = indexHits.next();
+                    DecoratedKey key = baseCfs.partitioner.decorateKey(hit.clustering().get(0));
+
+                    SinglePartitionReadCommand dataCmd = SinglePartitionReadCommand.create(true,
+                                                                                           baseCfs.metadata,
+                                                                                           command.nowInSec(),
+                                                                                           command.columnFilter(),
+                                                                                           DataLimits.NONE,
+                                                                                           key,
+                                                                                           command.partitionFilter(key));
+                    AtomIterator dataIter = filterIfStale(dataCmd.queryMemtableAndDisk(baseCfs),
+                                                          index,
+                                                          hit,
+                                                          indexKey.getKey(),
+                                                          writeOp);
+                    if (dataIter == null || AtomIterators.isEmpty(dataIter))
+                    {
+                        dataIter.close();
+                    }
+                    else
+                    {
+                        next = dataIter;
+                    }
+                }
+
+                return next != null;
+            }
+
+            public void remove()
+            {
+                throw new UnsupportedOperationException();
+            }
+
+            public void close()
+            {
+                indexHits.close();
+                if (next != null)
+                    next.close();
+            }
+        };
     }
 
-    public ColumnFilter.Expression primaryClause(ReadCommand command)
+    private AtomIterator filterIfStale(AtomIterator iterator,
+                                       AbstractSimplePerColumnSecondaryIndex index,
+                                       Row indexHit,
+                                       ByteBuffer indexedValue,
+                                       OpOrder.Group writeOp)
     {
-        // TODO
-        throw new UnsupportedOperationException();
+        // We need to materialize the partition to check if the index columns value
+        // is stale or not
+        ArrayBackedPartition result = ArrayBackedPartition.create(iterator);
+        Clustering clustering = new SimpleClustering(index.indexedColumn().name.bytes);
+        Row data = result.getRow(clustering);
+        Cell c = data == null ? null : data.getCell(baseCfs.metadata.compactValueColumn());
+        if (c == null || !c.isLive(iterator.nowInSec()) || index.indexedColumn().type.compare(indexedValue, c.value()) != 0)
+        {
+            // Index is stale, remove the index entry and ignore
+            index.delete(iterator.partitionKey().getKey(),
+                         clustering,
+                         indexedValue,
+                         null,
+                         new SimpleDeletionTime(indexHit.partitionKeyLivenessInfo().timestamp(), iterator.nowInSec()),
+                         writeOp,
+                         iterator.nowInSec());
+            return null;
+        }
+        return result.atomIterator();
     }
-
-    // TODO
-    //@Override
-    //public List<Row> search(ExtendedFilter filter)
-    //{
-    //    assert filter.getClause() != null && !filter.getClause().isEmpty();
-    //    final IndexExpression primary = highestSelectivityPredicate(filter.getClause());
-    //    final SecondaryIndex index = indexManager.getIndexForColumn(primary.column);
-    //    // TODO: this should perhaps not open and maintain a writeOp for the full duration, but instead only *try* to delete stale entries, without blocking if there's no room
-    //    // as it stands, we open a writeOp and keep it open for the duration to ensure that should this CF get flushed to make room we don't block the reclamation of any room  being made
-    //    try (OpOrder.Group writeOp = baseCfs.keyspace.writeOrder.start(); OpOrder.Group baseOp = baseCfs.readOrdering.start(); OpOrder.Group indexOp = index.getIndexCfs().readOrdering.start())
-    //    {
-    //        return baseCfs.filter(getIndexedIterator(writeOp, filter, primary, index), filter);
-    //    }
-    //}
-
-    //private ColumnFamilyStore.AbstractScanIterator getIndexedIterator(final OpOrder.Group writeOp, final ExtendedFilter filter, final IndexExpression primary, final SecondaryIndex index)
-    //{
-
-    //    // Start with the most-restrictive indexed clause, then apply remaining clauses
-    //    // to each row matching that clause.
-    //    // TODO: allow merge join instead of just one index + loop
-    //    assert index != null;
-    //    assert index.getIndexCfs() != null;
-    //    final DecoratedKey indexKey = index.getIndexKeyFor(primary.value);
-
-    //    if (logger.isDebugEnabled())
-    //        logger.debug("Most-selective indexed predicate is {}",
-    //                     ((AbstractSimplePerColumnSecondaryIndex) index).expressionString(primary));
-
-    //    /*
-    //     * XXX: If the range requested is a token range, we'll have to start at the beginning (and stop at the end) of
-    //     * the indexed row unfortunately (which will be inefficient), because we have not way to intuit the small
-    //     * possible key having a given token. A fix would be to actually store the token along the key in the
-    //     * indexed row.
-    //     */
-    //    final AbstractBounds<RowPosition> range = filter.dataRange.keyRange();
-    //    CellNameType type = index.getIndexCfs().getComparator();
-    //    final Composite startKey = range.left instanceof DecoratedKey ? type.make(((DecoratedKey)range.left).getKey()) : Composites.EMPTY;
-    //    final Composite endKey = range.right instanceof DecoratedKey ? type.make(((DecoratedKey)range.right).getKey()) : Composites.EMPTY;
-
-    //    final CellName primaryColumn = baseCfs.getComparator().cellFromByteBuffer(primary.column);
-
-    //    return new ColumnFamilyStore.AbstractScanIterator()
-    //    {
-    //        private Composite lastSeenKey = startKey;
-    //        private Iterator<Cell> indexColumns;
-    //        private int columnsRead = Integer.MAX_VALUE;
-
-    //        protected Row computeNext()
-    //        {
-    //            int meanColumns = Math.max(index.getIndexCfs().getMeanColumns(), 1);
-    //            // We shouldn't fetch only 1 row as this provides buggy paging in case the first row doesn't satisfy all clauses
-    //            int rowsPerQuery = Math.max(Math.min(filter.maxRows(), filter.maxColumns() / meanColumns), 2);
-    //            while (true)
-    //            {
-    //                if (indexColumns == null || !indexColumns.hasNext())
-    //                {
-    //                    if (columnsRead < rowsPerQuery)
-    //                    {
-    //                        logger.trace("Read only {} (< {}) last page through, must be done", columnsRead, rowsPerQuery);
-    //                        return endOfData();
-    //                    }
-
-    //                    if (logger.isTraceEnabled() && (index instanceof AbstractSimplePerColumnSecondaryIndex))
-    //                        logger.trace("Scanning index {} starting with {}",
-    //                                     ((AbstractSimplePerColumnSecondaryIndex)index).expressionString(primary), index.getBaseCfs().metadata.getKeyValidator().getString(startKey.toByteBuffer()));
-
-    //                    QueryFilter indexFilter = QueryFilter.getSliceFilter(indexKey,
-    //                                                                         index.getIndexCfs().name,
-    //                                                                         lastSeenKey,
-    //                                                                         endKey,
-    //                                                                         false,
-    //                                                                         rowsPerQuery,
-    //                                                                         filter.timestamp);
-    //                    ColumnFamily indexRow = index.getIndexCfs().getColumnFamily(indexFilter);
-    //                    logger.trace("fetched {}", indexRow);
-    //                    if (indexRow == null)
-    //                    {
-    //                        logger.trace("no data, all done");
-    //                        return endOfData();
-    //                    }
-
-    //                    Collection<Cell> sortedCells = indexRow.getSortedColumns();
-    //                    columnsRead = sortedCells.size();
-    //                    indexColumns = sortedCells.iterator();
-    //                    Cell firstCell = sortedCells.iterator().next();
-
-    //                    // Paging is racy, so it is possible the first column of a page is not the last seen one.
-    //                    if (lastSeenKey != startKey && lastSeenKey.equals(firstCell.name()))
-    //                    {
-    //                        // skip the row we already saw w/ the last page of results
-    //                        indexColumns.next();
-    //                        logger.trace("Skipping {}", baseCfs.metadata.getKeyValidator().getString(firstCell.name().toByteBuffer()));
-    //                    }
-    //                    else if (range instanceof Range && indexColumns.hasNext() && firstCell.name().equals(startKey))
-    //                    {
-    //                        // skip key excluded by range
-    //                        indexColumns.next();
-    //                        logger.trace("Skipping first key as range excludes it");
-    //                    }
-    //                }
-
-    //                while (indexColumns.hasNext())
-    //                {
-    //                    Cell cell = indexColumns.next();
-    //                    lastSeenKey = cell.name();
-    //                    if (!cell.isLive(filter.timestamp))
-    //                    {
-    //                        logger.trace("skipping {}", cell.name());
-    //                        continue;
-    //                    }
-
-    //                    DecoratedKey dk = baseCfs.partitioner.decorateKey(lastSeenKey.toByteBuffer());
-    //                    if (!range.right.isMinimum() && range.right.compareTo(dk) < 0)
-    //                    {
-    //                        logger.trace("Reached end of assigned scan range");
-    //                        return endOfData();
-    //                    }
-    //                    if (!range.contains(dk))
-    //                    {
-    //                        logger.trace("Skipping entry {} outside of assigned scan range", dk.getToken());
-    //                        continue;
-    //                    }
-
-    //                    logger.trace("Returning index hit for {}", dk);
-    //                    ColumnFamily data = baseCfs.getColumnFamily(new QueryFilter(dk, baseCfs.name, filter.columnFilter(lastSeenKey.toByteBuffer()), filter.timestamp));
-    //                    // While the column family we'll get in the end should contains the primary clause cell, the initialFilter may not have found it and can thus be null
-    //                    if (data == null)
-    //                        data = ArrayBackedSortedColumns.factory.create(baseCfs.metadata);
-
-    //                    // as in CFS.filter - extend the filter to ensure we include the columns
-    //                    // from the index expressions, just in case they weren't included in the initialFilter
-    //                    IDiskAtomFilter extraFilter = filter.getExtraFilter(dk, data);
-    //                    if (extraFilter != null)
-    //                    {
-    //                        ColumnFamily cf = baseCfs.getColumnFamily(new QueryFilter(dk, baseCfs.name, extraFilter, filter.timestamp));
-    //                        if (cf != null)
-    //                            data.addAll(cf);
-    //                    }
-
-    //                    if (((KeysIndex)index).isIndexEntryStale(indexKey.getKey(), data, filter.timestamp))
-    //                    {
-    //                        // delete the index entry w/ its own timestamp
-    //                        Cell dummyCell = new BufferCell(primaryColumn, indexKey.getKey(), cell.timestamp());
-    //                        ((PerColumnSecondaryIndex)index).delete(dk.getKey(), dummyCell, writeOp);
-    //                        continue;
-    //                    }
-    //                    return new Row(dk, data);
-    //                }
-    //             }
-    //         }
-
-    //        public void close() throws IOException {}
-    //    };
-    //}
 }

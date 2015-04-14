@@ -427,25 +427,11 @@ public class SecondaryIndexManager
             DecoratedKey key = atoms.partitionKey();
             for (PerColumnSecondaryIndex index : perColumnIndexes)
             {
-                indexRow(key, atoms.staticRow(), index, opGroup, atoms.nowInSec());
+                index.indexRow(key, atoms.staticRow(), opGroup, atoms.nowInSec());
                 Iterator<Row> iter = AtomIterators.asRowIterator(atoms);
                 while (iter.hasNext())
-                    indexRow(key, iter.next(), index, opGroup, atoms.nowInSec());
+                    index.indexRow(key, iter.next(), opGroup, atoms.nowInSec());
             }
-        }
-    }
-
-    private void indexRow(DecoratedKey key, Row row, PerColumnSecondaryIndex index, OpOrder.Group opGroup, int nowInSec)
-    {
-        Clustering clustering = row.clustering();
-        index.maybeIndex(key.getKey(), clustering, row.maxLiveTimestamp(), row.partitionKeyLivenessInfo().ttl(), opGroup, nowInSec);
-        for (Cell cell : row)
-        {
-            if (!index.indexes(cell.column()))
-                continue;
-
-            if (cell.isLive(nowInSec))
-                index.insert(key.getKey(), clustering, cell, opGroup, nowInSec);
         }
     }
 

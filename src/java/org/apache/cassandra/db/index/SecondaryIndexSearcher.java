@@ -20,16 +20,27 @@ package org.apache.cassandra.db.index;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.filter.*;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.utils.FBUtilities;
 
 public abstract class SecondaryIndexSearcher
 {
+    private static final Logger logger = LoggerFactory.getLogger(SecondaryIndexSearcher.class);
+
     protected final SecondaryIndexManager indexManager;
     protected final Set<ColumnDefinition> columns;
     protected final ColumnFamilyStore baseCfs;
@@ -47,8 +58,170 @@ public abstract class SecondaryIndexSearcher
         return expr == null ? null : indexManager.getIndexForColumn(expr.column());
     }
 
-    public abstract PartitionIterator search(ReadCommand command);
-    public abstract ColumnFilter.Expression primaryClause(ReadCommand command);
+    public ColumnFilter.Expression primaryClause(ReadCommand command)
+    {
+        return highestSelectivityPredicate(command.columnFilter());
+    }
+
+    public PartitionIterator search(ReadCommand command)
+    {
+        ColumnFilter.Expression primary = primaryClause(command);
+        assert primary != null;
+
+        AbstractSimplePerColumnSecondaryIndex index = (AbstractSimplePerColumnSecondaryIndex)indexManager.getIndexForColumn(primary.column());
+        assert index != null && index.getIndexCfs() != null;
+
+        if (logger.isDebugEnabled())
+            logger.debug("Most-selective indexed predicate is {}", primary);
+
+        DecoratedKey indexKey = index.getIndexKeyFor(primary.getIndexValue());
+
+        // TODO: this should perhaps not open and maintain a writeOp for the full duration, but instead only *try* to delete stale entries, without blocking if there's no room
+        // as it stands, we open a writeOp and keep it open for the duration to ensure that should this CF get flushed to make room we don't block the reclamation of any room being made
+        final OpOrder.Group writeOp = baseCfs.keyspace.writeOrder.start();
+        final OpOrder.Group baseOp = baseCfs.readOrdering.start();
+        final OpOrder.Group indexOp = index.getIndexCfs().readOrdering.start();
+        try
+        {
+            AtomIterator indexIter = new WrappingAtomIterator(queryIndex(index, indexKey, command))
+            {
+                @Override
+                public void close()
+                {
+                    try
+                    {
+                        super.close();
+                    }
+                    finally
+                    {
+                        indexOp.close();
+                    }
+                }
+            };
+
+            try
+            {
+                return new WrappingPartitionIterator(queryDataFromIndex(index, indexKey, AtomIterators.asRowIterator(indexIter), command, writeOp))
+                {
+                    @Override
+                    public void close()
+                    {
+                        try
+                        {
+                            super.close();
+                        }
+                        finally
+                        {
+                            baseOp.close();
+                            writeOp.close();
+                        }
+                    }
+                };
+            }
+            catch (RuntimeException | Error e)
+            {
+                indexIter.close();
+                throw e;
+            }
+        }
+        catch (RuntimeException | Error e)
+        {
+            indexOp.close();
+            baseOp.close();
+            writeOp.close();
+            throw e;
+        }
+    }
+
+    private AtomIterator queryIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, ReadCommand command)
+    {
+        PartitionFilter filter = makeIndexFilter(index, command);
+        return SinglePartitionReadCommand.create(index.getIndexCfs().metadata, command.nowInSec(), indexKey, filter)
+                                         .queryMemtableAndDisk(index.getIndexCfs());
+    }
+
+    private PartitionFilter makeIndexFilter(AbstractSimplePerColumnSecondaryIndex index, ReadCommand command)
+    {
+        if (command instanceof SinglePartitionReadCommand)
+        {
+            SinglePartitionReadCommand sprc = (SinglePartitionReadCommand)command;
+            ByteBuffer pk = sprc.partitionKey().getKey();
+            PartitionFilter filter = sprc.partitionFilter();
+
+            if (filter instanceof NamesPartitionFilter)
+            {
+                SortedSet<Clustering> requested = ((NamesPartitionFilter)filter).requestedRows();
+                SortedSet<Clustering> clusterings = new TreeSet<>(index.getIndexComparator());
+                for (Clustering c : requested)
+                    clusterings.add(index.makeIndexClustering(pk, c, (Cell)null).takeAlias());
+                return new NamesPartitionFilter(PartitionColumns.NONE, clusterings, filter.isReversed());
+            }
+            else
+            {
+                Slices requested = ((SlicePartitionFilter)filter).requestedSlices();
+                Slices.Builder builder = new Slices.Builder(index.getIndexComparator());
+                for (Slice slice : requested)
+                    builder.add(index.makeIndexBound(pk, slice.start()), index.makeIndexBound(pk, slice.end()));
+                return new SlicePartitionFilter(PartitionColumns.NONE, builder.build(), filter.isReversed());
+            }
+        }
+        else
+        {
+            DataRange dataRange = ((PartitionRangeReadCommand)command).dataRange();
+            AbstractBounds<RowPosition> range = dataRange.keyRange();
+
+            Slice slice = Slice.ALL;
+
+            /*
+             * XXX: If the range requested is a token range, we'll have to start at the beginning (and stop at the end) of
+             * the indexed row unfortunately (which will be inefficient), because we have no way to intuit the smallest possible
+             * key having a given token. A potential fix would be to actually store the token along the key in the indexed row.
+             */
+            if (range.left instanceof DecoratedKey)
+            {
+                assert range.right instanceof DecoratedKey;
+
+                DecoratedKey startKey = (DecoratedKey)range.left;
+                DecoratedKey endKey = (DecoratedKey)range.right;
+
+                Slice.Bound start = Slice.Bound.BOTTOM;
+                Slice.Bound end = Slice.Bound.TOP;
+
+                /*
+                 * For index queries over a range, we can't do a whole lot better than querying everything for the key range, though for
+                 * slice queries where we can slightly restrict the beginning and end.
+                 */
+                if (!dataRange.isNamesQuery())
+                {
+                    SlicePartitionFilter startSliceFilter = ((SlicePartitionFilter)dataRange.partitionFilter(startKey));
+                    SlicePartitionFilter endSliceFilter = ((SlicePartitionFilter)dataRange.partitionFilter(endKey));
+
+                    // We can't effectively support reversed queries when we have a range, so we don't support it
+                    // (or through post-query reordering) and shouldn't get there.
+                    assert !startSliceFilter.isReversed() && !endSliceFilter.isReversed();
+
+                    Slices startSlices = startSliceFilter.requestedSlices();
+                    Slices endSlices = endSliceFilter.requestedSlices();
+
+                    if (startSlices.size() > 0)
+                        start = startSlices.get(0).start();
+
+                    if (endSlices.size() > 0)
+                        end = endSlices.get(endSlices.size() - 1).end();
+                }
+
+                slice = Slice.make(index.makeIndexBound(startKey.getKey(), start), index.makeIndexBound(endKey.getKey(), end));
+            }
+
+            return new SlicePartitionFilter(PartitionColumns.NONE, Slices.with(index.getIndexComparator(), slice), false);
+        }
+    }
+
+    protected abstract PartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index,
+                                                            DecoratedKey indexKey,
+                                                            RowIterator indexHits,
+                                                            ReadCommand command,
+                                                            OpOrder.Group writeOp);
 
     /**
      * @return true this index is able to handle the given index expressions.
