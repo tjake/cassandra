@@ -267,12 +267,12 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
         for (PartitionUpdate update : updates)
         {
             newUpdate.deletionInfo.add(update.deletionInfo);
-            if (update.staticRow != null && !update.staticRow.isEmpty())
+            if (!update.staticRow().isEmpty())
             {
-                if (newUpdate.staticRow.isEmpty())
+                if (newUpdate.staticRow().isEmpty())
                     newUpdate.staticRow = update.staticRow().takeAlias();
                 else
-                    Rows.merge(newUpdate.staticRow, update.staticRow, newUpdate.columns().statics, newUpdate.staticWriter(), newUpdate.nowInSec(), SecondaryIndexManager.nullUpdater);
+                    Rows.merge(newUpdate.staticRow(), update.staticRow(), newUpdate.columns().statics, newUpdate.staticWriter(), newUpdate.nowInSec(), SecondaryIndexManager.nullUpdater);
             }
             for (Row row : update)
                 row.copyTo(newUpdate.writer);
