@@ -21,6 +21,9 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+
+import com.google.common.base.Joiner;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.atoms.Atom;
@@ -241,5 +244,30 @@ public class ClusteringComparator implements Comparator<Clusterable>
     public Comparator<Clusterable> reversed()
     {
         return reverseComparator;
+    }
+
+    @Override
+    public String toString()
+    {
+        return String.format("comparator(%s)", Joiner.on(", ").join(clusteringTypes));
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o)
+            return true;
+
+        if (!(o instanceof ClusteringComparator))
+            return false;
+
+        ClusteringComparator that = (ClusteringComparator)o;
+        return this.clusteringTypes.equals(that.clusteringTypes);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hashCode(clusteringTypes);
     }
 }

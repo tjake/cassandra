@@ -171,8 +171,7 @@ public class Mutation implements IMutation
             if (updates.isEmpty())
                 continue;
 
-            if (updates.size() == 1)
-                modifications.put(table, updates.size() == 1 ? updates.get(0) : PartitionUpdate.merge(updates));
+            modifications.put(table, updates.size() == 1 ? updates.get(0) : PartitionUpdate.merge(updates));
             updates.clear();
         }
         return new Mutation(ks, key, modifications);

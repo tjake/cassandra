@@ -263,16 +263,16 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
                 assert metadata.cfId.equals(update.metadata().cfId);
         }
 
-        PartitionUpdate newUpdate = new PartitionUpdate(metadata, key, builder.build(), totalSize, Iterables.getOnlyElement(updates).nowInSec());
+        PartitionUpdate newUpdate = new PartitionUpdate(metadata, key, builder.build(), totalSize, Iterables.getFirst(updates, null).nowInSec());
         for (PartitionUpdate update : updates)
         {
             newUpdate.deletionInfo.add(update.deletionInfo);
-            if (!update.staticRow.isEmpty())
+            if (!update.staticRow().isEmpty())
             {
-                if (newUpdate.staticRow.isEmpty())
+                if (newUpdate.staticRow().isEmpty())
                     newUpdate.staticRow = update.staticRow().takeAlias();
                 else
-                    Rows.merge(newUpdate.staticRow, update.staticRow, newUpdate.columns().statics, newUpdate.staticWriter(), newUpdate.nowInSec(), SecondaryIndexManager.nullUpdater);
+                    Rows.merge(newUpdate.staticRow(), update.staticRow(), newUpdate.columns().statics, newUpdate.staticWriter(), newUpdate.nowInSec(), SecondaryIndexManager.nullUpdater);
             }
             for (Row row : update)
                 row.copyTo(newUpdate.writer);
