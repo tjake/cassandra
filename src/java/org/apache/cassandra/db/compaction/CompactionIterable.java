@@ -256,7 +256,7 @@ public class CompactionIterable extends AbstractCompactionIterable
             @Override
             protected boolean include(ColumnDefinition c, DeletionTime dt)
             {
-                return dt.isLive() || !dt.isPurgeable(maxPurgeableTimestamp, controller.gcBefore);
+                return dt.isLive() || !dt.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
             }
 
             /*
