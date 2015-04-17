@@ -45,7 +45,7 @@ public class SerializationHelper
     public final int nowInSec;
     public final int version;
 
-    private long maxLiveTimestamp;
+    private long maxLiveTimestamp = LivenessInfo.NO_TIMESTAMP;
     private final ReusableLivenessInfo livenessInfo = new ReusableLivenessInfo();
 
     // The currently read row liveness infos (timestamp, ttl and localDeletionTime).
@@ -63,7 +63,8 @@ public class SerializationHelper
     public void writePartitionKeyLivenessInfo(Row.Writer writer, long timestamp, int ttl, int localDeletionTime)
     {
         livenessInfo.setTo(timestamp, ttl, localDeletionTime);
-        maxLiveTimestamp = timestamp;
+        if (livenessInfo.isLive(nowInSec))
+            maxLiveTimestamp = timestamp;
         writer.writePartitionKeyLivenessInfo(livenessInfo);
 
         rowTimestamp = timestamp;
