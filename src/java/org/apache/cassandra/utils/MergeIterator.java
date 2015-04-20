@@ -60,8 +60,6 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
             {
                 if (iterator instanceof AutoCloseable)
                     ((AutoCloseable)iterator).close();
-                else if (iterator instanceof Closeable)
-                    ((Closeable)iterator).close();
             }
             catch (Exception e)
             {
