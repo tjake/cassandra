@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -137,8 +138,8 @@ public class SerializationHelper
 
         if (isCounter)
         {
-            if (flag == Flag.FROM_REMOTE || (flag == Flag.LOCAL && Cells.counterContextManager.shouldClearLocal(value)))
-                value = Cells.counterContextManager.clearAllLocal(value);
+            if (flag == Flag.FROM_REMOTE || (flag == Flag.LOCAL && CounterContext.instance().shouldClearLocal(value)))
+                value = CounterContext.instance().clearAllLocal(value);
         }
         else
         {

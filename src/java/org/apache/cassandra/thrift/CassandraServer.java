@@ -981,6 +981,7 @@ public class CassandraServer implements Cassandra.Iface
 
                 if (!cells.isEmpty())
                 {
+                    // TODO: we need to merge cells that are equals, including counters
                     Collections.sort(cells, LegacyLayout.legacyCellComparator(metadata));
                     RowIterator iter = LegacyLayout.toRowIterator(metadata, dk, cells.iterator(), nowInSec);
                     while (iter.hasNext())
@@ -1963,7 +1964,7 @@ public class CassandraServer implements Cassandra.Iface
                 CellPath path = name.collectionElement == null ? null : CellPath.create(name.collectionElement);
 
                 // See UpdateParameters.addCounter() for more details on this
-                ByteBuffer value = Cells.counterContextManager.createGlobal(CounterId.getLocalId(), 1, column.value);
+                ByteBuffer value = CounterContext.instance().createLocal(column.value);
 
                 writer.writeCell(name.column, true, value, SimpleLivenessInfo.forUpdate(FBUtilities.timestampMicros(), LivenessInfo.NO_TTL, update.nowInSec(), metadata), path);
                 writer.endOfRow();

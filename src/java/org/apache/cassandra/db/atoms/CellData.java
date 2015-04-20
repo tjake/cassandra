@@ -25,6 +25,7 @@ import com.google.common.collect.UnmodifiableIterator;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.utils.ObjectSizes;
 
 /**
@@ -120,36 +121,20 @@ class CellData
         if (handleNoCellCase(d1, i1, d2, i2, merged, iMerged))
             return;
 
-        long ts1 = d1.livenessInfos.timestamp(i1), ts2 = d2.livenessInfos.timestamp(i2);
-        if (ts1 != ts2)
-        {
-            if (ts1 < ts2)
-                d2.moveCell(i2, merged, iMerged);
-            else
-                d1.moveCell(i1, merged, iMerged);
-            return;
-        }
-        boolean live1 = d1.livenessInfos.isLive(i1, nowInSec);
-        boolean live2 = d2.livenessInfos.isLive(i2, nowInSec);
-        if (live1 != live2)
-        {
-            if (live1)
-                d1.moveCell(i1, merged, iMerged);
-            else
-                d2.moveCell(i2, merged, iMerged);
-            return;
-        }
+        Conflicts.Resolution res = Conflicts.resolveRegular(d1.livenessInfos.timestamp(i1),
+                                                            d1.livenessInfos.isLive(i1, nowInSec),
+                                                            d1.livenessInfos.localDeletionTime(i1),
+                                                            d1.values[i1],
+                                                            d2.livenessInfos.timestamp(i2),
+                                                            d2.livenessInfos.isLive(i2, nowInSec),
+                                                            d2.livenessInfos.localDeletionTime(i2),
+                                                            d2.values[i2]);
 
-        int c = d1.values[i1].compareTo(d2.values[i2]);
-        if (c < 0)
-            d2.moveCell(i2, merged, iMerged);
-        else if (c > 0)
+        assert res != Conflicts.Resolution.MERGE;
+        if (res == Conflicts.Resolution.LEFT_WINS)
             d1.moveCell(i1, merged, iMerged);
-
-        if (d1.livenessInfos.localDeletionTime(i1) < d2.livenessInfos.localDeletionTime(i2))
-            d2.moveCell(i2, merged, iMerged);
         else
-            d1.moveCell(i1, merged, iMerged);
+            d2.moveCell(i2, merged, iMerged);
     }
 
     public static void mergeCounterCell(CellData d1, int i1, CellData d2, int i2, CellData merged, int iMerged, int nowInSec)
@@ -157,31 +142,29 @@ class CellData
         if (handleNoCellCase(d1, i1, d2, i2, merged, iMerged))
             return;
 
-        boolean live1 = d1.livenessInfos.isLive(i1, nowInSec);
-        boolean live2 = d2.livenessInfos.isLive(i2, nowInSec);
+        Conflicts.Resolution res = Conflicts.resolveCounter(d1.livenessInfos.timestamp(i1),
+                                                            d1.livenessInfos.isLive(i1, nowInSec),
+                                                            d1.values[i1],
+                                                            d2.livenessInfos.timestamp(i2),
+                                                            d2.livenessInfos.isLive(i2, nowInSec),
+                                                            d2.values[i2]);
 
-        // No matter what the counter cell's timestamp is, a tombstone always takes precedence. See CASSANDRA-7346.
-        if (!live1)
+        switch (res)
         {
-            // i1 is a tombstone: it has precedence over i2 if either i2 is not a tombstone, or it has a greater timestamp
-            if (live2 || d1.livenessInfos.timestamp(i1) > d2.livenessInfos.timestamp(i2))
+            case LEFT_WINS:
                 d1.moveCell(i1, merged, iMerged);
-            else
+                break;
+            case RIGHT_WINS:
                 d2.moveCell(i2, merged, iMerged);
-            return;
+                break;
+            default:
+                merged.values[iMerged] = Conflicts.mergeCounterValues(d1.values[i1], d2.values[i2]);
+                if (d1.livenessInfos.timestamp(i1) > d2.livenessInfos.timestamp(i2))
+                    merged.livenessInfos.set(iMerged, d1.livenessInfos.timestamp(i1), d1.livenessInfos.ttl(i1), d1.livenessInfos.localDeletionTime(i1));
+                else
+                    merged.livenessInfos.set(iMerged, d2.livenessInfos.timestamp(i2), d2.livenessInfos.ttl(i2), d2.livenessInfos.localDeletionTime(i2));
+                break;
         }
-        // If i2 is a tombstone, since i1 isn't one, i2 has precendence
-        if (!live2)
-        {
-            d2.moveCell(i2, merged, iMerged);
-            return;
-        }
-
-        merged.values[iMerged] = Cells.counterContextManager.merge(d1.values[i1], d2.values[i2]);
-        if (d1.livenessInfos.timestamp(i1) > d2.livenessInfos.timestamp(i2))
-            merged.livenessInfos.set(iMerged, d1.livenessInfos.timestamp(i1), d1.livenessInfos.ttl(i1), d1.livenessInfos.localDeletionTime(i1));
-        else
-            merged.livenessInfos.set(iMerged, d2.livenessInfos.timestamp(i2), d2.livenessInfos.ttl(i2), d2.livenessInfos.localDeletionTime(i2));
     }
 
     // Move cell i into j

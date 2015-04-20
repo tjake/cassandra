@@ -27,6 +27,7 @@ import com.google.common.collect.AbstractIterator;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.ISSTableSerializer;
@@ -34,9 +35,7 @@ import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.thrift.ThriftConversion;
-import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.Pair;
+import org.apache.cassandra.utils.*;
 
 import static org.apache.cassandra.io.sstable.IndexHelper.IndexInfo;
 
@@ -534,7 +533,14 @@ public abstract class LegacyLayout
 
         public static LegacyCell counter(CFMetaData metadata, ByteBuffer superColumnName, ByteBuffer name, long value)
         {
-            return new LegacyCell(Kind.COUNTER, decodeCellName(metadata, superColumnName, name), ByteBufferUtil.bytes(value), FBUtilities.timestampMicros(), LivenessInfo.NO_DELETION_TIME, LivenessInfo.NO_TTL);
+            // See UpdateParameters.addCounter() for more details on this
+            ByteBuffer counterValue = CounterContext.instance().createLocal(value);
+            return new LegacyCell(Kind.COUNTER,
+                                  decodeCellName(metadata, superColumnName, name),
+                                  counterValue,
+                                  FBUtilities.timestampMicros(),
+                                  LivenessInfo.NO_DELETION_TIME,
+                                  LivenessInfo.NO_TTL);
         }
 
         public boolean isCell()
