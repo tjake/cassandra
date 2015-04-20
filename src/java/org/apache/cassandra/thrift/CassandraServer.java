@@ -1126,8 +1126,8 @@ public class CassandraServer implements Cassandra.Iface
             if (del.super_column == null)
             {
                 addRange(update,
-                         Slice.Bound.inclusiveStartOf(del.predicate.getSlice_range().start),
-                         Slice.Bound.inclusiveEndOf(del.predicate.getSlice_range().finish),
+                         LegacyLayout.decodeBound(update.metadata(), del.predicate.getSlice_range().start, true),
+                         LegacyLayout.decodeBound(update.metadata(), del.predicate.getSlice_range().finish, false),
                          del.timestamp);
             }
             else
