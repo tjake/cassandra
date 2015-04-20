@@ -920,13 +920,74 @@ public class CassandraServer implements Cassandra.Iface
         return LegacyLayout.LegacyCell.counter(metadata, superColumnName, column.name, column.value);
     }
 
+    private void sortAndMerge(CFMetaData metadata, List<LegacyLayout.LegacyCell> cells, int nowInSec)
+    {
+        Collections.sort(cells, LegacyLayout.legacyCellComparator(metadata));
+
+        // After sorting, if we have multiple cells for the same "cellname", we want to merge those together.
+        Comparator<LegacyLayout.LegacyCellName> comparator = LegacyLayout.legacyCellNameComparator(metadata);
+
+        int previous = 0; // The last element that was set
+        for (int current = 1; current < cells.size(); current++)
+        {
+            LegacyLayout.LegacyCell pc = cells.get(previous);
+            LegacyLayout.LegacyCell cc = cells.get(current);
+
+            // There is really only 2 possible comparison: < 0 or == 0 since we've sorted already
+            int cmp = comparator.compare(pc.name, cc.name);
+            if (cmp == 0)
+            {
+                // current and previous are the same cell. Merge current into previous
+                // (and so previous + 1 will be "free").
+                Conflicts.Resolution res;
+                if (metadata.isCounter())
+                {
+                    res = Conflicts.resolveCounter(pc.timestamp, pc.isLive(nowInSec), pc.value,
+                                                   cc.timestamp, cc.isLive(nowInSec), cc.value);
+
+                }
+                else
+                {
+                    res = Conflicts.resolveRegular(pc.timestamp, pc.isLive(nowInSec), pc.localDeletionTime, pc.value,
+                                                   cc.timestamp, cc.isLive(nowInSec), cc.localDeletionTime, cc.value);
+                }
+
+                switch (res)
+                {
+                    case LEFT_WINS:
+                        // The previous cell wins, we'll just ignore current
+                        break;
+                    case RIGHT_WINS:
+                        cells.set(previous, cc);
+                        break;
+                    case MERGE:
+                        assert metadata.isCounter();
+                        ByteBuffer merged = Conflicts.mergeCounterValues(pc.value, cc.value);
+                        cells.set(previous, LegacyLayout.LegacyCell.counter(pc.name, merged));
+                        break;
+                }
+            }
+            else
+            {
+                // cell.get(previous) < cells.get(current), so move current just after previous if needs be
+                ++previous;
+                if (previous != current)
+                    cells.set(previous, cc);
+            }
+        }
+
+        // The last element we want is previous, so trim anything after that
+        for (int i = cells.size() - 1; i > previous; i--)
+            cells.remove(i);
+    }
+
     private List<LegacyLayout.LegacyCell> toLegacyCells(CFMetaData metadata, List<Column> columns, int nowInSec)
     {
         List<LegacyLayout.LegacyCell> cells = new ArrayList<>(columns.size());
         for (Column column : columns)
             cells.add(toLegacyCell(metadata, column, nowInSec));
 
-        Collections.sort(cells, LegacyLayout.legacyCellComparator(metadata));
+        sortAndMerge(metadata, cells, nowInSec);
         return cells;
     }
 
@@ -981,8 +1042,7 @@ public class CassandraServer implements Cassandra.Iface
 
                 if (!cells.isEmpty())
                 {
-                    // TODO: we need to merge cells that are equals, including counters
-                    Collections.sort(cells, LegacyLayout.legacyCellComparator(metadata));
+                    sortAndMerge(metadata, cells, nowInSec);
                     RowIterator iter = LegacyLayout.toRowIterator(metadata, dk, cells.iterator(), nowInSec);
                     while (iter.hasNext())
                     {
