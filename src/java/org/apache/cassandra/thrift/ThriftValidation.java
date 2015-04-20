@@ -417,7 +417,7 @@ public class ThriftValidation
         if (metadata.isCounter())
         {
             // forcing server timestamp even if a timestamp was set for coherence with other counter operation
-            del.timestamp = System.currentTimeMillis();
+            del.timestamp = FBUtilities.timestampMicros();
         }
         else if (!del.isSetTimestamp())
         {

@@ -405,6 +405,7 @@ public abstract class LegacyLayout
 
     public static Comparator<LegacyCell> legacyCellComparator(final CFMetaData metadata)
     {
+        final Comparator<LegacyCellName> cellNameComparator = legacyCellNameComparator(metadata);
         return new Comparator<LegacyCell>()
         {
             public int compare(LegacyCell cell1, LegacyCell cell2)
@@ -412,10 +413,33 @@ public abstract class LegacyLayout
                 LegacyCellName c1 = cell1.name;
                 LegacyCellName c2 = cell2.name;
 
+                int c = cellNameComparator.compare(c1, c2);
+                if (c != 0)
+                    return c;
+
+                // The actual sorting when the cellname is equal doesn't matter, we just want to make
+                // sure the cells are not considered equal.
+                if (cell1.timestamp != cell2.timestamp)
+                    return cell1.timestamp < cell2.timestamp ? -1 : 1;
+
+                if (cell1.localDeletionTime != cell2.localDeletionTime)
+                    return cell1.localDeletionTime < cell2.localDeletionTime ? -1 : 1;
+
+                return cell1.value.compareTo(cell2.value);
+            }
+        };
+    }
+
+    public static Comparator<LegacyCellName> legacyCellNameComparator(final CFMetaData metadata)
+    {
+        return new Comparator<LegacyCellName>()
+        {
+            public int compare(LegacyCellName c1, LegacyCellName c2)
+            {
                 // Compare clustering first
                 int c = metadata.comparator.compare(c1.clustering, c2.clustering);
                 if (c != 0)
-                    return 0;
+                    return c;
 
                 // Then check the column name
                 if (c1.column != c2.column)
@@ -477,6 +501,15 @@ public abstract class LegacyLayout
         {
             return clustering.get(0);
         }
+
+        @Override
+        public String toString()
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < clustering.size(); i++)
+                sb.append(i > 0 ? ":" : "").append(clustering.get(i) == null ? "null" : ByteBufferUtil.bytesToHex(clustering.get(i)));
+            return String.format("Cellname(clustering=%s, column=%s, collElt=%s)", sb.toString(), column.name, collectionElement == null ? "null" : ByteBufferUtil.bytesToHex(collectionElement));
+        }
     }
 
     public interface LegacyAtom
@@ -535,12 +568,12 @@ public abstract class LegacyLayout
         {
             // See UpdateParameters.addCounter() for more details on this
             ByteBuffer counterValue = CounterContext.instance().createLocal(value);
-            return new LegacyCell(Kind.COUNTER,
-                                  decodeCellName(metadata, superColumnName, name),
-                                  counterValue,
-                                  FBUtilities.timestampMicros(),
-                                  LivenessInfo.NO_DELETION_TIME,
-                                  LivenessInfo.NO_TTL);
+            return counter(decodeCellName(metadata, superColumnName, name), counterValue);
+        }
+
+        public static LegacyCell counter(LegacyCellName name, ByteBuffer value)
+        {
+            return new LegacyCell(Kind.COUNTER, name, value, FBUtilities.timestampMicros(), LivenessInfo.NO_DELETION_TIME, LivenessInfo.NO_TTL);
         }
 
         public boolean isCell()
@@ -571,6 +604,23 @@ public abstract class LegacyLayout
         public boolean isTombstone()
         {
             return kind == Kind.DELETED;
+        }
+
+        public boolean isLive(int nowInSec)
+        {
+            if (isTombstone())
+                return false;
+
+            if (isExpiring())
+                return nowInSec < localDeletionTime;
+
+            return true;
+        }
+
+        @Override
+        public String toString()
+        {
+            return String.format("LegacyCell(%s, name=%s, v=%s, ts=%s, ldt=%s, ttl=%s)", kind, name, ByteBufferUtil.bytesToHex(value), timestamp, localDeletionTime, ttl);
         }
     }
 
