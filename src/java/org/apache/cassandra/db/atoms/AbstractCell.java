@@ -24,6 +24,7 @@ import java.util.Objects;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.Aliasable;
 import org.apache.cassandra.db.TypeSizes;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.serializers.MarshalException;
@@ -113,7 +114,7 @@ public abstract class AbstractCell implements Cell
     public String toString()
     {
         if (isCounterCell())
-            return String.format("[%s=%d ts=%d]", column().name, Cells.counterContextManager.total(value()), livenessInfo().timestamp());
+            return String.format("[%s=%d ts=%d]", column().name, CounterContext.instance().total(value()), livenessInfo().timestamp());
 
         AbstractType<?> type = column().type;
         if (type instanceof CollectionType)

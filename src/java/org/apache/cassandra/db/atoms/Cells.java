@@ -35,8 +35,6 @@ import org.apache.cassandra.utils.FBUtilities;
  */
 public abstract class Cells
 {
-    public static final CounterContext counterContextManager = CounterContext.instance();
-
     private Cells() {}
 
     /**
@@ -84,7 +82,7 @@ public abstract class Cells
             // can't a tombstone or merge would be one too.
             assert !cell.isCounterCell();
 
-            CounterContext.Relationship rel = counterContextManager.diff(merged.value(), cell.value());
+            CounterContext.Relationship rel = CounterContext.instance().diff(merged.value(), cell.value());
             return (rel == CounterContext.Relationship.GREATER_THAN || rel == CounterContext.Relationship.DISJOINT) ? merged : null;
         }
         return merged.livenessInfo().supersedes(cell.livenessInfo()) ? merged : null;
@@ -187,44 +185,42 @@ public abstract class Cells
 
         if (c1.isCounterCell() || c2.isCounterCell())
         {
-            boolean c1Live = c1.isLive(nowInSec);
-            boolean c2Live = c2.isLive(nowInSec);
-            // No matter what the counter cell's timestamp is, a tombstone always takes precedence. See CASSANDRA-7346.
-            if (!c1Live)
-                // c1 is a tombstone: it has precedence over c2 if either c2 is not a tombstone, or c1 has a greater timestamp
-                return c2Live || c1.livenessInfo().supersedes(c2.livenessInfo()) ? c1 : c2;
+            Conflicts.Resolution res = Conflicts.resolveCounter(c1.livenessInfo().timestamp(),
+                                                                c1.isLive(nowInSec),
+                                                                c1.value(),
+                                                                c2.livenessInfo().timestamp(),
+                                                                c2.isLive(nowInSec),
+                                                                c2.value());
 
-            // If c2 is a tombstone, since c1 isn't one, it has precedence
-            if (!c2Live)
-                return c2;
+            switch (res)
+            {
+                case LEFT_WINS: return c1;
+                case RIGHT_WINS: return c2;
+                default:
+                    ByteBuffer merged = Conflicts.mergeCounterValues(c1.value(), c2.value());
+                    LivenessInfo mergedInfo = c1.livenessInfo().mergeWith(c2.livenessInfo());
 
-            // live + live. return one of the cells if its context is a superset of the other's, or merge them otherwise
-            ByteBuffer value = Cells.counterContextManager.merge(c1.value(), c2.value());
-
-            LivenessInfo mergedInfo = c1.livenessInfo().mergeWith(c2.livenessInfo());
-            if (value == c1.value() && mergedInfo == c1.livenessInfo())
-                return c1;
-            else if (value == c2.value() && mergedInfo == c2.livenessInfo())
-                return c2;
-            else // merge clocks and timestamps.
-                return create(c1.column(), true, value, mergedInfo, null);
+                    // We save allocating a new cell object if it turns out that one cell was
+                    // a complete superset of the other
+                    if (merged == c1.value() && mergedInfo == c1.livenessInfo())
+                        return c1;
+                    else if (merged == c2.value() && mergedInfo == c2.livenessInfo())
+                        return c2;
+                    else // merge clocks and timestamps.
+                        return create(c1.column(), true, merged, mergedInfo, null);
+            }
         }
 
-        long ts1 = c1.livenessInfo().timestamp(), ts2 = c2.livenessInfo().timestamp();
-        if (ts1 != ts2)
-            return ts1 < ts2 ? c2 : c1;
-        boolean c1Live = c1.isLive(nowInSec);
-        if (c1Live != c2.isLive(nowInSec))
-            return c1Live ? c2 : c1;
-
-        int c = c1.value().compareTo(c2.value());
-        if (c < 0)
-            return c2;
-        else if (c > 0)
-            return c1;
-
-        // Prefer the longest ttl if relevant
-        return c1.livenessInfo().localDeletionTime() < c2.livenessInfo().localDeletionTime() ? c2 : c1;
+        Conflicts.Resolution res = Conflicts.resolveRegular(c1.livenessInfo().timestamp(),
+                                                            c1.isLive(nowInSec),
+                                                            c1.livenessInfo().localDeletionTime(),
+                                                            c1.value(),
+                                                            c2.livenessInfo().timestamp(),
+                                                            c2.isLive(nowInSec),
+                                                            c2.livenessInfo().localDeletionTime(),
+                                                            c2.value());
+        assert res != Conflicts.Resolution.MERGE;
+        return res == Conflicts.Resolution.LEFT_WINS ? c1 : c2;
     }
 
     /**

@@ -25,6 +25,7 @@ import org.apache.cassandra.cql3.statements.SelectStatement;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
@@ -235,7 +236,7 @@ public class RowUpdateBuilder
         {
             // See UpdateParameters.addCounter()
             assert value instanceof Long;
-            return Cells.counterContextManager.createGlobal(CounterId.getLocalId(), 1, (Long)value);
+            return CounterContext.instance().createGlobal(CounterId.getLocalId(), 1, (Long)value);
         }
         return ((AbstractType)type).decompose(value);
     }

@@ -26,6 +26,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.partitions.*;
@@ -156,7 +157,7 @@ public class UpdateParameters
         // but that makes things a bit more complex as this means we need to be able to distinguish inside
         // PartitionUpdate between counter updates that has been processed by CounterMutation and those that
         // haven't.
-        ByteBuffer value = Cells.counterContextManager.createGlobal(CounterId.getLocalId(), 1, increment);
+        ByteBuffer value = CounterContext.instance().createLocal(increment);
         writer.writeCell(column, true, value, defaultLiveness, null);
     }
 
