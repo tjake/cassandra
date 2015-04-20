@@ -231,24 +231,31 @@ public class CassandraServer implements Cassandra.Iface
         return thriftSuperColumns;
     }
 
-    private List<ColumnOrSuperColumn> thriftifyPartition(RowIterator partition, boolean subcolumnsOnly, boolean reversed)
+    private List<ColumnOrSuperColumn> thriftifyPartition(RowIterator partition, boolean subcolumnsOnly, boolean reversed, int cellLimit)
     {
         if (RowIterators.isEmpty(partition))
             return EMPTY_COLUMNS;
 
         Iterator<LegacyLayout.LegacyCell> cells = LegacyLayout.fromRowIterator(partition);
+        List<ColumnOrSuperColumn> result;
         if (partition.metadata().isSuper())
         {
             boolean isCounterCF = partition.metadata().isCounter();
-            return thriftifySuperColumns(partition.metadata(), cells, subcolumnsOnly, isCounterCF, reversed);
+            result = thriftifySuperColumns(partition.metadata(), cells, subcolumnsOnly, isCounterCF, reversed);
         }
         else
         {
-            return thriftifyColumns(partition.metadata(), cells);
+            result = thriftifyColumns(partition.metadata(), cells);
         }
+
+        // Thrift count cells, but internally we only count them at "row" boundaries, which means that if the limit stops in the middle
+        // of an internal row we'll include a few additional cells. So trim it here.
+        return result.size() > cellLimit
+             ? result.subList(0, cellLimit)
+             : result;
     }
 
-    private Map<ByteBuffer, List<ColumnOrSuperColumn>> getSlice(List<SinglePartitionReadCommand<?>> commands, boolean subColumnsOnly, org.apache.cassandra.db.ConsistencyLevel consistency_level, ClientState cState)
+    private Map<ByteBuffer, List<ColumnOrSuperColumn>> getSlice(List<SinglePartitionReadCommand<?>> commands, boolean subColumnsOnly, int cellLimit, org.apache.cassandra.db.ConsistencyLevel consistency_level, ClientState cState)
     throws org.apache.cassandra.exceptions.InvalidRequestException, UnavailableException, TimedOutException
     {
         try (DataIterator results = read(commands, consistency_level, cState))
@@ -258,7 +265,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 try (RowIterator iter = results.next())
                 {
-                    List<ColumnOrSuperColumn> thriftifiedColumns = thriftifyPartition(iter, subColumnsOnly, iter.isReverseOrder());
+                    List<ColumnOrSuperColumn> thriftifiedColumns = thriftifyPartition(iter, subColumnsOnly, iter.isReverseOrder(), cellLimit);
                     columnFamiliesMap.put(iter.partitionKey().getKey(), thriftifiedColumns);
                 }
             }
@@ -488,16 +495,16 @@ public class CassandraServer implements Cassandra.Iface
 
         List<SinglePartitionReadCommand<?>> commands = new ArrayList<>(keys.size());
         PartitionFilter filter = toInternalFilter(metadata, column_parent, predicate);
+        DataLimits limits = getLimits(1, metadata.isSuper() && !column_parent.isSetSuper_column(), predicate);
 
         for (ByteBuffer key: keys)
         {
             ThriftValidation.validateKey(metadata, key);
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
-            DataLimits limits = getLimits(1, metadata.isSuper() && !column_parent.isSetSuper_column(), predicate);
             commands.add(SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, limits, dk, filter));
         }
 
-        return getSlice(commands, column_parent.isSetSuper_column(), consistencyLevel, cState);
+        return getSlice(commands, column_parent.isSetSuper_column(), limits.perPartitionCount(), consistencyLevel, cState);
     }
 
     public ColumnOrSuperColumn get(ByteBuffer key, ColumnPath column_path, ConsistencyLevel consistency_level)
@@ -571,7 +578,7 @@ public class CassandraServer implements Cassandra.Iface
             if (!result.hasNext())
                 throw new NotFoundException();
 
-            List<ColumnOrSuperColumn> tcolumns = thriftifyPartition(result, metadata.isSuper() && column_path.column != null, result.isReverseOrder());
+            List<ColumnOrSuperColumn> tcolumns = thriftifyPartition(result, metadata.isSuper() && column_path.column != null, result.isReverseOrder(), 1);
             if (tcolumns.isEmpty())
                 throw new NotFoundException();
             assert tcolumns.size() == 1;
@@ -1412,14 +1419,13 @@ public class CassandraServer implements Cassandra.Iface
                                                                               limits,
                                                                               new DataRange(bounds, filter));
                 results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
+                assert results != null;
+                return thriftifyKeySlices(results, column_parent, limits.perPartitionCount());
             }
             finally
             {
                 release();
             }
-            assert results != null;
-
-            return thriftifyKeySlices(results, column_parent);
         }
         catch (RequestValidationException e)
         {
@@ -1503,14 +1509,12 @@ public class CassandraServer implements Cassandra.Iface
                                                                               limits,
                                                                               new DataRange(bounds, filter).forPaging(bounds, metadata.comparator, pageFrom, true));
                 results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
+                return thriftifyKeySlices(results, new ColumnParent(column_family), limits.perPartitionCount());
             }
             finally
             {
                 release();
             }
-            assert results != null;
-
-            return thriftifyKeySlices(results, new ColumnParent(column_family));
         }
         catch (RequestValidationException e)
         {
@@ -1526,7 +1530,7 @@ public class CassandraServer implements Cassandra.Iface
         }
     }
 
-    private List<KeySlice> thriftifyKeySlices(DataIterator results, ColumnParent column_parent)
+    private List<KeySlice> thriftifyKeySlices(DataIterator results, ColumnParent column_parent, int cellLimit)
     {
         try (DataIterator iter = results)
         {
@@ -1535,7 +1539,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 try (RowIterator partition = iter.next())
                 {
-                    List<ColumnOrSuperColumn> thriftifiedColumns = thriftifyPartition(partition, column_parent.super_column != null, partition.isReverseOrder());
+                    List<ColumnOrSuperColumn> thriftifiedColumns = thriftifyPartition(partition, column_parent.super_column != null, partition.isReverseOrder(), cellLimit);
                     keySlices.add(new KeySlice(partition.partitionKey().getKey(), thriftifiedColumns));
                 }
             }
@@ -1587,7 +1591,7 @@ public class CassandraServer implements Cassandra.Iface
                                                                           limits,
                                                                           new DataRange(bounds, filter));
             DataIterator results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
-            return thriftifyKeySlices(results, column_parent);
+            return thriftifyKeySlices(results, column_parent, limits.perPartitionCount());
         }
         catch (RequestValidationException e)
         {
@@ -2299,6 +2303,7 @@ public class CassandraServer implements Cassandra.Iface
             SinglePartitionReadCommand<?> cmd = SinglePartitionReadCommand.create(true, metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, limits, dk, filter);
             return getSlice(Collections.<SinglePartitionReadCommand<?>>singletonList(cmd),
                             false,
+                            limits.perPartitionCount(),
                             consistencyLevel,
                             cState).entrySet().iterator().next().getValue();
         }
