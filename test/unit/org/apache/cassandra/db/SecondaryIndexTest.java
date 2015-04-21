@@ -368,7 +368,12 @@ public class SecondaryIndexTest
         // make sure the value was expunged from the index when it was discovered to be inconsistent
         keyspace.apply(new RowUpdateBuilder(cfs.metadata, 3, "k1").add("birthdate", 1L).build(), true, false);
         // TODO: This is failing - figure out why the above insert is updating the index
-        assertIndexedNone(cfs, col, ByteBufferUtil.bytes(1L));
+        // => This is because CompositeSearcher don't purge stale entries from the index correctly. This is
+        // actually fixed in my "thrift" branch, so I'll wait until that's merge to check this test and remove
+        // the TODO (sylvain). Making the test fail unconditionally so I don't forget to get back here and
+        // remove those comments :)
+        assert false;
+        //assertIndexedNone(cfs, col, ByteBufferUtil.bytes(1L));
     }
 
     @Test

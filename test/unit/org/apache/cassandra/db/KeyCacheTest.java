@@ -34,13 +34,16 @@ import org.apache.cassandra.Util;
 import org.apache.cassandra.cache.KeyCacheKey;
 import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.KSMetaData;
+import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.compaction.CompactionManager;
-
+import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.Refs;
 
 import static org.junit.Assert.assertEquals;
@@ -84,7 +87,7 @@ public class KeyCacheTest
         store.forceBlockingFlush();
 
         // populate the cache
-        SchemaLoader.readData(KEYSPACE1, COLUMN_FAMILY2, 0, 100);
+        readData(KEYSPACE1, COLUMN_FAMILY2, 100);
         assertKeyCacheSize(100, KEYSPACE1, COLUMN_FAMILY2);
 
         // really? our caches don't implement the map interface? (hence no .addAll)
@@ -176,6 +179,21 @@ public class KeyCacheTest
 
         assertKeyCacheSize(2, KEYSPACE1, COLUMN_FAMILY1);
     }
+
+    private static void readData(String keyspace, String columnFamily, int numberOfRows)
+    {
+        ColumnFamilyStore store = Keyspace.open(keyspace).getColumnFamilyStore(columnFamily);
+        CFMetaData cfm = Schema.instance.getCFMetaData(keyspace, columnFamily);
+
+        for (int i = 0; i < numberOfRows; i++)
+        {
+            DecoratedKey key = Util.dk("key" + i);
+            Clustering cl = new SimpleClustering(ByteBufferUtil.bytes("col" + i));
+            NamesPartitionFilter filter = new NamesPartitionFilter(cfm.partitionColumns(), FBUtilities.singleton(cl, cfm.comparator), false);
+            SinglePartitionReadCommand.create(cfm, FBUtilities.nowInSeconds(), key, filter).executeLocally(store);
+        }
+    }
+
 
     private void assertKeyCacheSize(int expected, String keyspace, String columnFamily)
     {

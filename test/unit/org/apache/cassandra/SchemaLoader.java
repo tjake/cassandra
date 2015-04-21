@@ -547,34 +547,6 @@ public class SchemaLoader
         }
     }
 
-    /* usually used to populate the cache */
-    public static void readData(String keyspace, String columnFamily, int offset, int numberOfRows)
-    {
-        ColumnFamilyStore store = Keyspace.open(keyspace).getColumnFamilyStore(columnFamily);
-        CFMetaData cfm = Schema.instance.getCFMetaData(keyspace, columnFamily);
-
-        for (int i = offset; i < offset + numberOfRows; i++)
-        {
-            DecoratedKey key = Util.dk("key" + i);
-
-            ByteBuffer col = ByteBufferUtil.bytes("col" + i);
-            ColumnDefinition colDef = ColumnDefinition.clusteringKeyDef(cfm, col, AsciiType.instance, null);
-
-            PartitionColumns.Builder builder = PartitionColumns.builder();
-            builder.add(colDef);
-
-            List<ByteBuffer> values = new ArrayList<>();
-            values.add(col);
-
-            QueryOptions qo = QueryOptions.forInternalCalls(ConsistencyLevel.LOCAL_ONE, values);
-            StatementRestrictions sr = StatementRestrictions.empty(cfm);
-            NamesPartitionFilter nameFilter = new NamesPartitionFilter(builder.build(), sr.getClusteringColumns(qo), false);
-
-            SinglePartitionReadCommand readCommand = SinglePartitionNamesCommand.create(cfm, FBUtilities.nowInSeconds(), key, nameFilter);
-            readCommand.executeLocally(store);
-        }
-    }
-
     public static void cleanupSavedCaches()
     {
         File cachesDir = new File(DatabaseDescriptor.getSavedCachesLocation());

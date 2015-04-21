@@ -197,7 +197,6 @@ public class CreateTableStatement extends SchemaAlteringStatement
 
             CreateTableStatement stmt = new CreateTableStatement(cfName, properties, ifNotExists, staticColumns);
 
-            boolean hasNonCounters = false;
             for (Map.Entry<ColumnIdentifier, CQL3Type.Raw> entry : definitions.entrySet())
             {
                 ColumnIdentifier id = entry.getKey();
@@ -206,8 +205,6 @@ public class CreateTableStatement extends SchemaAlteringStatement
                     stmt.collections.put(id.bytes, (CollectionType)pt.getType());
                 if (entry.getValue().isCounter())
                     stmt.hasCounters = true;
-                else
-                    hasNonCounters = true;
                 stmt.columns.put(id, pt.getType()); // we'll remove what is not a column below
             }
 
@@ -215,8 +212,6 @@ public class CreateTableStatement extends SchemaAlteringStatement
                 throw new InvalidRequestException("No PRIMARY KEY specifed (exactly one required)");
             if (keyAliases.size() > 1)
                 throw new InvalidRequestException("Multiple PRIMARY KEYs specifed (exactly one required)");
-            if (stmt.hasCounters && hasNonCounters)
-                throw new InvalidRequestException("Cannot mix counter and non counter columns in the same table");
             if (stmt.hasCounters && properties.getDefaultTimeToLive() > 0)
                 throw new InvalidRequestException("Cannot set default_time_to_live on a table with counters");
 
@@ -245,6 +240,15 @@ public class CreateTableStatement extends SchemaAlteringStatement
                 if (staticColumns.contains(t))
                     throw new InvalidRequestException(String.format("Static column %s cannot be part of the PRIMARY KEY", t));
                 stmt.clusteringTypes.add(type);
+            }
+
+            // We've handled anything that is not a rpimary key so stmt.columns only contains NON-PK columns. So
+            // if it's a counter table, make sure we don't have non-counter types
+            if (stmt.hasCounters)
+            {
+                for (AbstractType<?> type : stmt.columns.values())
+                    if (!type.isCounter())
+                        throw new InvalidRequestException("Cannot mix counter and non counter columns in the same table");
             }
 
             // Dense means that on the thrift side, no part of the "thrift column name" stores a "CQL/metadata column name".
@@ -277,7 +281,6 @@ public class CreateTableStatement extends SchemaAlteringStatement
                 if (columnAliases.isEmpty())
                     throw new InvalidRequestException("Static columns are only useful (and thus allowed) if the table has at least one clustering column");
             }
-
 
             if (stmt.isDense)
             {
