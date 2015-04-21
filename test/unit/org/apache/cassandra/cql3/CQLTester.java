@@ -324,13 +324,21 @@ public abstract class CQLTester
         return list.isEmpty() ? Collections.<String>emptyList() : new ArrayList<>(list);
     }
 
+    public ColumnFamilyStore getCurrentColumnFamilyStore()
+    {
+        String currentTable = currentTable();
+        return currentTable == null
+             ? null
+             : Keyspace.open(KEYSPACE).getColumnFamilyStore(currentTable);
+    }
+
     public void flush()
     {
         try
         {
-            String currentTable = currentTable();
-            if (currentTable != null)
-                Keyspace.open(KEYSPACE).getColumnFamilyStore(currentTable).forceFlush().get();
+            ColumnFamilyStore store = getCurrentColumnFamilyStore();
+            if (store != null)
+                store.forceFlush().get();
         }
         catch (InterruptedException | ExecutionException e)
         {
