@@ -404,6 +404,7 @@ public abstract class Lists
         {
             assert column.type.isMultiCell() : "Attempted to append to a frozen list";
             Term.Terminal value = t.bind(params.options);
+            doAppend(value, clustering, writer, column, params);
         }
 
         static void doAppend(Term.Terminal value, Clustering clustering, Row.Writer writer, ColumnDefinition column, UpdateParameters params) throws InvalidRequestException

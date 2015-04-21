@@ -111,6 +111,9 @@ public class PartitionRangeReadTest
         new File(ssTables.iterator().next().descriptor.filenameFor(Component.STATS)).delete();
 
         // TODO: Fix, failing on new assertion in SSTableReader.open, header comes back null and storeRows for version 'la' is true.
+        // Unfortunately, we can't nuke the STATS that way with the new format: important header informations are stored there that
+        // are needed to read the file. We could move those to a separate component if we feel that it's wrong for the STATS one,
+        // though imo we should just get rid of the test (I'll not that I've improved the error message) (Sylvain).
         cfs.loadNewSSTables();
 
         // Add another cell with a lower timestamp

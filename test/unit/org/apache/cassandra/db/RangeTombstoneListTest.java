@@ -211,8 +211,7 @@ public class RangeTombstoneListTest
 
         Iterator<RangeTombstone> iter = l1.iterator();
         assertRT(rtie(0, 3, 5), iter.next());
-        assertRT(rt(3, 4, 7), iter.next());
-        assertRT(rtei(4, 5, 7), iter.next());
+        assertRT(rt(3, 5, 7), iter.next());
         assertRT(rtie(6, 7, 2), iter.next());
         assertRT(rt(7, 8, 3), iter.next());
         assertRT(rtei(8, 10, 2), iter.next());

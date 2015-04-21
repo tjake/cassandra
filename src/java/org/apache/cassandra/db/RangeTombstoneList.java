@@ -531,7 +531,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>, IMeasurable
                     {
                         addInternal(i, starts[i], start.invert(), markedAts[i], delTimes[i]);
                         i++;
-                        setInternal(i, start, ends[i], markedAt, delTime);
+                        setInternal(i, start, ends[i], markedAts[i], delTimes[i]);
                     }
                 }
 
@@ -542,7 +542,7 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>, IMeasurable
                 if (endCmp < 0)
                 {
                     // Here start <= starts[i] and end < starts[i]
-                    // This means the current element is before the current one. However, one special
+                    // This means the current element is before the current one.
                     addInternal(i, start, end, markedAt, delTime);
                     return;
                 }
@@ -582,7 +582,9 @@ public class RangeTombstoneList implements Iterable<RangeTombstone>, IMeasurable
                     i++;
                     Slice.Bound newStart = end.invert();
                     if (!Slice.isEmpty(comparator, newStart, ends[i]))
+                    {
                         setInternal(i, newStart, ends[i], markedAts[i], delTimes[i]);
+                    }
                     return;
                 }
             }

@@ -99,10 +99,10 @@ public class ModificationTest extends CQLTester
         // test batch and update
         String qualifiedTable = keyspace() + "." + currentTable();
         execute("BEGIN BATCH " +
-                 "INSERT INTO %s (k, s, i) VALUES (100, 'batchtext', 7); " +
-                 "INSERT INTO " + qualifiedTable + " (k, s, i) VALUES (111, 'batchtext', 7); " +
-             "UPDATE " + qualifiedTable + " SET s=?, i=? WHERE k = 100; " +
-                 "UPDATE " + qualifiedTable + " SET s=?, i=? WHERE k=111; " +
+                 "INSERT INTO %s (k, s, i) VALUES (100, 'batchtext', 7) USING TIMESTAMP 0; " +
+                 "INSERT INTO " + qualifiedTable + " (k, s, i) VALUES (111, 'batchtext', 7) USING TIMESTAMP 0; " +
+                 "UPDATE " + qualifiedTable + " USING TIMESTAMP 1 SET s=?, i=? WHERE k=100; " +
+                 "UPDATE " + qualifiedTable + " USING TIMESTAMP 1 SET s=?, i=? WHERE k=111; " +
                  "APPLY BATCH;", null, unset(), unset(), null);
         assertRows(execute("SELECT k, s, i FROM %s where k in (100,111)"),
             row(100, null, 7),
