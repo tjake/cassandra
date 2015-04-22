@@ -1145,7 +1145,9 @@
         <jvmarg value="-Dcassandra.test.use_prepared=${cassandra.test.use_prepared}"/>
 	    <jvmarg value="-Dcassandra.test.offsetseed=@{poffset}"/>
         <jvmarg value="-Dcassandra.test.sstableformatdevelopment=true"/>
-	<optjvmargs/>
+        <jvmarg value="-Xdebug"/>
+        <jvmarg value="-Xrunjdwp:transport=dt_socket,server=y,suspend=${test.debug.suspend},address=${test.debug.port}"/>
+        <optjvmargs/>
         <classpath>
           <path refid="cassandra.classpath" />
           <pathelement location="${test.classes}"/>
