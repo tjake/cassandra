@@ -66,8 +66,6 @@ public class CrcCheckChanceTest extends CQLTester
                 row("p1", "k1", "sv1", "v1")
         );
 
-
-
         //Write a few SSTables then Compact
 
         execute("INSERT INTO %s(p, c, v, s) values (?, ?, ?, ?)", "p1", "k1", "v1", "sv1");

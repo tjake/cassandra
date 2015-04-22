@@ -379,7 +379,7 @@ public abstract class ReadCommand extends ReadQuery
         return new MessageOut<>(MessagingService.Verb.READ, this, serializer);
     }
 
-    protected abstract boolean appendCQLWhereClause(StringBuilder sb);
+    protected abstract void appendCQLWhereClause(StringBuilder sb);
 
     /**
      * Recreate the CQL string corresponding to this query.
@@ -406,10 +406,7 @@ public abstract class ReadCommand extends ReadQuery
         }
 
         sb.append(" FROM ").append(metadata().ksName).append(".").append(metadata.cfName);
-        boolean needAnd = appendCQLWhereClause(sb);
-        String cond = columnFilter.toString();
-        if (!cond.isEmpty())
-            sb.append(needAnd ? " AND " : "").append(cond);
+        appendCQLWhereClause(sb);
 
         if (limits() != DataLimits.NONE)
             sb.append(" ").append(limits());

@@ -31,9 +31,7 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.RowUpdateBuilder;
 import org.apache.cassandra.db.TypeSizes;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomIteratorSerializer;
-import org.apache.cassandra.db.atoms.SerializationHelper;
+import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.CounterColumnType;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -111,11 +109,11 @@ public class EncodedStreamsTest
             Assert.assertEquals(i, idis.readLong());
     }
 
-    private AtomIterator createCF()
+    private AtomIterator createTable()
     {
         CFMetaData cfm = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD).metadata;
 
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), "key");
+        RowUpdateBuilder builder = new RowUpdateBuilder(cfm, 0, "key");
 
         builder.clustering("vijay").add(cfm.partitionColumns().iterator().next(), "try").build();
         builder.clustering("to").add(cfm.partitionColumns().iterator().next(), "be_nice").build();
@@ -123,10 +121,10 @@ public class EncodedStreamsTest
         return builder.atomIterator();
     }
 
-    private AtomIterator createCounterCF()
+    private AtomIterator createCounterTable()
     {
         CFMetaData cfm = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_COUNTER).metadata;
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), "key");
+        RowUpdateBuilder builder = new RowUpdateBuilder(cfm, 0, "key");
 
         builder.clustering("vijay").add(cfm.partitionColumns().iterator().next(), 1L).build();
         builder.clustering("wants").add(cfm.partitionColumns().iterator().next(), 1000000L).build();
@@ -139,31 +137,27 @@ public class EncodedStreamsTest
     {
         ByteArrayOutputStream byteArrayOStream1 = new ByteArrayOutputStream();
         EncodedDataOutputStream odos = new EncodedDataOutputStream(byteArrayOStream1);
-
-
-        AtomIteratorSerializer.serializer.serialize(createCF(), odos, version);
+        AtomIteratorSerializer.serializer.serialize(createTable(), odos, version, 1);
 
         ByteArrayInputStream byteArrayIStream1 = new ByteArrayInputStream(byteArrayOStream1.toByteArray());
         EncodedDataInputStream odis = new EncodedDataInputStream(new DataInputStream(byteArrayIStream1));
-        AtomIterator cf = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
-        Assert.assertTrue(Iterators.elementsEqual(cf, createCF()));
-        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(cf, version, 1, TypeSizes.VINT));
+        AtomIterator partition = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
+        Assert.assertTrue(Iterators.elementsEqual(partition, createTable()));
+        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(createTable(), version, 1, TypeSizes.VINT));
     }
 
     @Test
     public void testCounterCFSerialization() throws IOException
     {
-        AtomIterator counterCF = createCounterCF();
-
         ByteArrayOutputStream byteArrayOStream1 = new ByteArrayOutputStream();
         EncodedDataOutputStream odos = new EncodedDataOutputStream(byteArrayOStream1);
-        AtomIteratorSerializer.serializer.serialize(counterCF, odos, version);
+        AtomIteratorSerializer.serializer.serialize(createCounterTable(), odos, version, 1);
 
         ByteArrayInputStream byteArrayIStream1 = new ByteArrayInputStream(byteArrayOStream1.toByteArray());
         EncodedDataInputStream odis = new EncodedDataInputStream(new DataInputStream(byteArrayIStream1));
-        AtomIterator cf = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
-        Assert.assertTrue(Iterators.elementsEqual(cf, createCounterCF()));
-        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(cf, version, 1, TypeSizes.VINT));
+        AtomIterator partition = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
+        Assert.assertTrue(Iterators.elementsEqual(partition, createCounterTable()));
+        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(createCounterTable(), version, 1, TypeSizes.VINT));
     }
 }
 

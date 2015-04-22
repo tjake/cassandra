@@ -57,7 +57,7 @@ public class CompactionIterable extends AbstractCompactionIterable
     {
         super(controller, type, scanners);
         this.format = formatType.info;
-        this.mergedIterator = PurgingPartitionIterator.create(PartitionIterators.merge(scanners, listener()), controller);
+        this.mergedIterator = new PurgingPartitionIterator(PartitionIterators.merge(scanners, listener()), controller);
 
         this.metrics = metrics;
 
@@ -189,23 +189,51 @@ public class CompactionIterable extends AbstractCompactionIterable
 
     private static class PurgingPartitionIterator extends AbstractFilteringIterator
     {
-        private final PurgingRow purgingRow;
+        private final CompactionController controller;
 
-        private PurgingPartitionIterator(PartitionIterator toPurge, PurgingRow row)
+        private DecoratedKey currentKey;
+        private long maxPurgeableTimestamp;
+        private boolean hasCalculatedMaxPurgeableTimestamp;
+
+        private PurgingPartitionIterator(PartitionIterator toPurge, CompactionController controller)
         {
-            super(toPurge, row);
-            this.purgingRow = row; // Saving this in a instance variable to avoid type casting to PurgingRow everytime
+            super(toPurge);
+            this.controller = controller;
         }
 
-        private static PurgingPartitionIterator create(PartitionIterator toPurge, CompactionController controller)
+        protected FilteringRow makeRowFilter()
         {
-            PurgingRow row = new PurgingRow(controller);
-            return new PurgingPartitionIterator(toPurge, row);
+            return new FilteringRow()
+            {
+                @Override
+                protected boolean include(LivenessInfo info)
+                {
+                    return !info.hasLocalDeletionTime() || !info.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
+                }
+
+                @Override
+                protected boolean include(DeletionTime dt)
+                {
+                    return includeDelTime(dt);
+                }
+
+                @Override
+                protected boolean include(ColumnDefinition c, DeletionTime dt)
+                {
+                    return includeDelTime(dt);
+                }
+            };
+        }
+
+        private boolean includeDelTime(DeletionTime dt)
+        {
+            return dt.isLive() || !dt.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
         }
 
         protected boolean shouldFilter(AtomIterator atoms)
         {
-            purgingRow.update(atoms.partitionKey());
+            currentKey = atoms.partitionKey();
+            hasCalculatedMaxPurgeableTimestamp = false;
 
             // TODO: we could be able to skip filtering if AtomIterator was giving us some stats
             // (like the smallest local deletion time).
@@ -214,65 +242,27 @@ public class CompactionIterable extends AbstractCompactionIterable
 
         protected boolean includePartitionDeletion(DeletionTime dt)
         {
-            return purgingRow.include(dt);
+            return includeDelTime(dt);
         }
 
         protected boolean shouldFilterRangeTombstoneMarker(RangeTombstoneMarker marker)
         {
-            return purgingRow.include(marker.deletionTime());
+            return includeDelTime(marker.deletionTime());
         }
 
-        private static class PurgingRow extends FilteringRow
+        /*
+         * Tombstones with a localDeletionTime before this can be purged. This is the minimum timestamp for any sstable
+         * containing `currentKey` outside of the set of sstables involved in this compaction. This is computed lazily
+         * on demand as we only need this if there is tombstones and this a bit expensive (see #8914).
+         */
+        private long getMaxPurgeableTimestamp()
         {
-            private final CompactionController controller;
-            private DecoratedKey currentKey;
-
-            private long maxPurgeableTimestamp;
-            private boolean hasCalculatedMaxPurgeableTimestamp = false;
-
-
-            public PurgingRow(CompactionController controller)
+            if (!hasCalculatedMaxPurgeableTimestamp)
             {
-                this.controller = controller;
+                hasCalculatedMaxPurgeableTimestamp = true;
+                maxPurgeableTimestamp = controller.maxPurgeableTimestamp(currentKey);
             }
-
-            public void update(DecoratedKey key)
-            {
-                currentKey = key;
-            }
-
-            @Override
-            protected boolean include(LivenessInfo info)
-            {
-                return !info.hasLocalDeletionTime() || !info.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
-            }
-
-            @Override
-            protected boolean include(DeletionTime dt)
-            {
-                return dt.isLive() || !dt.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
-            }
-
-            @Override
-            protected boolean include(ColumnDefinition c, DeletionTime dt)
-            {
-                return dt.isLive() || !dt.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
-            }
-
-            /*
-             * Tombstones with a localDeletionTime before this can be purged. This is the minimum timestamp for any sstable
-             * containing `currentKey` outside of the set of sstables involved in this compaction. This is computed lazily
-             * on demand as we only need this if there is tombstones and this a bit expensive (see #8914).
-             */
-            private long getMaxPurgeableTimestamp()
-            {
-                if (!hasCalculatedMaxPurgeableTimestamp)
-                {
-                    hasCalculatedMaxPurgeableTimestamp = true;
-                    maxPurgeableTimestamp = controller.maxPurgeableTimestamp(currentKey);
-                }
-                return maxPurgeableTimestamp;
-            }
+            return maxPurgeableTimestamp;
         }
     }
 }

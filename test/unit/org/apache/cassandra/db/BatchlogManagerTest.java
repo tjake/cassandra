@@ -43,6 +43,7 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
+import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -69,7 +70,7 @@ public class BatchlogManagerTest
         SchemaLoader.createKeyspace(KEYSPACE1,
                 SimpleStrategy.class,
                 KSMetaData.optsWithRF(1),
-                SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD1),
+                SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD1, 1, BytesType.instance),
                 SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD2),
                 SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD3));
     }
@@ -88,7 +89,7 @@ public class BatchlogManagerTest
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD1);
         CFMetaData cfm = cfs.metadata;
-        new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), "1234")
+        new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), ByteBufferUtil.bytes("1234"))
                 .add("val", "val" + 1234)
                 .build()
                 .applyUnsafe();
@@ -124,6 +125,7 @@ public class BatchlogManagerTest
         for (int i = 0; i < 1000; i++)
         {
             Mutation m = new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), bytes(i))
+                    .clustering("name" + i)
                     .add("val", "val" + i)
                     .build();
 
@@ -157,8 +159,8 @@ public class BatchlogManagerTest
             if (i < 500)
             {
                 assertEquals(bytes(i), result.one().getBytes("key"));
-                assertEquals(bytes(i), result.one().getBytes("column1"));
-                assertEquals(bytes(i), result.one().getBytes("value"));
+                assertEquals("name" + i, result.one().getString("name"));
+                assertEquals("val" + i, result.one().getString("val"));
             }
             else
             {

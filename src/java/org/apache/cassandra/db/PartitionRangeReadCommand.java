@@ -216,10 +216,10 @@ public class PartitionRangeReadCommand extends ReadCommand
         };
     }
 
-    protected boolean appendCQLWhereClause(StringBuilder sb)
+    protected void appendCQLWhereClause(StringBuilder sb)
     {
         if (dataRange.isUnrestricted() && columnFilter().isEmpty())
-            return false;
+            return;
 
         sb.append(" WHERE ");
         // We put the column filter first because the data range can end by "ORDER BY"
@@ -231,8 +231,6 @@ public class PartitionRangeReadCommand extends ReadCommand
         }
         if (!dataRange.isUnrestricted())
             sb.append(dataRange.toCQLString(metadata()));
-
-        return true;
     }
 
     /**

@@ -48,7 +48,7 @@ public abstract class RowIterators
      */
     public static boolean isEmpty(RowIterator iterator)
     {
-        return !iterator.hasNext() && iterator.staticRow().isEmpty();
+        return iterator.staticRow().isEmpty() && !iterator.hasNext();
     }
 
     public static PartitionUpdate toUpdate(RowIterator iterator)
@@ -152,6 +152,15 @@ public abstract class RowIterators
 
         return new WrappingRowIterator(iterator)
         {
+            @Override
+            public Row staticRow()
+            {
+                Row row = super.staticRow();
+                if (!row.isEmpty())
+                    logger.info("[{}] {}", id, row.toString(metadata()));
+                return row;
+            }
+
             @Override
             public Row next()
             {

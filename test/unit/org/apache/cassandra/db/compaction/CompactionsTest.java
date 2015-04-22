@@ -78,7 +78,7 @@ public class CompactionsTest
         SchemaLoader.createKeyspace(KEYSPACE1,
                                     SimpleStrategy.class,
                                     KSMetaData.optsWithRF(1),
-                                    SchemaLoader.denseCFMD(KEYSPACE1, CF_DENSE1),
+                                    SchemaLoader.denseCFMD(KEYSPACE1, CF_DENSE1).compactionStrategyOptions(compactionOptions),
                                     SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD1).compactionStrategyOptions(compactionOptions),
                                     SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD2),
                                     SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD3),
@@ -104,7 +104,6 @@ public class CompactionsTest
         store.forceBlockingFlush();
         assertEquals(1, store.getSSTables().size());
         long originalSize = store.getSSTables().iterator().next().uncompressedLength();
-        long nowSize = store.getSSTables().iterator().next().uncompressedLength();
 
         // wait enough to force single compaction
         TimeUnit.SECONDS.sleep(5);

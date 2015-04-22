@@ -69,20 +69,19 @@ public class QueryPagerTest
     {
         SchemaLoader.prepareServer();
         SchemaLoader.createKeyspace(KEYSPACE1,
-                SimpleStrategy.class,
-                KSMetaData.optsWithRF(1),
-                SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD));
+                                    SimpleStrategy.class,
+                                    KSMetaData.optsWithRF(1),
+                                    SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD));
         SchemaLoader.createKeyspace(KEYSPACE_CQL,
-                SimpleStrategy.class,
-                KSMetaData.optsWithRF(1),
-                CFMetaData.compile("CREATE TABLE " + CF_CQL + " ("
-                        + "k text,"
-                        + "c text,"
-                        + "v text,"
-                        + "PRIMARY KEY (k, c))", KEYSPACE_CQL));
+                                    SimpleStrategy.class,
+                                    KSMetaData.optsWithRF(1),
+                                    CFMetaData.compile("CREATE TABLE " + CF_CQL + " ("
+                                            + "k text,"
+                                            + "c text,"
+                                            + "v text,"
+                                            + "PRIMARY KEY (k, c))", KEYSPACE_CQL));
         addData();
     }
-
 
     private static String string(ByteBuffer bb)
     {
@@ -111,11 +110,10 @@ public class QueryPagerTest
         // *
         for (int i = 0; i < nbKeys; i++)
         {
-
             for (int j = 0; j < nbCols; j++)
             {
-                RowUpdateBuilder builder = new RowUpdateBuilder(cfs().metadata, FBUtilities.timestampMicros(), bytes("k"+i));
-                builder.clustering("c"+j).add("val", "a").build().applyUnsafe();
+                RowUpdateBuilder builder = new RowUpdateBuilder(cfs().metadata, FBUtilities.timestampMicros(), "k" + i);
+                builder.clustering("c" + j).add("val", "").build().applyUnsafe();
             }
         }
     }
@@ -128,23 +126,17 @@ public class QueryPagerTest
     private static List<ReadPartition> assertSize(DataIterator partitions, int expectedSize)
     {
         StringBuilder sb = new StringBuilder();
-        int size = 0;
-
-
         List<ReadPartition> partitionList = new ArrayList<>();
-
         for (RowIterator rowIterator : Util.once(partitions))
         {
             ReadPartition partition = ReadPartition.create(rowIterator);
+            rowIterator.close();
             sb.append(partition);
-
             partitionList.add(partition);
-
-            size++;
         }
+        partitions.close();
 
-        assertEquals(sb.toString(), expectedSize, size);
-
+        assertEquals(sb.toString(), expectedSize, partitionList.size());
         return partitionList;
     }
 
@@ -177,7 +169,6 @@ public class QueryPagerTest
 
         return command;
     }
-
 
     private static ReadCommand rangeNamesQuery(String keyStart, String keyEnd, int count, String... names)
     {
@@ -230,7 +221,7 @@ public class QueryPagerTest
         QueryPager pager = QueryPagers.localPager(namesQuery("k0", "c1", "c5", "c7", "c8"));
 
         assertFalse(pager.isExhausted());
-        DataIterator page = pager.fetchPage(4);
+        DataIterator page = pager.fetchPage(5);
 
         List<ReadPartition> partition = assertSize(page, 1);
         assertRow(partition.get(0), "k0", "c1", "c5", "c7", "c8");
@@ -262,7 +253,6 @@ public class QueryPagerTest
 
         assertTrue(pager.isExhausted());
     }
-
 
     @Test
     public void reversedSliceQueryTest() throws Exception

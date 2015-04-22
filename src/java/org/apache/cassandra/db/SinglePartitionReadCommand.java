@@ -382,22 +382,20 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                              partitionFilter.toString(metadata()));
     }
 
-    protected boolean appendCQLWhereClause(StringBuilder sb)
+    protected void appendCQLWhereClause(StringBuilder sb)
     {
         sb.append(" WHERE ");
 
         sb.append(ColumnDefinition.toCQLString(metadata().partitionKeyColumns())).append(" = ");
         DataRange.appendKeyString(sb, metadata().getKeyValidator(), partitionKey().getKey());
 
-        // We put the column filter first because the filter can end by "ORDER BY"
+        // We put the column filter first because the partition filter can end by "ORDER BY"
         if (!columnFilter().isEmpty())
             sb.append(" AND ").append(columnFilter());
 
         String filterString = partitionFilter().toCQLString(metadata());
         if (!filterString.isEmpty())
             sb.append(" AND ").append(filterString);
-
-        return true;
     }
 
     protected void serializeSelection(DataOutputPlus out, int version) throws IOException
