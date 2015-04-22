@@ -189,6 +189,7 @@ public class SizeTieredCompactionStrategy extends AbstractCompactionStrategy
             if (hottestBucket.isEmpty())
                 return null;
 
+
             if (cfs.getDataTracker().markCompacting(hottestBucket))
                 return new CompactionTask(cfs, hottestBucket, gcBefore, false);
         }

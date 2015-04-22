@@ -134,11 +134,10 @@ public class TriggerExecutorTest
         assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
     }
 
-
     @Test
     public void sameKeyDifferentCfRowMutations() throws ConfigurationException, InvalidRequestException
     {
-        CFMetaData metadata = makeCfMetaData("ks1", "cf1", TriggerDefinition.create("test", SameKeySameCfTrigger.class.getName()));
+        CFMetaData metadata = makeCfMetaData("ks1", "cf1", TriggerDefinition.create("test", SameKeyDifferentCfTrigger.class.getName()));
         PartitionUpdate cf1 = makeCf(metadata, "k1", "k1v1", null);
         PartitionUpdate cf2 = makeCf(metadata, "k2", "k2v1", null);
         Mutation rm1 = new Mutation("ks1", cf1.partitionKey()).add(cf1);
@@ -150,23 +149,40 @@ public class TriggerExecutorTest
 
         List<PartitionUpdate> mutatedCFs = new ArrayList<>(tmutations.get(0).getPartitionUpdates());
         assertEquals(2, mutatedCFs.size());
-        Row row = mutatedCFs.get(0).iterator().next();
-        assertEquals(bytes("k1v1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
-        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
-
-        row = mutatedCFs.get(1).iterator().next();
-        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c1"))));
-        assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
+        for (PartitionUpdate update : mutatedCFs)
+        {
+            if (update.metadata().cfName.equals("cf1"))
+            {
+                Row row = update.iterator().next();
+                assertEquals(bytes("k1v1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
+                assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
+            }
+            else
+            {
+                Row row = update.iterator().next();
+                assertNull(row.getCell(metadata.getColumnDefinition(bytes("c1"))));
+                assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
+            }
+        }
 
         mutatedCFs = new ArrayList<>(tmutations.get(1).getPartitionUpdates());
         assertEquals(2, mutatedCFs.size());
-         row = mutatedCFs.get(0).iterator().next();
-        assertEquals(bytes("k1v1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
-        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
 
-        row = mutatedCFs.get(1).iterator().next();
-        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c1"))));
-        assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
+        for (PartitionUpdate update : mutatedCFs)
+        {
+            if (update.metadata().cfName.equals("cf1"))
+            {
+                Row row = update.iterator().next();
+                assertEquals(bytes("k2v1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
+                assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
+            }
+            else
+            {
+                Row row = update.iterator().next();
+                assertNull(row.getCell(metadata.getColumnDefinition(bytes("c1"))));
+                assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
+            }
+        }
     }
 
     @Test
@@ -219,20 +235,20 @@ public class TriggerExecutorTest
         assertEquals(2, tmutations.size());
         Collections.sort(tmutations, new RmComparator());
 
-        assertEquals(bytes("k1"), tmutations.get(0).key());
-        assertEquals(bytes("otherKey"), tmutations.get(1).key());
+        assertEquals(bytes("k1"), tmutations.get(0).key().getKey());
+        assertEquals(bytes("otherKey"), tmutations.get(1).key().getKey());
 
         List<PartitionUpdate> mutatedCFs = new ArrayList<>(tmutations.get(0).getPartitionUpdates());
         assertEquals(1, mutatedCFs.size());
         Row row = mutatedCFs.get(0).iterator().next();
-        assertEquals(bytes("k1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
+        assertEquals(bytes("v1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
         assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
 
         mutatedCFs = new ArrayList<>(tmutations.get(1).getPartitionUpdates());
         assertEquals(1, mutatedCFs.size());
         row = mutatedCFs.get(0).iterator().next();
-        assertEquals(bytes("k1"), row.getCell(metadata.getColumnDefinition(bytes("c1"))).value());
-        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c2"))));
+        assertEquals(bytes("trigger"), row.getCell(metadata.getColumnDefinition(bytes("c2"))).value());
+        assertNull(row.getCell(metadata.getColumnDefinition(bytes("c1"))));
     }
 
     private static CFMetaData makeCfMetaData(String ks, String cf, TriggerDefinition trigger)

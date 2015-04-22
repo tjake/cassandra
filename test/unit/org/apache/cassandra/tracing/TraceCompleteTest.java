@@ -64,11 +64,11 @@ public class TraceCompleteTest extends CQLTester
                 query.setTracingRequested();
                 resp = clientA.execute(query);
 
-                Event event = eventHandlerA.queue.poll(250, TimeUnit.MILLISECONDS);
+                Event event = eventHandlerA.queue.poll(2, TimeUnit.SECONDS);
                 Assert.assertNotNull(event);
 
                 // assert that only the connection that started the trace receives the trace-complete event
-                Assert.assertNull(eventHandlerB.queue.poll(100, TimeUnit.MILLISECONDS));
+                Assert.assertNull(eventHandlerB.queue.poll(1, TimeUnit.SECONDS));
 
                 Assert.assertSame(Event.Type.TRACE_COMPLETE, event.type);
                 Assert.assertEquals(resp.getTracingId(), ((Event.TraceComplete) event).traceSessionId);

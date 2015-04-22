@@ -28,14 +28,18 @@ import org.apache.cassandra.db.atoms.*;
 // TODO rename to FilteringPartitionIterator for consistency
 public abstract class AbstractFilteringIterator extends WrappingPartitionIterator
 {
-    protected final FilteringRow filter;
-
     private AtomIterator next;
 
-    protected AbstractFilteringIterator(PartitionIterator iter, FilteringRow filter)
+    protected AbstractFilteringIterator(PartitionIterator iter)
     {
         super(iter);
-        this.filter = filter;
+    }
+
+    // The filter to use for filtering row contents. Is null by default to mean no particular filtering
+    // but can be overriden by subclasses. Please see FilteringAtomIterator for details on how this is used.
+    protected FilteringRow makeRowFilter()
+    {
+        return null;
     }
 
     // Whether or not we should bother filtering the provided atom iterator. This
@@ -62,7 +66,7 @@ public abstract class AbstractFilteringIterator extends WrappingPartitionIterato
             AtomIterator atomIter = super.next();
             if (shouldFilter(atomIter))
             {
-                next = new FilteringIterator(atomIter, filter);
+                next = new FilteringIterator(atomIter);
                 if (AtomIterators.isEmpty(next))
                 {
                     atomIter.close();
@@ -100,9 +104,15 @@ public abstract class AbstractFilteringIterator extends WrappingPartitionIterato
 
     private class FilteringIterator extends RowFilteringAtomIterator
     {
-        private FilteringIterator(AtomIterator iterator, FilteringRow filter)
+        private FilteringIterator(AtomIterator iterator)
         {
-            super(iterator, filter);
+            super(iterator);
+        }
+
+        @Override
+        protected FilteringRow makeRowFilter()
+        {
+            return AbstractFilteringIterator.this.makeRowFilter();
         }
 
         @Override

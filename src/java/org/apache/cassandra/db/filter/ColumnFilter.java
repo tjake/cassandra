@@ -90,11 +90,16 @@ public class ColumnFilter implements Iterable<ColumnFilter.Expression>
             @Override
             public AtomIterator computeNext(final AtomIterator iter)
             {
-                return new RowFilteringAtomIterator(iter, new TombstoneFilteringRow())
+                return new RowFilteringAtomIterator(iter)
                 {
+                    // We filter tombstones when passing the row to isSatisfiedBy so that the method doesn't have to bother with them.
+                    // (we should however not filter them in the output of the method, hence it's not used as row filter for the
+                    // RowFilteringAtomIterator)
+                    private final TombstoneFilteringRow filter = new TombstoneFilteringRow();
+
                     protected boolean includeRow(Row row)
                     {
-                        return row.isStatic() || ColumnFilter.this.isSatisfiedBy(iter.partitionKey(), row);
+                        return row.isStatic() || ColumnFilter.this.isSatisfiedBy(iter.partitionKey(), filter.setTo(row));
                     }
                 };
             }

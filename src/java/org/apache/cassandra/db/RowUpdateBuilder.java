@@ -31,9 +31,7 @@ import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ListType;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.UUIDGen;
+import org.apache.cassandra.utils.*;
 
 /**
  * Convenience object to create updates.
@@ -182,7 +180,16 @@ public class RowUpdateBuilder
 
     private ByteBuffer bb(Object value, AbstractType<?> type)
     {
-        return (value instanceof ByteBuffer) ? (ByteBuffer)value : ((AbstractType)type).decompose(value);
+        if (value instanceof ByteBuffer)
+            return (ByteBuffer)value;
+
+        if (type.isCounter())
+        {
+            // See UpdateParameters.addCounter()
+            assert value instanceof Long;
+            return Cells.counterContextManager.createGlobal(CounterId.getLocalId(), 1, (Long)value);
+        }
+        return ((AbstractType)type).decompose(value);
     }
 
     public RowUpdateBuilder addMapEntry(String columnName, Object key, Object value)

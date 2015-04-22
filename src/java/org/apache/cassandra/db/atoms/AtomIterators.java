@@ -67,8 +67,8 @@ public abstract class AtomIterators
     public static boolean isEmpty(AtomIterator iterator)
     {
         return iterator.partitionLevelDeletion().isLive()
-            && !iterator.hasNext()
-            && iterator.staticRow().isEmpty();
+            && iterator.staticRow().isEmpty()
+            && !iterator.hasNext();
     }
 
     /**
@@ -482,6 +482,15 @@ public abstract class AtomIterators
 
         return new WrappingAtomIterator(iterator)
         {
+            @Override
+            public Row staticRow()
+            {
+                Row row = super.staticRow();
+                if (!row.isEmpty())
+                    logger.info("[{}] {}", id, row.toString(metadata(), fullDetails));
+                return row;
+            }
+
             @Override
             public Atom next()
             {

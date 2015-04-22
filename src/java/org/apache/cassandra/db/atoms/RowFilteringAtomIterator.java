@@ -27,13 +27,18 @@ public class RowFilteringAtomIterator extends WrappingAtomIterator
 
     public RowFilteringAtomIterator(AtomIterator toFilter)
     {
-        this(toFilter, null);
+        super(toFilter);
+        this.filter = makeRowFilter();
     }
 
-    public RowFilteringAtomIterator(AtomIterator toFilter, FilteringRow filter)
+    // Subclasses that want to filter withing row should overwrite this. Note that since FilteringRow
+    // is a reusable object, this method won't be called for every filtered row and the same filter will
+    // be used for every regular rows. However, this still can be called twice if we have a static row
+    // to filter, because we don't want to use the same object for them as this makes for weird behavior
+    // if calls to staticRow() are interleaved with hasNext().
+    protected FilteringRow makeRowFilter()
     {
-        super(toFilter);
-        this.filter = filter;
+        return null;
     }
 
     protected boolean includeRangeTombstoneMarker(RangeTombstoneMarker marker)
@@ -65,6 +70,7 @@ public class RowFilteringAtomIterator extends WrappingAtomIterator
         if (row == Rows.EMPTY_STATIC_ROW)
             return row;
 
+        FilteringRow filter = makeRowFilter();
         if (filter != null)
             row = filter.setTo(row);
 
@@ -85,9 +91,7 @@ public class RowFilteringAtomIterator extends WrappingAtomIterator
                 Row row = filter == null ? (Row)atom : filter.setTo((Row)atom);
                 if (!row.isEmpty() && includeRow(row))
                 {
-                    // We set next to the unfiltered atom on purpose, and well re-set the filter to it in next(). This avoids
-                    // that if staticRow() is called while hasNext() has been called, we end up sending the (wrong) static row
-                    next = atom;
+                    next = row;
                     return true;
                 }
             }
@@ -111,6 +115,6 @@ public class RowFilteringAtomIterator extends WrappingAtomIterator
 
         Atom toReturn = next;
         next = null;
-        return toReturn.kind() == Atom.Kind.ROW && filter != null ? filter.setTo((Row)toReturn) : toReturn;
+        return toReturn;
     }
 }

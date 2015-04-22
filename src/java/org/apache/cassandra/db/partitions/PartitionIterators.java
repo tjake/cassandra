@@ -284,29 +284,34 @@ public abstract class PartitionIterators
 
     public static PartitionIterator removeDroppedColumns(PartitionIterator iterator, final Map<ColumnIdentifier, CFMetaData.DroppedColumn> droppedColumns)
     {
-        FilteringRow filter = new FilteringRow()
+        return new AbstractFilteringIterator(iterator)
         {
             @Override
-            protected boolean include(Cell cell)
+            protected FilteringRow makeRowFilter()
             {
-                return include(cell.column(), cell.livenessInfo().timestamp());
+                return new FilteringRow()
+                {
+                    @Override
+                    protected boolean include(Cell cell)
+                    {
+                        return include(cell.column(), cell.livenessInfo().timestamp());
+                    }
+
+                    @Override
+                    protected boolean include(ColumnDefinition c, DeletionTime dt)
+                    {
+                        return include(c, dt.markedForDeleteAt());
+                    }
+
+                    private boolean include(ColumnDefinition column, long timestamp)
+                    {
+                        CFMetaData.DroppedColumn dropped = droppedColumns.get(column.name);
+                        return dropped == null || timestamp > dropped.droppedTime;
+                    }
+                };
             }
 
             @Override
-            protected boolean include(ColumnDefinition c, DeletionTime dt)
-            {
-                return include(c, dt.markedForDeleteAt());
-            }
-
-            private boolean include(ColumnDefinition column, long timestamp)
-            {
-                CFMetaData.DroppedColumn dropped = droppedColumns.get(column.name);
-                return dropped == null || timestamp > dropped.droppedTime;
-            }
-        };
-
-        return new AbstractFilteringIterator(iterator, filter)
-        {
             protected boolean shouldFilter(AtomIterator atoms)
             {
                 // TODO: We could have atom iterators return the smallest timestamp they might return

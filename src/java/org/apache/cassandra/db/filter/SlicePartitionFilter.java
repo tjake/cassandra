@@ -95,8 +95,14 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
 
         // Note that we don't filter markers because that's a bit trickier (we don't know in advance until when
         // the range extend) and it's harmless to left them.
-        return new RowFilteringAtomIterator(iterator, FilteringRow.columnsFilteringRow(queriedColumns))
+        return new RowFilteringAtomIterator(iterator)
         {
+            @Override
+            public FilteringRow makeRowFilter()
+            {
+                return FilteringRow.columnsFilteringRow(queriedColumns);
+            }
+
             @Override
             protected boolean includeRow(Row row)
             {

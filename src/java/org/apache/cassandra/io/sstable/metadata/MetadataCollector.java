@@ -183,12 +183,14 @@ public class MetadataCollector
 
     public MetadataCollector update(LivenessInfo newInfo)
     {
+        // If the info doesn't have a timestamp, this means the info is basically irrelevant (it's a row
+        // update whose only info we care are the cells info basically).
         if (newInfo.hasTimestamp())
+        {
             updateTimestamp(newInfo.timestamp());
-        if (newInfo.hasTTL())
             updateTTL(newInfo.ttl());
-        if (newInfo.hasLocalDeletionTime())
             updateLocalDeletionTime(newInfo.localDeletionTime());
+        }
         return this;
     }
 
