@@ -196,6 +196,16 @@ public class DataResolver extends ResponseResolver
                 return row;
             }
 
+            public void onMergePartitionLevelDeletion(DeletionTime mergedDeletion, DeletionTime[] versions)
+            {
+                for (int i = 0; i < versions.length; i++)
+                {
+                    DeletionTime version = versions[i];
+                    if (mergedDeletion.supersedes(versions[i]))
+                        update(i).addPartitionDeletion(mergedDeletion);
+                }
+            }
+
             public void onMergingRows(Clustering clustering,
                                       LivenessInfo mergedInfo,
                                       DeletionTime mergedDeletion,

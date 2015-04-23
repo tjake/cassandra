@@ -229,12 +229,17 @@ public abstract class Rows
         private final Row[] rows;
         private int rowsToMerge;
 
+        private LivenessInfo rowInfo = LivenessInfo.NONE;
+        private DeletionTime rowDeletion = DeletionTime.LIVE;
+
         private final Cell[] cells;
         private final List<Iterator<Cell>> complexCells;
         private final ComplexColumnReducer complexReducer = new ComplexColumnReducer();
 
         // For the sake of the listener if there is one
         private final DeletionTime[] complexDelTimes;
+
+        private boolean signaledListenerForRow;
 
         public static Merger createStatic(CFMetaData metadata, int size, int nowInSec, Columns columns, AtomIterators.MergeListener listener)
         {
@@ -267,6 +272,11 @@ public abstract class Rows
                 Arrays.fill(complexDelTimes, null);
             complexCells.clear();
             rowsToMerge = 0;
+
+            rowInfo = LivenessInfo.NONE;
+            rowDeletion = DeletionTime.LIVE;
+
+            signaledListenerForRow = false;
         }
 
         public void add(int i, Row row)
@@ -294,38 +304,33 @@ public abstract class Rows
             Row.Writer writer = getWriter();
             writeClustering(clustering, writer);
 
-            LivenessInfo info = LivenessInfo.NONE;
             long maxLiveTimestamp = LivenessInfo.NO_TIMESTAMP;
-            DeletionTime deletion = DeletionTime.LIVE;
             for (int i = 0; i < rows.length; i++)
             {
                 if (rows[i] == null)
                     continue;
 
-                info = info.mergeWith(rows[i].partitionKeyLivenessInfo());
+                rowInfo = rowInfo.mergeWith(rows[i].partitionKeyLivenessInfo());
 
                 if (rows[i].maxLiveTimestamp() > maxLiveTimestamp)
                     maxLiveTimestamp = rows[i].maxLiveTimestamp();
 
-                if (rows[i].deletion().supersedes(deletion))
-                    deletion = rows[i].deletion();
+                if (rows[i].deletion().supersedes(rowDeletion))
+                    rowDeletion = rows[i].deletion();
             }
 
-            if (deletion.supersedes(activeDeletion))
-                activeDeletion = deletion;
+            if (rowDeletion.supersedes(activeDeletion))
+                activeDeletion = rowDeletion;
 
-            if (activeDeletion.deletes(info))
-                info = LivenessInfo.NONE;
+            if (activeDeletion.deletes(rowInfo))
+                rowInfo = LivenessInfo.NONE;
 
             if (activeDeletion.deletes(maxLiveTimestamp))
                 maxLiveTimestamp = LivenessInfo.NO_TIMESTAMP;
 
-            writer.writePartitionKeyLivenessInfo(info);
-            writer.writeRowDeletion(deletion);
+            writer.writePartitionKeyLivenessInfo(rowInfo);
+            writer.writeRowDeletion(rowDeletion);
             writer.writeMaxLiveTimestamp(maxLiveTimestamp);
-
-            if (listener != null)
-                listener.onMergingRows(clustering, info, deletion, rows);
 
             for (int i = 0; i < columns.simpleColumnCount(); i++)
             {
@@ -371,7 +376,39 @@ public abstract class Rows
             // Because shadowed cells are skipped, the row could be empty. In which case
             // we return null.
             Row row = getRow();
-            return row.isEmpty() ? null : row;
+            if (row.isEmpty())
+                return null;
+
+            maybeSignalEndOfRow();
+            return row;
+        }
+
+        private void maybeSignalListenerForRow()
+        {
+            if (listener != null && !signaledListenerForRow)
+            {
+                listener.onMergingRows(clustering, rowInfo, rowDeletion, rows);
+                signaledListenerForRow = true;
+            }
+        }
+
+        private void maybeSignalListenerForCell(Cell merged, Cell[] versions)
+        {
+            if (listener != null)
+            {
+                maybeSignalListenerForRow();
+                listener.onMergedCells(merged, versions);
+            }
+        }
+
+        private void maybeSignalEndOfRow()
+        {
+            if (listener != null)
+            {
+                // If we haven't signaled the listener yet (we had no cells), do it now
+                maybeSignalListenerForRow();
+                listener.onRowDone();
+            }
         }
 
         private void reconcileCells(DeletionTime activeDeletion, ColumnDefinition c, Row.Writer writer)
@@ -387,8 +424,7 @@ public abstract class Rows
             if (reconciled != null)
             {
                 reconciled.writeTo(writer);
-                if (listener != null)
-                    listener.onMergedCells(reconciled, cells);
+                maybeSignalListenerForCell(reconciled, cells);
             }
         }
 

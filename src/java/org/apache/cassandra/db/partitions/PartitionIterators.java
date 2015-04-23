@@ -200,9 +200,9 @@ public abstract class PartitionIterators
 
             protected AtomIterator getReduced()
             {
-                // Replace nulls by empty iterators
                 AtomIterators.MergeListener atomListener = listener.getAtomMergeListener(partitionKey, toMerge);
 
+                // Replace nulls by empty iterators
                 for (int i = 0; i < toMerge.size(); i++)
                     if (toMerge.get(i) == null)
                         toMerge.set(i, AtomIterators.emptyIterator(metadata, partitionKey, isReverseOrder, nowInSec));

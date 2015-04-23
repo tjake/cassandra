@@ -82,7 +82,7 @@ public abstract class RangeTombstoneMarkers
                 return mergeCloseMarkers(merged);
         }
 
-        public AtomIterators.MergedAtom mergeOpenMarkers(AtomIterators.MergedAtom merged)
+        private AtomIterators.MergedAtom mergeOpenMarkers(AtomIterators.MergedAtom merged)
         {
             int toReturn = -1;
             for (int i = 0; i < markers.length; i++)
@@ -113,7 +113,7 @@ public abstract class RangeTombstoneMarkers
             return merged.setTo(reusableMarker.setTo(bound, openMarkersCursor));
         }
 
-        public AtomIterators.MergedAtom mergeCloseMarkers(AtomIterators.MergedAtom merged)
+        private AtomIterators.MergedAtom mergeCloseMarkers(AtomIterators.MergedAtom merged)
         {
             for (int i = 0; i < markers.length; i++)
             {
