@@ -110,15 +110,6 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
         return partition;
     }
 
-    public Row getRow(Clustering clustering)
-    {
-        Row row = searchIterator(ColumnsSelection.withoutSubselection(columns()), false, createdAtInSec).next(clustering);
-        // Note that for statics, this will never return null, this will return an empty row. However,
-        // it's more consistent for this method to return null if we don't really have a static row.
-        return row == null || (clustering == Clustering.STATIC_CLUSTERING && row.isEmpty()) ? null : row;
-    }
-
-
     protected void reverse()
     {
         for (int i = 0; i < rows / 2; i++)

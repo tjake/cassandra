@@ -97,12 +97,22 @@ public class RowUpdateBuilder
 
     public RowUpdateBuilder(CFMetaData metadata, long timestamp, Object partitionKey)
     {
-        this(metadata, timestamp, metadata.getDefaultTimeToLive(), partitionKey);
+        this(metadata, FBUtilities.nowInSeconds(), timestamp, partitionKey);
+    }
+
+    public RowUpdateBuilder(CFMetaData metadata, int localDeletionTime, long timestamp, Object partitionKey)
+    {
+        this(metadata, localDeletionTime, timestamp, metadata.getDefaultTimeToLive(), partitionKey);
     }
 
     public RowUpdateBuilder(CFMetaData metadata, long timestamp, int ttl, Object partitionKey)
     {
-        this(new PartitionUpdate(metadata, makeKey(metadata, partitionKey), metadata.partitionColumns(), 1, FBUtilities.nowInSeconds()), timestamp, ttl, null);
+        this(metadata, FBUtilities.nowInSeconds(), timestamp, ttl, partitionKey);
+    }
+
+    public RowUpdateBuilder(CFMetaData metadata, int localDeletionTime, long timestamp, int ttl, Object partitionKey)
+    {
+        this(new PartitionUpdate(metadata, makeKey(metadata, partitionKey), metadata.partitionColumns(), 1, localDeletionTime), timestamp, ttl, null);
     }
 
     public RowUpdateBuilder(CFMetaData metadata, long timestamp, Mutation mutation)
@@ -139,6 +149,12 @@ public class RowUpdateBuilder
         return mutation;
     }
 
+    public PartitionUpdate buildUpdate()
+    {
+        build();
+        return update;
+    }
+
     private static void deleteRow(PartitionUpdate update, long timestamp, Object...clusteringValues)
     {
         assert clusteringValues.length == update.metadata().comparator.size() : "Cannot delete a static row with this method";
@@ -167,6 +183,9 @@ public class RowUpdateBuilder
 
     private static DecoratedKey makeKey(CFMetaData metadata, Object... partitionKey)
     {
+        if (partitionKey.length == 1 && partitionKey[0] instanceof DecoratedKey)
+            return (DecoratedKey)partitionKey[0];
+
         ByteBuffer key = CFMetaData.serializePartitionKey(metadata.getKeyValidatorAsClusteringComparator().make(partitionKey));
         return StorageService.getPartitioner().decorateKey(key);
     }
@@ -192,10 +211,23 @@ public class RowUpdateBuilder
         return this;
     }
 
+    public RowUpdateBuilder addRangeTombstone(RangeTombstone rt)
+    {
+        update.addRangeTombstone(rt);
+        return this;
+    }
+
     public RowUpdateBuilder addRangeTombstone(Slice slice)
     {
         update.addRangeTombstone(slice, deletionTime);
         return this;
+    }
+
+    public RowUpdateBuilder addRangeTombstone(Object start, Object end)
+    {
+        ClusteringComparator cmp = update.metadata().comparator;
+        Slice slice = Slice.make(cmp, cmp.make(start), cmp.make(end));
+        return addRangeTombstone(slice);
     }
 
     public RowUpdateBuilder add(String columnName, Object value)

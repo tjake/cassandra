@@ -69,6 +69,24 @@ public class RangeTombstone
         return deletion;
     }
 
+
+    @Override
+    public boolean equals(Object other)
+    {
+        if(!(other instanceof RangeTombstone))
+            return false;
+
+        RangeTombstone that = (RangeTombstone)other;
+        return this.deletedSlice().equals(that.deletedSlice())
+            && this.deletionTime().equals(that.deletionTime());
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(deletedSlice(), deletionTime());
+    }
+
     // TODO: do we need ?!
     //public static class Serializer implements ISSTableSerializer<RangeTombstone>
     //{

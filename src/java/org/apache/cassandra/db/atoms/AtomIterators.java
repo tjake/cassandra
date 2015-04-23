@@ -47,6 +47,8 @@ public abstract class AtomIterators
 
     public interface MergeListener
     {
+        public void onMergePartitionLevelDeletion(DeletionTime mergedDeletion, DeletionTime[] versions);
+
         public void onMergingRows(Clustering clustering, LivenessInfo mergedInfo, DeletionTime mergedDeletion, Row[] versions);
         public void onMergedComplexDeletion(ColumnDefinition c, DeletionTime mergedComplexDeletion, DeletionTime[] versions);
         public void onMergedCells(Cell mergedCell, Cell[] versions);
@@ -538,7 +540,7 @@ public abstract class AtomIterators
             return new AtomMergeIterator(iterators.get(0).metadata(),
                                          iterators,
                                          collectColumns(iterators),
-                                         collectPartitionLevelDeletion(iterators),
+                                         collectPartitionLevelDeletion(iterators, listener),
                                          iterators.get(0).nowInSec(),
                                          iterators.get(0).isReverseOrder(),
                                          listener);
@@ -564,12 +566,22 @@ public abstract class AtomIterators
             return true;
         }
 
-        private static DeletionTime collectPartitionLevelDeletion(List<AtomIterator> iterators)
+        private static DeletionTime collectPartitionLevelDeletion(List<AtomIterator> iterators, MergeListener listener)
         {
+            DeletionTime[] versions = listener == null ? null : new DeletionTime[iterators.size()];
+
             DeletionTime delTime = DeletionTime.LIVE;
-            for (AtomIterator iter : iterators)
-                if (!delTime.supersedes(iter.partitionLevelDeletion()))
-                    delTime = iter.partitionLevelDeletion();
+            for (int i = 0; i < iterators.size(); i++)
+            {
+                AtomIterator iter = iterators.get(i);
+                DeletionTime iterDeletion = iter.partitionLevelDeletion();
+                if (listener != null)
+                    versions[i] = iterDeletion;
+                if (!delTime.supersedes(iterDeletion))
+                    delTime = iterDeletion;
+            }
+            if (listener != null && !delTime.isLive())
+                listener.onMergePartitionLevelDeletion(delTime, versions);
             return delTime;
         }
 
