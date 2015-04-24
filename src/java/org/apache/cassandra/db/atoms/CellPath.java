@@ -40,7 +40,7 @@ public abstract class CellPath
     // The only complex we currently have are collections that have only one value.
     public static CellPath create(ByteBuffer value)
     {
-        assert value != null && value.hasRemaining();
+        assert value != null;
         return new SimpleCellPath(new ByteBuffer[]{ value });
     }
 

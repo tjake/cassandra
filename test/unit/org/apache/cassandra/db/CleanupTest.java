@@ -135,7 +135,7 @@ public class CleanupTest
             Thread.sleep(10);
 
         ColumnDefinition cdef = cfs.metadata.getColumnDefinition(COLUMN);
-        ColumnFilter cf = new ColumnFilter();
+        ColumnFilter cf = ColumnFilter.create();
         cf.add(cdef, Operator.EQ, VALUE);
         DataRange range = DataRange.allData(cfs.metadata, cfs.partitioner);
         ReadCommand rc = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), cf, DataLimits.NONE, range);

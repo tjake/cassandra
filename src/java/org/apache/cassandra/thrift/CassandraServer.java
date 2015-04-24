@@ -382,7 +382,7 @@ public class CassandraServer implements Cassandra.Iface
 
             return new NamesPartitionFilter(builder.build(),
                                             FBUtilities.<Clustering>singleton(new SimpleClustering(parent.bufferForSuper_column()), metadata.comparator),
-                                            false);
+                                            range.reversed);
         }
         return toInternalFilter(metadata, makeSlices(metadata, range), range.reversed);
     }

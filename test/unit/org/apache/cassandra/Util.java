@@ -90,12 +90,11 @@ public class Util
         return RowPosition.ForKey.get(ByteBufferUtil.bytes(key), partitioner);
     }
 
-
     public static Cell getRegularCell(CFMetaData metadata, Row row, String name)
     {
-        ColumnDefinition cdef = new ColumnDefinition(metadata.ksName, metadata.cfName, new ColumnIdentifier(name, true), metadata.columnNameComparator, null, ColumnDefinition.Kind.REGULAR);
-
-        return row.getCell(cdef);
+        ColumnDefinition column = metadata.getColumnDefinition(ByteBufferUtil.bytes(name));
+        assert column != null;
+        return row.getCell(column);
     }
 
     /*
@@ -197,7 +196,7 @@ public class Util
     }
     public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
     {
-        ColumnFilter filter = new ColumnFilter();
+        ColumnFilter filter = ColumnFilter.create();
         if (superColumn != null)
             filter.add(cfs.metadata.compactValueColumn(), Operator.EQ, superColumn);
 
