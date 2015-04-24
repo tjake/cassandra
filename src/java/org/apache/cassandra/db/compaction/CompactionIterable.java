@@ -57,7 +57,9 @@ public class CompactionIterable extends AbstractCompactionIterable
     {
         super(controller, type, scanners);
         this.format = formatType.info;
-        this.mergedIterator = new PurgingPartitionIterator(PartitionIterators.merge(scanners, listener()), controller);
+        this.mergedIterator = scanners.isEmpty()
+                            ? PartitionIterators.EMPTY
+                            : new PurgingPartitionIterator(PartitionIterators.merge(scanners, listener()), controller);
 
         this.metrics = metrics;
 

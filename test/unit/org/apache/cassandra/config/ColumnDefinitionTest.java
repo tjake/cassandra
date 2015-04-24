@@ -33,14 +33,15 @@ public class ColumnDefinitionTest
     public void testSerializeDeserialize() throws Exception
     {
         CFMetaData cfm = CFMetaData.Builder.create("ks", "cf", true, false, false)
-                .addPartitionKey("pkey", AsciiType.instance)
-                .addClusteringColumn("col1", AsciiType.instance)
-                .withColumnNameComparator(AsciiType.instance).build();
+                         .addPartitionKey("pkey", AsciiType.instance)
+                         .addClusteringColumn("name", AsciiType.instance)
+                         .addRegularColumn("val", AsciiType.instance)
+                         .build();
 
-        ColumnDefinition cd0 = ColumnDefinition.regularDef(cfm, ByteBufferUtil.bytes("TestColumnDefinitionName0"), BytesType.instance, null)
+        ColumnDefinition cd0 = ColumnDefinition.staticDef(cfm, ByteBufferUtil.bytes("TestColumnDefinitionName0"), BytesType.instance, null)
                                                .setIndex("random index name 0", IndexType.KEYS, null);
 
-        ColumnDefinition cd1 = ColumnDefinition.regularDef(cfm, ByteBufferUtil.bytes("TestColumnDefinition1"), LongType.instance, null);
+        ColumnDefinition cd1 = ColumnDefinition.staticDef(cfm, ByteBufferUtil.bytes("TestColumnDefinition1"), LongType.instance, null);
 
         testSerializeDeserialize(cfm, cd0);
         testSerializeDeserialize(cfm, cd1);

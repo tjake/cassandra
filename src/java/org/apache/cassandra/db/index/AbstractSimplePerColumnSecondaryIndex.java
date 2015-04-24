@@ -79,7 +79,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
 
     protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, Cell cell)
     {
-        return makeIndexClustering(rowKey, clustering, cell.path());
+        return makeIndexClustering(rowKey, clustering, cell == null ? null : cell.path());
     }
 
     protected Clustering makeIndexClustering(ByteBuffer rowKey, Clustering clustering, CellPath path)

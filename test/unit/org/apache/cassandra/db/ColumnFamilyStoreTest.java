@@ -39,6 +39,7 @@ import org.apache.cassandra.db.atoms.AtomIterator;
 import org.apache.cassandra.db.atoms.Cell;
 import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.partitions.DataIterators;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.db.partitions.DataIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -109,19 +110,21 @@ public class ColumnFamilyStoreTest
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF_STANDARD1);
 
         new RowUpdateBuilder(cfs.metadata, 0, "key1")
+                .clustering("Column1")
                 .add("val", "asdf")
                 .build()
                 .applyUnsafe();
         cfs.forceBlockingFlush();
 
         new RowUpdateBuilder(cfs.metadata, 1, "key1")
+                .clustering("Column1")
                 .add("val", "asdf")
                 .build()
                 .applyUnsafe();
         cfs.forceBlockingFlush();
 
         ((ClearableHistogram)cfs.metric.sstablesPerReadHistogram.cf).clear(); // resets counts
-        Util.materializePartition(cfs, Util.dk("key1"));
+        DataIterators.consume(new SinglePartitionNamesReadBuilder(cfs, Util.dk("key1")).addClustering("c1").executeLocally());
         assertEquals(1, cfs.metric.sstablesPerReadHistogram.cf.getCount());
     }
 
@@ -133,6 +136,7 @@ public class ColumnFamilyStoreTest
 
         List<Mutation> rms = new LinkedList<>();
         rms.add(new RowUpdateBuilder(cfs.metadata, 0, "key1")
+                .clustering("Column1")
                 .add("val", "asdf")
                 .build());
 
@@ -153,7 +157,7 @@ public class ColumnFamilyStoreTest
         Keyspace keyspace = Keyspace.open(KEYSPACE1);
         final ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF_STANDARD2);
 
-        RowUpdateBuilder.deleteRow(cfs.metadata, FBUtilities.timestampMicros(), "key1").applyUnsafe();
+        RowUpdateBuilder.deleteRow(cfs.metadata, FBUtilities.timestampMicros(), "key1", "Column1").applyUnsafe();
 
         Runnable r = new WrappedRunnable()
         {
@@ -269,21 +273,21 @@ public class ColumnFamilyStoreTest
 
         // insert
         ColumnDefinition newCol = new ColumnDefinition(cfs.metadata, ByteBufferUtil.bytes("val2"), AsciiType.instance, 1, ColumnDefinition.Kind.REGULAR);
-        new RowUpdateBuilder(cfs.metadata, 0, "key1").add("val", "val1").build().applyUnsafe();
-        new RowUpdateBuilder(cfs.metadata, 0, "key2").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 0, "key1").clustering("Column1").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 0, "key2").clustering("Column1").add("val", "val1").build().applyUnsafe();
         assertRangeCount(cfs, col, val, 2);
 
         // flush.
         cfs.forceBlockingFlush();
 
         // insert, don't flush
-        new RowUpdateBuilder(cfs.metadata, 1, "key3").add("val", "val1").build().applyUnsafe();
-        new RowUpdateBuilder(cfs.metadata, 1, "key4").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1, "key3").clustering("Column1").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1, "key4").clustering("Column1").add("val", "val1").build().applyUnsafe();
         assertRangeCount(cfs, col, val, 4);
 
         // delete (from sstable and memtable)
-        RowUpdateBuilder.deleteRow(cfs.metadata, 5, "key1").applyUnsafe();
-        RowUpdateBuilder.deleteRow(cfs.metadata, 5, "key3").applyUnsafe();
+        RowUpdateBuilder.deleteRow(cfs.metadata, 5, "key1", "Column1").applyUnsafe();
+        RowUpdateBuilder.deleteRow(cfs.metadata, 5, "key3", "Column1").applyUnsafe();
 
         // verify delete
         assertRangeCount(cfs, col, val, 2);
@@ -295,15 +299,15 @@ public class ColumnFamilyStoreTest
         assertRangeCount(cfs, col, val, 2);
 
         // simulate a 'late' insertion that gets put in after the deletion. should get inserted, but fail on read.
-        new RowUpdateBuilder(cfs.metadata, 2, "key1").add("val", "val1").build().applyUnsafe();
-        new RowUpdateBuilder(cfs.metadata, 2, "key3").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 2, "key1").clustering("Column1").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 2, "key3").clustering("Column1").add("val", "val1").build().applyUnsafe();
 
         // should still be nothing there because we deleted this row. 2nd breakage, but was undetected because of 1837.
         assertRangeCount(cfs, col, val, 2);
 
         // make sure that new writes are recognized.
-        new RowUpdateBuilder(cfs.metadata, 10, "key5").add("val", "val1").build().applyUnsafe();
-        new RowUpdateBuilder(cfs.metadata, 10, "key6").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 10, "key5").clustering("Column1").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 10, "key6").clustering("Column1").add("val", "val1").build().applyUnsafe();
         assertRangeCount(cfs, col, val, 4);
 
         // and it remains so after flush. (this wasn't failing before, but it's good to check.)
@@ -315,9 +319,9 @@ public class ColumnFamilyStoreTest
     public void testBackupAfterFlush() throws Throwable
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE2).getColumnFamilyStore(CF_STANDARD1);
-        new RowUpdateBuilder(cfs.metadata, 0, ByteBufferUtil.bytes("key1")).add("val", "asdf").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 0, ByteBufferUtil.bytes("key1")).clustering("Column1").add("val", "asdf").build().applyUnsafe();
         cfs.forceBlockingFlush();
-        new RowUpdateBuilder(cfs.metadata, 0, ByteBufferUtil.bytes("key2")).add("val", "asdf").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 0, ByteBufferUtil.bytes("key2")).clustering("Column1").add("val", "asdf").build().applyUnsafe();
         cfs.forceBlockingFlush();
 
         for (int version = 1; version <= 2; ++version)

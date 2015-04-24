@@ -1348,7 +1348,7 @@ public final class CFMetaData
     {
         return isCounter()
              ? CounterColumnType.instance
-             : (isDense() && compactValueColumn() != null? compactValueColumn().type : BytesType.instance);
+             : (isCompactTable() ? compactValueColumn().type : BytesType.instance);
     }
 
     @Override

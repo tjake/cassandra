@@ -54,6 +54,24 @@ public abstract class PartitionIterators
         }
     };
 
+    public static final PartitionIterator EMPTY = new AbstractPartitionIterator()
+    {
+        public boolean isForThrift()
+        {
+            return false;
+        }
+
+        public boolean hasNext()
+        {
+            return false;
+        }
+
+        public AtomIterator next()
+        {
+            throw new NoSuchElementException();
+        }
+    };
+
     private PartitionIterators() {}
 
     public interface MergeListener

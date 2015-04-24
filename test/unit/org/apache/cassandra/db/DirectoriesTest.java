@@ -60,9 +60,11 @@ public class DirectoriesTest
         for (String table : TABLES)
         {
             UUID tableID = CFMetaData.generateLegacyCfId(KS, table);
-            ColumnDefinition partitionKey = ColumnDefinition.partitionKeyDef(KS, table, "thekey", UTF8Type.instance, 0);
-            ColumnDefinition clusteringKey = ColumnDefinition.clusteringKeyDef(KS, table, "thekey", UTF8Type.instance, 0);
-            CFM.add(CFMetaData.create(KS, table, tableID, false, false, false, false, Lists.newArrayList(partitionKey, clusteringKey)));
+            CFM.add(CFMetaData.Builder.create(KS, table)
+                                      .withId(tableID)
+                                      .addPartitionKey("thekey", UTF8Type.instance)
+                                      .addClusteringColumn("thecolumn", UTF8Type.instance)
+                                      .build());
         }
 
         tempDataDir = File.createTempFile("cassandra", "unittest");

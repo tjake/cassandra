@@ -50,7 +50,7 @@ public abstract class AbstractReadCommandBuilder
     {
         this.cfs = cfs;
         this.nowInSeconds = nowInSeconds;
-        filter = new ColumnFilter();
+        filter = ColumnFilter.create();
     }
 
     public AbstractReadCommandBuilder setClusteringLowerBound(boolean inclusive, ByteBuffer... values)

@@ -26,6 +26,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.marshal.EmptyType;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -63,20 +64,25 @@ public class UpdateStatement extends ModificationStatement
 
             // We update the row timestamp (ex-row marker) only on INSERT (#6782)
             // Further, COMPACT tables semantic differs from "CQL3" ones in that a row exists only if it has
-            // a non-null column, so we don't want to set the row timestamp for them. One exception however is
-            // the case of a COMPACT TABLE with only a PK: we allow that because we can translate it to a thrift
-            // table with a single cell having an empty value. In that case, since we don't have any column, we
-            // do want to set the row timestamp.
-            if (type == StatementType.INSERT && (cfm.isCQLTable() || cfm.partitionColumns().isEmpty()))
+            // a non-null column, so we don't want to set the row timestamp for them.
+            if (type == StatementType.INSERT && cfm.isCQLTable())
                 params.writePartitionKeyLivenessInfo(writer);
 
             List<Operation> updates = getRegularOperations();
 
+            // For compact tablw, when we translate it to thrift, we don't have a row marker. So we don't accept an insert/update
+            // that only sets the PK unless the is no declared non-PK columns (in the latter we just set the value empty).
+
             // For a dense layout, when we translate it to thrift, we don't have a row marker. So we don't accept an insert/update
-            // that only sets the PK unless the is no declared non-PK columns (which means that the table definition only includes
-            // the PK in the first place)
-            if (updates.isEmpty() && cfm.isDense() && !cfm.partitionColumns().isEmpty())
-                throw new InvalidRequestException(String.format("Column %s is mandatory for this COMPACT STORAGE table", cfm.compactValueColumn().name));
+            // that only sets the PK unless the is no declared non-PK columns (which we recognize because in that case the compact
+            // value is of type "EmptyType").
+            if (cfm.isCompactTable() && updates.isEmpty())
+            {
+                if (cfm.compactValueColumn().type instanceof EmptyType)
+                    updates = Collections.<Operation>singletonList(new Constants.Setter(cfm.compactValueColumn(), EMPTY));
+                else
+                    throw new InvalidRequestException(String.format("Column %s is mandatory for this COMPACT STORAGE table", cfm.compactValueColumn().name));
+            }
 
             for (Operation op : updates)
                 op.execute(update.partitionKey(), clustering, writer, params);

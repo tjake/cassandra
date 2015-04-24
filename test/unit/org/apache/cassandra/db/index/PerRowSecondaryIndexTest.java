@@ -226,7 +226,7 @@ public class PerRowSecondaryIndexTest
                 @Override
                 public PartitionIterator search(ReadCommand filter)
                 {
-                    return new SingletonPartitionIterator(LAST_INDEXED_PARTITION);
+                    return new SingletonPartitionIterator(LAST_INDEXED_PARTITION, false);
                 }
 
                 @Override
@@ -238,6 +238,12 @@ public class PerRowSecondaryIndexTest
                         throw new InvalidRequestException("Invalid search!");
 
                     return expression;
+                }
+
+                protected PartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, RowIterator indexHits, ReadCommand command, OpOrder.Group writeOp)
+                {
+                    // As we override 'search()' directly for the test, we don't care about this.
+                    throw new UnsupportedOperationException();
                 }
             };
         }
