@@ -39,7 +39,7 @@ public class ThriftCompatibilityTest extends SchemaLoader
                 SimpleStrategy.class,
                 KSMetaData.optsWithRF(1),
                 SchemaLoader.jdbcCFMD("thriftcompat", "JdbcInteger", Int32Type.instance)
-                        .addColumnDefinition(integerColumn("thriftcompat", "JdbcInteger")));
+                            .addColumnDefinition(integerColumn("thriftcompat", "JdbcInteger")));
     }
 
     private static UntypedResultSet execute(String query)

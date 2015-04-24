@@ -52,7 +52,7 @@ public class ColumnConditionTest
         Cell cell = null;
         if (columnValue != null)
         {
-            ColumnDefinition definition = new ColumnDefinition("ks", "cf", new ColumnIdentifier("c", true), Int32Type.instance, null, null, null, null, null);
+            ColumnDefinition definition = ColumnDefinition.regularDef("ks", "cf", "c", ListType.getInstance(Int32Type.instance, true), null);
             cell = new TestCell(definition, null, columnValue, LivenessInfo.NONE);
         }
         return bound.isSatisfiedByValue(conditionValue, cell, Int32Type.instance, bound.operator);
@@ -70,7 +70,7 @@ public class ColumnConditionTest
     @Test
     public void testSimpleBoundIsSatisfiedByValue() throws InvalidRequestException
     {
-        ColumnDefinition definition = new ColumnDefinition("ks", "cf", new ColumnIdentifier("c", true), Int32Type.instance, null, null, null, null, null);
+        ColumnDefinition definition = ColumnDefinition.regularDef("ks", "cf", "c", ListType.getInstance(Int32Type.instance, true), null);
 
         // EQ
         ColumnCondition condition = ColumnCondition.condition(definition, new Constants.Value(ONE), Operator.EQ);
@@ -178,7 +178,7 @@ public class ColumnConditionTest
     // sets use the same check as lists
     public void testListCollectionBoundAppliesTo() throws InvalidRequestException
     {
-        ColumnDefinition definition = new ColumnDefinition("ks", "cf", new ColumnIdentifier("c", true), ListType.getInstance(Int32Type.instance, true), null, null, null, null, null);
+        ColumnDefinition definition = ColumnDefinition.regularDef("ks", "cf", "c", ListType.getInstance(Int32Type.instance, true), null);
 
         // EQ
         ColumnCondition condition = ColumnCondition.condition(definition, null, new Lists.Value(Arrays.asList(ONE)), Operator.EQ);
@@ -307,7 +307,7 @@ public class ColumnConditionTest
     @Test
     public void testSetCollectionBoundAppliesTo() throws InvalidRequestException
     {
-        ColumnDefinition definition = new ColumnDefinition("ks", "cf", new ColumnIdentifier("c", true), SetType.getInstance(Int32Type.instance, true), null, null, null, null, null);
+        ColumnDefinition definition = ColumnDefinition.regularDef("ks", "cf", "c", ListType.getInstance(Int32Type.instance, true), null);
 
         // EQ
         ColumnCondition condition = ColumnCondition.condition(definition, null, new Sets.Value(set(ONE)), Operator.EQ);
@@ -436,7 +436,7 @@ public class ColumnConditionTest
     @Test
     public void testMapCollectionBoundIsSatisfiedByValue() throws InvalidRequestException
     {
-        ColumnDefinition definition = new ColumnDefinition("ks", "cf", new ColumnIdentifier("b", true), MapType.getInstance(Int32Type.instance, Int32Type.instance, true), null, null, null, null, null);
+        ColumnDefinition definition = ColumnDefinition.regularDef("ks", "cf", "c", ListType.getInstance(Int32Type.instance, true), null);
 
         Map<ByteBuffer, ByteBuffer> placeholderMap = new TreeMap<>();
         placeholderMap.put(ONE, ONE);
