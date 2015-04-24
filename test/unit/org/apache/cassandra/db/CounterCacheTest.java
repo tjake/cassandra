@@ -28,7 +28,7 @@ import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.marshal.CounterColumnType;
+import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -49,10 +49,18 @@ public class CounterCacheTest
     public static void defineSchema() throws ConfigurationException
     {
         SchemaLoader.prepareServer();
+
+        CFMetaData counterTable = CFMetaData.Builder.create(KEYSPACE1, COUNTER1, false, true, true)
+                                  .addPartitionKey("key", AsciiType.instance)
+                                  .addClusteringColumn("name", Int32Type.instance)
+                                  .addRegularColumn("c1", CounterColumnType.instance)
+                                  .addRegularColumn("c2", CounterColumnType.instance)
+                                  .build();
+
         SchemaLoader.createKeyspace(KEYSPACE1,
                 SimpleStrategy.class,
                 KSMetaData.optsWithRF(1),
-                SchemaLoader.counterCFMD(KEYSPACE1, COUNTER1));
+                counterTable);
     }
 
     @AfterClass

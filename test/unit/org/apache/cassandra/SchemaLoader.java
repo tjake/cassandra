@@ -405,10 +405,15 @@ public class SchemaLoader
 
     public static CFMetaData standardCFMD(String ksName, String cfName, int columnCount, AbstractType<?> keyType)
     {
+        return standardCFMD(ksName, cfName, columnCount, keyType, AsciiType.instance);
+    }
+
+    public static CFMetaData standardCFMD(String ksName, String cfName, int columnCount, AbstractType<?> keyType, AbstractType<?> valType)
+    {
         CFMetaData.Builder builder = CFMetaData.Builder.create(ksName, cfName)
                 .addPartitionKey("key", keyType)
                 .addClusteringColumn("name", AsciiType.instance)
-                .addRegularColumn("val", AsciiType.instance);
+                .addRegularColumn("val", valType);
 
         for (int i = 0; i < columnCount; i++)
             builder.addRegularColumn("val" + i, AsciiType.instance);
