@@ -203,7 +203,7 @@ public class LegacySchemaTables
 
     public static Collection<KSMetaData> readSchemaFromSystemTables()
     {
-        try (DataIterator serializedSchema = getSchemaPartitionsForTable(KEYSPACES))
+        try (DataIterator serializedSchema = PartitionIterators.asDataIterator(getSchemaPartitionsForTable(KEYSPACES)))
         {
             List<KSMetaData> keyspaces = new ArrayList<>();
 
@@ -211,7 +211,7 @@ public class LegacySchemaTables
             {
                 try (RowIterator partition = serializedSchema.next())
                 {
-                    if (isSystemKeyspaceSchemaPartition(partition))
+                    if (isSystemKeyspaceSchemaPartition(partition.partitionKey()))
                         continue;
 
                     DecoratedKey key = partition.partitionKey();
@@ -266,13 +266,13 @@ public class LegacySchemaTables
 
         for (String table : ALL)
         {
-            try (DataIterator schema = getSchemaPartitionsForTable(table))
+            try (DataIterator schema = PartitionIterators.asDataIterator(getSchemaPartitionsForTable(table)))
             {
                 while (schema.hasNext())
                 {
                     try (RowIterator partition = schema.next())
                     {
-                        if (!isSystemKeyspaceSchemaPartition(partition))
+                        if (!isSystemKeyspaceSchemaPartition(partition.partitionKey()))
                             RowIterators.digest(partition, digest);
                     }
                 }
@@ -294,11 +294,11 @@ public class LegacySchemaTables
      * @param schemaTableName The name of the table responsible for part of the schema.
      * @return low-level schema representation
      */
-    private static DataIterator getSchemaPartitionsForTable(String schemaTableName)
+    private static PartitionIterator getSchemaPartitionsForTable(String schemaTableName)
     {
         ColumnFamilyStore cfs = getSchemaCFS(schemaTableName);
         ReadCommand cmd = PartitionRangeReadCommand.allDataRead(cfs.metadata, FBUtilities.nowInSeconds());
-        return PartitionIterators.asDataIterator(cmd.executeLocally(cfs));
+        return cmd.executeLocally(cfs);
     }
 
     public static Collection<Mutation> convertSchemaToMutations()
@@ -313,13 +313,13 @@ public class LegacySchemaTables
 
     private static void convertSchemaToMutations(Map<DecoratedKey, Mutation> mutationMap, String schemaTableName)
     {
-        try (DataIterator iter = getSchemaPartitionsForTable(schemaTableName))
+        try (PartitionIterator iter = getSchemaPartitionsForTable(schemaTableName))
         {
             while (iter.hasNext())
             {
-                try (RowIterator partition = iter.next())
+                try (AtomIterator partition = iter.next())
                 {
-                    if (isSystemKeyspaceSchemaPartition(partition))
+                    if (isSystemKeyspaceSchemaPartition(partition.partitionKey()))
                         continue;
 
                     DecoratedKey key = partition.partitionKey();
@@ -330,7 +330,7 @@ public class LegacySchemaTables
                         mutationMap.put(key, mutation);
                     }
 
-                    mutation.add(RowIterators.toUpdate(partition));
+                    mutation.add(AtomIterators.toUpdate(partition));
                 }
             }
         }
@@ -386,9 +386,9 @@ public class LegacySchemaTables
                                                                       .queryMemtableAndDisk(store));
     }
 
-    private static boolean isSystemKeyspaceSchemaPartition(RowIterator partition)
+    private static boolean isSystemKeyspaceSchemaPartition(DecoratedKey partitionKey)
     {
-        return getSchemaKSKey(SystemKeyspace.NAME).equals(partition.partitionKey().getKey());
+        return getSchemaKSKey(SystemKeyspace.NAME).equals(partitionKey.getKey());
     }
 
     /**
