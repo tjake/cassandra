@@ -492,7 +492,8 @@ public class SchemaLoader
     
     public static CFMetaData jdbcCFMD(String ksName, String cfName, AbstractType comp)
     {
-        return CFMetaData.Builder.create(ksName, cfName).addPartitionKey("key", comp).addClusteringColumn("name", comp).build();
+        return CFMetaData.Builder.create(ksName, cfName).addPartitionKey("key", BytesType.instance)
+                                                        .build();
     }
 
     public static void cleanupAndLeaveDirs()

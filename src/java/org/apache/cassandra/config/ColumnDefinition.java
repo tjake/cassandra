@@ -137,7 +137,7 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
                             Kind kind)
     {
         super(ksName, cfName, name, validator);
-        assert name != null && validator != null;
+        assert name != null && validator != null && kind != null;
         this.kind = kind;
         this.indexName = indexName;
         this.componentIndex = componentIndex;
@@ -148,7 +148,7 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
 
     private static Comparator<CellPath> makeCellPathComparator(Kind kind, AbstractType<?> validator)
     {
-        if ((kind != null && kind.isPrimaryKeyKind()) || !validator.isCollection() || !validator.isMultiCell())
+        if (kind.isPrimaryKeyKind() || !validator.isCollection() || !validator.isMultiCell())
             return null;
 
         final CollectionType type = (CollectionType)validator;
