@@ -42,6 +42,7 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.atoms.Row;
+import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.partitions.DataIterator;
 import org.slf4j.Logger;
@@ -84,15 +85,15 @@ public class CommitLogTest
         SchemaLoader.createKeyspace(KEYSPACE1,
                                     SimpleStrategy.class,
                                     KSMetaData.optsWithRF(1),
-                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD1),
-                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD2));
+                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD1, 0, AsciiType.instance, BytesType.instance),
+                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD2, 0, AsciiType.instance, BytesType.instance));
         SchemaLoader.createKeyspace(KEYSPACE2,
                                     false,
                                     true,
                                     SimpleStrategy.class,
                                     KSMetaData.optsWithRF(1),
-                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD1),
-                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD2));
+                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD1, 0, AsciiType.instance, BytesType.instance),
+                                    SchemaLoader.standardCFMD(KEYSPACE1, STANDARD2, 0, AsciiType.instance, BytesType.instance));
         System.setProperty("cassandra.commitlog.stop_on_errors", "true");
         CompactionManager.instance.disableAutoCompaction();
     }
@@ -161,8 +162,9 @@ public class CommitLogTest
 
         // Roughly 32 MB mutation
         Mutation m = new RowUpdateBuilder(cfs1.metadata, 0, "k")
-                .add("bytes", ByteBuffer.allocate(DatabaseDescriptor.getCommitLogSegmentSize()/4))
-                .build();
+                     .clustering("bytes")
+                     .add("val", ByteBuffer.allocate(DatabaseDescriptor.getCommitLogSegmentSize()/4))
+                     .build();
 
         // Adding it 5 times
         CommitLog.instance.add(m);
@@ -173,8 +175,9 @@ public class CommitLogTest
 
         // Adding new mutation on another CF
         Mutation m2 = new RowUpdateBuilder(cfs2.metadata, 0, "k")
-                .add("bytes", ByteBuffer.allocate(4))
-                .build();
+                      .clustering("bytes")
+                      .add("val", ByteBuffer.allocate(4))
+                      .build();
         CommitLog.instance.add(m2);
 
         assert CommitLog.instance.activeSegments() == 2 : "Expecting 2 segments, got " + CommitLog.instance.activeSegments();
@@ -196,8 +199,9 @@ public class CommitLogTest
 
         // Roughly 32 MB mutation
         Mutation rm = new RowUpdateBuilder(cfs1.metadata, 0, "k")
-                .add("bytes", ByteBuffer.allocate((DatabaseDescriptor.getCommitLogSegmentSize()/4) - 1))
-                .build();
+                      .clustering("bytes")
+                      .add("val", ByteBuffer.allocate((DatabaseDescriptor.getCommitLogSegmentSize()/4) - 1))
+                      .build();
 
         // Adding it twice (won't change segment)
         CommitLog.instance.add(rm);
@@ -214,8 +218,9 @@ public class CommitLogTest
 
         // Adding new mutation on another CF, large enough (including CL entry overhead) that a new segment is created
         Mutation rm2 = new RowUpdateBuilder(cfs2.metadata, 0, "k")
-                .add("bytes", ByteBuffer.allocate((DatabaseDescriptor.getCommitLogSegmentSize()/2) - 200))
-                .build();
+                       .clustering("bytes")
+                       .add("val", ByteBuffer.allocate((DatabaseDescriptor.getCommitLogSegmentSize()/2) - 200))
+                       .build();
         CommitLog.instance.add(rm2);
         // also forces a new segment, since each entry-with-overhead is just under half the CL size
         CommitLog.instance.add(rm2);
@@ -237,14 +242,16 @@ public class CommitLogTest
     private static int getMaxRecordDataSize(String keyspace, ByteBuffer key, String cfName, String colName)
     {
         ColumnFamilyStore cfs = Keyspace.open(keyspace).getColumnFamilyStore(cfName);
-        ColumnDefinition cDef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(colName));
-        assert cDef.type == BytesType.instance;
-        Mutation rm = new RowUpdateBuilder(cfs.metadata, 0, key).add(cDef, ByteBuffer.allocate(0)).build();
+        // We don't want to allocate a size of 0 as this is optimize under the hood and our computation would
+        // break testEqualRecordLimit
+        int allocSize = 1;
+        Mutation rm = new RowUpdateBuilder(cfs.metadata, 0, key)
+                      .clustering(colName)
+                      .add("val", ByteBuffer.allocate(allocSize)).build();
 
         int max = (DatabaseDescriptor.getCommitLogSegmentSize() / 2);
         max -= CommitLogSegment.ENTRY_OVERHEAD_SIZE; // log entry overhead
-        // TODO: Fix - Mutation.serializer.serializedSize appears to be off by 4 bytes (i.e. 4 bytes low)
-        return max - (int) Mutation.serializer.serializedSize(rm, MessagingService.current_version);
+        return max - (int) Mutation.serializer.serializedSize(rm, MessagingService.current_version) + allocSize;
     }
 
     private static int getMaxRecordDataSize()
@@ -259,8 +266,9 @@ public class CommitLogTest
         CommitLog.instance.resetUnsafe(true);
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(STANDARD1);
         Mutation rm = new RowUpdateBuilder(cfs.metadata, 0, "k")
-                .add("bytes", ByteBuffer.allocate(getMaxRecordDataSize()))
-                .build();
+                      .clustering("bytes")
+                      .add("val", ByteBuffer.allocate(getMaxRecordDataSize()))
+                      .build();
         CommitLog.instance.add(rm);
     }
 
@@ -272,8 +280,9 @@ public class CommitLogTest
         try
         {
             Mutation rm = new RowUpdateBuilder(cfs.metadata, 0, "k")
-                    .add("bytes", ByteBuffer.allocate(1 + getMaxRecordDataSize()))
-                    .build();
+                          .clustering("bytes")
+                          .add("val", ByteBuffer.allocate(1 + getMaxRecordDataSize()))
+                          .build();
             CommitLog.instance.add(rm);
             throw new AssertionError("mutation larger than limit was accepted");
         }
@@ -311,10 +320,13 @@ public class CommitLogTest
             ColumnFamilyStore cfs1 = Keyspace.open(KEYSPACE1).getColumnFamilyStore(STANDARD1);
             ColumnFamilyStore cfs2 = Keyspace.open(KEYSPACE1).getColumnFamilyStore(STANDARD2);
 
-            new RowUpdateBuilder(cfs1.metadata, 0, "k").add("bytes", ByteBuffer.allocate(100)).build().applyUnsafe();
+            new RowUpdateBuilder(cfs1.metadata, 0, "k").clustering("bytes").add("val", ByteBuffer.allocate(100)).build().applyUnsafe();
             cfs1.truncateBlocking();
             DatabaseDescriptor.setAutoSnapshot(prev);
-            Mutation m2 = new RowUpdateBuilder(cfs2.metadata, 0, "k").add("bytes", ByteBuffer.allocate(DatabaseDescriptor.getCommitLogSegmentSize() / 4)).build();
+            Mutation m2 = new RowUpdateBuilder(cfs2.metadata, 0, "k")
+                          .clustering("bytes")
+                          .add("val", ByteBuffer.allocate(DatabaseDescriptor.getCommitLogSegmentSize() / 4))
+                          .build();
 
             for (int i = 0 ; i < 5 ; i++)
                 CommitLog.instance.add(m2);
@@ -345,22 +357,24 @@ public class CommitLogTest
             Assert.assertFalse(notDurableKs.metadata.durableWrites);
 
             ColumnFamilyStore cfs = notDurableKs.getColumnFamilyStore("Standard1");
-            new RowUpdateBuilder(cfs.metadata, 0, "key1").add("bytes", ByteBufferUtil.bytes("abcd")).build().applyUnsafe();
+            new RowUpdateBuilder(cfs.metadata, 0, "key1")
+                .clustering("bytes").add("val", ByteBufferUtil.bytes("abcd"))
+                .build()
+                .applyUnsafe();
 
-            ColumnDefinition cDef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("bytes"));
             try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
-                 .addColumn(ByteBufferUtil.bytes("bytes"))
-                 .executeLocally())
+                                     .addColumn(ByteBufferUtil.bytes("val"))
+                                     .executeLocally())
             {
                 Row r = iter.next().next();
-                assertTrue(r.getCell(cDef).value().equals(ByteBufferUtil.bytes("abcd")));
+                assertTrue(r.iterator().next().value().equals(ByteBufferUtil.bytes("abcd")));
             }
 
             cfs.truncateBlocking();
 
             try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
-                 .addColumn(ByteBufferUtil.bytes("bytes"))
-                 .executeLocally())
+                                     .addColumn(ByteBufferUtil.bytes("val"))
+                                     .executeLocally())
             {
                 assertFalse(iter.hasNext());
             }
