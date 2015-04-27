@@ -79,7 +79,7 @@ public class UpdateStatement extends ModificationStatement
             // value is of type "EmptyType").
             if (cfm.isCompactTable() && updates.isEmpty())
             {
-                if (cfm.compactValueColumn().type instanceof EmptyType)
+                if (CompactTables.hasEmptyCompactValue(cfm))
                     updates = Collections.<Operation>singletonList(new Constants.Setter(cfm.compactValueColumn(), EMPTY));
                 else
                     throw new InvalidRequestException(String.format("Column %s is mandatory for this COMPACT STORAGE table", cfm.compactValueColumn().name));

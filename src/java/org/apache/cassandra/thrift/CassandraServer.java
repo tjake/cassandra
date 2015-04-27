@@ -370,7 +370,7 @@ public class CassandraServer implements Cassandra.Iface
             AbstractType<?> cmp = metadata.thriftColumnNameType();
             for (ColumnDefinition column : metadata.partitionColumns())
             {
-                if (column.isSuperColumnMap())
+                if (CompactTables.isSuperColumnMapColumn(column))
                     continue;
 
                 ByteBuffer name = column.name.bytes;

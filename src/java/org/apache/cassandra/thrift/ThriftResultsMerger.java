@@ -34,8 +34,30 @@ import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.db.partitions.*;
 
 /**
- * Given an iterator on a partition of a compact table (a "static" compact or a super columns table), this
- * return an iterator that merges the static row columns with the other results.
+ * Given an iterator on a partition of a compact table, this return an iterator that merges the
+ * static row columns with the other results.
+ *
+ * Compact tables stores thrift column_metadata as static columns (see CompactTables for
+ * details). When reading for thrift however, we want to merge those static values with other
+ * results because:
+ *   1) on thrift, all "columns" are sorted together, whether or not they are declared
+ *      column_metadata.
+ *   2) it's possible that a table add a value for a "dynamic" column, and later that column
+ *      is statically defined. Merging "static" and "dynamic" columns make sure we don't miss
+ *      a value prior to the column declaration.
+ *
+ * For example, if a thrift table declare 2 columns "c1" and "c5" and the results from a query
+ * is:
+ *    Partition: static: { c1: 3, c5: 4 }
+ *                 "a" : { value : 2 }
+ *                 "c3": { value : 8 }
+ *                 "c7": { value : 1 }
+ * then this class transform it into:
+ *    Partition:   "a" : { value : 2 }
+ *                 "c1": { value : 3 }
+ *                 "c3": { value : 8 }
+ *                 "c5": { value : 4 }
+ *                 "c7": { value : 1 }
  */
 public class ThriftResultsMerger extends WrappingPartitionIterator
 {
