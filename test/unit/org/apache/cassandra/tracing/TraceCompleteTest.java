@@ -64,7 +64,7 @@ public class TraceCompleteTest extends CQLTester
                 query.setTracingRequested();
                 resp = clientA.execute(query);
 
-                Event event = eventHandlerA.queue.poll(2, TimeUnit.SECONDS);
+                Event event = eventHandlerA.queue.poll(5, TimeUnit.SECONDS);
                 Assert.assertNotNull(event);
 
                 // assert that only the connection that started the trace receives the trace-complete event
@@ -112,7 +112,7 @@ public class TraceCompleteTest extends CQLTester
             query.setTracingRequested();
             clientA.execute(query);
 
-            Event event = eventHandlerA.queue.poll(250, TimeUnit.MILLISECONDS);
+            Event event = eventHandlerA.queue.poll(1, TimeUnit.SECONDS);
             Assert.assertNull(event);
         }
         finally
@@ -145,7 +145,7 @@ public class TraceCompleteTest extends CQLTester
             query = new QueryMessage("SELECT * FROM " + KEYSPACE + '.' + currentTable(), QueryOptions.DEFAULT);
             clientA.execute(query);
 
-            Event event = eventHandlerA.queue.poll(250, TimeUnit.MILLISECONDS);
+            Event event = eventHandlerA.queue.poll(1, TimeUnit.SECONDS);
             Assert.assertNull(event);
         }
         finally
@@ -185,10 +185,10 @@ public class TraceCompleteTest extends CQLTester
                 QueryMessage query = new QueryMessage("SELECT * FROM " + KEYSPACE + '.' + currentTable(), QueryOptions.DEFAULT);
                 clientA.execute(query);
 
-                Event event = eventHandlerA.queue.poll(2000, TimeUnit.MILLISECONDS);
+                Event event = eventHandlerA.queue.poll(5, TimeUnit.SECONDS);
                 Assert.assertNull(event);
 
-                Assert.assertNull(eventHandlerB.queue.poll(100, TimeUnit.MILLISECONDS));
+                Assert.assertNull(eventHandlerB.queue.poll(1, TimeUnit.SECONDS));
             }
             finally
             {

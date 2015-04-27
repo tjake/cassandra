@@ -59,6 +59,7 @@ public class ColumnFamilyMetricTest
         for (int j = 0; j < 10; j++)
         {
             new RowUpdateBuilder(cfs.metadata, FBUtilities.timestampMicros(), String.valueOf(j))
+                    .clustering("0")
                     .add("val", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();

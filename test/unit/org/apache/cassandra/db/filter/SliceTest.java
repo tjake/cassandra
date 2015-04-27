@@ -352,7 +352,7 @@ public class SliceTest
     }
 
     @Test
-    public void testValidateSlices()
+    public void testSliceNormalization()
     {
         List<AbstractType<?>> types = new ArrayList<>();
         types.add(Int32Type.instance);
@@ -360,17 +360,11 @@ public class SliceTest
         types.add(Int32Type.instance);
         ClusteringComparator cc = new ClusteringComparator(types);
 
-        assertSlicesValid(cc, slices(s(0, 3)));
-        assertSlicesValid(cc, slices(s(3, 3)));
-        assertSlicesValid(cc, slices(s(3, 3), s(4, 4)));
-        assertSlicesValid(cc, slices(s(0, 3), s(4, 5), s(6, 9)));
-        assertSlicesValid(cc, slices(s(-1, -1)));
-
-        assertSlicesInvalid(cc, slices(s(0, 2), s(2, 4)));
-        assertSlicesInvalid(cc, slices(s(0, 2), s(1, 4)));
-        assertSlicesInvalid(cc, slices(s(0, 2), s(3, 4), s(3, 4)));
-        assertSlicesInvalid(cc, slices(s(-1, 3), s(4, -1)));
-        assertSlicesInvalid(cc, slices(s(-1, 2), s(3, -1), s(5, 9)));
+        assertSlicesNormalization(cc, slices(s(0, 2), s(2, 4)), slices(s(0, 4)));
+        assertSlicesNormalization(cc, slices(s(0, 2), s(1, 4)), slices(s(0, 4)));
+        assertSlicesNormalization(cc, slices(s(0, 2), s(3, 4), s(3, 4)), slices(s(0, 2), s(3, 4)));
+        assertSlicesNormalization(cc, slices(s(-1, 3), s(-1, 4)), slices(s(-1, 4)));
+        assertSlicesNormalization(cc, slices(s(-1, 2), s(-1, 3), s(5, 9)), slices(s(-1, 3), s(5, 9)));
     }
 
     private static Slice.Bound makeBound(ClusteringPrefix.Kind kind, Integer... components)
@@ -402,37 +396,14 @@ public class SliceTest
         return slices;
     }
 
-    private static void assertSlicesValid(ClusteringComparator cc, Slice... slices)
+    private static void assertSlicesNormalization(ClusteringComparator cc, Slice[] original, Slice[] expected)
     {
         Slices.Builder builder = new Slices.Builder(cc);
-        for (Slice s : slices)
-        {
+        for (Slice s : original)
             builder.add(s);
-        }
-        builder.build();
-    }
-
-    private static boolean assertSlicesInvalid(ClusteringComparator cc, Slice... slices)
-    {
-        try
-        {
-            Slices.Builder builder = new Slices.Builder(cc);
-            for (Slice s : slices)
-            {
-                builder.add(s);
-            }
-            builder.build();
-        }
-        catch (AssertionError a)
-        {
-            return true;
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("Expected builder to fail validation for: ");
-        for (Slice s : slices)
-        {
-            sb.append("{").append(s.toString(cc)).append("}");
-        }
-        throw new AssertionError(sb.toString());
+        Slices slices = builder.build();
+        assertEquals(expected.length, slices.size());
+        for (int i = 0; i < expected.length; i++)
+            assertEquals(expected[i], slices.get(i));
     }
 }

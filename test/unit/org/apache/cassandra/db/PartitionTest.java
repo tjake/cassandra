@@ -72,7 +72,7 @@ public class PartitionTest
     public void testSingleColumn() throws IOException
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD1);
-        new RowUpdateBuilder(cfs.metadata, 5, "key1").add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("c").add("val", "val1").build().applyUnsafe();
         ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
 
         DataOutputBuffer bufOut = new DataOutputBuffer();
@@ -91,7 +91,7 @@ public class PartitionTest
     public void testManyColumns() throws IOException
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_TENCOL);
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").add("val", "val1");
+        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("c").add("val", "val1");
         for (int i = 0; i < 10; i++)
             builder.add("val" + i, "val" + i);
         builder.build().applyUnsafe();
@@ -117,12 +117,12 @@ public class PartitionTest
     public void testDigest() throws NoSuchAlgorithmException
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_TENCOL);
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").add("val", "val1");
+        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("c").add("val", "val1");
         for (int i = 0; i < 10; i++)
             builder.add("val" + i, "val" + i);
         builder.build().applyUnsafe();
 
-        new RowUpdateBuilder(cfs.metadata, 5, "key2").add("val", "val2").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 5, "key2").clustering("c").add("val", "val2").build().applyUnsafe();
 
         try (AtomIterator iter1 = Util.readFullPartition(cfs, Util.dk("key1"));
              AtomIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
@@ -153,7 +153,7 @@ public class PartitionTest
             MessageDigest digest1 = MessageDigest.getInstance("MD5");
             AtomIterators.digest(iter1, digest1);
 
-            RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key2").applyUnsafe();
+            RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key2", "c").applyUnsafe();
             try (AtomIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
             {
                 MessageDigest digest2 = MessageDigest.getInstance("MD5");
@@ -171,12 +171,12 @@ public class PartitionTest
         int localDeletionTime = (int) (timestamp / 1000);
 
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_TENCOL);
-        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").add("val", "val1");
+        RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("c").add("val", "val1");
         for (int i = 0; i < 10; i++)
             builder.add("val" + i, "val" + i);
         builder.build().applyUnsafe();
 
-        RowUpdateBuilder.deleteRow(cfs.metadata, 10, "key1").applyUnsafe();
+        RowUpdateBuilder.deleteRow(cfs.metadata, 10, "key1", "c").applyUnsafe();
         ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
         AtomStats stats = partition.stats();
         assertEquals(localDeletionTime, stats.minLocalDeletionTime);

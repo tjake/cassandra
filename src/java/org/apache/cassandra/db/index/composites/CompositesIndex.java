@@ -160,10 +160,10 @@ public abstract class CompositesIndex extends AbstractSimplePerColumnSecondaryIn
         public IndexedEntry(DecoratedKey indexValue, Clustering indexClustering, long timestamp, ByteBuffer indexedKey, Clustering indexedEntryClustering)
         {
             this.indexValue = indexValue;
-            this.indexClustering = indexClustering;
+            this.indexClustering = indexClustering.takeAlias();
             this.timestamp = timestamp;
             this.indexedKey = indexedKey;
-            this.indexedEntryClustering = indexedEntryClustering;
+            this.indexedEntryClustering = indexedEntryClustering.takeAlias();
         }
     }
 }

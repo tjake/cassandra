@@ -90,6 +90,7 @@ public class BatchlogManagerTest
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD1);
         CFMetaData cfm = cfs.metadata;
         new RowUpdateBuilder(cfm, FBUtilities.timestampMicros(), ByteBufferUtil.bytes("1234"))
+                .clustering("c")
                 .add("val", "val" + 1234)
                 .build()
                 .applyUnsafe();

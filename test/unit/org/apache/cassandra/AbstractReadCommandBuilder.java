@@ -62,7 +62,7 @@ public abstract class AbstractReadCommandBuilder
 
     public AbstractReadCommandBuilder setClusteringUpperBound(boolean inclusive, ByteBuffer... values)
     {
-        ClusteringPrefix.Kind kind = inclusive ? ClusteringPrefix.Kind.INCL_START_BOUND : ClusteringPrefix.Kind.EXCL_START_BOUND;
+        ClusteringPrefix.Kind kind = inclusive ? ClusteringPrefix.Kind.INCL_END_BOUND : ClusteringPrefix.Kind.EXCL_END_BOUND;
         upperClusteringBound = Slice.Bound.create(kind, values);
         return this;
     }
