@@ -45,18 +45,12 @@ import org.apache.cassandra.utils.UUIDGen;
 
 /**
  * Static utility methods to convert internal structure to and from thrift ones.
+ *
+ * 
  */
 public class ThriftConversion
 {
     private static final Logger logger = LoggerFactory.getLogger(ThriftConversion.class);
-
-    public static final String DEFAULT_KEY_ALIAS = "key";
-    public static final String DEFAULT_CLUSTERING_ALIAS = "column";
-    public static final String DEFAULT_VALUE_ALIAS = "value";
-
-    // We use an empty value for the 1) this can't conflict with a user-defined column and 2) this actually
-    // validate with any comparator which avoid having to bother with this in LegacySchemaTables.compactTableColumnDefinitionComparator
-    public static final ByteBuffer SUPER_COLUMN_MAP_COLUMN = ByteBufferUtil.EMPTY_BYTE_BUFFER;
 
     public static org.apache.cassandra.db.ConsistencyLevel fromThrift(ConsistencyLevel cl)
     {
@@ -340,21 +334,21 @@ public class ThriftConversion
                 {
                     // For compatibility sake, we call the first alias 'key' rather than 'key1'. This
                     // is inconsistent with column alias, but it's probably not worth risking breaking compatibility now.
-                    String name = i == 0 ? DEFAULT_KEY_ALIAS : DEFAULT_KEY_ALIAS + (i + 1);
+                    String name = i == 0 ? CompactTables.DEFAULT_PARTITION_KEY_NAME : CompactTables.DEFAULT_PARTITION_KEY_NAME + (i + 1);
                     defs.add(ColumnDefinition.partitionKeyDef(ks, cf, name, subTypes.get(i), i));
                 }
             }
             else
             {
-                defs.add(ColumnDefinition.partitionKeyDef(ks, cf, DEFAULT_KEY_ALIAS, keyValidator, null));
+                defs.add(ColumnDefinition.partitionKeyDef(ks, cf, CompactTables.DEFAULT_PARTITION_KEY_NAME, keyValidator, null));
             }
         }
 
         if (subComparator != null)
         {
             // SuperColumn tables: we use a special map to hold dynamic values within a given super column
-            defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + 1, comparator, 0));
-            defs.add(ColumnDefinition.regularDef(ks, cf, UTF8Type.instance.compose(SUPER_COLUMN_MAP_COLUMN), MapType.getInstance(subComparator, defaultValidator, true), null));
+            defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, CompactTables.DEFAULT_CLUSTERING_NAME + 1, comparator, 0));
+            defs.add(ColumnDefinition.regularDef(ks, cf, CompactTables.SUPER_COLUMN_MAP_COLUMN_STR, MapType.getInstance(subComparator, defaultValidator, true), null));
         }
         else
         {
@@ -363,9 +357,9 @@ public class ThriftConversion
                                            : Collections.<AbstractType<?>>singletonList(comparator);
 
             for (int i = 0; i < subTypes.size(); i++)
-                defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, DEFAULT_CLUSTERING_ALIAS + (i + 1), subTypes.get(i), i));
+                defs.add(ColumnDefinition.clusteringKeyDef(ks, cf, CompactTables.DEFAULT_CLUSTERING_NAME + (i + 1), subTypes.get(i), i));
 
-            defs.add(ColumnDefinition.regularDef(ks, cf, DEFAULT_VALUE_ALIAS, defaultValidator, null));
+            defs.add(ColumnDefinition.regularDef(ks, cf, CompactTables.DEFAULT_COMPACT_VALUE_NAME, defaultValidator, null));
         }
     }
 

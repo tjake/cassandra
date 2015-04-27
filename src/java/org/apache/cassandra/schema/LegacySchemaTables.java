@@ -1139,7 +1139,7 @@ public class LegacySchemaTables
         // we need to use the comparator fromString method
         AbstractType<?> comparator = isCQLTable
                                    ? UTF8Type.instance
-                                   : compactTableColumnDefinitionComparator(kind, isSuper, rawComparator, rawSubComparator);
+                                   : CompactTables.columnDefinitionComparator(kind, isSuper, rawComparator, rawSubComparator);
         ColumnIdentifier name = new ColumnIdentifier(comparator.fromString(row.getString("column_name")), comparator);
 
         AbstractType<?> validator = parseType(row.getString("validator"));
@@ -1157,14 +1157,6 @@ public class LegacySchemaTables
             indexName = row.getString("index_name");
 
         return new ColumnDefinition(keyspace, table, name, validator, indexType, indexOptions, indexName, componentIndex, kind);
-    }
-
-    public static AbstractType<?> compactTableColumnDefinitionComparator(ColumnDefinition.Kind kind, boolean isSuper, AbstractType<?> rawComparator, AbstractType<?> rawSubComparator)
-    {
-        if (isSuper)
-            return kind == ColumnDefinition.Kind.REGULAR ? rawSubComparator : UTF8Type.instance;
-        else
-            return kind == ColumnDefinition.Kind.STATIC ? rawComparator : UTF8Type.instance;
     }
 
     /*

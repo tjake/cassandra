@@ -292,19 +292,8 @@ public final class CFMetaData
         List<AbstractType<?>> keyTypes = extractTypes(partitionKeyColumns);
         this.keyValidator = keyTypes.size() == 1 ? keyTypes.get(0) : CompositeType.getInstance(keyTypes);
 
-        Columns regulars = partitionColumns.regulars;
         if (isCompactTable())
-        {
-            if (isSuper())
-            {
-                this.compactValueColumn = columnMetadata.get(ThriftConversion.SUPER_COLUMN_MAP_COLUMN);
-            }
-            else
-            {
-                assert regulars.simpleColumnCount() == 1 && regulars.complexColumnCount() == 0;
-                this.compactValueColumn = regulars.getSimple(0);
-            }
-        }
+            this.compactValueColumn = CompactTables.getCompactValueColumn(partitionColumns, isSuper());
     }
 
     public static CFMetaData create(String ksName,
@@ -597,8 +586,8 @@ public final class CFMetaData
     // sake (those are accessible through thrift but not through CQL currently).
     public Iterator<ColumnDefinition> allColumnsInSelectOrder()
     {
-        final boolean isStaticCompactTable = !isCompound() && !isDense();
-        final boolean noNonPkColumns = isDense && (compactValueColumn().type instanceof EmptyType);
+        final boolean isStaticCompactTable = isStaticCompactTable();
+        final boolean noNonPkColumns = isCompactTable() && CompactTables.hasEmptyCompactValue(this);
         return new AbstractIterator<ColumnDefinition>()
         {
             private final Iterator<ColumnDefinition> partitionKeyIter = partitionKeyColumns.iterator();
@@ -1049,7 +1038,7 @@ public final class CFMetaData
         if (isCounter)
         {
             for (ColumnDefinition def : partitionColumns())
-                if (!(def.type instanceof CounterColumnType) && !def.isSuperColumnMap())
+                if (!(def.type instanceof CounterColumnType) && !CompactTables.isSuperColumnMapColumn(def))
                     throw new ConfigurationException("Cannot add a non counter column (" + def.name + ") in a counter column family");
         }
         else

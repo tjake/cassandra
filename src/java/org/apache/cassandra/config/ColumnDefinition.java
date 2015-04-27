@@ -30,7 +30,6 @@ import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.exceptions.*;
-import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class ColumnDefinition extends ColumnSpecification implements Comparable<ColumnDefinition>
@@ -425,12 +424,6 @@ public class ColumnDefinition extends ColumnSpecification implements Comparable<
     public boolean isComplex()
     {
         return cellPathComparator != null;
-    }
-
-    public boolean isSuperColumnMap()
-    {
-        // We use a special map column with an empty name to store "dynamic" values for super columns.
-        return kind == Kind.REGULAR && name.bytes.equals(ThriftConversion.SUPER_COLUMN_MAP_COLUMN);
     }
 
     public CellPath.Serializer cellPathSerializer()

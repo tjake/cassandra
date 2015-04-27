@@ -34,7 +34,6 @@ import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
-import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
@@ -142,14 +141,14 @@ public class CreateTableStatement extends SchemaAlteringStatement
         // Compact tables always have a clustering and a single regular value.
         if (isStaticCompact)
         {
-            builder.addClusteringColumn(ThriftConversion.DEFAULT_CLUSTERING_ALIAS + 1, UTF8Type.instance);
-            builder.addRegularColumn(ThriftConversion.DEFAULT_VALUE_ALIAS, BytesType.instance);
+            builder.addClusteringColumn(CompactTables.DEFAULT_CLUSTERING_NAME + 1, UTF8Type.instance);
+            builder.addRegularColumn(CompactTables.DEFAULT_COMPACT_VALUE_NAME, BytesType.instance);
         }
         else if (isDense && !builder.hasRegulars())
         {
             // Even for dense, we might not have our regular column if it wasn't part of the declaration. If
             // that's the case, add it but with a specific EmptyType so we can recognize that case later
-            builder.addRegularColumn(ThriftConversion.DEFAULT_VALUE_ALIAS, EmptyType.instance);
+            builder.addRegularColumn(CompactTables.DEFAULT_COMPACT_VALUE_NAME, EmptyType.instance);
         }
 
         return builder;
