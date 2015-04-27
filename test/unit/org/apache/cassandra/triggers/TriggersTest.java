@@ -313,7 +313,7 @@ public class TriggersTest
     private org.apache.cassandra.thrift.Column getColumnForInsert(String columnName, int value)
     {
         org.apache.cassandra.thrift.Column column = new org.apache.cassandra.thrift.Column();
-        column.setName(Schema.instance.getCFMetaData(ksName, cfName).comparator.subtype(0).fromString(columnName));
+        column.setName(LegacyLayout.makeLegacyComparator(Schema.instance.getCFMetaData(ksName, cfName)).fromString(columnName));
         column.setValue(bytes(value));
         column.setTimestamp(System.currentTimeMillis());
         return column;

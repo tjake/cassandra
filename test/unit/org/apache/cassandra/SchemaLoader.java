@@ -480,8 +480,11 @@ public class SchemaLoader
     }
     public static CFMetaData compositeIndexCFMD(String ksName, String cfName, final Boolean withIdxType) throws ConfigurationException
     {
-        final CompositeType composite = CompositeType.getInstance(Arrays.asList(new AbstractType<?>[]{UTF8Type.instance, UTF8Type.instance}));
-        CFMetaData cfm = CFMetaData.Builder.create(ksName, cfName).addPartitionKey("key", BytesType.instance).addClusteringColumn("col",composite).build();
+        CFMetaData cfm = CFMetaData.Builder.create(ksName, cfName)
+                                           .addPartitionKey("key", BytesType.instance)
+                                           .addClusteringColumn("c1", UTF8Type.instance)
+                                           .addClusteringColumn("c2", UTF8Type.instance)
+                                           .build();
 
         ByteBuffer cName = ByteBufferUtil.bytes("col1");
         IndexType idxType = withIdxType ? IndexType.COMPOSITES : null;

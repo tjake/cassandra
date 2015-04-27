@@ -99,7 +99,7 @@ public class PartitionRangeReadTest
         cfs.clearUnsafe();
 
         // Create a cell a 'high timestamp'
-        new RowUpdateBuilder(cfs.metadata, 20, key).add("val", "val1").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 20, key).clustering("c").add("val", "val1").build().applyUnsafe();
         cfs.forceBlockingFlush();
 
         // Nuke the metadata and reload that sstable
@@ -117,7 +117,7 @@ public class PartitionRangeReadTest
         cfs.loadNewSSTables();
 
         // Add another cell with a lower timestamp
-        new RowUpdateBuilder(cfs.metadata, 10, key).add("val", "val2").build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 10, key).clustering("c").add("val", "val2").build().applyUnsafe();
 
         // Test fetching the cell by name returns the first cell
         try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
@@ -194,6 +194,7 @@ public class PartitionRangeReadTest
         for (int i = 0; i < 10; ++i)
         {
             RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 10, String.valueOf(i));
+            builder.clustering("c");
             builder.add("val", String.valueOf(i));
             builder.build().applyUnsafe();
         }

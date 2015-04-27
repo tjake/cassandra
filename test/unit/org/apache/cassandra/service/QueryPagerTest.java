@@ -159,11 +159,11 @@ public class QueryPagerTest
 
     private static SinglePartitionSliceCommand sliceQuery(String key, String start, String end, boolean reversed, int count)
     {
-
         ClusteringComparator cmp = cfs().getComparator();
         CFMetaData metadata = cfs().metadata;
 
-        SlicePartitionFilter filter = new SlicePartitionFilter(metadata.partitionColumns(), Slices.with(cmp, Slice.make(cmp, cmp.make(start), cmp.make(end))), false);
+        Slice slice = Slice.make(cmp, cmp.make(start), cmp.make(end));
+        SlicePartitionFilter filter = new SlicePartitionFilter(metadata.partitionColumns(), Slices.with(cmp, slice), reversed);
 
         SinglePartitionSliceCommand command = new SinglePartitionSliceCommand(cfs().metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, Util.dk(key), filter);
 
@@ -178,7 +178,8 @@ public class QueryPagerTest
             builder.addClustering(name);
 
         builder.setKeyBounds(bytes(keyStart), bytes(keyEnd))
-                .setPagingLimit(count);
+               .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
+               .setPagingLimit(count);
 
         return builder.build();
     }
@@ -188,6 +189,7 @@ public class QueryPagerTest
         PartitionRangeReadBuilder builder = new PartitionRangeReadBuilder(cfs());
 
         builder.setKeyBounds(bytes(keyStart), bytes(keyEnd))
+                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
                 .setClusteringLowerBound(true, bytes(start))
                 .setClusteringUpperBound(true, bytes(end))
                 .setPagingLimit(count);
@@ -257,7 +259,7 @@ public class QueryPagerTest
     @Test
     public void reversedSliceQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(sliceQuery("k0", "c8", "c1", true, 10));
+        QueryPager pager = QueryPagers.localPager(sliceQuery("k0", "c1", "c8", true, 10));
 
         DataIterator page;
 
@@ -318,13 +320,13 @@ public class QueryPagerTest
         DataIterator page;
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
+        page = pager.fetchPage(3 * 3);
         List<ReadPartition> partitions = assertSize(page, 3);
         for (int i = 1; i <= 3; i++)
             assertRow(partitions.get(i-1), "k" + i, "c1", "c4", "c8");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
+        page = pager.fetchPage(3 * 3);
         partitions = assertSize(page, 2);
         for (int i = 4; i <= 5; i++)
             assertRow(partitions.get(i-4), "k" + i, "c1", "c4", "c8");

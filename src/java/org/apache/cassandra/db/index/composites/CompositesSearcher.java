@@ -100,21 +100,24 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                     nextEntry = index.decodeEntry(indexKey, indexHits.next());
                 }
 
-
                 // Gather all index hits belonging to the same partition and query the data for those hits.
                 // TODO: it's much more efficient to do 1 read for all hits to the same partition than doing
                 // 1 read per index hit. However, this basically mean materializing all hits for a partition
                 // in memory so we should consider adding some paging mechanism. However, index hits should
-                // be relatively small so it's much betterthat the previous  code that was materializing all
+                // be relatively small so it's much better than the previous code that was materializing all
                 // *data* for a given partition.
                 SortedSet<Clustering> clusterings = new TreeSet<>(baseCfs.getComparator());
+                Map<Clustering, CompositesIndex.IndexedEntry> entries = new HashMap<>();
                 DecoratedKey partitionKey = baseCfs.partitioner.decorateKey(nextEntry.indexedKey);
 
                 while (nextEntry != null && partitionKey.getKey().equals(nextEntry.indexedKey))
                 {
                     // We're queried a slice of the index, but some hits may not match some of the clustering column constraints
                     if (isMatchingEntry(partitionKey, nextEntry, command))
-                        clusterings.add(nextEntry.indexedEntryClustering.takeAlias());
+                    {
+                        clusterings.add(nextEntry.indexedEntryClustering);
+                        entries.put(nextEntry.indexedEntryClustering, nextEntry);
+                    }
 
                     nextEntry = indexHits.hasNext() ? index.decodeEntry(indexKey, indexHits.next()) : null;
                 }
@@ -131,7 +134,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                                                                                      DataLimits.NONE,
                                                                                      partitionKey,
                                                                                      filter);
-                AtomIterator dataIter = filterStaleEntries(dataCmd.queryMemtableAndDisk(baseCfs), index, indexKey.getKey());
+                AtomIterator dataIter = filterStaleEntries(dataCmd.queryMemtableAndDisk(baseCfs), index, indexKey.getKey(), entries, writeOp);
                 if (AtomIterators.isEmpty(dataIter))
                 {
                     dataIter.close();
@@ -156,7 +159,11 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         };
     }
 
-    private AtomIterator filterStaleEntries(AtomIterator dataIter, final CompositesIndex index, final ByteBuffer indexValue)
+    private AtomIterator filterStaleEntries(AtomIterator dataIter,
+                                            final CompositesIndex index,
+                                            final ByteBuffer indexValue,
+                                            final Map<Clustering, CompositesIndex.IndexedEntry> entries,
+                                            final OpOrder.Group writeOp)
     {
         return new WrappingAtomIterator(dataIter)
         {
@@ -187,9 +194,15 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                 while (next == null && super.hasNext())
                 {
                     next = super.next();
-                    if (next.kind() != Atom.Kind.ROW || !index.isStale((Row)next, indexValue))
+                    if (next.kind() != Atom.Kind.ROW)
                         return true;
 
+                    Row row = (Row)next;
+                    if (!index.isStale(row, indexValue))
+                        return true;
+
+                    // The entry is stale: delete the entry and ignore otherwise
+                    index.delete(entries.get(row.clustering()), writeOp, nowInSec());
                     next = null;
                 }
                 return false;

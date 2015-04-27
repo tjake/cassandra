@@ -91,7 +91,7 @@ public class StreamingTransferTest
                 SimpleStrategy.class,
                 KSMetaData.optsWithRF(1),
                 SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD),
-                CFMetaData.Builder.create(KEYSPACE1, CF_COUNTER, false, false, true)
+                CFMetaData.Builder.create(KEYSPACE1, CF_COUNTER, false, true, true)
                         .addPartitionKey("key", BytesType.instance)
                         .build(),
                 CFMetaData.Builder.create(KEYSPACE1, CF_STANDARDINT)
@@ -202,22 +202,24 @@ public class StreamingTransferTest
         assertEquals(1, cfs.getSSTables().size());
 
         // and that the index and filter were properly recovered
-        PartitionIterator iterator = Util.getRangeSlice(cfs);
-        for (int i = 0; i < offs.length; i++)
+        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
         {
-            String key = "key" + offs[i];
-            String col = "col" + offs[i];
+            for (int i = 0; i < offs.length; i++)
+            {
+                String key = "key" + offs[i];
+                String col = "col" + offs[i];
 
-            SinglePartitionReadCommand readCommand = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk(key), Slices.ALL);
+                SinglePartitionReadCommand readCommand = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk(key), Slices.ALL);
 
-            assert readCommand.executeLocally(cfs).hasNext();
-            RowIterator row = new RowIteratorFromAtomIterator(iterator.next());
-            assert ByteBufferUtil.compareUnsigned(row.partitionKey().getKey(), ByteBufferUtil.bytes(key)) == 0;
-            assert ByteBufferUtil.compareUnsigned(row.next().clustering().get(0), ByteBufferUtil.bytes(col)) == 0;
+                assert readCommand.executeLocally(cfs).hasNext();
+                RowIterator row = new RowIteratorFromAtomIterator(iterator.next());
+                assert ByteBufferUtil.compareUnsigned(row.partitionKey().getKey(), ByteBufferUtil.bytes(key)) == 0;
+                assert ByteBufferUtil.compareUnsigned(row.next().clustering().get(0), ByteBufferUtil.bytes(col)) == 0;
+            }
+
+            // and no extra partitions
+            assert !iterator.hasNext();
         }
-
-        // and no extra partitions
-        assert !iterator.hasNext();
 
         // and that the max timestamp for the file was rediscovered
         assertEquals(timestamp, cfs.getSSTables().iterator().next().getMaxTimestamp());
@@ -346,24 +348,24 @@ public class StreamingTransferTest
         // confirm that a single SSTable was transferred and registered
         assertEquals(1, cfs.getSSTables().size());
 
-        PartitionIterator rows = Util.getRangeSlice(cfs);
-        RowIterator it = new RowIteratorFromAtomIterator(rows.next());
-
-        Assert.assertTrue(!rows.hasNext());
-        Row r = it.next();
-
-        Assert.assertFalse(r.isEmpty());
-
-        Assert.assertTrue(1 == Int32Type.instance.compose(r.clustering().get(0)));
-
-        boolean failed = false;
-        while (it.hasNext())
+        try (PartitionIterator rows = Util.getRangeSlice(cfs))
         {
-            failed = true;
-            System.err.println(it.next().toString(cfs.metadata, true));
-        }
+            RowIterator it = new RowIteratorFromAtomIterator(rows.next());
 
-        Assert.assertFalse(failed);
+            Assert.assertTrue(!rows.hasNext());
+            Row r = it.next();
+
+            Assert.assertFalse(r.isEmpty());
+
+            Assert.assertTrue(1 == Int32Type.instance.compose(r.clustering().get(0)));
+
+            boolean failed = false;
+            while (it.hasNext())
+            {
+                failed = true;
+            }
+            Assert.assertFalse(failed);
+        }
     }
 
     @Test

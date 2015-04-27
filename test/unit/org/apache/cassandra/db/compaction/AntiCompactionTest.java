@@ -153,6 +153,7 @@ public class AntiCompactionTest
     {
         DecoratedKey dk = Util.dk("key1");
         new RowUpdateBuilder(cfm, System.currentTimeMillis(), "key1")
+                .clustering("c")
                 .add("val", "value1")
                 .build()
                 .applyUnsafe();
@@ -174,6 +175,7 @@ public class AntiCompactionTest
         {
             String localSuffix = Integer.toString(i);
             new RowUpdateBuilder(cfm, System.currentTimeMillis(), localSuffix + "-" + Suffix)
+                    .clustering("c")
                     .add("val", "val" + localSuffix)
                     .build()
                     .applyUnsafe();
@@ -293,6 +295,7 @@ public class AntiCompactionTest
         for (int i = 0; i < 10; i++)
         {
             new RowUpdateBuilder(cfm, System.currentTimeMillis(), Integer.toString(i))
+                .clustering("c")
                 .add("val", "val")
                 .build()
                 .applyUnsafe();

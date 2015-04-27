@@ -206,15 +206,10 @@ public class CleanupTest
             String key = String.valueOf(i);
             // create a row and update the birthdate value, test that the index query fetches the new version
             new RowUpdateBuilder(cfs.metadata, System.currentTimeMillis(), ByteBufferUtil.bytes(key))
+                    .clustering(COLUMN)
                     .add(colName, VALUE)
                     .build()
                     .applyUnsafe();
-            /*
-            Mutation rm;
-            rm = new Mutation(KEYSPACE1, ByteBufferUtil.bytes(key));
-            rm.add(cfs.name, Util.cellname(COLUMN), VALUE, System.currentTimeMillis());
-            rm.applyUnsafe();
-            */
         }
 
         cfs.forceBlockingFlush();

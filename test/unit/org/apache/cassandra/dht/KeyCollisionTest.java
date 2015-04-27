@@ -117,7 +117,7 @@ public class KeyCollisionTest
     private void insert(String key)
     {
         RowUpdateBuilder builder = new RowUpdateBuilder(Schema.instance.getCFMetaData(KEYSPACE1, CF), FBUtilities.timestampMicros(), key);
-        builder.add("val", "asdf").build().applyUnsafe();
+        builder.clustering("c").add("val", "asdf").build().applyUnsafe();
     }
 
     static class BigIntegerToken extends ComparableObjectToken<BigInteger>
