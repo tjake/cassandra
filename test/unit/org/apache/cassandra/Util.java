@@ -341,15 +341,18 @@ public class Util
             assert e.getClass().equals(exception) : e.getClass().getName() + " is not " + exception.getName();
             thrown = true;
         }
+
         assert thrown : exception.getName() + " not received";
     }
 
+    @SuppressWarnings("rawtypes")
     public static AtomIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
     {
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);
         return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
+    @SuppressWarnings("rawtypes")
     public static AtomIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
     {
         SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), Slices.ALL, false);
@@ -357,7 +360,9 @@ public class Util
         return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
-    public static AtomIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end) {
+    @SuppressWarnings("rawtypes")
+    public static AtomIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
+    {
         Slices.Builder sb = new Slices.Builder(cfs.getComparator());
         SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), sb.build(), false);
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, key, filter);

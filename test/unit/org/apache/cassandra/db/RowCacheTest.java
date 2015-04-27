@@ -21,18 +21,15 @@ package org.apache.cassandra.db;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.cache.CachingOptions;
-import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
@@ -42,7 +39,6 @@ import org.apache.cassandra.db.atoms.Atom;
 import org.apache.cassandra.db.atoms.AtomIterator;
 import org.apache.cassandra.db.atoms.Cell;
 import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.NamesPartitionFilter;
 import org.apache.cassandra.db.marshal.IntegerType;
@@ -55,8 +51,6 @@ import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
-
-import com.google.common.base.Charsets;
 
 import static org.junit.Assert.*;
 
@@ -271,7 +265,8 @@ public class RowCacheTest
         DecoratedKey dk = cachedStore.partitioner.decorateKey(key);
         RowCacheKey rck = new RowCacheKey(cachedStore.metadata.cfId, dk);
         String values[] = new String[200];
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 200; i++)
+        {
             RowUpdateBuilder rub = new RowUpdateBuilder(cachedStore.metadata, System.currentTimeMillis(), key);
             rub.clustering(String.valueOf(i));
             values[i] = "val" + i;
