@@ -204,14 +204,14 @@ public abstract class AtomIterators
      */
     public static AtomIterator concat(final AtomIterator iter1, final AtomIterator iter2)
     {
-        assert iter1.metadata().cfId.equals(iter2.metadata().cfId)
-            && iter1.partitionKey().equals(iter2.partitionKey())
-            && iter1.partitionLevelDeletion().equals(iter2.partitionLevelDeletion())
-            && iter1.isReverseOrder() == iter2.isReverseOrder()
-            && iter1.columns().equals(iter2.columns())
-            && iter1.staticRow().equals(iter2.staticRow())
-            && iter1.stats().equals(iter2.stats())
-            && iter1.nowInSec() == iter2.nowInSec();
+        assert iter1.metadata().cfId.equals(iter2.metadata().cfId);
+            assert iter1.partitionKey().equals(iter2.partitionKey());
+            assert iter1.partitionLevelDeletion().equals(iter2.partitionLevelDeletion());
+            assert iter1.isReverseOrder() == iter2.isReverseOrder();
+            assert iter1.columns().equals(iter2.columns());
+            assert iter1.staticRow().equals(iter2.staticRow());
+            assert iter1.stats().equals(iter2.stats());
+            assert iter1.nowInSec() == iter2.nowInSec();
 
         return new AbstractAtomIterator(iter1.metadata(),
                                         iter1.partitionKey(),
