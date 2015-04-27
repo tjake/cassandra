@@ -205,4 +205,21 @@ public class AtomStats
             return new AtomStats(minTimestamp, minLocalDeletionTime, minTTL, avgColumnSetPerRow);
         }
     }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (o == this) return true;
+
+        if (o instanceof AtomStats)
+        {
+            AtomStats other = (AtomStats)o;
+            if (avgColumnSetPerRow == other.avgColumnSetPerRow
+                    && minLocalDeletionTime == other.minLocalDeletionTime
+                    && minTimestamp == other.minTimestamp
+                    && minTTL == other.minTTL)
+                return true;
+        }
+        return false;
+    }
 }
