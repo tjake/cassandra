@@ -390,10 +390,11 @@ public class SchemaLoader
 
     public static CFMetaData counterCFMD(String ksName, String cfName)
     {
-        return  CFMetaData.Builder.create(ksName, cfName, false, true, true)
+        return CFMetaData.Builder.create(ksName, cfName, false, true, true)
                 .addPartitionKey("key", AsciiType.instance)
                 .addClusteringColumn("name", AsciiType.instance)
                 .addRegularColumn("val", CounterColumnType.instance)
+                .addRegularColumn("val2", CounterColumnType.instance)
                 .build();
     }
 

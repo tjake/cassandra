@@ -114,6 +114,11 @@ public abstract class AbstractReadCommandBuilder
         return build().executeLocally();
     }
 
+    public Util.OnlyRow getOnlyRow()
+    {
+        return new Util.OnlyRow(build().executeLocally());
+    }
+
     public static List<Row> getRowList(DataIterator iter)
     {
         List<Row> results = new ArrayList<>();
