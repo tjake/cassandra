@@ -59,6 +59,11 @@ public abstract class AbstractFilteringIterator extends WrappingPartitionIterato
         return true;
     }
 
+    // Called when a particular partition is skipped due to being empty post filtering
+    protected void onEmpty(DecoratedKey key)
+    {
+    }
+
     public boolean hasNext()
     {
         while (next == null && super.hasNext())
@@ -69,6 +74,7 @@ public abstract class AbstractFilteringIterator extends WrappingPartitionIterato
                 next = new FilteringIterator(atomIter);
                 if (!isForThrift() && AtomIterators.isEmpty(next))
                 {
+                    onEmpty(atomIter.partitionKey());
                     atomIter.close();
                     next = null;
                 }

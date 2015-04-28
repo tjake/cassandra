@@ -121,26 +121,19 @@ public class SSTableRewriter
         DecoratedKey key = partition.partitionKey();
         maybeReopenEarly(key);
         RowIndexEntry index = writer.append(partition);
-        if (!isOffline)
+        if (!isOffline && index != null)
         {
-            if (index == null)
+            boolean save = false;
+            for (SSTableReader reader : rewriting)
             {
-                cfs.invalidateCachedPartition(key);
-            }
-            else
-            {
-                boolean save = false;
-                for (SSTableReader reader : rewriting)
+                if (reader.getCachedPosition(key, false) != null)
                 {
-                    if (reader.getCachedPosition(key, false) != null)
-                    {
-                        save = true;
-                        break;
-                    }
+                    save = true;
+                    break;
                 }
-                if (save)
-                    cachedKeys.put(key, index);
             }
+            if (save)
+                cachedKeys.put(key, index);
         }
         return index;
     }

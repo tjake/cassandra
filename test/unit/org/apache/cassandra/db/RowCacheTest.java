@@ -22,7 +22,6 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -40,6 +39,7 @@ import org.apache.cassandra.db.atoms.AtomIterator;
 import org.apache.cassandra.db.atoms.Cell;
 import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.compaction.CompactionManager;
+import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.filter.NamesPartitionFilter;
 import org.apache.cassandra.db.marshal.IntegerType;
 import org.apache.cassandra.db.partitions.CachedPartition;
@@ -114,7 +114,7 @@ public class RowCacheTest
 
         CachedPartition cachedCf = (CachedPartition)CacheService.instance.rowCache.get(rck);
         assertEquals(cachedCf.rowCount(), 1);
-        for (Atom atom : Util.once(cachedCf.atomIterator(cachedCf.columns(), Slices.ALL, false, FBUtilities.nowInSeconds())))
+        for (Atom atom : Util.once(cachedCf.atomIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
         {
             Row r = (Row)atom;
 
@@ -153,7 +153,7 @@ public class RowCacheTest
 
             // checking if cell is read correctly after cache
             CachedPartition cp = cachedStore.getRawCachedPartition(key);
-            try (AtomIterator ai = cp.atomIterator(cp.columns(), Slices.ALL, false, (int)TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis())))
+            try (AtomIterator ai = cp.atomIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
             {
                 assert ai.hasNext();
                 Row r = (Row)ai.next();
@@ -180,7 +180,7 @@ public class RowCacheTest
 
             // checking if cell is read correctly after cache
             CachedPartition cp = cachedStore.getRawCachedPartition(key);
-            try (AtomIterator ai = cp.atomIterator(cp.columns(), Slices.ALL, false, (int)TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis())))
+            try (AtomIterator ai = cp.atomIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
             {
                 assert ai.hasNext();
                 Row r = (Row)ai.next();
@@ -306,7 +306,7 @@ public class RowCacheTest
         assertEquals(cachedCf.rowCount(), 100);
         int i = 0;
 
-        for (Atom atom : Util.once(cachedCf.atomIterator(cachedCf.columns(), Slices.ALL, false, FBUtilities.nowInSeconds())))
+        for (Atom atom : Util.once(cachedCf.atomIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
         {
             Row r = (Row)atom;
 
