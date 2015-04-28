@@ -20,6 +20,7 @@ package org.apache.cassandra.service.pager;
 import java.util.List;
 
 import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.DataIterators;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 
@@ -44,6 +45,29 @@ import org.apache.cassandra.exceptions.RequestValidationException;
  */
 public interface QueryPager
 {
+    public static final QueryPager EMPTY = new QueryPager()
+    {
+        public DataIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+        {
+            return DataIterators.EMPTY;
+        }
+
+        public boolean isExhausted()
+        {
+            return true;
+        }
+
+        public int maxRemaining()
+        {
+            return 0;
+        }
+
+        public PagingState state()
+        {
+            return null;
+        }
+    };
+
     /**
      * Fetches the next page.
      *

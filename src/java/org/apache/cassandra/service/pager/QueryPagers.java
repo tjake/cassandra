@@ -31,56 +31,11 @@ import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
 
 /**
- * Static utility methods to create query pagers.
+ * Static utility methods for paging.
  */
 public class QueryPagers
 {
     private QueryPagers() {};
-
-    public static SinglePartitionPager pager(SinglePartitionReadCommand command, ConsistencyLevel consistencyLevel, ClientState cState, boolean local, PagingState state)
-    {
-        return new SinglePartitionPager(command, consistencyLevel, cState, local, state);
-    }
-
-    private static QueryPager pager(ReadQuery command, ConsistencyLevel consistencyLevel, ClientState cState, boolean local, PagingState state)
-    {
-        if (command instanceof SinglePartitionReadCommand.Group)
-        {
-            SinglePartitionReadCommand.Group group = (SinglePartitionReadCommand.Group)command;
-            if (group.commands.size() == 1)
-                return pager(group.commands.get(0), consistencyLevel, cState, local, state);
-
-            return new MultiPartitionPager(group.commands, consistencyLevel, cState, local, state, group.limits());
-        }
-        else if (command instanceof SinglePartitionReadCommand)
-        {
-            return pager((SinglePartitionReadCommand)command, consistencyLevel, cState, local, state);
-        }
-        else
-        {
-            assert command instanceof PartitionRangeReadCommand;
-            PartitionRangeReadCommand rangeCommand = (PartitionRangeReadCommand)command;
-            if (rangeCommand.isNamesQuery())
-                return new RangeNamesQueryPager(rangeCommand, consistencyLevel, local, state);
-            else
-                return new RangeSliceQueryPager(rangeCommand, consistencyLevel, local, state);
-        }
-    }
-
-    public static QueryPager pager(ReadQuery command, ConsistencyLevel consistencyLevel, ClientState cState)
-    {
-        return pager(command, consistencyLevel, cState, false, null);
-    }
-
-    public static QueryPager pager(ReadQuery command, ConsistencyLevel consistencyLevel, ClientState cState, PagingState state)
-    {
-        return pager(command, consistencyLevel, cState, false, state);
-    }
-
-    public static QueryPager localPager(ReadQuery command)
-    {
-        return pager(command, null, null, true, null);
-    }
 
     /**
      * Convenience method that count (live) cells/rows for a given slice of a row, but page underneath.
@@ -96,7 +51,7 @@ public class QueryPagers
                                  boolean isForThrift) throws RequestValidationException, RequestExecutionException
     {
         SinglePartitionReadCommand command = SinglePartitionReadCommand.create(isForThrift, metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
-        final SinglePartitionPager pager = new SinglePartitionPager(command, consistencyLevel, state, false);
+        final SinglePartitionPager pager = new SinglePartitionPager(command, consistencyLevel, state, false, null);
 
         int count = 0;
         while (!pager.isExhausted())

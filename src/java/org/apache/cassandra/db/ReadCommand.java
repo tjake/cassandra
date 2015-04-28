@@ -44,7 +44,7 @@ import org.apache.cassandra.tracing.Tracing;
  * <p>
  * This contains all the informations needed to do a local read.
  */
-public abstract class ReadCommand extends ReadQuery
+public abstract class ReadCommand implements ReadQuery
 {
     protected static final Logger logger = LoggerFactory.getLogger(ReadCommand.class);
 

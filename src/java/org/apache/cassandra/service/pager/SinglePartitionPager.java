@@ -48,17 +48,11 @@ public class SinglePartitionPager extends AbstractQueryPager
 
     private volatile Clustering lastReturned;
 
-    // Don't use directly, use QueryPagers method instead
-    SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery)
+    public SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
     {
         super(consistencyLevel, localQuery, command.metadata(), command.limits());
         this.command = command;
         this.cstate = cstate;
-    }
-
-    SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
-    {
-        this(command, consistencyLevel, cstate, localQuery);
 
         if (state != null)
         {

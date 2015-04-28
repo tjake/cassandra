@@ -26,7 +26,6 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.marshal.ReversedType;
 import org.apache.cassandra.db.columniterator.SSTableIterator;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
@@ -155,14 +154,8 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
         if (!selectsAllPartition())
             sb.append(slices.toCQLString(metadata));
 
-        if (reversed)
-        {
-            sb.append(" ORDER BY (");
-            int i = 0;
-            for (ColumnDefinition column : metadata.clusteringColumns())
-                sb.append(i++ == 0 ? "" : ", ").append(column.name).append(column.type instanceof ReversedType ? " ASC" : " DESC");
-            sb.append(")");
-        }
+        appendOrderByToCQLString(metadata, sb);
+
         return sb.toString();
     }
 
@@ -184,106 +177,4 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
             return new SlicePartitionFilter(columns, slices, reversed);
         }
     }
-
-    // From SliceQueryFilter
-    //public static class Serializer implements IVersionedSerializer<SliceQueryFilter>
-    //{
-    //    private CType type;
-
-    //    public Serializer(CType type)
-    //    {
-    //        this.type = type;
-    //    }
-
-    //    public void serialize(SliceQueryFilter f, DataOutputPlus out, int version) throws IOException
-    //    {
-    //        out.writeInt(f.slices.length);
-    //        for (ColumnSlice slice : f.slices)
-    //            type.sliceSerializer().serialize(slice, out, version);
-    //        out.writeBoolean(f.reversed);
-    //        int count = f.count;
-    //        out.writeInt(count);
-
-    //        out.writeInt(f.compositesToGroup);
-    //    }
-
-    //    public SliceQueryFilter deserialize(DataInput in, int version) throws IOException
-    //    {
-    //        ColumnSlice[] slices;
-    //        slices = new ColumnSlice[in.readInt()];
-    //        for (int i = 0; i < slices.length; i++)
-    //            slices[i] = type.sliceSerializer().deserialize(in, version);
-    //        boolean reversed = in.readBoolean();
-    //        int count = in.readInt();
-    //        int compositesToGroup = -1;
-    //        compositesToGroup = in.readInt();
-
-    //        return new SliceQueryFilter(slices, reversed, count, compositesToGroup);
-    //    }
-
-    //    public long serializedSize(SliceQueryFilter f, int version)
-    //    {
-    //        TypeSizes sizes = TypeSizes.NATIVE;
-
-    //        int size = 0;
-    //        size += sizes.sizeof(f.slices.length);
-    //        for (ColumnSlice slice : f.slices)
-    //            size += type.sliceSerializer().serializedSize(slice, version);
-    //        size += sizes.sizeof(f.reversed);
-    //        size += sizes.sizeof(f.count);
-
-    //        size += sizes.sizeof(f.compositesToGroup);
-    //        return size;
-    //    }
-    //}
-
-    // From IDiskAtomFilter
-    //public static class Serializer implements IVersionedSerializer<IDiskAtomFilter>
-    //{
-    //    private final CellNameType type;
-
-    //    public Serializer(CellNameType type)
-    //    {
-    //        this.type = type;
-    //    }
-
-    //    public void serialize(IDiskAtomFilter filter, DataOutputPlus out, int version) throws IOException
-    //    {
-    //        if (filter instanceof SliceQueryFilter)
-    //        {
-    //            out.writeByte(0);
-    //            type.sliceQueryFilterSerializer().serialize((SliceQueryFilter)filter, out, version);
-    //        }
-    //        else
-    //        {
-    //            out.writeByte(1);
-    //            type.namesQueryFilterSerializer().serialize((NamesQueryFilter)filter, out, version);
-    //        }
-    //    }
-
-    //    public IDiskAtomFilter deserialize(DataInput in, int version) throws IOException
-    //    {
-    //        int b = in.readByte();
-    //        if (b == 0)
-    //        {
-    //            return type.sliceQueryFilterSerializer().deserialize(in, version);
-    //        }
-    //        else
-    //        {
-    //            assert b == 1;
-    //            return type.namesQueryFilterSerializer().deserialize(in, version);
-    //        }
-    //    }
-
-    //    public long serializedSize(IDiskAtomFilter filter, int version)
-    //    {
-    //        int size = 1;
-    //        if (filter instanceof SliceQueryFilter)
-    //            size += type.sliceQueryFilterSerializer().serializedSize((SliceQueryFilter)filter, version);
-    //        else
-    //            size += type.namesQueryFilterSerializer().serializedSize((NamesQueryFilter)filter, version);
-    //        return size;
-    //    }
-    //}
-
 }

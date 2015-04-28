@@ -42,17 +42,11 @@ public class RangeNamesQueryPager extends AbstractQueryPager
     private final PartitionRangeReadCommand command;
     private volatile DecoratedKey lastReturnedKey;
 
-    // Don't use directly, use QueryPagers method instead
-    RangeNamesQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery)
+    public RangeNamesQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
     {
         super(consistencyLevel, localQuery, command.metadata(), command.limits());
         this.command = command;
         assert command.isNamesQuery();
-    }
-
-    RangeNamesQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
-    {
-        this(command, consistencyLevel, localQuery);
 
         if (state != null)
         {

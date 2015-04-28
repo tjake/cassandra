@@ -47,17 +47,11 @@ public class RangeSliceQueryPager extends AbstractQueryPager
     private volatile DecoratedKey lastReturnedKey;
     private volatile Clustering lastReturnedClustering;
 
-    // Don't use directly, use QueryPagers method instead
-    RangeSliceQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery)
+    public RangeSliceQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
     {
         super(consistencyLevel, localQuery, command.metadata(), command.limits());
         this.command = command;
         assert !command.isNamesQuery();
-    }
-
-    RangeSliceQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
-    {
-        this(command, consistencyLevel, localQuery);
 
         if (state != null)
         {

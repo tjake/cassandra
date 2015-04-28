@@ -124,20 +124,6 @@ public abstract class Selection
     }
 
     /**
-     * Checks if this selection contains any partition key columns.
-     *
-     * @return <code>true</code> if this selection contains a partition key column, <code>false</code> otherwise.
-     */
-    public boolean containsPartitionKeyColumns()
-    {
-        for (ColumnDefinition def : getColumns())
-            if (def.isPartitionKey())
-                return true;
-
-        return false;
-    }
-
-    /**
      * Returns the index of the specified column.
      *
      * @param def the column definition

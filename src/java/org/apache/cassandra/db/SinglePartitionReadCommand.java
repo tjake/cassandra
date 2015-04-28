@@ -33,6 +33,7 @@ import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.service.*;
+import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 
@@ -195,6 +196,21 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
     public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
         return StorageProxy.read(Group.one(this), consistency, clientState);
+    }
+
+    public SinglePartitionPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
+    {
+        return getPager(this, consistency, clientState, pagingState, false);
+    }
+
+    public SinglePartitionPager getLocalPager()
+    {
+        return getPager(this, null, null, null, true);
+    }
+
+    private static SinglePartitionPager getPager(SinglePartitionReadCommand command, ConsistencyLevel consistency, ClientState clientState, PagingState pagingState, boolean local)
+    {
+        return new SinglePartitionPager(command, consistency, clientState, local, pagingState);
     }
 
     protected PartitionIterator queryStorage(final ColumnFamilyStore cfs)
@@ -442,7 +458,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
     /**
      * Groups multiple single partition read commands.
      */
-    public static class Group extends ReadQuery
+    public static class Group implements ReadQuery
     {
         public final List<SinglePartitionReadCommand<?>> commands;
         private final DataLimits limits;
@@ -469,7 +485,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             return limits;
         }
 
-        protected CFMetaData metadata()
+        public CFMetaData metadata()
         {
             return commands.get(0).metadata();
         }
@@ -482,6 +498,24 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
 
             // Because we only have enforce the limit per command, we need to enforce it globally.
             return limits.filter(DataIterators.concat(partitions));
+        }
+
+        public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
+        {
+            return getPager(consistency, clientState, pagingState, false);
+        }
+
+        public QueryPager getLocalPager()
+        {
+            return getPager(null, null, null, true);
+        }
+
+        private QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState, boolean local)
+        {
+            if (commands.size() == 1)
+                return getPager(commands.get(0), consistency, clientState, pagingState, local);
+
+            return new MultiPartitionPager(commands, consistency, clientState, local, pagingState, limits);
         }
     }
 

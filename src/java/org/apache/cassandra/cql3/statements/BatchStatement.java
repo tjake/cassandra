@@ -382,7 +382,7 @@ public class BatchStatement implements CQLStatement
                 key = StorageService.getPartitioner().decorateKey(pks.get(0));
                 ksName = statement.cfm.ksName;
                 cfName = statement.cfm.cfName;
-                casRequest = new CQL3CasRequest(statement.cfm, key, true, updatedColumns, updatesRegularRows, updatesStaticRow);
+                casRequest = new CQL3CasRequest(statement.cfm, key, true, conditionColumns, updatesRegularRows, updatesStaticRow);
             }
             else if (!key.getKey().equals(pks.get(0)))
             {

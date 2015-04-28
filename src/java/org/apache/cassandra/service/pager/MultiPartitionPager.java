@@ -44,7 +44,7 @@ import org.apache.cassandra.service.ClientState;
  * cfs meanRowSize to decide if parallelizing some of the command might be worth it while being confident we don't
  * blow out memory.
  */
-class MultiPartitionPager implements QueryPager
+public class MultiPartitionPager implements QueryPager
 {
     private final SinglePartitionPager[] pagers;
     private final DataLimits limit;
@@ -52,7 +52,7 @@ class MultiPartitionPager implements QueryPager
     private int remaining;
     private int current;
 
-    MultiPartitionPager(List<SinglePartitionReadCommand<?>> commands, ConsistencyLevel consistencyLevel, ClientState cState, boolean localQuery, PagingState state, DataLimits limit)
+    public MultiPartitionPager(List<SinglePartitionReadCommand<?>> commands, ConsistencyLevel consistencyLevel, ClientState cState, boolean localQuery, PagingState state, DataLimits limit)
     {
         this.limit = limit;
 
@@ -72,7 +72,9 @@ class MultiPartitionPager implements QueryPager
 
         pagers = new SinglePartitionPager[commands.size() - i];
         // 'i' is on the first non exhausted pager for the previous page (or the first one)
-        pagers[0] = QueryPagers.pager(commands.get(i), consistencyLevel, cState, localQuery, state);
+        pagers[0] = localQuery
+                  ? commands.get(i).getLocalPager()
+                  : commands.get(i).getPager(consistencyLevel, cState, state);
         int nowInSec = commands.get(i).nowInSec();
 
         // Following ones haven't been started yet
@@ -81,7 +83,9 @@ class MultiPartitionPager implements QueryPager
             SinglePartitionReadCommand command = commands.get(j);
             if (command.nowInSec() != nowInSec)
                 throw new IllegalArgumentException("All commands must have the same timestamp or weird results may happen.");
-            pagers[j - i] = QueryPagers.pager(command, consistencyLevel, cState, localQuery, null);
+            pagers[j - i] = localQuery
+                          ? command.getLocalPager()
+                          : command.getPager(consistencyLevel, cState, null);
         }
 
         remaining = state == null ? limit.count() : state.remaining;
