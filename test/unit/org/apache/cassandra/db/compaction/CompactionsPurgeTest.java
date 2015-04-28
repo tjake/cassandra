@@ -292,32 +292,24 @@ public class CompactionsPurgeTest
                    .build().applyUnsafe();
         }
 
-        // move the key up in row cache
-        ArrayBackedPartition partition = Util.materializePartition(cfs, dk(key));
-
-        // deletes partirion
+        // deletes partition
         Mutation rm = new Mutation(KEYSPACE_CACHED, dk(key));
-        rm.add(PartitionUpdate.fullPartitionDelete(cfs.metadata, dk(key), 1, 0));
+        rm.add(PartitionUpdate.fullPartitionDelete(cfs.metadata, dk(key), 1, FBUtilities.nowInSeconds()));
         rm.applyUnsafe();
+
+        // Adds another unrelated partition so that the sstable is not considered fully expired. We do not
+        // invalidate the row cache in that latter case.
+        new RowUpdateBuilder(cfs.metadata, 0, "key4").clustering("c").add("val", ByteBufferUtil.EMPTY_BYTE_BUFFER).build().applyUnsafe();
+
+        // move the key up in row cache (it should not be empty since we have the partition deletion info)
+        assertFalse(Util.materializePartition(cfs, dk(key)).isEmpty());
 
         // flush and major compact
         cfs.forceBlockingFlush();
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
 
-        // re-inserts with timestamp lower than delete
-        for (int i = 0; i < 10; i++)
-        {
-            RowUpdateBuilder builder = new RowUpdateBuilder(cfs.metadata, 0, key);
-            builder.clustering(String.valueOf(i))
-                   .add("val", ByteBufferUtil.EMPTY_BYTE_BUFFER)
-                   .build().applyUnsafe();
-        }
-
-        rm.applyUnsafe();
-
-        // Check that the second insert did go in
-        partition = Util.materializePartition(cfs, dk(key));
-        assertEquals(10, partition.rowsWithNonExpiringCells());
+        // Since we've force purging (by passing MAX_VALUE for gc_before), the row should have been invalidated and we should have no deletion info anymore
+        assertTrue(Util.materializePartition(cfs, dk(key)).isEmpty());
     }
 
     @Test

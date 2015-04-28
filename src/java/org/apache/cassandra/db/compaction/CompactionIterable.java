@@ -227,11 +227,18 @@ public class CompactionIterable extends AbstractCompactionIterable
             };
         }
 
+        @Override
+        protected void onEmpty(DecoratedKey key)
+        {
+            controller.cfs.invalidateCachedPartition(key);
+        }
+
         private boolean includeDelTime(DeletionTime dt)
         {
             return dt.isLive() || !dt.isPurgeable(getMaxPurgeableTimestamp(), controller.gcBefore);
         }
 
+        @Override
         protected boolean shouldFilter(AtomIterator atoms)
         {
             currentKey = atoms.partitionKey();
@@ -242,12 +249,14 @@ public class CompactionIterable extends AbstractCompactionIterable
             return true;
         }
 
+        @Override
         protected boolean includePartitionDeletion(DeletionTime dt)
         {
             return includeDelTime(dt);
         }
 
-        protected boolean shouldFilterRangeTombstoneMarker(RangeTombstoneMarker marker)
+        @Override
+        protected boolean includeRangeTombstoneMarker(RangeTombstoneMarker marker)
         {
             return includeDelTime(marker.deletionTime());
         }
