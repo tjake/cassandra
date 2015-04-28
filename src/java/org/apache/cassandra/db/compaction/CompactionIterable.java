@@ -99,6 +99,10 @@ public class CompactionIterable extends AbstractCompactionIterable
                     private Clustering clustering;
                     private ColumnDefinition column;
 
+                    public void onMergePartitionLevelDeletion(DeletionTime mergedDeletion, DeletionTime[] versions)
+                    {
+                    }
+
                     public void onMergingRows(Clustering clustering, LivenessInfo mergedInfo, DeletionTime mergedDeletion, Row[] versions)
                     {
                         this.clustering = clustering;

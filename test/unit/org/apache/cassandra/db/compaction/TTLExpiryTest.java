@@ -82,34 +82,34 @@ public class TTLExpiryTest
         cfs.disableAutoCompaction();
         cfs.metadata.gcGraceSeconds(0);
         String key = "ttl";
-        new RowUpdateBuilder(cfs.metadata, 1, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 1L, 1, key)
                     .add("col1", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
 
-        new RowUpdateBuilder(cfs.metadata, 3, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 3L, 1, key)
                     .add("col2", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
         cfs.forceBlockingFlush();
-        new RowUpdateBuilder(cfs.metadata, 2, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 2L, 1, key)
                     .add("col1", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
 
-        new RowUpdateBuilder(cfs.metadata, 5, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 5L, 1, key)
                     .add("col2", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
 
         cfs.forceBlockingFlush();
 
-        new RowUpdateBuilder(cfs.metadata, 4, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 4L, 1, key)
                     .add("col1", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
 
-        new RowUpdateBuilder(cfs.metadata, 7, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 7L, 1, key)
                     .add("shadow", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
@@ -117,12 +117,12 @@ public class TTLExpiryTest
         cfs.forceBlockingFlush();
 
 
-        new RowUpdateBuilder(cfs.metadata, 6, 3, key)
+        new RowUpdateBuilder(cfs.metadata, 6L, 3, key)
                     .add("shadow", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();
 
-        new RowUpdateBuilder(cfs.metadata, 8, 1, key)
+        new RowUpdateBuilder(cfs.metadata, 8L, 1, key)
                     .add("col2", ByteBufferUtil.EMPTY_BYTE_BUFFER)
                     .build()
                     .applyUnsafe();

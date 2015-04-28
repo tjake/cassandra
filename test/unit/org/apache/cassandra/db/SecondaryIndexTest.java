@@ -314,23 +314,23 @@ public class SecondaryIndexTest
         ByteBuffer col = ByteBufferUtil.bytes("birthdate");
 
         // create a row and update the birthdate value with an expiring column
-        new RowUpdateBuilder(cfs.metadata, 1, 500, "K100").clustering("c").add("birthdate", 100L).build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1L, 500, "K100").clustering("c").add("birthdate", 100L).build().applyUnsafe();
         assertIndexedOne(cfs, col, ByteBufferUtil.bytes(100L));
 
         // requires a 1s sleep because we calculate local expiry time as (now() / 1000) + ttl
         TimeUnit.SECONDS.sleep(1);
 
         // now overwrite with the same name/value/ttl, but the local expiry time will be different
-        new RowUpdateBuilder(cfs.metadata, 1, 500, "K100").clustering("c").add("birthdate", 100L).build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1L, 500, "K100").clustering("c").add("birthdate", 100L).build().applyUnsafe();
         assertIndexedOne(cfs, col, ByteBufferUtil.bytes(100L));
 
         // check that modifying the indexed value using the same timestamp behaves as expected
-        new RowUpdateBuilder(cfs.metadata, 1, 500, "K101").clustering("c").add("birthdate", 101L).build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1L, 500, "K101").clustering("c").add("birthdate", 101L).build().applyUnsafe();
         assertIndexedOne(cfs, col, ByteBufferUtil.bytes(101L));
 
         TimeUnit.SECONDS.sleep(1);
 
-        new RowUpdateBuilder(cfs.metadata, 1, 500, "K101").clustering("c").add("birthdate", 102L).build().applyUnsafe();
+        new RowUpdateBuilder(cfs.metadata, 1L, 500, "K101").clustering("c").add("birthdate", 102L).build().applyUnsafe();
         // Confirm 101 is gone
         assertIndexedNone(cfs, col, ByteBufferUtil.bytes(101L));
 
