@@ -267,7 +267,7 @@ public class RowUpdateBuilder
         if (type.isCounter())
         {
             // See UpdateParameters.addCounter()
-            assert value instanceof Long;
+            assert value instanceof Long : "Attempted to adjust Counter cell with non-long value.";
             return CounterContext.instance().createGlobal(CounterId.getLocalId(), 1, (Long)value);
         }
         return ((AbstractType)type).decompose(value);

@@ -720,7 +720,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Iterable<R
 
     /**
      * A counter mark is basically a pointer to a counter update inside this partition update. That pointer allows
-     * us to update the counter value based on  the pre-existing value read during the read-before-write that counters
+     * us to update the counter value based on the pre-existing value read during the read-before-write that counters
      * do. See {@link CounterMutation} to understand how this is used.
      */
     public class CounterMark
