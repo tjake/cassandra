@@ -34,6 +34,7 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.service.*;
+import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.concurrent.OpOrder;
@@ -133,6 +134,24 @@ public class PartitionRangeReadCommand extends ReadCommand
     public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
         return StorageProxy.getRangeSlice(this, consistency);
+    }
+
+    public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
+    {
+        return getPager(consistency, pagingState, false);
+    }
+
+    public QueryPager getLocalPager()
+    {
+        return getPager(null, null, true);
+    }
+
+    private QueryPager getPager(ConsistencyLevel consistency, PagingState pagingState, boolean local)
+    {
+        if (isNamesQuery())
+            return new RangeNamesQueryPager(this, consistency, local, pagingState);
+        else
+            return new RangeSliceQueryPager(this, consistency, local, pagingState);
     }
 
     protected PartitionIterator queryStorage(final ColumnFamilyStore cfs)

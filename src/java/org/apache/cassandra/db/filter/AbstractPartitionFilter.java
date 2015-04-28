@@ -21,9 +21,11 @@ import java.io.DataInput;
 import java.io.IOException;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.AtomIterator;
 import org.apache.cassandra.db.filter.ColumnsSelection;
+import org.apache.cassandra.db.marshal.ReversedType;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -70,6 +72,18 @@ public abstract class AbstractPartitionFilter implements PartitionFilter
 
     protected abstract void serializeInternal(DataOutputPlus out, int version) throws IOException;
     protected abstract long serializedSizeInternal(int version, TypeSizes sizes);
+
+    protected void appendOrderByToCQLString(CFMetaData metadata, StringBuilder sb)
+    {
+        if (reversed)
+        {
+            sb.append(" ORDER BY (");
+            int i = 0;
+            for (ColumnDefinition column : metadata.clusteringColumns())
+                sb.append(i++ == 0 ? "" : ", ").append(column.name).append(column.type instanceof ReversedType ? " ASC" : " DESC");
+            sb.append(")");
+        }
+    }
 
     private static class FilterSerializer implements Serializer
     {

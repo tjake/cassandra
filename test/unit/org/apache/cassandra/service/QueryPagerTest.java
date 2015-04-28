@@ -220,7 +220,7 @@ public class QueryPagerTest
     @Test
     public void namesQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(namesQuery("k0", "c1", "c5", "c7", "c8"));
+        QueryPager pager = namesQuery("k0", "c1", "c5", "c7", "c8").getLocalPager();
 
         assertFalse(pager.isExhausted());
         DataIterator page = pager.fetchPage(5);
@@ -234,7 +234,7 @@ public class QueryPagerTest
     @Test
     public void sliceQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(sliceQuery("k0", "c1", "c8", 10));
+        QueryPager pager = sliceQuery("k0", "c1", "c8", 10).getLocalPager();
 
         DataIterator page;
 
@@ -259,7 +259,7 @@ public class QueryPagerTest
     @Test
     public void reversedSliceQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(sliceQuery("k0", "c1", "c8", true, 10));
+        QueryPager pager = sliceQuery("k0", "c1", "c8", true, 10).getLocalPager();
 
         DataIterator page;
 
@@ -284,12 +284,11 @@ public class QueryPagerTest
     @Test
     public void multiQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(
-                new SinglePartitionReadCommand.Group(new ArrayList<SinglePartitionReadCommand<?>>()
-            {{
-                add(sliceQuery("k1", "c2", "c6", 10));
-                add(sliceQuery("k4", "c3", "c5", 10));
-            }}, DataLimits.NONE));
+        QueryPager pager = new SinglePartitionReadCommand.Group(new ArrayList<SinglePartitionReadCommand<?>>()
+        {{
+            add(sliceQuery("k1", "c2", "c6", 10));
+            add(sliceQuery("k4", "c3", "c5", 10));
+        }}, DataLimits.NONE).getLocalPager();
 
         DataIterator page;
 
@@ -315,7 +314,7 @@ public class QueryPagerTest
     @Test
     public void rangeNamesQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(rangeNamesQuery("k0", "k5", 100, "c1", "c4", "c8"));
+        QueryPager pager = rangeNamesQuery("k0", "k5", 100, "c1", "c4", "c8").getLocalPager();
 
         DataIterator page;
 
@@ -337,7 +336,7 @@ public class QueryPagerTest
     @Test
     public void rangeSliceQueryTest() throws Exception
     {
-        QueryPager pager = QueryPagers.localPager(rangeSliceQuery("k1", "k5", 100, "c1", "c7"));
+        QueryPager pager = rangeSliceQuery("k1", "k5", 100, "c1", "c7").getLocalPager();
 
         DataIterator page;
 
@@ -392,7 +391,7 @@ public class QueryPagerTest
 
         ReadCommand command = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk("k0"), Slice.ALL);
 
-        QueryPager pager = QueryPagers.localPager(command);
+        QueryPager pager = command.getLocalPager();
 
         for (int i = 0; i < 5; i++)
         {

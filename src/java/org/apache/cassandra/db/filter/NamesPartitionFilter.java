@@ -28,7 +28,6 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.columniterator.SSTableIterator;
-import org.apache.cassandra.db.marshal.ReversedType;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -259,14 +258,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
             sb.append(i++ == 0 ? "" : ", ").append("(").append(clustering.toCQLString(metadata)).append(")");
         sb.append(clusterings.size() == 1 ? "" : ")");
 
-        if (reversed)
-        {
-            sb.append(" ORDER BY (");
-            int j = 0;
-            for (ColumnDefinition column : metadata.clusteringColumns())
-                sb.append(j++ == 0 ? "" : ", ").append(column.name).append(column.type instanceof ReversedType ? " ASC" : " DESC");
-            sb.append(")");
-        }
+        appendOrderByToCQLString(metadata, sb);
         return sb.toString();
     }
 
@@ -300,48 +292,4 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
             return new NamesPartitionFilter(columns, clusterings, reversed);
         }
     }
-
-    // From NamesQueryFilter
-    //public static class Serializer implements IVersionedSerializer<NamesQueryFilter>
-    //{
-    //    private CellNameType type;
-
-    //    public Serializer(CellNameType type)
-    //    {
-    //        this.type = type;
-    //    }
-
-    //    public void serialize(NamesQueryFilter f, DataOutputPlus out, int version) throws IOException
-    //    {
-    //        out.writeInt(f.columns.size());
-    //        ISerializer<CellName> serializer = type.cellSerializer();
-    //        for (CellName cName : f.columns)
-    //        {
-    //            serializer.serialize(cName, out);
-    //        }
-    //        out.writeBoolean(f.countCQL3Rows);
-    //    }
-
-    //    public NamesQueryFilter deserialize(DataInput in, int version) throws IOException
-    //    {
-    //        int size = in.readInt();
-    //        SortedSet<CellName> columns = new TreeSet<>(type);
-    //        ISerializer<CellName> serializer = type.cellSerializer();
-    //        for (int i = 0; i < size; ++i)
-    //            columns.add(serializer.deserialize(in));
-    //        boolean countCQL3Rows = in.readBoolean();
-    //        return new NamesQueryFilter(columns, countCQL3Rows);
-    //    }
-
-    //    public long serializedSize(NamesQueryFilter f, int version)
-    //    {
-    //        TypeSizes sizes = TypeSizes.NATIVE;
-    //        int size = sizes.sizeof(f.columns.size());
-    //        ISerializer<CellName> serializer = type.cellSerializer();
-    //        for (CellName cName : f.columns)
-    //            size += serializer.serializedSize(cName, sizes);
-    //        size += sizes.sizeof(f.countCQL3Rows);
-    //        return size;
-    //    }
-    //}
 }

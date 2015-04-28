@@ -131,8 +131,7 @@ public class SelectStatement implements CQLStatement
             if (!def.isPrimaryKeyColumn())
                 builder.add(def);
         // as well as any restricted column (so we can actually apply the restriction)
-        for (ColumnDefinition def : restrictions.nonPKRestrictedColumns())
-                builder.add(def);
+        builder.addAll(restrictions.nonPKRestrictedColumns());
         return builder.build();
     }
 
@@ -180,7 +179,7 @@ public class SelectStatement implements CQLStatement
 
         cl.validateForRead(keyspace());
 
-        ReadQuery query = getQuery(options, getLimit(options), FBUtilities.nowInSeconds());
+        ReadQuery query = getQuery(options);
 
         int pageSize = options.getPageSize();
 
@@ -190,10 +189,10 @@ public class SelectStatement implements CQLStatement
         if (selection.isAggregate() && pageSize <= 0)
             pageSize = DEFAULT_COUNT_PAGE_SIZE;
 
-        if (pageSize <= 0 || query == null || query.limits().count() <= pageSize)
+        if (pageSize <= 0 || query.limits().count() <= pageSize)
             return execute(query, options, state);
 
-        QueryPager pager = QueryPagers.pager(query, cl, state.getClientState(), options.getPagingState());
+        QueryPager pager = query.getPager(cl, state.getClientState(), options.getPagingState());
 
         if (selection.isAggregate())
             return pageAggregateQuery(pager, options, pageSize);
@@ -217,23 +216,19 @@ public class SelectStatement implements CQLStatement
         return msg;
     }
 
-    private ReadQuery getQuery(QueryOptions options, DataLimits limit, int nowInSec) throws RequestValidationException
+    public ReadQuery getQuery(QueryOptions options) throws RequestValidationException
     {
+        DataLimits limit = getLimit(options);
+        int nowInSec = FBUtilities.nowInSeconds();
         if (restrictions.isKeyRange() || restrictions.usesSecondaryIndexing())
             return getRangeCommand(options, limit, nowInSec);
 
-        List<SinglePartitionReadCommand<?>> commands = getSliceCommands(options, limit, nowInSec);
-        return commands == null ? null : new SinglePartitionReadCommand.Group(commands, limit);
-    }
-
-    public ReadQuery getQuery(QueryOptions options) throws RequestValidationException
-    {
-        return getQuery(options, getLimit(options), FBUtilities.nowInSeconds());
+        return getSliceCommands(options, limit, nowInSec);
     }
 
     private ResultMessage.Rows execute(ReadQuery query, QueryOptions options, QueryState state) throws RequestValidationException, RequestExecutionException
     {
-        try (DataIterator data = query == null ? DataIterators.EMPTY : query.execute(options.getConsistency(), state.getClientState()))
+        try (DataIterator data = query.execute(options.getConsistency(), state.getClientState()))
         {
             return processResults(data, options);
         }
@@ -262,8 +257,7 @@ public class SelectStatement implements CQLStatement
 
     public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
-        ReadQuery query = getQuery(options, getLimit(options), FBUtilities.nowInSeconds());
-        try (DataIterator data = query == null ? DataIterators.EMPTY : query.executeLocally())
+        try (DataIterator data = getQuery(options).executeLocally())
         {
             return processResults(data, options);
         }
@@ -271,8 +265,7 @@ public class SelectStatement implements CQLStatement
 
     public ResultSet process(DataIterator partitions) throws InvalidRequestException
     {
-        QueryOptions options = QueryOptions.DEFAULT;
-        return process(partitions, options);
+        return process(partitions, QueryOptions.DEFAULT);
     }
 
     public String keyspace()
@@ -285,15 +278,15 @@ public class SelectStatement implements CQLStatement
         return cfm.cfName;
     }
 
-    private List<SinglePartitionReadCommand<?>> getSliceCommands(QueryOptions options, DataLimits limit, int nowInSec) throws RequestValidationException
+    private ReadQuery getSliceCommands(QueryOptions options, DataLimits limit, int nowInSec) throws RequestValidationException
     {
         Collection<ByteBuffer> keys = restrictions.getPartitionKeys(options);
         if (keys.isEmpty())
-            return null;
+            return ReadQuery.EMPTY;
 
         PartitionFilter filter = makeFilter(options);
         if (filter == null)
-            return null;
+            return ReadQuery.EMPTY;
 
         ColumnFilter columnFilter = getColumnFilter(options);
 
@@ -307,21 +300,21 @@ public class SelectStatement implements CQLStatement
             commands.add(SinglePartitionReadCommand.create(cfm, nowInSec, columnFilter, limit, dk, filter));
         }
 
-        return commands;
+        return new SinglePartitionReadCommand.Group(commands, limit);
     }
 
-    private PartitionRangeReadCommand getRangeCommand(QueryOptions options, DataLimits limit, int nowInSec) throws RequestValidationException
+    private ReadQuery getRangeCommand(QueryOptions options, DataLimits limit, int nowInSec) throws RequestValidationException
     {
         PartitionFilter partitionFilter = makeFilter(options);
         if (partitionFilter == null)
-            return null;
+            return ReadQuery.EMPTY;
 
         ColumnFilter columnFilter = getColumnFilter(options);
         // The LIMIT provided by the user is the number of CQL row he wants returned.
         // We want to have getRangeSlice to count the number of columns, not the number of keys.
         AbstractBounds<RowPosition> keyBounds = restrictions.getPartitionKeyBounds(options);
         return keyBounds == null
-             ? null
+             ? ReadQuery.EMPTY
              : new PartitionRangeReadCommand(cfm, nowInSec, columnFilter, limit, new DataRange(keyBounds, partitionFilter));
     }
 
