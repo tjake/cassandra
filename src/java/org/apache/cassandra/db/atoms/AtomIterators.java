@@ -21,16 +21,12 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.security.MessageDigest;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.Iterators;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.partitions.ArrayBackedPartition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
@@ -210,7 +206,6 @@ public abstract class AtomIterators
             && iter1.isReverseOrder() == iter2.isReverseOrder()
             && iter1.columns().equals(iter2.columns())
             && iter1.staticRow().equals(iter2.staticRow())
-            && iter1.stats().equals(iter2.stats())
             && iter1.nowInSec() == iter2.nowInSec();
 
         return new AbstractAtomIterator(iter1.metadata(),

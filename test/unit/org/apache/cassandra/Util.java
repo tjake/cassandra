@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.google.common.base.Preconditions;
 
 import org.apache.cassandra.db.ClusteringPrefix;
-
+import org.apache.cassandra.db.Slice.Bound;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
@@ -345,9 +345,27 @@ public class Util
         assert thrown : exception.getName() + " not received";
     }
 
+    @SuppressWarnings("rawtypes")
     public static AtomIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
     {
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);
+        return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static AtomIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
+    {
+        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), Slices.ALL, false);
+        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.cqlLimits(limit), key, filter);
+        return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static AtomIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
+    {
+        Slices.Builder sb = new Slices.Builder(cfs.getComparator());
+        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), sb.build(), false);
+        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, key, filter);
         return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
