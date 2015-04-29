@@ -68,6 +68,31 @@ public class Util
 {
     private static List<UUID> hostIdPool = new ArrayList<UUID>();
 
+    public static class OnlyRow implements AutoCloseable
+    {
+        private final DataIterator iterator;
+        public final Row row;
+
+        public OnlyRow(DataIterator iter)
+        {
+            iterator = iter;
+            while (iterator.hasNext())
+            {
+                RowIterator ri = iterator.next();
+                assert !iterator.hasNext() : "Expected single row result, have more than 1.";
+                row = ri.next();
+                assert !ri.hasNext() : "Expected single row result, have more than 1.";
+                return;
+            }
+            throw new RuntimeException("Attempted to query single row but no results were in result set.");
+        }
+
+        public void close()
+        {
+            iterator.close();
+        }
+    }
+
     public static DecoratedKey dk(String key)
     {
         return StorageService.getPartitioner().decorateKey(ByteBufferUtil.bytes(key));
