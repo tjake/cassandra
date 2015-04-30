@@ -31,7 +31,7 @@ import com.google.common.base.Predicate;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
-import org.apache.cassandra.db.index.GlobalIndexManager;
+import org.apache.cassandra.db.index.global.GlobalIndexUtils;
 import org.apache.cassandra.metrics.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -624,6 +624,79 @@ public class StorageProxy implements StorageProxyMBean
         Tracing.trace("Wrote hint to satisfy CL.ANY after no replicas acknowledged the write");
     }
 
+    /**
+     * Use this method to have these Mutations applied
+     * across all replicas.
+     *
+     * @param mutations the mutations to be applied across the replicas
+     * @param targetAddress endpoint which we will wait for response from
+     */
+    public static void mutateGI(ByteBuffer dataKey, Collection<? extends IMutation> mutations)
+    throws UnavailableException, OverloadedException, WriteTimeoutException
+    {
+        Tracing.trace("Determining replicas for mutation");
+        final String localDataCenter = DatabaseDescriptor.getEndpointSnitch().getDatacenter(FBUtilities.getBroadcastAddress());
+
+        long startTime = System.nanoTime();
+        List<AbstractWriteResponseHandler> responseHandlers = new ArrayList<>(mutations.size());
+
+        try
+        {
+            Token dataToken = StorageService.getPartitioner().getToken(dataKey);
+
+            for (IMutation mutation : mutations)
+            {
+                assert !(mutation instanceof CounterMutation) : "mutateGI should not be called with CounterMutations";
+                WriteType wt = mutations.size() <= 1 ? WriteType.SIMPLE : WriteType.UNLOGGED_BATCH;
+                String keyspaceName = mutation.getKeyspaceName();
+                AbstractReplicationStrategy rs = Keyspace.open(keyspaceName).getReplicationStrategy();
+
+                Token tk = StorageService.getPartitioner().getToken(mutation.key());
+                List<InetAddress> naturalEndpoints = Lists.newArrayList(GlobalIndexUtils.getIndexNaturalEndpoint(keyspaceName, dataToken, tk));
+                Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
+
+                AbstractWriteResponseHandler responseHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, ConsistencyLevel.ONE, null, wt);
+
+                // exit early if we can't fulfill the CL at this time
+                responseHandler.assureSufficientLiveNodes();
+
+                // Consistency Level doesn't matter
+                standardWritePerformer.apply(mutation, Iterables.concat(naturalEndpoints, pendingEndpoints), responseHandler, localDataCenter, ConsistencyLevel.ONE);
+                responseHandler.get();
+            }
+
+            // wait for writes.  throws TimeoutException if necessary
+            for (AbstractWriteResponseHandler responseHandler : responseHandlers)
+            {
+                responseHandler.get();
+            }
+        }
+        catch (WriteTimeoutException ex)
+        {
+            writeMetrics.timeouts.mark();
+            ClientRequestMetrics.writeTimeouts.inc();
+            Tracing.trace("Write timeout; received {} of {} required replies", ex.received, ex.blockFor);
+            throw ex;
+        }
+        catch (UnavailableException e)
+        {
+            writeMetrics.unavailables.mark();
+            ClientRequestMetrics.writeUnavailables.inc();
+            Tracing.trace("Unavailable");
+            throw e;
+        }
+        catch (OverloadedException e)
+        {
+            ClientRequestMetrics.writeUnavailables.inc();
+            Tracing.trace("Overloaded");
+            throw e;
+        }
+        finally
+        {
+            writeMetrics.addNano(System.nanoTime() - startTime);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public static void mutateWithTriggers(Collection<? extends IMutation> mutations,
                                           ConsistencyLevel consistencyLevel,
@@ -632,18 +705,10 @@ public class StorageProxy implements StorageProxyMBean
     {
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
         if (augmented != null)
-        {
-            Collection<Mutation> giMutations = GlobalIndexManager.createMutations(augmented, consistencyLevel);
-            if (giMutations != null)
-                mutateAtomically(giMutations, consistencyLevel);
-            else mutateAtomically(augmented, consistencyLevel);
-        }
+            mutateAtomically(augmented, consistencyLevel);
         else
         {
-            Collection<Mutation> giMutations = GlobalIndexManager.createMutations(mutations, consistencyLevel);
-            if (giMutations != null)
-                mutate(giMutations, consistencyLevel);
-            else if (mutateAtomically)
+            if (mutateAtomically)
                 mutateAtomically((Collection<Mutation>) mutations, consistencyLevel);
             else
                 mutate(mutations, consistencyLevel);

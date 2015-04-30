@@ -20,21 +20,27 @@ package org.apache.cassandra.db.index;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
-import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
+import org.apache.cassandra.db.index.global.GlobalIndexUtils;
 import org.apache.cassandra.exceptions.InvalidRequestException;
+import org.apache.cassandra.exceptions.WriteTimeoutException;
+import org.apache.cassandra.service.AbstractWriteResponseHandler;
+import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Pair;
-import org.apache.mina.util.ConcurrentHashSet;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class GlobalIndexManager implements IndexManager
 {
@@ -43,6 +49,8 @@ public class GlobalIndexManager implements IndexManager
      */
     private final ConcurrentNavigableMap<ByteBuffer, GlobalIndex> indexesByColumn;
 
+    private final ConcurrentNavigableMap<ByteBuffer, Lock> writeLocks;
+
     private final Set<GlobalIndex> allIndexes;
 
     private final ColumnFamilyStore baseCfs;
@@ -50,6 +58,7 @@ public class GlobalIndexManager implements IndexManager
     public GlobalIndexManager(ColumnFamilyStore baseCfs)
     {
         this.indexesByColumn = new ConcurrentSkipListMap<>();
+        this.writeLocks = new ConcurrentSkipListMap<>();
         this.allIndexes = Collections.newSetFromMap(new ConcurrentHashMap<GlobalIndex, Boolean>());
 
         this.baseCfs = baseCfs;
@@ -129,13 +138,68 @@ public class GlobalIndexManager implements IndexManager
         {
             Collection<Mutation> mutations = index.createMutations(key, cf, consistency, false);
             if (mutations != null) {
-                if (tmutations == null) {
+                if (tmutations == null)
                     tmutations = Lists.newLinkedList();
-                }
                 tmutations.addAll(mutations);
             }
         }
         return tmutations;
+    }
+
+    public void pushReplicaMutations(ByteBuffer key, ColumnFamily cf)
+    throws WriteTimeoutException
+    {
+        // TODO - When we are replaying the commitlog, we haven't yet joined the ring, so we can't push new mutations
+        if (!StorageService.instance.isJoined()) return;
+
+        List<Mutation> mutations = null;
+        for (GlobalIndex index: allIndexes)
+        {
+            Collection<Mutation> indexMutations = index.createMutations(key, cf, ConsistencyLevel.ONE, false);
+            if (indexMutations != null && !indexMutations.isEmpty())
+            {
+                if (mutations == null)
+                    mutations = Lists.newLinkedList();
+                mutations.addAll(indexMutations);
+            }
+        }
+        if (mutations != null)
+        {
+            StorageProxy.mutateGI(key, mutations);
+        }
+    }
+
+    public boolean cfModifiesIndexedColumn(ColumnFamily cf)
+    {
+        for (GlobalIndex index: allIndexes)
+        {
+            if (index.cfModifiesIndexedColumn(cf))
+                return true;
+        }
+        return false;
+    }
+
+    public void acquireLockFor(ByteBuffer key)
+    {
+        Lock lock;
+        if (!writeLocks.containsKey(key))
+        {
+            Lock newLock = new ReentrantLock();
+            lock = writeLocks.putIfAbsent(key, newLock);
+            if (lock == null)
+                lock = newLock;
+        }
+        else
+        {
+            lock = writeLocks.get(key);
+        }
+        lock.lock();
+    }
+
+    public void releaseLockFor(ByteBuffer key)
+    {
+        assert writeLocks.containsKey(key);
+        writeLocks.get(key).unlock();
     }
 
     public static Collection<Mutation> createMutations(Collection<? extends IMutation> mutations, ConsistencyLevel consistency)

@@ -254,7 +254,7 @@ public class GlobalIndex implements Index
      * @param cf Column family to check for indexed values with
      * @return True if any of the indexed or included values are contained in the column family.
      */
-    private boolean modifiesIndexedColumn(ColumnFamily cf)
+    public boolean cfModifiesIndexedColumn(ColumnFamily cf)
     {
         // If we are including all of the columns, then any non-empty column family will need to be indexed
         if (includeAll)
@@ -566,7 +566,7 @@ public class GlobalIndex implements Index
     {
         createIndexCfsAndSelectors();
 
-        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !modifiesIndexedColumn(cf))
+        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !cfModifiesIndexedColumn(cf))
         {
             return null;
         }
