@@ -674,20 +674,18 @@ public class StorageProxy implements StorageProxyMBean
         catch (WriteTimeoutException ex)
         {
             writeMetrics.timeouts.mark();
-            ClientRequestMetrics.writeTimeouts.inc();
             Tracing.trace("Write timeout; received {} of {} required replies", ex.received, ex.blockFor);
             throw ex;
         }
         catch (UnavailableException e)
         {
             writeMetrics.unavailables.mark();
-            ClientRequestMetrics.writeUnavailables.inc();
             Tracing.trace("Unavailable");
             throw e;
         }
         catch (OverloadedException e)
         {
-            ClientRequestMetrics.writeUnavailables.inc();
+            writeMetrics.unavailables.mark();
             Tracing.trace("Overloaded");
             throw e;
         }

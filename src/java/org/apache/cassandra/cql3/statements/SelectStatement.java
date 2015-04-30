@@ -87,7 +87,7 @@ public class SelectStatement implements CQLStatement
     private final Comparator<List<ByteBuffer>> orderingComparator;
 
     // Used by forSelection below
-    private static final Parameters defaultParameters = new Parameters(Collections.<ColumnIdentifier.Raw, Boolean>emptyMap(), false, false, false);
+    private static final Parameters defaultParameters = new Parameters(Collections.<ColumnIdentifier.Raw, Boolean>emptyMap(), false, false, false, false);
 
     public SelectStatement(CFMetaData cfm,
                            int boundTerms,
@@ -867,7 +867,7 @@ public class SelectStatement implements CQLStatement
             cfName.setColumnFamily(name, true);
             cfName.setKeyspace(keyspace(), true);
 
-            Parameters params = new Parameters(parameters.orderings, parameters.isDistinct, parameters.allowFiltering, true);
+            Parameters params = new Parameters(parameters.orderings, parameters.isDistinct, parameters.allowFiltering, parameters.isJson, true);
             RawStatement rawStatement = new RawStatement(cfName, params, selectClause, whereClause, limit);
             rawStatement.variables = getBoundVariables();
             return rawStatement.prepare();
