@@ -103,6 +103,21 @@ public class AtomStats
         return new AtomStats(minTimestamp, minDelTime, minTTL, avgColumnSetPerRow);
     }
 
+    public boolean equals(Object o)
+    {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        AtomStats atomStats = (AtomStats) o;
+
+        if (avgColumnSetPerRow != atomStats.avgColumnSetPerRow) return false;
+        if (minLocalDeletionTime != atomStats.minLocalDeletionTime) return false;
+        if (minTTL != atomStats.minTTL) return false;
+        if (minTimestamp != atomStats.minTimestamp) return false;
+
+        return true;
+    }
+
     public static class Collector
     {
         private boolean isTimestampSet;

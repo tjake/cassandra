@@ -405,6 +405,13 @@ public class Util
         }
     }
 
+    public static AtomIterator apply(Mutation mutation)
+    {
+        mutation.apply();
+        assert mutation.getPartitionUpdates().size() == 1;
+        return mutation.getPartitionUpdates().iterator().next().atomIterator();
+    }
+
     public static Row getSingleRow(ColumnFamilyStore cfs, DecoratedKey dk)
     {
         return materializePartition(cfs, dk).lastRow();
