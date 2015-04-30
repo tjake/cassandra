@@ -280,7 +280,7 @@ final class PrimaryKeyRestrictionSet extends AbstractPrimaryKeyRestrictions
 
     @Override
     public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                     SecondaryIndexManager indexManager,
+                                     IndexManager indexManager,
                                      QueryOptions options) throws InvalidRequestException
     {
         Boolean clusteringColumns = null;

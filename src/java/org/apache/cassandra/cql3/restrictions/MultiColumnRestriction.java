@@ -174,7 +174,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               SecondaryIndexManager indexManager,
+                                               IndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             Tuples.Value t = ((Tuples.Value) value.bind(options));
@@ -231,7 +231,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               SecondaryIndexManager indexManager,
+                                               IndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             List<List<ByteBuffer>> splitInValues = splitValues(options);
@@ -419,7 +419,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               SecondaryIndexManager indexManager,
+                                               IndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             throw invalidRequest("Slice restrictions are not supported on indexed columns");

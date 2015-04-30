@@ -90,20 +90,11 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
     /**
      * Check if this type of restriction is supported by the specified index.
      *
-     * @param index the Secondary index
+     * @param index the index
      * @return <code>true</code> this type of restriction is supported by the specified index,
      * <code>false</code> otherwise.
      */
     protected abstract boolean isSupportedBy(Index index);
-
-    /**
-     * Check if this type of restriction is supported by the specified index.
-     *
-     * @param index the global index
-     * @return <code>true</code> this type of restriction is supported by the specified index,
-     * <code>false</code> otherwise.
-     */
-    protected abstract boolean isSupportedBy(GlobalIndex index);
 
     public static final class EQ extends SingleColumnRestriction
     {
@@ -129,7 +120,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
+                                         IndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             ByteBuffer buffer = validateIndexedValue(columnDef, value.bindAndGet(options));
@@ -154,7 +145,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         @Override
         public Restriction doMergeWith(Restriction otherRestriction) throws InvalidRequestException
         {
-            return index.supportsOperator(Operator.EQ);
+            throw invalidRequest("%s cannot be restricted by more than one relation if it includes an Equal", columnDef.name);
         }
 
         @Override
@@ -194,7 +185,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
+                                         IndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             List<ByteBuffer> values = getValues(options);
@@ -347,7 +338,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
+                                         IndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             for (Bound b : Bound.values())
@@ -437,7 +428,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         SecondaryIndexManager indexManager,
+                                         IndexManager indexManager,
                                          QueryOptions options)
                                          throws InvalidRequestException
         {

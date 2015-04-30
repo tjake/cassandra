@@ -81,6 +81,12 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
     }
 
     @Override
+    public List<ByteBuffer> values(QueryOptions options) throws InvalidRequestException
+    {
+        return getDelegate().values(options);
+    }
+    
+    @Override
     public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
     {
         return getDelegate().appendTo(builder, options);
@@ -172,7 +178,7 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
 
     @Override
     public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                     SecondaryIndexManager indexManager,
+                                     IndexManager indexManager,
                                      QueryOptions options) throws InvalidRequestException
     {
         getDelegate().addIndexExpressionTo(expressions, indexManager, options);

@@ -67,7 +67,7 @@ final class RestrictionSet implements Restrictions, Iterable<Restriction>
 
     @Override
     public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                           SecondaryIndexManager indexManager,
+                                           IndexManager indexManager,
                                            QueryOptions options) throws InvalidRequestException
     {
         for (Restriction restriction : restrictions.values())
