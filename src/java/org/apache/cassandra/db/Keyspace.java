@@ -392,11 +392,26 @@ public class Keyspace
                     continue;
                 }
 
-                Tracing.trace("Adding to {} memtable", cf.metadata().cfName);
-                SecondaryIndexManager.Updater updater = updateIndexes
-                                                      ? cfs.indexManager.updaterFor(key, cf, opGroup)
-                                                      : SecondaryIndexManager.nullUpdater;
-                cfs.apply(key, cf, updater, opGroup, replayPosition);
+                boolean lockAcquired = false;
+                try
+                {
+                    if (cfs.globalIndexManager.cfModifiesIndexedColumn(cf))
+                    {
+                        Tracing.trace("Create global index mutations from replica");
+                        cfs.globalIndexManager.acquireLockFor(mutation.key());
+                        lockAcquired = true;
+                        cfs.globalIndexManager.pushReplicaMutations(mutation.key(), cf);
+                    }
+
+                    Tracing.trace("Adding to {} memtable", cf.metadata().cfName);
+                    SecondaryIndexManager.Updater updater = updateIndexes
+                                                            ? cfs.indexManager.updaterFor(key, cf, opGroup)
+                                                            : SecondaryIndexManager.nullUpdater;
+                    cfs.apply(key, cf, updater, opGroup, replayPosition);
+                } finally {
+                    if (lockAcquired)
+                        cfs.globalIndexManager.releaseLockFor(mutation.key());
+                }
             }
         }
     }
