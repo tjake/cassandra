@@ -202,6 +202,21 @@ public class GlobalIndexManager implements IndexManager
         writeLocks.get(key).unlock();
     }
 
+    public static boolean touchesIndexedColumns(Collection<? extends IMutation> mutations)
+    {
+        for (IMutation mutation : mutations)
+        {
+            for (ColumnFamily cf : mutation.getColumnFamilies())
+            {
+                GlobalIndexManager indexManager = Keyspace.open(cf.metadata().ksName)
+                                                          .getColumnFamilyStore(cf.metadata().cfId).globalIndexManager;
+                if (indexManager.cfModifiesIndexedColumn(cf))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     public static Collection<Mutation> createMutations(Collection<? extends IMutation> mutations, ConsistencyLevel consistency)
     {
         boolean hasCounters = false;

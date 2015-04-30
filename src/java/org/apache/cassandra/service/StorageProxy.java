@@ -31,6 +31,8 @@ import com.google.common.base.Predicate;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
+
+import org.apache.cassandra.db.index.GlobalIndexManager;
 import org.apache.cassandra.db.index.global.GlobalIndexUtils;
 import org.apache.cassandra.metrics.*;
 import org.apache.commons.lang3.StringUtils;
@@ -214,6 +216,8 @@ public class StorageProxy implements StorageProxyMBean
             consistencyForCommit.validateForCasCommit(keyspaceName);
 
             CFMetaData metadata = Schema.instance.getCFMetaData(keyspaceName, cfName);
+            if (!metadata.getGlobalIndexes().isEmpty())
+                throw new InvalidRequestException("cas operations are disallowed on Global Indexed column families");
 
             long timeout = TimeUnit.MILLISECONDS.toNanos(DatabaseDescriptor.getCasContentionTimeout());
             while (System.nanoTime() - start < timeout)
@@ -702,12 +706,14 @@ public class StorageProxy implements StorageProxyMBean
     throws WriteTimeoutException, WriteFailureException, UnavailableException, OverloadedException, InvalidRequestException
     {
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
+        boolean touchedGlobalIndex = GlobalIndexManager.touchesIndexedColumns(mutations);
+
         if (augmented != null)
-            mutateAtomically(augmented, consistencyLevel);
+            mutateAtomically(augmented, consistencyLevel, touchedGlobalIndex);
         else
         {
-            if (mutateAtomically)
-                mutateAtomically((Collection<Mutation>) mutations, consistencyLevel);
+            if (mutateAtomically || touchedGlobalIndex)
+                mutateAtomically((Collection<Mutation>) mutations, consistencyLevel, touchedGlobalIndex);
             else
                 mutate(mutations, consistencyLevel);
         }
@@ -721,8 +727,11 @@ public class StorageProxy implements StorageProxyMBean
      *
      * @param mutations the Mutations to be applied across the replicas
      * @param consistency_level the consistency level for the operation
+     * @param requireQuorumForRemove at least a quorum of nodes will see update before deleting batchlog
      */
-    public static void mutateAtomically(Collection<Mutation> mutations, ConsistencyLevel consistency_level)
+    public static void mutateAtomically(Collection<Mutation> mutations,
+                                        ConsistencyLevel consistency_level,
+                                        boolean requireQuorumForRemove)
     throws UnavailableException, OverloadedException, WriteTimeoutException
     {
         Tracing.trace("Determining replicas for atomic batch");
@@ -733,25 +742,60 @@ public class StorageProxy implements StorageProxyMBean
 
         try
         {
+            // If we are requiring quorum nodes for removal, we upgrade consistency level to QUORUM unless we already
+            // require ALL, or EACH_QUORUM. This is so that *at least* QUORUM nodes see the update.
+            ConsistencyLevel batchConsistencyLevel = requireQuorumForRemove
+                                                     ? ConsistencyLevel.QUORUM
+                                                     : consistency_level;
+            switch (consistency_level)
+            {
+                case ALL:
+                case EACH_QUORUM:
+                    batchConsistencyLevel = consistency_level;
+            }
+
+            logger.info("Waiting for {} consistency level", batchConsistencyLevel);
+
             // add a handler for each mutation - includes checking availability, but doesn't initiate any writes, yet
             for (Mutation mutation : mutations)
             {
                 WriteResponseHandlerWrapper wrapper = wrapResponseHandler(mutation, consistency_level, WriteType.BATCH);
                 // exit early if we can't fulfill the CL at this time.
                 wrapper.handler.assureSufficientLiveNodes();
+                wrapper.blockFor = batchConsistencyLevel.blockFor(Keyspace.open(mutation.getKeyspaceName()));
                 wrappers.add(wrapper);
             }
 
             // write to the batchlog
-            Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, consistency_level);
+            Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, batchConsistencyLevel);
             UUID batchUUID = UUIDGen.getTimeUUID();
             syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
 
             // now actually perform the writes and wait for them to complete
             syncWriteBatchedMutations(wrappers, localDataCenter);
 
+            boolean canRemove = true;
+            int blockFor = 0;
+            int ackCount = 0;
+            for (WriteResponseHandlerWrapper wrapper: wrappers)
+            {
+                blockFor = wrapper.blockFor;
+                ackCount = wrapper.handler.ackCount();
+                if (blockFor > ackCount)
+                {
+                    canRemove = false;
+                    break;
+                }
+            }
+
             // remove the batchlog entries asynchronously
-            asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
+            if (canRemove)
+            {
+                asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
+                Tracing.trace("Removing batch log {} because required numbers were met", batchUUID);
+            }
+            else
+                Tracing.trace("Could not remove batch log {} because only {}/{} replicas reported", batchUUID, ackCount, blockFor);
         }
         catch (UnavailableException e)
         {
@@ -901,11 +945,13 @@ public class StorageProxy implements StorageProxyMBean
     {
         final AbstractWriteResponseHandler<IMutation> handler;
         final Mutation mutation;
+        int blockFor;
 
         WriteResponseHandlerWrapper(AbstractWriteResponseHandler<IMutation> handler, Mutation mutation)
         {
             this.handler = handler;
             this.mutation = mutation;
+            this.blockFor = handler.totalBlockFor();
         }
     }
 
