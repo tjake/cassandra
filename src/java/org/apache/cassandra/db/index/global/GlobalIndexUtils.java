@@ -2,14 +2,19 @@
 package org.apache.cassandra.db.index.global;
 
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 
-public class Utils
+public final class GlobalIndexUtils
 {
+    private GlobalIndexUtils()
+    {
+    }
+
     public static InetAddress getIndexNaturalEndpoint(String keyspaceName, Token dataToken, Token indexToken)
     {
         List<InetAddress> dataNaturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, dataToken);

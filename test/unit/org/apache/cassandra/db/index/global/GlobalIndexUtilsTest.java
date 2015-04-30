@@ -11,7 +11,6 @@ import org.junit.Test;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
-import org.apache.cassandra.db.BufferDecoratedKey;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.dht.OrderPreservingPartitioner.StringToken;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -19,9 +18,8 @@ import org.apache.cassandra.locator.IEndpointSnitch;
 import org.apache.cassandra.locator.PropertyFileSnitch;
 import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.FBUtilities;
 
-public class UtilsTest
+public class GlobalIndexUtilsTest
 {
     @BeforeClass
     public static void setUp() throws ConfigurationException
@@ -53,9 +51,9 @@ public class UtilsTest
         KSMetaData meta = KSMetaData.newKeyspace("Keyspace1", "NetworkTopologyStrategy", configOptions, false);
         Schema.instance.setKeyspaceDefinition(meta);
 
-        InetAddress naturalEndpoint = Utils.getIndexNaturalEndpoint("Keyspace1",
-                                                                    new StringToken("CA"),
-                                                                    new StringToken("BB"));
+        InetAddress naturalEndpoint = GlobalIndexUtils.getIndexNaturalEndpoint("Keyspace1",
+                                                                               new StringToken("CA"),
+                                                                               new StringToken("BB"));
 
         assert naturalEndpoint.equals(InetAddress.getByName("127.0.0.5"));
     }
