@@ -18,6 +18,7 @@
 package org.apache.cassandra;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
@@ -76,10 +77,15 @@ public class SchemaLoader
 
     public static void prepareServer()
     {
-        // Cleanup first
-        cleanupAndLeaveDirs();
-
-        CommitLog.instance.allocator.enableReserveSegmentCreation();
+        try
+        {
+            cleanupAndLeaveDirs();
+        }
+        catch (IOException e)
+        {
+            logger.error("Failed to cleanup and recreate directories.");
+            throw new RuntimeException(e);
+        }
 
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
         {
@@ -499,7 +505,7 @@ public class SchemaLoader
                                                         .build();
     }
 
-    public static void cleanupAndLeaveDirs()
+    public static void cleanupAndLeaveDirs() throws IOException
     {
         // We need to stop and unmap all CLS instances prior to cleanup() or we'll get failures on Windows.
         CommitLog.instance.stopUnsafe(true);

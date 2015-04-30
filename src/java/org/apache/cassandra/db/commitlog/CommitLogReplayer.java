@@ -331,7 +331,8 @@ public class CommitLogReplayer
                 {
                     int uncompressedLength = reader.readInt();
                     replayEnd = replayPos + uncompressedLength;
-                } else
+                }
+                else
                 {
                     replayEnd = end;
                 }

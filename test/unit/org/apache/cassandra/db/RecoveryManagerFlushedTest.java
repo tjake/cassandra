@@ -21,7 +21,6 @@ package org.apache.cassandra.db;
  */
 
 
-import org.apache.cassandra.config.ColumnDefinition;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -34,14 +33,11 @@ import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
-import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
-import java.nio.ByteBuffer;
-
-public class RecoveryManager2Test
+public class RecoveryManagerFlushedTest
 {
-    private static Logger logger = LoggerFactory.getLogger(RecoveryManager2Test.class);
+    private static Logger logger = LoggerFactory.getLogger(RecoveryManagerFlushedTest.class);
 
     private static final String KEYSPACE1 = "RecoveryManager2Test";
     private static final String CF_STANDARD1 = "Standard1";
@@ -84,8 +80,7 @@ public class RecoveryManager2Test
         logger.debug("begin manual replay");
         // replay the commit log (nothing on Standard1 should be replayed since everything was flushed, so only the row on Standard2
         // will be replayed)
-        CommitLog.instance.resetUnsafe(false);
-        int replayed = CommitLog.instance.recover();
+        int replayed = CommitLog.instance.resetUnsafe(false);
         assert replayed == 1 : "Expecting only 1 replayed mutation, got " + replayed;
     }
 
