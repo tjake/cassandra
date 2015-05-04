@@ -19,6 +19,7 @@ package org.apache.cassandra.cql3.statements;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
@@ -37,6 +38,7 @@ import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import org.apache.cassandra.utils.NoSpamLogger;
 
 /**
  * A <code>BATCH</code> statement parsed from a CQL query.
@@ -55,6 +57,7 @@ public class BatchStatement implements CQLStatement
     private final Attributes attrs;
     private final boolean hasConditions;
     private static final Logger logger = LoggerFactory.getLogger(BatchStatement.class);
+    private static final String unloggedBatchLogmsg = "Unlogged batch containing muliple partitions detected.";
 
     /**
      * Creates a new BatchStatement from a list of statements and a
@@ -180,14 +183,34 @@ public class BatchStatement implements CQLStatement
 
     private Collection<? extends IMutation> unzipMutations(Map<String, Map<ByteBuffer, IMutation>> mutations)
     {
-        // The case where all statement where on the same keyspace is pretty common
-        if (mutations.size() == 1)
-            return mutations.values().iterator().next().values();
+        boolean multiplePartitions = false;
 
-        List<IMutation> ms = new ArrayList<>();
-        for (Map<ByteBuffer, IMutation> ksMap : mutations.values())
-            ms.addAll(ksMap.values());
-        return ms;
+        try
+        {
+            // The case where all statement where on the same keyspace is pretty common
+            if (mutations.size() == 1)
+            {
+                Map<ByteBuffer, IMutation> mutationMap = mutations.values().iterator().next();
+
+                if (mutationMap.size() > 1)
+                    multiplePartitions = true;
+
+                return mutationMap.values();
+            }
+
+            multiplePartitions = true;
+
+            List<IMutation> ms = new ArrayList<>();
+            for (Map<ByteBuffer, IMutation> ksMap : mutations.values())
+                ms.addAll(ksMap.values());
+
+            return ms;
+        }
+        finally
+        {
+            if (multiplePartitions && type == Type.UNLOGGED)
+                NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchLogmsg);
+        }
     }
 
     private void addStatementMutations(ModificationStatement statement,
