@@ -55,7 +55,7 @@ public class BatchStatement implements CQLStatement
     private final Attributes attrs;
     private final boolean hasConditions;
     private static final Logger logger = LoggerFactory.getLogger(BatchStatement.class);
-    private static final String unloggedBatchLogmsg = "Unlogged batch containing muliple partitions detected.";
+    private static final String unloggedBatchWarning = "Unlogged batch covering {} partition{} detected across table{} {}. You probably want to use a logged batch for atomicity, or asynchronous writes for performance.";
 
     /**
      * Creates a new BatchStatement from a list of statements and a
@@ -173,34 +173,17 @@ public class BatchStatement implements CQLStatement
 
     private Collection<? extends IMutation> unzipMutations(Map<String, Map<ByteBuffer, IMutation>> mutations)
     {
-        boolean multiplePartitions = false;
 
-        try
-        {
-            // The case where all statement where on the same keyspace is pretty common
-            if (mutations.size() == 1)
-            {
-                Map<ByteBuffer, IMutation> mutationMap = mutations.values().iterator().next();
+        // The case where all statement where on the same keyspace is pretty common
+        if (mutations.size() == 1)
+            return mutations.values().iterator().next().values();
 
-                if (mutationMap.size() > 1)
-                    multiplePartitions = true;
 
-                return mutationMap.values();
-            }
+        List<IMutation> ms = new ArrayList<>();
+        for (Map<ByteBuffer, IMutation> ksMap : mutations.values())
+            ms.addAll(ksMap.values());
 
-            multiplePartitions = true;
-
-            List<IMutation> ms = new ArrayList<>();
-            for (Map<ByteBuffer, IMutation> ksMap : mutations.values())
-                ms.addAll(ksMap.values());
-
-            return ms;
-        }
-        finally
-        {
-            if (multiplePartitions && type == Type.UNLOGGED)
-                NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchLogmsg);
-        }
+        return ms;
     }
 
     private void addStatementMutations(ModificationStatement statement,
@@ -295,16 +278,34 @@ public class BatchStatement implements CQLStatement
     private void executeWithoutConditions(Collection<? extends IMutation> mutations, ConsistencyLevel cl) throws RequestExecutionException, RequestValidationException
     {
         // Extract each collection of cfs from it's IMutation and then lazily concatenate all of them into a single Iterable.
+        final Set<ByteBuffer> keySet = new HashSet<>(mutations.size());
+
         Iterable<ColumnFamily> cfs = Iterables.concat(Iterables.transform(mutations, new Function<IMutation, Collection<ColumnFamily>>()
         {
             public Collection<ColumnFamily> apply(IMutation im)
             {
+                keySet.add(im.key());
                 return im.getColumnFamilies();
             }
         }));
+
         verifyBatchSize(cfs);
 
-        boolean mutateAtomic = (type == Type.LOGGED && mutations.size() > 1);
+        int mutationCount = mutations.size();
+
+        boolean mutateAtomic = (type == Type.LOGGED && mutationCount > 1);
+
+        if (!mutateAtomic && mutationCount > 1)
+        {
+            Set<String> ksCfPairs = new HashSet<>();
+            for (ColumnFamily cf : cfs)
+                ksCfPairs.add(cf.metadata().ksName + "." + cf.metadata().cfName);
+
+            NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
+                             keySet.size(), keySet.size() == 1 ? "" : "s",
+                             ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
+        }
+
         StorageProxy.mutateWithTriggers(mutations, cl, mutateAtomic);
     }
 
