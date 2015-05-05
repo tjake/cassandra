@@ -57,7 +57,7 @@ public class BatchStatement implements CQLStatement
     private final Attributes attrs;
     private final boolean hasConditions;
     private static final Logger logger = LoggerFactory.getLogger(BatchStatement.class);
-    private static final String unloggedBatchWarning = "Unlogged batch covering {} partition{} detected across table{} {}. You probably want to use a logged batch for atomicity, or asynchronous writes for performance.";
+    private static final String unloggedBatchWarning = "Unlogged batch covering {} partition{} detected against table{} {}. You probably want to use a logged batch for atomicity, or asynchronous writes for performance.";
 
     /**
      * Creates a new BatchStatement from a list of statements and a
