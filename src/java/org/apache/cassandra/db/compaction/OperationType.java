@@ -27,7 +27,7 @@ public enum OperationType
     CLEANUP("Cleanup"),
     SCRUB("Scrub"),
     UPGRADE_SSTABLES("Upgrade sstables"),
-    INDEX_BUILD("Secondary index build"),
+    INDEX_BUILD("Index build"),
     /** Compaction for tombstone removal */
     TOMBSTONE_COMPACTION("Tombstone Compaction"),
     UNKNOWN("Unknown compaction type"),

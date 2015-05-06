@@ -31,6 +31,7 @@ import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
+import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
@@ -256,6 +257,8 @@ public class GlobalIndex implements Index
      */
     public boolean cfModifiesIndexedColumn(ColumnFamily cf)
     {
+        createIndexCfsAndSelectors();
+
         // If we are including all of the columns, then any non-empty column family will need to be indexed
         if (includeAll)
             return true;
@@ -629,7 +632,7 @@ public class GlobalIndex implements Index
         createIndexCfsAndSelectors();
 
         this.builder = new GlobalIndexBuilder(baseCfs, this);
-        ScheduledExecutors.optionalTasks.execute(builder);
+        CompactionManager.instance.submitGlobalIndexBuilder(builder);
     }
 
     public void reload()
