@@ -256,7 +256,7 @@ public final class SystemKeyspace
                 "CREATE TABLE %s ("
                 + "keyspace_name text,"
                 + "index_name text,"
-                + "last_key blob,"
+                + "last_token varchar,"
                 + "generation_number int,"
                 + "PRIMARY KEY ((keyspace_name), index_name))");
 
@@ -448,29 +448,33 @@ public final class SystemKeyspace
         forceBlockingFlush(GLOBAL_INDEX_BUILDS_IN_PROGRESS);
     }
 
-    public static void updateGlobalIndexBuildStatus(String ksname, String indexname, ByteBuffer key)
+    public static void updateGlobalIndexBuildStatus(String ksname, String indexname, Token token)
     {
         // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
-        String req = "INSERT INTO system.%s (keyspace_name, index_name, last_key) VALUES (?, ?, ?)";
-        executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, key);
+        String req = "INSERT INTO system.%s (keyspace_name, index_name, last_token) VALUES (?, ?, ?)";
+        Token.TokenFactory factory = StorageService.getPartitioner().getTokenFactory();
+        executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, factory.toString(token));
     }
 
-    public static Pair<Integer, ByteBuffer> getGlobalIndexBuildStatus(String ksname, String indexname)
+    public static Pair<Integer, Token> getGlobalIndexBuildStatus(String ksname, String indexname)
     {
         // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
-        String req = "SELECT generation_number, last_key FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
+        String req = "SELECT generation_number, last_token FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
         UntypedResultSet queryResultSet = executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
-        if (queryResultSet.isEmpty())
+        if (queryResultSet == null || queryResultSet.isEmpty())
             return null;
 
         UntypedResultSet.Row row = queryResultSet.one();
 
         Integer generation = null;
-        ByteBuffer lastKey = null;
+        Token lastKey = null;
         if (row.has("generation_number"))
             generation = row.getInt("generation_number");
         if (row.has("last_key"))
-            lastKey = row.getBytes("last_key");
+        {
+            Token.TokenFactory factory = StorageService.getPartitioner().getTokenFactory();
+            lastKey = factory.fromString(row.getString("last_key"));
+        }
 
         return Pair.create(generation, lastKey);
     }
