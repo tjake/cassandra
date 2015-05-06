@@ -197,7 +197,7 @@ public class GlobalIndex implements Index
         staticColumns = new ArrayList<>();
     }
 
-    private void createIndexCfsAndSelectors()
+    private synchronized void createIndexCfsAndSelectors()
     {
         if (indexCfs != null)
             return;
