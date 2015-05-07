@@ -41,6 +41,7 @@ import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.utils.Pair;
 
 public class GlobalIndex implements Index
 {
@@ -49,8 +50,7 @@ public class GlobalIndex implements Index
         private final ColumnFamilyStore baseCfs;
         private final ByteBuffer partitionKey;
         private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
-        private Map<ColumnIdentifier, ByteBuffer> oldRegularColumnValues = new HashMap<>();
-        private Map<ColumnIdentifier, ByteBuffer> newRegularColumnValues = new HashMap<>();
+        private final Map<ColumnIdentifier, SortedMap<Long, ByteBuffer>> columnValues = new HashMap<>();
         private int ttl = 0;
 
         public MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
@@ -82,38 +82,44 @@ public class GlobalIndex implements Index
             return result;
         }
 
-        public void addNewColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value)
+        public void addNewColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value, long timestamp)
         {
-            newRegularColumnValues.put(columnIdentifier, value);
+            if (!columnValues.containsKey(columnIdentifier))
+                columnValues.put(columnIdentifier, new TreeMap<Long, ByteBuffer>());
+            columnValues.get(columnIdentifier).put(timestamp, value);
         }
 
-        public void addOldColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value)
+        public void addOldColumnValue(ColumnIdentifier columnIdentifier, ByteBuffer value, long timestamp)
         {
-            oldRegularColumnValues.put(columnIdentifier, value);
+            if (!columnValues.containsKey(columnIdentifier))
+                columnValues.put(columnIdentifier, new TreeMap<Long, ByteBuffer>());
+            columnValues.get(columnIdentifier).put(timestamp, value);
         }
 
         public ByteBuffer oldValueIfUpdated(ColumnIdentifier columnIdentifier)
         {
-            if (!newRegularColumnValues.containsKey(columnIdentifier))
+            if (!columnValues.containsKey(columnIdentifier))
                 return null;
-            if (!oldRegularColumnValues.containsKey(columnIdentifier))
+            SortedMap<Long, ByteBuffer> values = columnValues.get(columnIdentifier);
+            if (values.size() < 2)
                 return null;
 
-            ByteBuffer newValue = newRegularColumnValues.get(columnIdentifier);
-            ByteBuffer oldValue = oldRegularColumnValues.get(columnIdentifier);
+            ByteBuffer oldValue = values.get(values.firstKey());
+            ByteBuffer newValue = values.get(values.lastKey());
 
             return newValue.compareTo(oldValue) != 0 ? oldValue : null;
         }
 
         public ByteBuffer newValueIfUpdated(ColumnIdentifier columnIdentifier)
         {
-            if (!newRegularColumnValues.containsKey(columnIdentifier))
+            if (!columnValues.containsKey(columnIdentifier))
                 return null;
-            if (!oldRegularColumnValues.containsKey(columnIdentifier))
-                return newRegularColumnValues.get(columnIdentifier);
+            SortedMap<Long, ByteBuffer> values = columnValues.get(columnIdentifier);
+            if (values.size() < 2)
+                return null;
 
-            ByteBuffer newValue = newRegularColumnValues.get(columnIdentifier);
-            ByteBuffer oldValue = oldRegularColumnValues.get(columnIdentifier);
+            ByteBuffer oldValue = values.get(values.firstKey());
+            ByteBuffer newValue = values.get(values.lastKey());
 
             return newValue.compareTo(oldValue) != 0 ? newValue : null;
         }
@@ -138,11 +144,11 @@ public class GlobalIndex implements Index
                 if (clusteringColumns.containsKey(columnIdentifier))
                     return clusteringColumns.get(columnIdentifier);
 
-                if (newRegularColumnValues.containsKey(columnIdentifier))
-                    return newRegularColumnValues.get(columnIdentifier);
-
-                if (oldRegularColumnValues.containsKey(columnIdentifier))
-                    return oldRegularColumnValues.get(columnIdentifier);
+                if (columnValues.containsKey(columnIdentifier))
+                {
+                    SortedMap<Long, ByteBuffer> values = columnValues.get(columnIdentifier);
+                    return values.get(values.lastKey());
+                }
             }
 
             return null;
@@ -445,7 +451,7 @@ public class GlobalIndex implements Index
                     if (mutationUnits.containsKey(mutationUnit))
                     {
                         MutationUnit previous = mutationUnits.get(mutationUnit);
-                        previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+                        previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value(), cell.timestamp());
                     }
                     else
                     {
@@ -484,7 +490,7 @@ public class GlobalIndex implements Index
         return new ColumnSlice(built.start(), built.end());
     }
 
-    private void query(ByteBuffer key, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency, long timestamp)
+    private void query(ByteBuffer key, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency)
     {
         ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
         Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
@@ -501,7 +507,7 @@ public class GlobalIndex implements Index
         List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
                                                                                         key,
                                                                                         baseCfs.metadata.cfName,
-                                                                                        timestamp,
+                                                                                        Long.MAX_VALUE,
                                                                                         queryFilter)), consistency);
 
         for (Row row: rows)
@@ -523,7 +529,7 @@ public class GlobalIndex implements Index
                 if (mapMutationUnits.containsKey(mutationUnit))
                 {
                     MutationUnit previous = mapMutationUnits.get(mutationUnit);
-                    previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+                    previous.addOldColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value(), cell.timestamp());
                 }
                 else
                 {
@@ -559,7 +565,7 @@ public class GlobalIndex implements Index
             {
                 mutationUnits.put(mutationUnit, mutationUnit);
             }
-            mutationUnit.addNewColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value());
+            mutationUnit.addNewColumnValue(cell.name().cql3ColumnName(cf.metadata()), cell.value(), cell.timestamp());
         }
 
         return mutationUnits.values();
@@ -578,7 +584,7 @@ public class GlobalIndex implements Index
 
         // If we are building the index, we do not want to add old values; they will always be the same
         if (!isBuilding)
-            query(key, mutationUnits, consistency, cf.maxTimestamp());
+            query(key, mutationUnits, consistency);
 
         Collection<Mutation> mutations = null;
 
