@@ -250,6 +250,26 @@ public class BatchStatement implements CQLStatement
         }
     }
 
+    private void verifyBatchType(Collection<? extends IMutation> mutations)
+    {
+        if (type != Type.LOGGED && mutations.size() > 1)
+        {
+            Set<String> ksCfPairs = new HashSet<>();
+            Set<ByteBuffer> keySet = new HashSet<>();
+
+            for (IMutation im : mutations)
+            {
+                keySet.add(im.key());
+                for (ColumnFamily cf : im.getColumnFamilies())
+                    ksCfPairs.add(cf.metadata().ksName + "." + cf.metadata().cfName);
+            }
+
+            NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
+                             keySet.size(), keySet.size() == 1 ? "" : "s",
+                             ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
+        }
+    }
+
     public ResultMessage execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         return execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options));
@@ -278,34 +298,18 @@ public class BatchStatement implements CQLStatement
     private void executeWithoutConditions(Collection<? extends IMutation> mutations, ConsistencyLevel cl) throws RequestExecutionException, RequestValidationException
     {
         // Extract each collection of cfs from it's IMutation and then lazily concatenate all of them into a single Iterable.
-        final Set<ByteBuffer> keySet = new HashSet<>(mutations.size());
-
         Iterable<ColumnFamily> cfs = Iterables.concat(Iterables.transform(mutations, new Function<IMutation, Collection<ColumnFamily>>()
         {
             public Collection<ColumnFamily> apply(IMutation im)
             {
-                keySet.add(im.key());
                 return im.getColumnFamilies();
             }
         }));
 
         verifyBatchSize(cfs);
+        verifyBatchType(mutations);
 
-        int mutationCount = mutations.size();
-
-        boolean mutateAtomic = (type == Type.LOGGED && mutationCount > 1);
-
-        if (!mutateAtomic && mutationCount > 1)
-        {
-            Set<String> ksCfPairs = new HashSet<>();
-            for (ColumnFamily cf : cfs)
-                ksCfPairs.add(cf.metadata().ksName + "." + cf.metadata().cfName);
-
-            NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
-                             keySet.size(), keySet.size() == 1 ? "" : "s",
-                             ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
-        }
-
+        boolean mutateAtomic = (type == Type.LOGGED && mutations.size() > 1);
         StorageProxy.mutateWithTriggers(mutations, cl, mutateAtomic);
     }
 
