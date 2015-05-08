@@ -46,6 +46,7 @@ import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.ClientState;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 
 /**
@@ -85,11 +86,11 @@ public class CQLSSTableWriter implements Closeable
         Config.setClientMode(true);
     }
 
-    private final AbstractSSTableSimpleWriter writer;
+    private final SSTableSimpleWriter writer;
     private final UpdateStatement insert;
     private final List<ColumnSpecification> boundNames;
 
-    private CQLSSTableWriter(AbstractSSTableSimpleWriter writer, UpdateStatement insert, List<ColumnSpecification> boundNames)
+    private CQLSSTableWriter(SSTableSimpleWriter writer, UpdateStatement insert, List<ColumnSpecification> boundNames)
     {
         this.writer = writer;
         this.insert = insert;
@@ -231,7 +232,7 @@ public class CQLSSTableWriter implements Closeable
             }
             return this;
         }
-        catch (BufferedWriter.SyncException e)
+        catch (SSTableSimpleUnsortedWriter.SyncException e)
         {
             // If we use a BufferedWriter and had a problem writing to disk, the IOException has been
             // wrapped in a SyncException (see BufferedWriter below). We want to extract that IOE.
@@ -377,7 +378,7 @@ public class CQLSSTableWriter implements Closeable
         /**
          * Creates the keyspace with the specified table.
          *
-         * @param the table the table that must be created.
+         * @param table the table that must be created.
          */
         private static void createKeyspaceWithTable(CFMetaData table)
         {
@@ -522,96 +523,14 @@ public class CQLSSTableWriter implements Closeable
             if (insert == null)
                 throw new IllegalStateException("No insert statement specified, you should provide an insert statement through using()");
 
-            // TODO
-            throw new UnsupportedOperationException();
-            //AbstractSSTableSimpleWriter writer = sorted
-            //                                   ? new SSTableSimpleWriter(directory, schema, partitioner)
-            //                                   : new BufferedWriter(directory, schema, partitioner, bufferSizeInMB);
+            SSTableSimpleWriter writer = sorted
+                                               ? new SSTableSimpleWriter(directory, schema, partitioner)
+                                               : new SSTableSimpleUnsortedWriter(directory, schema, partitioner, bufferSizeInMB);
 
-            //if (formatType != null)
-            //    writer.setSSTableFormatType(formatType);
+            if (formatType != null)
+                writer.setSSTableFormatType(formatType);
 
-            //return new CQLSSTableWriter(writer, insert, boundNames);
-        }
-    }
-
-    /**
-     * CQLSSTableWriter doesn't use the method addColumn() from AbstractSSTableSimpleWriter.
-     * Instead, it adds cells directly to the ColumnFamily the latter exposes. But this means
-     * that the sync() method of SSTableSimpleUnsortedWriter is not called (at least not for
-     * each CQL row, so adding many rows to the same partition can buffer too much data in
-     * memory - #7360). So we create a slightly modified SSTableSimpleUnsortedWriter that uses
-     * a tweaked ColumnFamily object that calls back the proper method after each added cell
-     * so we sync when we should.
-     */
-    // TODO
-    private static class BufferedWriter //extends SSTableSimpleUnsortedWriter
-    {
-        private boolean needsSync = false;
-
-        //public BufferedWriter(File directory, CFMetaData metadata, IPartitioner partitioner, long bufferSizeInMB)
-        //{
-        //    super(directory, metadata, partitioner, bufferSizeInMB);
-        //}
-
-        //@Override
-        //protected PartitionUpdate createPartitionUpdate()
-        //{
-        //    // TODO
-        //    throw new UnsupportedOperationException();
-        //    //return new ArrayBackedSortedColumns(metadata, false)
-        //    //{
-        //    //    @Override
-        //    //    public void addColumn(Cell cell)
-        //    //    {
-        //    //        super.addColumn(cell);
-        //    //        try
-        //    //        {
-        //    //            countColumn(cell);
-        //    //        }
-        //    //        catch (IOException e)
-        //    //        {
-        //    //            // addColumn does not throw IOException but we want to report this to the user,
-        //    //            // so wrap it in a temporary RuntimeException that we'll catch in rawAddRow above.
-        //    //            throw new SyncException(e);
-        //    //        }
-        //    //    }
-        //    //};
-        //}
-
-        //@Override
-        //protected void replaceColumnFamily() throws IOException
-        //{
-        //    needsSync = true;
-        //}
-
-        ///**
-        // * If we have marked that the column family is being replaced, when we start the next row,
-        // * we should sync out the previous partition and create a new row based on the current value.
-        // */
-        //@Override
-        //boolean shouldStartNewRow() throws IOException
-        //{
-        //    if (needsSync)
-        //    {
-        //        needsSync = false;
-        //        super.sync();
-        //        return true;
-        //    }
-        //    return super.shouldStartNewRow();
-        //}
-
-        protected void addColumn(Cell cell) throws IOException
-        {
-            throw new UnsupportedOperationException();
-        }
-
-        static class SyncException extends RuntimeException
-        {
-            SyncException(IOException ioe)
-            {
-                super(ioe);
-            }
+            return new CQLSSTableWriter(writer, insert, boundNames);
         }
     }
 }

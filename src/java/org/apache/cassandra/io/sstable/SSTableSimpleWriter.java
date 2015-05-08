@@ -18,13 +18,29 @@
 package org.apache.cassandra.io.sstable;
 
 import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.atoms.AtomIterators;
+import org.apache.cassandra.db.atoms.AtomStats;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.FSError;
+import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
+import org.apache.cassandra.service.ActiveRepairService;
+import org.apache.cassandra.utils.CounterId;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
 
 /**
  * A SSTable writer that assumes rows are in (partitioner) sorted order.
@@ -34,61 +50,149 @@ import org.apache.cassandra.io.sstable.format.SSTableWriter;
  * means that rows should be added by increasing md5 of the row key. This is
  * rarely possible and SSTableSimpleUnsortedWriter should most of the time be
  * prefered.
- *
- * @see AbstractSSTableSimpleWriter
  */
-public class SSTableSimpleWriter //extends AbstractSSTableSimpleWriter
+class SSTableSimpleWriter
 {
-    // TODO
-    //private final SSTableWriter writer;
+    protected final File directory;
+    protected final CFMetaData metadata;
+    protected DecoratedKey currentKey;
+    protected PartitionUpdate update;
+    protected ByteBuffer currentSuperColumn;
+    protected final CounterId counterid = CounterId.generate();
+    private SSTableFormat.Type formatType = DatabaseDescriptor.getSSTableFormat();
+    protected static AtomicInteger generation = new AtomicInteger(0);
+    private SSTableWriter writer_;
 
-    ///**
-    // * Create a new writer.
-    // * @param directory the directory where to write the sstable
-    // * @param partitioner the partitioner
-    // * @param keyspace the keyspace name
-    // * @param columnFamily the column family name
-    // * @param comparator the column family comparator
-    // * @param subComparator the column family subComparator or null if not a Super column family.
-    // */
-    //public SSTableSimpleWriter(File directory,
-    //                           IPartitioner partitioner,
-    //                           String keyspace,
-    //                           String columnFamily,
-    //                           AbstractType<?> comparator,
-    //                           AbstractType<?> subComparator)
-    //{
-    //    this(directory, CFMetaData.denseCFMetaData(keyspace, columnFamily, comparator, subComparator), partitioner);
-    //}
 
-    //public SSTableSimpleWriter(File directory, CFMetaData metadata, IPartitioner partitioner)
-    //{
-    //    super(directory, metadata, partitioner);
-    //    writer = getWriter();
-    //}
+    protected SSTableSimpleWriter(File directory, CFMetaData metadata, IPartitioner partitioner)
+    {
+        this.metadata = metadata;
+        this.directory = directory;
+        DatabaseDescriptor.setPartitioner(partitioner);
 
-    //public void close()
-    //{
-    //    try
-    //    {
-    //        if (currentKey != null)
-    //            writeRow(currentKey, columnFamily);
-    //        writer.close();
-    //    }
-    //    catch (FSError e)
-    //    {
-    //        writer.abort();
-    //        throw e;
-    //    }
-    //}
+        writer_ = null;
+    }
 
-    //protected void writeRow(DecoratedKey key, ColumnFamily columnFamily)
-    //{
-    //    writer.append(key, columnFamily);
-    //}
+    protected void setSSTableFormatType(SSTableFormat.Type type)
+    {
+        this.formatType = type;
+    }
 
-    //protected ColumnFamily getColumnFamily()
-    //{
-    //    return ArrayBackedSortedColumns.factory.create(metadata);
-    //}
+    private SSTableWriter getOrCreateWriter()
+    {
+        if (writer_ == null)
+            writer_ = createWriter();
+
+        return writer_;
+    }
+
+    protected SSTableWriter createWriter()
+    {
+        return SSTableWriter.create(createDescriptor(directory, metadata.ksName, metadata.cfName, formatType),
+                                    0,
+                                    ActiveRepairService.UNREPAIRED_SSTABLE,
+                                    new SerializationHeader(metadata, metadata.partitionColumns(), AtomStats.NO_STATS, true));
+    }
+
+    protected static Descriptor createDescriptor(File directory, final String keyspace, final String columnFamily, final SSTableFormat.Type fmt)
+    {
+        int maxGen = getNextGeneration(directory, columnFamily);
+        return new Descriptor(directory, keyspace, columnFamily, maxGen + 1, Descriptor.Type.TEMP, fmt);
+    }
+
+    private static int getNextGeneration(File directory, final String columnFamily)
+    {
+        final Set<Descriptor> existing = new HashSet<>();
+        directory.list(new FilenameFilter()
+        {
+            public boolean accept(File dir, String name)
+            {
+                Pair<Descriptor, Component> p = SSTable.tryComponentFromFilename(dir, name);
+                Descriptor desc = p == null ? null : p.left;
+                if (desc == null)
+                    return false;
+
+                if (desc.cfname.equals(columnFamily))
+                    existing.add(desc);
+
+                return false;
+            }
+        });
+        int maxGen = generation.getAndIncrement();
+        for (Descriptor desc : existing)
+        {
+            while (desc.generation > maxGen)
+            {
+                maxGen = generation.getAndIncrement();
+            }
+        }
+        return maxGen;
+    }
+
+    /**
+     * Start a new row whose key is {@code key}.
+     * @param key the row key
+     */
+    public void newRow(ByteBuffer key) throws IOException
+    {
+        if (currentKey != null && !update.isEmpty())
+            writePartition(update);
+
+        currentKey = DatabaseDescriptor.getPartitioner().decorateKey(key);
+        update = getPartitionUpdate();
+    }
+
+
+    /**
+     * Package protected for use by AbstractCQLSSTableWriter.
+     * Not meant to be exposed publicly.
+     */
+    PartitionUpdate currentUpdate()
+    {
+        return update;
+    }
+
+    /**
+     * Package protected for use by AbstractCQLSSTableWriter.
+     * Not meant to be exposed publicly.
+     */
+    DecoratedKey currentKey()
+    {
+        return currentKey;
+    }
+
+    /**
+     * Package protected for use by AbstractCQLSSTableWriter.
+     * Not meant to be exposed publicly.
+     */
+    boolean shouldStartNewRow() throws IOException
+    {
+        return currentKey == null;
+    }
+
+
+    public void close() throws IOException
+    {
+        try
+        {
+            if (currentKey != null)
+                writePartition(update);
+            getOrCreateWriter().close();
+        }
+        catch (FSError e)
+        {
+            getOrCreateWriter().abort();
+            throw e;
+        }
+    }
+
+    protected void writePartition(PartitionUpdate update) throws IOException
+    {
+        getOrCreateWriter().append(update.atomIterator());
+    }
+
+    protected PartitionUpdate getPartitionUpdate() throws IOException
+    {
+        return new PartitionUpdate(metadata, currentKey, metadata.partitionColumns(), 1, FBUtilities.nowInSeconds());
+    }
 }
