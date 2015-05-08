@@ -72,11 +72,6 @@ public abstract class GlobalIndexSelector
      */
     public abstract boolean canGenerateTombstones();
 
-    public boolean isPrimaryKey()
-    {
-        return false;
-    }
-
     public abstract boolean selects(CellName cellName);
 
     public abstract ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf);

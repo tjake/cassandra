@@ -49,11 +49,6 @@ public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
         throw new AssertionError("PartitionKey cannot produce value from a CellName");
     }
 
-    public boolean isPrimaryKey()
-    {
-        return true;
-    }
-
     public ByteBuffer value(ByteBuffer key)
     {
         if (columnDefinition.isOnAllComponents())
