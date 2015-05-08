@@ -18,6 +18,7 @@
 package org.apache.cassandra.cql3;
 
 import java.io.File;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -130,9 +131,15 @@ public abstract class CQLTester
     public static void prepareServer()
     {
         // Cleanup first
-        cleanupAndLeaveDirs();
-
-        CommitLog.instance.allocator.enableReserveSegmentCreation();
+        try
+        {
+            cleanupAndLeaveDirs();
+        }
+        catch (IOException e)
+        {
+            logger.error("Failed to cleanup and recreate directories.");
+            throw new RuntimeException(e);
+        }
 
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
         {
@@ -145,7 +152,7 @@ public abstract class CQLTester
         Keyspace.setInitialized();
     }
 
-    public static void cleanupAndLeaveDirs()
+    public static void cleanupAndLeaveDirs() throws IOException
     {
         mkdirs();
         cleanup();

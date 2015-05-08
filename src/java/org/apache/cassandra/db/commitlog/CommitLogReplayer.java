@@ -295,7 +295,8 @@ public class CommitLogReplayer
                 {
                     int uncompressedLength = reader.readInt();
                     replayEnd = replayPos + uncompressedLength;
-                } else
+                }
+                else
                 {
                     replayEnd = end;
                 }
@@ -362,8 +363,10 @@ public class CommitLogReplayer
      *
      * @return Whether replay should continue with the next section.
      */
-    private boolean replaySyncSection(FileDataInput reader, int end, CommitLogDescriptor desc,
-            final ReplayFilter replayFilter) throws IOException, FileNotFoundException
+    private boolean replaySyncSection(FileDataInput reader,
+                                      int end,
+                                      CommitLogDescriptor desc,
+                                      final ReplayFilter replayFilter) throws IOException
     {
          /* read the logs populate Mutation and apply */
         while (reader.getFilePointer() < end && !reader.isEOF())

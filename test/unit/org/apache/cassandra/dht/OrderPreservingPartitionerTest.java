@@ -17,6 +17,8 @@
  */
 package org.apache.cassandra.dht;
 
+import java.io.IOException;
+
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -25,7 +27,7 @@ import org.apache.cassandra.SchemaLoader;
 public class OrderPreservingPartitionerTest extends PartitionerTestCase
 {
     @BeforeClass
-    public static void cleanStatesFromPreviousTest()
+    public static void cleanStatesFromPreviousTest() throws IOException
     {
         // Since OrderPreservingPartitioner#describeOwnership tries to read SSTables,
         // we need to clear data dir to clear garbage from previous test before running tests.

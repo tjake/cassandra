@@ -17,7 +17,10 @@
  */
 package org.apache.cassandra.db.atoms;
 
+import java.util.Objects;
+
 import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Iterators;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
@@ -95,4 +98,18 @@ public abstract class AbstractAtomIterator extends AbstractIterator<Atom> implem
     public void close()
     {
     }
+
+    public static boolean equal(AtomIterator a, AtomIterator b)
+    {
+        return Objects.equals(a.columns(), b.columns())
+            && Objects.equals(a.metadata(), b.metadata())
+            && Objects.equals(a.isReverseOrder(), b.isReverseOrder())
+            && Objects.equals(a.partitionKey(), b.partitionKey())
+            && Objects.equals(a.partitionLevelDeletion(), b.partitionLevelDeletion())
+            && Objects.equals(a.staticRow(), b.staticRow())
+            && Objects.equals(a.stats(), b.stats())
+            && Objects.equals(a.metadata(), b.metadata())
+            && Iterators.elementsEqual(a, b);
+    }
+
 }

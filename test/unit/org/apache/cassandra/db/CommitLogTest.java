@@ -309,7 +309,7 @@ public class CommitLogTest
     }
 
     @Test
-    public void testTruncateWithoutSnapshot()
+    public void testTruncateWithoutSnapshot() throws IOException
     {
         boolean originalState = DatabaseDescriptor.isAutoSnapshot();
         try
@@ -346,7 +346,7 @@ public class CommitLogTest
     }
 
     @Test
-    public void testTruncateWithoutSnapshotNonDurable()
+    public void testTruncateWithoutSnapshotNonDurable() throws IOException
     {
         CommitLog.instance.resetUnsafe(true);
         boolean originalState = DatabaseDescriptor.getAutoSnapshot();
