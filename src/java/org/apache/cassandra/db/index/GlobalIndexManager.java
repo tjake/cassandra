@@ -17,30 +17,42 @@
  */
 package org.apache.cassandra.db.index;
 
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-
-import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.GlobalIndexDefinition;
-import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.index.global.GlobalIndexUtils;
-import org.apache.cassandra.exceptions.InvalidRequestException;
-import org.apache.cassandra.exceptions.WriteTimeoutException;
-import org.apache.cassandra.service.AbstractWriteResponseHandler;
-import org.apache.cassandra.service.StorageProxy;
-import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.Pair;
-
-import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+
+import com.google.common.base.Objects;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.Striped;
+
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.ConsistencyLevel;
+import org.apache.cassandra.db.CounterMutation;
+import org.apache.cassandra.db.IMutation;
+import org.apache.cassandra.db.Keyspace;
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.db.SystemKeyspace;
+import org.apache.cassandra.exceptions.InvalidRequestException;
+import org.apache.cassandra.exceptions.WriteTimeoutException;
+import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.Pair;
 
 public class GlobalIndexManager implements IndexManager
 {
@@ -49,7 +61,7 @@ public class GlobalIndexManager implements IndexManager
      */
     private final ConcurrentNavigableMap<ByteBuffer, GlobalIndex> indexesByColumn;
 
-    private final ConcurrentNavigableMap<ByteBuffer, Lock> writeLocks;
+    private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
 
     private final Set<GlobalIndex> allIndexes;
 
@@ -179,27 +191,11 @@ public class GlobalIndexManager implements IndexManager
         return false;
     }
 
-    public void acquireLockFor(ByteBuffer key)
+    public Lock acquireLockFor(ByteBuffer key)
     {
-        Lock lock;
-        if (!writeLocks.containsKey(key))
-        {
-            Lock newLock = new ReentrantLock();
-            lock = writeLocks.putIfAbsent(key, newLock);
-            if (lock == null)
-                lock = newLock;
-        }
-        else
-        {
-            lock = writeLocks.get(key);
-        }
+        Lock lock = LOCKS.get(Objects.hashCode(baseCfs.metadata.cfId, key));
         lock.lock();
-    }
-
-    public void releaseLockFor(ByteBuffer key)
-    {
-        assert writeLocks.containsKey(key);
-        writeLocks.get(key).unlock();
+        return lock;
     }
 
     public static boolean touchesIndexedColumns(Collection<? extends IMutation> mutations)
