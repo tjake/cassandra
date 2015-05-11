@@ -70,7 +70,6 @@ public class GlobalIndexManager implements IndexManager
     public GlobalIndexManager(ColumnFamilyStore baseCfs)
     {
         this.indexesByColumn = new ConcurrentSkipListMap<>();
-        this.writeLocks = new ConcurrentSkipListMap<>();
         this.allIndexes = Collections.newSetFromMap(new ConcurrentHashMap<GlobalIndex, Boolean>());
 
         this.baseCfs = baseCfs;
