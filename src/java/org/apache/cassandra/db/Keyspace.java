@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.Lock;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
@@ -392,14 +393,13 @@ public class Keyspace
                     continue;
                 }
 
-                boolean lockAcquired = false;
+                Lock lock = null;
                 try
                 {
                     if (cfs.globalIndexManager.cfModifiesIndexedColumn(cf))
                     {
                         Tracing.trace("Create global index mutations from replica");
-                        cfs.globalIndexManager.acquireLockFor(mutation.key());
-                        lockAcquired = true;
+                        lock = cfs.globalIndexManager.acquireLockFor(mutation.key());
                         cfs.globalIndexManager.pushReplicaMutations(mutation.key(), cf);
                     }
 
@@ -409,8 +409,8 @@ public class Keyspace
                                                             : SecondaryIndexManager.nullUpdater;
                     cfs.apply(key, cf, updater, opGroup, replayPosition);
                 } finally {
-                    if (lockAcquired)
-                        cfs.globalIndexManager.releaseLockFor(mutation.key());
+                    if (lock != null)
+                        lock.unlock();
                 }
             }
         }
