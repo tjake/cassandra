@@ -93,6 +93,14 @@ public class CFRowAdder
         return add(name, def, value);
     }
 
+    public CFRowAdder addCollectionEntry(String cql3ColumnName, ByteBuffer collectionElement, Object value)
+    {
+        ColumnDefinition def = getDefinition(cql3ColumnName);
+        assert def.type instanceof CollectionType;
+        CellName name = cf.getComparator().create(prefix, def, collectionElement);
+        return add(name, def, value);
+    }
+
     public CFRowAdder addListEntry(String cql3ColumnName, Object value)
     {
         ColumnDefinition def = getDefinition(cql3ColumnName);

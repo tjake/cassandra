@@ -91,19 +91,6 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
             ColumnDefinition def = cfm.getColumnDefinition(column);
             if (def == null)
                 throw new InvalidRequestException("Must use defined columns for Global Indexes");
-
-            if (def.type.isCollection())
-                throw new InvalidRequestException("Cannot create global index including a collection");
-        }
-
-        if (included.isEmpty())
-        {
-            // Need to validate there are no collections
-            for (ColumnDefinition def: cfm.allColumns())
-            {
-                if (def.type.isCollection())
-                    throw new InvalidRequestException("Cannot create global index including a collection");
-            }
         }
 
         if (cd.isIndexed())
