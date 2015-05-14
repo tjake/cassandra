@@ -326,6 +326,11 @@ public class CassandraDaemon
     {
     	if (logger.isInfoEnabled())
     	{
+            long pid = SigarLibrary.instance.getPid();
+
+            if (pid > 0)
+                logger.info("PID: {}", pid);
+
 	        try
 	        {
 	            logger.info("Hostname: {}", InetAddress.getLocalHost().getHostName());
