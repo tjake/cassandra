@@ -24,6 +24,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -35,7 +36,13 @@ public class UUIDGen
 {
     // A grand day! millis at 00:00:00.000 15 Oct 1582.
     private static final long START_EPOCH = -12219292800000L;
-    private static final long clockSeqAndNode = makeClockSeqAndNode();
+    private static final ThreadLocal<Long> clockSeqAndNode = new ThreadLocal<Long>()
+    {
+        protected Long initialValue()
+        {
+            return makeClockSeqAndNode();
+        }
+    };
 
     /*
      * The min and max possible lsb for a UUID.
@@ -59,7 +66,7 @@ public class UUIDGen
     private UUIDGen()
     {
         // make sure someone didn't whack the clockSeqAndNode by changing the order of instantiation.
-        if (clockSeqAndNode == 0) throw new RuntimeException("singleton instantiation is misplaced.");
+        if (clockSeqAndNode.get() == 0) throw new RuntimeException("singleton instantiation is misplaced.");
     }
 
     /**
@@ -69,7 +76,7 @@ public class UUIDGen
      */
     public static UUID getTimeUUID()
     {
-        return new UUID(instance.createTimeSafe(), clockSeqAndNode);
+        return new UUID(instance.createTimeSafe(), clockSeqAndNode.get());
     }
 
     /**
@@ -79,7 +86,7 @@ public class UUIDGen
      */
     public static UUID getTimeUUID(long when)
     {
-        return new UUID(createTime(fromUnixTimestamp(when)), clockSeqAndNode);
+        return new UUID(createTime(fromUnixTimestamp(when)), clockSeqAndNode.get());
     }
 
     @VisibleForTesting
@@ -193,7 +200,7 @@ public class UUIDGen
 
     private static byte[] createTimeUUIDBytes(long msb)
     {
-        long lsb = clockSeqAndNode;
+        long lsb = clockSeqAndNode.get();
         byte[] uuidBytes = new byte[16];
 
         for (int i = 0; i < 8; i++)
@@ -295,6 +302,17 @@ public class UUIDGen
             MessageDigest messageDigest = MessageDigest.getInstance("MD5");
             for(InetAddress addr : data)
                 messageDigest.update(addr.getAddress());
+
+            //Include the process id.
+            long pid = SigarLibrary.instance.getPid();
+
+            if (pid < 0)
+                pid = ThreadLocalRandom.current().nextLong();
+
+            messageDigest.update(ByteBufferUtil.bytes(pid));
+
+            //Include the thread id
+            messageDigest.update(ByteBufferUtil.bytes(Thread.currentThread().getId()));
 
             return messageDigest.digest();
         }
