@@ -288,6 +288,10 @@ public class BatchStatement implements CQLStatement
             NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
                              keySet.size(), keySet.size() == 1 ? "" : "s",
                              ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
+
+            ClientWarn.warn(String.format(unloggedBatchWarning, keySet.size(), keySet.size() == 1 ? "" : "s",
+                                          ksCfPairs.size() == 1 ? "" : "s", ksCfPairs));
+
         }
     }
 
