@@ -25,6 +25,7 @@ import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.helpers.MessageFormatter;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -267,7 +268,7 @@ public class BatchStatement implements CQLStatement
             {
                 logger.warn(format, ksCfPairs, size, warnThreshold, size - warnThreshold, "");
             }
-            ClientWarn.warn(String.format(format, ksCfPairs, size, warnThreshold, size - warnThreshold, ""));
+            ClientWarn.warn(MessageFormatter.arrayFormat(format, new Object[]{ksCfPairs, size, warnThreshold, size - warnThreshold, ""}).getMessage());
         }
     }
 
@@ -289,8 +290,8 @@ public class BatchStatement implements CQLStatement
                              keySet.size(), keySet.size() == 1 ? "" : "s",
                              ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
 
-            ClientWarn.warn(String.format(unloggedBatchWarning, keySet.size(), keySet.size() == 1 ? "" : "s",
-                                          ksCfPairs.size() == 1 ? "" : "s", ksCfPairs));
+            ClientWarn.warn(MessageFormatter.arrayFormat(unloggedBatchWarning, new Object[]{keySet.size(), keySet.size() == 1 ? "" : "s",
+                                                    ksCfPairs.size() == 1 ? "" : "s", ksCfPairs}).getMessage());
 
         }
     }
