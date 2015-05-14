@@ -243,7 +243,7 @@ public class BatchStatement implements CQLStatement
         {
             Set<String> ksCfPairs = new HashSet<>();
             for (ColumnFamily cf : cfs)
-                ksCfPairs.add(cf.metadata().ksName + "." + cf.metadata().cfName);
+                ksCfPairs.add(String.format("%s.%s",cf.metadata().ksName, cf.metadata().cfName));
 
             String format = "Batch of prepared statements for {} is of size {}, exceeding specified threshold of {} by {}.";
             logger.warn(format, ksCfPairs, size, warnThreshold, size - warnThreshold);
@@ -261,7 +261,7 @@ public class BatchStatement implements CQLStatement
             {
                 keySet.add(im.key());
                 for (ColumnFamily cf : im.getColumnFamilies())
-                    ksCfPairs.add(cf.metadata().ksName + "." + cf.metadata().cfName);
+                    ksCfPairs.add(String.format("%s.%s",cf.metadata().ksName, cf.metadata().cfName));
             }
 
             NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
