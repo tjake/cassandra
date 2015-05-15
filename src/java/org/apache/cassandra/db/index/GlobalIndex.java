@@ -137,7 +137,7 @@ public class GlobalIndex implements Index
                 for (Cell cell: cells.values())
                     value = value.reconcile(cell);
 
-                if (initial != value)
+                if (initial.value().compareTo(value.value()) != 0)
                     values.add(initial);
             }
             return values;
@@ -157,7 +157,7 @@ public class GlobalIndex implements Index
                 for (Cell cell: cells.values())
                     value = value.reconcile(cell);
 
-                if (cells.size() == 1 || initial != value)
+                if (cells.size() == 1 || initial.value().compareTo(value.value()) != 0)
                     values.add(initial);
             }
             return values;
