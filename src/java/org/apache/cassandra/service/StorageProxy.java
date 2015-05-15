@@ -666,7 +666,7 @@ public class StorageProxy implements StorageProxyMBean
 
                 // Consistency Level doesn't matter
                 standardWritePerformer.apply(mutation, Iterables.concat(naturalEndpoints, pendingEndpoints), responseHandler, localDataCenter, ConsistencyLevel.ONE);
-                responseHandler.get();
+                responseHandlers.add(responseHandler);
             }
 
             // wait for writes.  throws TimeoutException if necessary
