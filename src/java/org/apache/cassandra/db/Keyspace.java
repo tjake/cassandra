@@ -408,7 +408,9 @@ public class Keyspace
                                                             ? cfs.indexManager.updaterFor(key, cf, opGroup)
                                                             : SecondaryIndexManager.nullUpdater;
                     cfs.apply(key, cf, updater, opGroup, replayPosition);
-                } finally {
+                }
+                finally
+                {
                     if (lock != null)
                         lock.unlock();
                 }

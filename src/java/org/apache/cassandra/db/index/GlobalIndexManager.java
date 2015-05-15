@@ -29,12 +29,16 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Striped;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -49,21 +53,25 @@ import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.exceptions.InvalidRequestException;
+import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.exceptions.WriteFailureException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Pair;
 
 public class GlobalIndexManager implements IndexManager
 {
+    private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
+    private static final Logger logger = LoggerFactory.getLogger(GlobalIndexManager.class);
+
+    private final Set<GlobalIndex> allIndexes;
+
     /**
      * Organizes the indexes by column name
      */
     private final ConcurrentNavigableMap<ByteBuffer, GlobalIndex> indexesByColumn;
-
-    private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
-
-    private final Set<GlobalIndex> allIndexes;
 
     private final ColumnFamilyStore baseCfs;
 
@@ -193,8 +201,24 @@ public class GlobalIndexManager implements IndexManager
     public Lock acquireLockFor(ByteBuffer key)
     {
         Lock lock = LOCKS.get(Objects.hashCode(baseCfs.metadata.cfId, key));
-        lock.lock();
-        return lock;
+        try
+        {
+            long timeout = TimeUnit.NANOSECONDS.convert(DatabaseDescriptor.getWriteRpcTimeout(), TimeUnit.MILLISECONDS);
+            long startTime = System.nanoTime();
+            while (!lock.tryLock(1, TimeUnit.MILLISECONDS))
+            {
+                if (System.nanoTime() - startTime > timeout)
+                {
+                    throw new InterruptedException();
+                }
+            }
+            return lock;
+        }
+        catch (InterruptedException e)
+        {
+            logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(key));
+            throw new InvalidRequestException("Could not obtain lock for " + ByteBufferUtil.bytesToHex(key));
+        }
     }
 
     public static boolean touchesIndexedColumns(Collection<? extends IMutation> mutations)
