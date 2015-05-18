@@ -147,7 +147,7 @@ public class CreateGlobalIndexStatement extends SchemaAlteringStatement
 
         return true;
     }
-    
+
     public Event.SchemaChange changeEvent()
     {
         // Creating an index is akin to updating the CF

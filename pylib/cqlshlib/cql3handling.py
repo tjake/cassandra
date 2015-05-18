@@ -1148,7 +1148,7 @@ def global_idx_ks_idx_name_completer(ctxt, cass):
         if ks is None:
             return ()
         raise
-    return map(maybe_escape_name, idxnames)    
+    return map(maybe_escape_name, idxnames)
 
 syntax_rules += r'''
 <alterTableStatement> ::= "ALTER" wat=( "COLUMNFAMILY" | "TABLE" ) cf=<columnFamilyName>

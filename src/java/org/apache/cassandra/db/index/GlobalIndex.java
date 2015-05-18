@@ -488,7 +488,7 @@ public class GlobalIndex implements Index
                 filter = new IdentityQueryFilter();
                 timestamp = deletionInfo.getTopLevelDeletion().markedForDeleteAt;
             }
-            
+
             List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
                                                                                             key,
                                                                                             baseCfs.metadata.cfName,
