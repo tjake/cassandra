@@ -29,15 +29,15 @@ public class BatchlogResponseHandler<T> extends AbstractWriteResponseHandler<T>
 {
     AbstractWriteResponseHandler<T> wrapped;
     BatchlogCleanup cleanup;
-    protected volatile int responses;
-    private static final AtomicIntegerFieldUpdater<BatchlogResponseHandler> responsesUpdater
-            = AtomicIntegerFieldUpdater.newUpdater(BatchlogResponseHandler.class, "responses");
+    protected volatile int requiredBeforeFinish;
+    private static final AtomicIntegerFieldUpdater<BatchlogResponseHandler> requiredBeforeFinishUpdater
+            = AtomicIntegerFieldUpdater.newUpdater(BatchlogResponseHandler.class, "requiredBeforeFinish");
 
     public BatchlogResponseHandler(AbstractWriteResponseHandler<T> wrapped, int requiredBeforeFinish, BatchlogCleanup cleanup)
     {
         super(wrapped.keyspace, wrapped.naturalEndpoints, wrapped.pendingEndpoints, wrapped.consistencyLevel, wrapped.callback, wrapped.writeType);
         this.wrapped = wrapped;
-        this.responses = requiredBeforeFinish;
+        this.requiredBeforeFinish = requiredBeforeFinish;
         this.cleanup = cleanup;
     }
 
@@ -49,7 +49,7 @@ public class BatchlogResponseHandler<T> extends AbstractWriteResponseHandler<T>
     public void response(MessageIn<T> msg)
     {
         wrapped.response(msg);
-        if (responsesUpdater.decrementAndGet(this) == 0)
+        if (requiredBeforeFinishUpdater.decrementAndGet(this) == 0)
             cleanup.run();
     }
 
