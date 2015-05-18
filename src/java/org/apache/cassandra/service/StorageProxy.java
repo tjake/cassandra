@@ -61,7 +61,6 @@ import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.IEndpointSnitch;
 import org.apache.cassandra.locator.LocalStrategy;
 import org.apache.cassandra.locator.TokenMetadata;
-import org.apache.cassandra.metrics.*;
 import org.apache.cassandra.net.*;
 import org.apache.cassandra.service.paxos.*;
 import org.apache.cassandra.tracing.Tracing;
@@ -633,7 +632,6 @@ public class StorageProxy implements StorageProxyMBean
      * across all replicas.
      *
      * @param mutations the mutations to be applied across the replicas
-     * @param targetAddress endpoint which we will wait for response from
      */
     public static void mutateGI(ByteBuffer dataKey, Collection<? extends IMutation> mutations)
     throws UnavailableException, OverloadedException, WriteTimeoutException
@@ -754,46 +752,35 @@ public class StorageProxy implements StorageProxyMBean
                     batchConsistencyLevel = consistency_level;
             }
 
+            final Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, batchConsistencyLevel);
+            final UUID batchUUID = UUIDGen.getTimeUUID();
+            BatchlogResponseHandler.BatchlogCleanup cleanup = new BatchlogResponseHandler.BatchlogCleanup(mutations.size(),
+                                                                                                          new BatchlogResponseHandler.BatchlogCleanupCallback()
+                                                                                                          {
+                                                                                                              public void invoke()
+                                                                                                              {
+                                                                                                                  asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
+                                                                                                              }
+                                                                                                          });
+
             // add a handler for each mutation - includes checking availability, but doesn't initiate any writes, yet
             for (Mutation mutation : mutations)
             {
-                WriteResponseHandlerWrapper wrapper = wrapResponseHandler(mutation, consistency_level, WriteType.BATCH);
+                WriteResponseHandlerWrapper wrapper = wrapBatchResponseHandler(mutation,
+                                                                               consistency_level,
+                                                                               batchConsistencyLevel,
+                                                                               WriteType.BATCH,
+                                                                               cleanup);
                 // exit early if we can't fulfill the CL at this time.
                 wrapper.handler.assureSufficientLiveNodes();
-                wrapper.blockFor = batchConsistencyLevel.blockFor(Keyspace.open(mutation.getKeyspaceName()));
                 wrappers.add(wrapper);
             }
 
             // write to the batchlog
-            Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, batchConsistencyLevel);
-            UUID batchUUID = UUIDGen.getTimeUUID();
             syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
 
             // now actually perform the writes and wait for them to complete
             syncWriteBatchedMutations(wrappers, localDataCenter);
-
-            boolean canRemove = true;
-            int blockFor = 0;
-            int ackCount = 0;
-            for (WriteResponseHandlerWrapper wrapper: wrappers)
-            {
-                blockFor = wrapper.blockFor;
-                ackCount = wrapper.handler.ackCount();
-                if (blockFor > ackCount)
-                {
-                    canRemove = false;
-                    break;
-                }
-            }
-
-            // remove the batchlog entries asynchronously
-            if (canRemove)
-            {
-                asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
-                Tracing.trace("Removing batch log {} because required numbers were met", batchUUID);
-            }
-            else
-                Tracing.trace("Could not remove batch log {} because only {}/{} replicas reported", batchUUID, ackCount, blockFor);
         }
         catch (UnavailableException e)
         {
@@ -927,29 +914,33 @@ public class StorageProxy implements StorageProxyMBean
     }
 
     // same as above except does not initiate writes (but does perform availability checks).
-    private static WriteResponseHandlerWrapper wrapResponseHandler(Mutation mutation, ConsistencyLevel consistency_level, WriteType writeType)
+    private static WriteResponseHandlerWrapper wrapBatchResponseHandler(Mutation mutation,
+                                                                        ConsistencyLevel consistency_level,
+                                                                        ConsistencyLevel batchConsistencyLevel,
+                                                                        WriteType writeType,
+                                                                        BatchlogResponseHandler.BatchlogCleanup cleanup)
     {
-        AbstractReplicationStrategy rs = Keyspace.open(mutation.getKeyspaceName()).getReplicationStrategy();
+        Keyspace keyspace = Keyspace.open(mutation.getKeyspaceName());
+        AbstractReplicationStrategy rs = keyspace.getReplicationStrategy();
         String keyspaceName = mutation.getKeyspaceName();
         Token tk = StorageService.getPartitioner().getToken(mutation.key());
         List<InetAddress> naturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, tk);
         Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
-        AbstractWriteResponseHandler<IMutation> responseHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, consistency_level, null, writeType);
-        return new WriteResponseHandlerWrapper(responseHandler, mutation);
+        AbstractWriteResponseHandler<IMutation> writeHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, consistency_level, null, writeType);
+        BatchlogResponseHandler<IMutation> batchHandler = new BatchlogResponseHandler<>(writeHandler, batchConsistencyLevel.blockFor(keyspace), cleanup);
+        return new WriteResponseHandlerWrapper(batchHandler, mutation);
     }
 
     // used by atomic_batch_mutate to decouple availability check from the write itself, caches consistency level and endpoints.
     private static class WriteResponseHandlerWrapper
     {
-        final AbstractWriteResponseHandler<IMutation> handler;
+        final BatchlogResponseHandler<IMutation> handler;
         final Mutation mutation;
-        int blockFor;
 
-        WriteResponseHandlerWrapper(AbstractWriteResponseHandler<IMutation> handler, Mutation mutation)
+        WriteResponseHandlerWrapper(BatchlogResponseHandler<IMutation> handler, Mutation mutation)
         {
             this.handler = handler;
             this.mutation = mutation;
-            this.blockFor = handler.totalBlockFor();
         }
     }
 
