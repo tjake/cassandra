@@ -148,7 +148,7 @@ public class LegacySSTableTest
         {
             ByteBuffer key = bytes(keystring);
 
-            SliceableAtomIterator iter = sstable.iterator(Util.dk(key), ColumnsSelection.builder().add(cfs.metadata.getColumnDefinition(bytes("name"))).build(), false, FBUtilities.nowInSeconds());
+            SliceableAtomIterator iter = sstable.iterator(Util.dk(key), ColumnsSelection.builder().add(cfs.metadata.getColumnDefinition(bytes("name"))).build(), false, FBUtilities.nowInSeconds(), false);
 
             // check not deleted (CASSANDRA-6527)
             assert iter.partitionLevelDeletion().equals(DeletionInfo.live());
@@ -187,7 +187,7 @@ public class LegacySSTableTest
 
                 ByteBuffer key = bytes(keystring);
 
-                SliceableAtomIterator iter = reader.iterator(Util.dk(key), ColumnsSelection.builder().add(cfs.metadata.getColumnDefinition(bytes("name"))).build(), false, FBUtilities.nowInSeconds());
+                SliceableAtomIterator iter = reader.iterator(Util.dk(key), ColumnsSelection.builder().add(cfs.metadata.getColumnDefinition(bytes("name"))).build(), false, FBUtilities.nowInSeconds(), false);
 
                 // check not deleted (CASSANDRA-6527)
                 assert iter.partitionLevelDeletion().equals(DeletionInfo.live());

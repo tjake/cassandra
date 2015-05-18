@@ -620,7 +620,6 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
         {
             if (version < MessagingService.VERSION_30)
             {
-                // TODO (we should be careful to handle the flag properly)
                 assert key != null;
 
                 // This is only used in mutation, and mutation have never allowed "null" column families

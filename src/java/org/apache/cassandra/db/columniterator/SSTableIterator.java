@@ -203,7 +203,7 @@ public class SSTableIterator extends AbstractSSTableIterator
             // whole slice is between the previous block end and this bloc start, and thus has no corresponding
             // data. One exception is if the previous block ends with an openMarker as it will cover our slice
             // and we need to return it.
-            if (startIdx == endIdx && metadata().comparator.compare(slice.end(), startIndex.firstName) < 0 && openMarker == null)
+            if (startIdx == endIdx && metadata().comparator.compare(slice.end(), startIndex.firstName) < 0 && openMarker == null && sstable.descriptor.version.storeRows())
                 return Collections.emptyIterator();
 
             return new AbstractIterator<Atom>()

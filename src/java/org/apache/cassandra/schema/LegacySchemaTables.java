@@ -1001,19 +1001,27 @@ public class LegacySchemaTables
                   ? result.getUUID("cf_id")
                   : CFMetaData.generateLegacyCfId(ksName, cfName);
 
+        boolean isCQLTable = !isSuper && !isDense && isCompound;
+        boolean isStaticCompactTable = !isDense && !isCompound;
+
+        // Internally, compact tables have a specific layout, see CompactTables. But when upgrading from
+        // previous versions, they may not have the expected schema, so detect if we need to upgrade and do
+        // it in createColumnsFromColumnRows.
+        // We can remove this once we don't support upgrade from versions < 3.0.
+        boolean needsUpgrade = isCQLTable ? false : checkNeedsUpgrade(serializedColumnDefinitions, isSuper, isStaticCompactTable);
+
         List<ColumnDefinition> columnDefs = createColumnsFromColumnRows(serializedColumnDefinitions,
                                                                         ksName,
                                                                         cfName,
                                                                         rawComparator,
                                                                         subComparator,
                                                                         isSuper,
-                                                                        !isSuper && !isDense && isCompound);
+                                                                        isCQLTable,
+                                                                        isStaticCompactTable,
+                                                                        needsUpgrade);
 
-        // Internally, compact tables have a specific layout, see CompactTables. But when upgrading from
-        // previous versions, they may not have the expected schema, so convert it now.
-        // We can remove this once we don't support upgrade from versions < 3.0.
-        if (isDense || !isCompound || isSuper)
-            columnDefs = maybeConvertDefinitions(ksName, cfName, isDense, isCompound, isSuper, columnDefs, rawComparator, defaultValidator);
+        if (needsUpgrade)
+            addDefinitionForUpgrade(columnDefs, ksName, cfName, isStaticCompactTable, isSuper, rawComparator, subComparator, defaultValidator);
 
         CFMetaData cfm = CFMetaData.create(ksName, cfName, cfId, isDense, isCompound, isSuper, isCounter, columnDefs);
 
@@ -1057,54 +1065,60 @@ public class LegacySchemaTables
         return cfm;
     }
 
-    private static List<ColumnDefinition> maybeConvertDefinitions(String ksName,
-                                                                  String cfName,
-                                                                  boolean isDense,
-                                                                  boolean isCompound,
-                                                                  boolean isSuper,
-                                                                  List<ColumnDefinition> definitions,
-                                                                  AbstractType<?> rawComparator,
-                                                                  AbstractType<?> defaultValidator)
+    // Should only be called on compact tables
+    private static boolean checkNeedsUpgrade(UntypedResultSet defs, boolean isSuper, boolean isStaticCompactTable)
     {
         if (isSuper)
         {
-            // TODO
-            throw new UnsupportedOperationException();
-        }
-
-        // For static compact tables, we need to convert the regular definitions to static one, and add the clustering.
-        if (!isDense && !isCompound)
-        {
-            // If we have a static def, we're already up to date
-            if (hasKind(definitions, ColumnDefinition.Kind.STATIC))
-                return definitions;
-
-            // We'll convert every regular definition to a static one, and then add the clustering
-            // column and compact column value
-            List<ColumnDefinition> newDefinitions = new ArrayList<>(definitions.size() + 2);
-            for (ColumnDefinition def : definitions)
+            // Check if we've added the "supercolumn map" column yet or not
+            for (UntypedResultSet.Row row : defs)
             {
-                assert def.isPartitionKey() || def.isRegular();
-                newDefinitions.add(def.isPartitionKey() ? def : def.asStaticDefinition());
+                if (row.getString("column_name").isEmpty())
+                    return true;
             }
-            newDefinitions.add(ColumnDefinition.clusteringKeyDef(ksName, cfName, CompactTables.DEFAULT_CLUSTERING_NAME + 1, rawComparator, null));
-            newDefinitions.add(ColumnDefinition.regularDef(ksName, cfName, CompactTables.DEFAULT_COMPACT_VALUE_NAME, defaultValidator, null));
-            return newDefinitions;
+            return false;
         }
 
-        // For dense compact tables, we might not have a compact value column, in which case we should add it
-        // (we use EmptyType to recognize that the compact value was not declared by the use (see CreateTableStatement too))
-        if (isDense && !hasKind(definitions, ColumnDefinition.Kind.REGULAR))
-            definitions.add(ColumnDefinition.regularDef(ksName, cfName, CompactTables.DEFAULT_COMPACT_VALUE_NAME, EmptyType.instance, null));
+        // For static compact tables, we need to upgrade if the regular definitions haven't been converted to static yet,
+        // i.e. if we don't have a static definition yet.
+        if (isStaticCompactTable)
+            return !hasKind(defs, ColumnDefinition.Kind.STATIC);
 
-        return definitions;
+        // For dense compact tables, we need to upgrade if we don't have a compact value definition
+        return !hasKind(defs, ColumnDefinition.Kind.REGULAR);
     }
 
-    private static boolean hasKind(List<ColumnDefinition> defs, ColumnDefinition.Kind kind)
+    private static void addDefinitionForUpgrade(List<ColumnDefinition> defs,
+                                                String ksName,
+                                                String cfName,
+                                                boolean isStaticCompactTable,
+                                                boolean isSuper,
+                                                AbstractType<?> rawComparator,
+                                                AbstractType<?> subComparator,
+                                                AbstractType<?> defaultValidator)
     {
-        for (ColumnDefinition def : defs)
+        if (isSuper)
         {
-            if (def.kind == kind)
+            defs.add(ColumnDefinition.regularDef(ksName, cfName, CompactTables.SUPER_COLUMN_MAP_COLUMN_STR, MapType.getInstance(subComparator, defaultValidator, true), null));
+        }
+        else if (isStaticCompactTable)
+        {
+            defs.add(ColumnDefinition.clusteringKeyDef(ksName, cfName, CompactTables.DEFAULT_CLUSTERING_NAME + 1, rawComparator, null));
+            defs.add(ColumnDefinition.regularDef(ksName, cfName, CompactTables.DEFAULT_COMPACT_VALUE_NAME, defaultValidator, null));
+        }
+        else
+        {
+            // For dense compact tables, we get here if we don't have a compact value column, in which case we should add it
+            // (we use EmptyType to recognize that the compact value was not declared by the use (see CreateTableStatement too))
+            defs.add(ColumnDefinition.regularDef(ksName, cfName, CompactTables.DEFAULT_COMPACT_VALUE_NAME, EmptyType.instance, null));
+        }
+    }
+
+    private static boolean hasKind(UntypedResultSet defs, ColumnDefinition.Kind kind)
+    {
+        for (UntypedResultSet.Row row : defs)
+        {
+            if (deserializeKind(row.getString("type")) == kind)
                 return true;
         }
         return false;
@@ -1173,11 +1187,13 @@ public class LegacySchemaTables
                                                                       AbstractType<?> rawComparator,
                                                                       AbstractType<?> rawSubComparator,
                                                                       boolean isSuper,
-                                                                      boolean isCQLTable)
+                                                                      boolean isCQLTable,
+                                                                      boolean isStaticCompactTable,
+                                                                      boolean needsUpgrade)
     {
         List<ColumnDefinition> columns = new ArrayList<>();
         for (UntypedResultSet.Row row : rows)
-            columns.add(createColumnFromColumnRow(row, keyspace, table, rawComparator, rawSubComparator, isSuper, isCQLTable));
+            columns.add(createColumnFromColumnRow(row, keyspace, table, rawComparator, rawSubComparator, isSuper, isCQLTable, isStaticCompactTable, needsUpgrade));
         return columns;
     }
 
@@ -1187,9 +1203,13 @@ public class LegacySchemaTables
                                                               AbstractType<?> rawComparator,
                                                               AbstractType<?> rawSubComparator,
                                                               boolean isSuper,
-                                                              boolean isCQLTable)
+                                                              boolean isCQLTable,
+                                                              boolean isStaticCompactTable,
+                                                              boolean needsUpgrade)
     {
         ColumnDefinition.Kind kind = deserializeKind(row.getString("type"));
+        if (needsUpgrade && isStaticCompactTable && kind == ColumnDefinition.Kind.REGULAR)
+            kind = ColumnDefinition.Kind.STATIC;
 
         Integer componentIndex = null;
         if (row.has("component_index"))
