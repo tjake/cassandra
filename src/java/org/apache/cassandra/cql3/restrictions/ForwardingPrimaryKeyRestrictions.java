@@ -85,7 +85,7 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
     {
         return getDelegate().values(options);
     }
-    
+
     @Override
     public CompositesBuilder appendTo(CompositesBuilder builder, QueryOptions options)
     {

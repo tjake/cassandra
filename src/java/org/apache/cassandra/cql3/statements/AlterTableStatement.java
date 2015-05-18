@@ -316,7 +316,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
 
                 // If a globally indexed column is dropped, then we need to drop the indexed table.
                 // If an included column is dropped, we need to drop that column from
-                // the included global index table and definition. 
+                // the included global index table and definition.
                 for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                 {
                     if (!gi.indexes(columnName)) continue;
@@ -391,7 +391,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
                     {
                         if (!gi.indexes(from)) continue;
-                        
+
                         CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
                         ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
                         ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);

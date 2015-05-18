@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +32,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
 import com.google.common.base.Objects;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Striped;
 
@@ -47,19 +45,15 @@ import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
-import org.apache.cassandra.db.CounterMutation;
 import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.exceptions.InvalidRequestException;
-import org.apache.cassandra.exceptions.RequestExecutionException;
-import org.apache.cassandra.exceptions.WriteFailureException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.Pair;
 
 public class GlobalIndexManager implements IndexManager
 {
@@ -150,21 +144,6 @@ public class GlobalIndexManager implements IndexManager
         return indexesByColumn.get(column);
     }
 
-    private List<Mutation> createMutationsInternal(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency)
-    {
-        List<Mutation> tmutations = null;
-        for (GlobalIndex index: allIndexes)
-        {
-            Collection<Mutation> mutations = index.createMutations(key, cf, consistency, false);
-            if (mutations != null) {
-                if (tmutations == null)
-                    tmutations = Lists.newLinkedList();
-                tmutations.addAll(mutations);
-            }
-        }
-        return tmutations;
-    }
-
     public void pushReplicaMutations(ByteBuffer key, ColumnFamily cf)
     throws WriteTimeoutException
     {
@@ -234,65 +213,5 @@ public class GlobalIndexManager implements IndexManager
             }
         }
         return false;
-    }
-
-    public static Collection<Mutation> createMutations(Collection<? extends IMutation> mutations, ConsistencyLevel consistency)
-    {
-        boolean hasCounters = false;
-        List<Mutation> augmentedMutations = null;
-
-        for (IMutation mutation : mutations)
-        {
-            if (mutation instanceof CounterMutation)
-                hasCounters = true;
-
-            for (ColumnFamily cf : mutation.getColumnFamilies())
-            {
-                GlobalIndexManager indexManager = Keyspace.open(cf.metadata().ksName)
-                                                          .getColumnFamilyStore(cf.metadata().cfId).globalIndexManager;
-
-                List<Mutation> augmentations = indexManager.createMutationsInternal(mutation.key(), cf, consistency);
-                if (augmentations == null || augmentations.isEmpty())
-                    continue;
-
-                if (augmentedMutations == null)
-                    augmentedMutations = new LinkedList<>();
-                augmentedMutations.addAll(augmentations);
-            }
-        }
-
-        if (augmentedMutations == null)
-            return null;
-
-        if (hasCounters)
-            throw new InvalidRequestException("Counter mutations and global index mutations cannot be applied together atomically.");
-
-        @SuppressWarnings("unchecked")
-        Collection<Mutation> originalMutations = (Collection<Mutation>) mutations;
-
-        return mergeMutations(Iterables.concat(originalMutations, augmentedMutations));
-    }
-
-
-    private static Collection<Mutation> mergeMutations(Iterable<Mutation> mutations)
-    {
-        Map<Pair<String, ByteBuffer>, Mutation> groupedMutations = new HashMap<>();
-
-        for (Mutation mutation : mutations)
-        {
-            Pair<String, ByteBuffer> key = Pair.create(mutation.getKeyspaceName(), mutation.key());
-            Mutation current = groupedMutations.get(key);
-            if (current == null)
-            {
-                // copy in case the mutation's modifications map is backed by an immutable Collections#singletonMap().
-                groupedMutations.put(key, mutation.copy());
-            }
-            else
-            {
-                current.addAll(mutation);
-            }
-        }
-
-        return groupedMutations.values();
     }
 }
