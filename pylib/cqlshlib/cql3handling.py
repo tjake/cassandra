@@ -1118,30 +1118,6 @@ def idx_ks_idx_name_completer(ctxt, cass):
         raise
     return map(maybe_escape_name, idxnames)
 
-@completer_for('globalIndexName', 'ksname')
-def global_idx_ks_name_completer(ctxt, cass):
-    return [maybe_escape_name(ks) + '.' for ks in cass.get_keyspace_names()]
-
-@completer_for('globalIndexName', 'dot')
-def global_idx_ks_dot_completer(ctxt, cass):
-    name = dequote_name(ctxt.get_binding('ksname'))
-    if name in cass.get_keyspace_names():
-        return ['.']
-    return []
-
-@completer_for('globalIndexName', 'idxname')
-def global_idx_ks_idx_name_completer(ctxt, cass):
-    ks = ctxt.get_binding('ksname', None)
-    if ks is not None:
-        ks = dequote_name(ks)
-    try:
-        idxnames = cass.get_global_index_names(ks)
-    except Exception:
-        if ks is None:
-            return ()
-        raise
-    return map(maybe_escape_name, idxnames)
-
 syntax_rules += r'''
 <alterTableStatement> ::= "ALTER" wat=( "COLUMNFAMILY" | "TABLE" ) cf=<columnFamilyName>
                                <alterInstructions>
