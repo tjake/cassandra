@@ -24,7 +24,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.db.IndexExpression;
-import org.apache.cassandra.db.index.IndexManager;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 /**
@@ -49,21 +49,21 @@ interface Restrictions
      * Check if the restriction is on indexed columns.
      *
      * @param indexManager the index manager
-     * @return <code>true</code> if the restriction is on indexed columns, <code>false</code> otherwise
+     * @return <code>true</code> if the restriction is on indexed columns, <code>false</code>
      */
-    public boolean hasSupportingIndex(IndexManager indexManager);
+    public boolean hasSupportingIndex(SecondaryIndexManager indexManager);
 
     /**
      * Adds to the specified list the <code>IndexExpression</code>s corresponding to this <code>Restriction</code>.
      *
      * @param expressions the list to add the <code>IndexExpression</code>s to
-     * @param indexManager the index manager
+     * @param indexManager the secondary index manager
      * @param options the query options
      * @throws InvalidRequestException if this <code>Restriction</code> cannot be converted into
      * <code>IndexExpression</code>s
      */
     public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                     IndexManager indexManager,
+                                     SecondaryIndexManager indexManager,
                                      QueryOptions options)
                                      throws InvalidRequestException;
 

@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamily;
@@ -23,9 +23,9 @@ import org.apache.cassandra.db.composites.CellName;
 
 import java.nio.ByteBuffer;
 
-public class GlobalIndexSelectorOnClusteringColumn extends GlobalIndexSelector
+public class MaterializedViewSelectorOnList extends MaterializedViewSelector
 {
-    public GlobalIndexSelectorOnClusteringColumn(ColumnDefinition columnDefinition)
+    public MaterializedViewSelectorOnList(ColumnDefinition columnDefinition)
     {
         super(columnDefinition);
     }
@@ -37,11 +37,11 @@ public class GlobalIndexSelectorOnClusteringColumn extends GlobalIndexSelector
 
     public boolean selects(CellName cellName)
     {
-        return true;
+        return false;
     }
 
     public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        return cellName.get(columnDefinition.position());
+        return cf.getColumn(cellName).value();
     }
 
 }

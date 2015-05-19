@@ -231,45 +231,45 @@ query returns [ParsedStatement stmnt]
 
 cqlStatement returns [ParsedStatement stmt]
     @after{ if (stmt != null) stmt.setBoundVariables(bindVariables); }
-    : st1= selectStatement             { $stmt = st1; }
-    | st2= insertStatement             { $stmt = st2; }
-    | st3= updateStatement             { $stmt = st3; }
-    | st4= batchStatement              { $stmt = st4; }
-    | st5= deleteStatement             { $stmt = st5; }
-    | st6= useStatement                { $stmt = st6; }
-    | st7= truncateStatement           { $stmt = st7; }
-    | st8= createKeyspaceStatement     { $stmt = st8; }
-    | st9= createTableStatement        { $stmt = st9; }
-    | st10=createIndexStatement        { $stmt = st10; }
-    | st11=dropKeyspaceStatement       { $stmt = st11; }
-    | st12=dropTableStatement          { $stmt = st12; }
-    | st13=dropIndexStatement          { $stmt = st13; }
-    | st14=alterTableStatement         { $stmt = st14; }
-    | st15=alterKeyspaceStatement      { $stmt = st15; }
-    | st16=grantPermissionsStatement   { $stmt = st16; }
-    | st17=revokePermissionsStatement  { $stmt = st17; }
-    | st18=listPermissionsStatement    { $stmt = st18; }
-    | st19=createUserStatement         { $stmt = st19; }
-    | st20=alterUserStatement          { $stmt = st20; }
-    | st21=dropUserStatement           { $stmt = st21; }
-    | st22=listUsersStatement          { $stmt = st22; }
-    | st23=createTriggerStatement      { $stmt = st23; }
-    | st24=dropTriggerStatement        { $stmt = st24; }
-    | st25=createTypeStatement         { $stmt = st25; }
-    | st26=alterTypeStatement          { $stmt = st26; }
-    | st27=dropTypeStatement           { $stmt = st27; }
-    | st28=createFunctionStatement     { $stmt = st28; }
-    | st29=dropFunctionStatement       { $stmt = st29; }
-    | st30=createAggregateStatement    { $stmt = st30; }
-    | st31=dropAggregateStatement      { $stmt = st31; }
-    | st32=createRoleStatement         { $stmt = st32; }
-    | st33=alterRoleStatement          { $stmt = st33; }
-    | st34=dropRoleStatement           { $stmt = st34; }
-    | st35=listRolesStatement          { $stmt = st35; }
-    | st36=grantRoleStatement          { $stmt = st36; }
-    | st37=revokeRoleStatement         { $stmt = st37; }
-    | st38=createGlobalIndexStatement  { $stmt = st38; }
-    | st39=dropGlobalIndexStatement    { $stmt = st39; }
+    : st1= selectStatement                 { $stmt = st1; }
+    | st2= insertStatement                 { $stmt = st2; }
+    | st3= updateStatement                 { $stmt = st3; }
+    | st4= batchStatement                  { $stmt = st4; }
+    | st5= deleteStatement                 { $stmt = st5; }
+    | st6= useStatement                    { $stmt = st6; }
+    | st7= truncateStatement               { $stmt = st7; }
+    | st8= createKeyspaceStatement         { $stmt = st8; }
+    | st9= createTableStatement            { $stmt = st9; }
+    | st10=createIndexStatement            { $stmt = st10; }
+    | st11=dropKeyspaceStatement           { $stmt = st11; }
+    | st12=dropTableStatement              { $stmt = st12; }
+    | st13=dropIndexStatement              { $stmt = st13; }
+    | st14=alterTableStatement             { $stmt = st14; }
+    | st15=alterKeyspaceStatement          { $stmt = st15; }
+    | st16=grantPermissionsStatement       { $stmt = st16; }
+    | st17=revokePermissionsStatement      { $stmt = st17; }
+    | st18=listPermissionsStatement        { $stmt = st18; }
+    | st19=createUserStatement             { $stmt = st19; }
+    | st20=alterUserStatement              { $stmt = st20; }
+    | st21=dropUserStatement               { $stmt = st21; }
+    | st22=listUsersStatement              { $stmt = st22; }
+    | st23=createTriggerStatement          { $stmt = st23; }
+    | st24=dropTriggerStatement            { $stmt = st24; }
+    | st25=createTypeStatement             { $stmt = st25; }
+    | st26=alterTypeStatement              { $stmt = st26; }
+    | st27=dropTypeStatement               { $stmt = st27; }
+    | st28=createFunctionStatement         { $stmt = st28; }
+    | st29=dropFunctionStatement           { $stmt = st29; }
+    | st30=createAggregateStatement        { $stmt = st30; }
+    | st31=dropAggregateStatement          { $stmt = st31; }
+    | st32=createRoleStatement             { $stmt = st32; }
+    | st33=alterRoleStatement              { $stmt = st33; }
+    | st34=dropRoleStatement               { $stmt = st34; }
+    | st35=listRolesStatement              { $stmt = st35; }
+    | st36=grantRoleStatement              { $stmt = st36; }
+    | st37=revokeRoleStatement             { $stmt = st37; }
+    | st38=createMaterializedViewStatement { $stmt = st38; }
+    | st39=dropMaterializedViewStatement   { $stmt = st39; }
     ;
 
 /*
@@ -306,8 +306,7 @@ selectStatement returns [SelectStatement.RawStatement expr]
           SelectStatement.Parameters params = new SelectStatement.Parameters(orderings,
                                                                              isDistinct,
                                                                              allowFiltering,
-                                                                             isJson,
-                                                                             false);
+                                                                             isJson);
           $expr = new SelectStatement.RawStatement(cf, params, sclause, wclause, limit);
       }
     ;
@@ -736,22 +735,17 @@ indexIdent returns [IndexTarget.Raw id]
     ;
 
 /**
- * CREATE GLOBAL INDEX [indexName] ON <columnFamily> (<columnName>) INCLUDE (<columns>|*);
+ * CREATE MATERIALIZED VIEW <viewName> AS SELECT (<columns>|*) FROM (<columnName>) PRIMARY KEY (<columns>);
  */
-createGlobalIndexStatement returns [CreateGlobalIndexStatement expr]
+createMaterializedViewStatement returns [CreateMaterializedViewStatement expr]
     @init {
         boolean ifNotExists = false;
-        IndexName name = new IndexName();
+        List<ColumnIdentifier.Raw> primaryKeys = new ArrayList<>();
     }
-    : K_CREATE K_GLOBAL K_INDEX (K_IF K_NOT K_EXISTS { ifNotExists = true; })?
-        (idxName[name])? K_ON cf=columnFamilyName '(' id=indexIdent ')'
-        (K_INCLUDE '(' include=includeColumnsClause ')')
-      { $expr = new CreateGlobalIndexStatement(cf, name, id, include, ifNotExists); }
-    ;
-
-includeColumnsClause returns [List<ColumnIdentifier.Raw> expr]
-    : t1=cident { $expr = new ArrayList<ColumnIdentifier.Raw>(); $expr.add(t1); } (',' tN=cident { $expr.add(tN); })*
-    | '\*' { $expr = Collections.<ColumnIdentifier.Raw>emptyList();}
+    : K_CREATE K_MATERIALIZED K_VIEW (K_IF K_NOT K_EXISTS { ifNotExists = true; })? cf=columnFamilyName K_AS
+        select=selectStatement
+        K_PRIMARY K_KEY '(' ( key=cident { primaryKeys.add(key); } ) ( ',' key=cident { primaryKeys.add(key); } )* ')'
+        { $expr = new CreateMaterializedViewStatement(cf, select, primaryKeys, ifNotExists); }
     ;
 
 /**
@@ -865,12 +859,12 @@ dropIndexStatement returns [DropIndexStatement expr]
     ;
 
 /**
- * DROP GLOBAL INDEX [IF EXISTS] <INDEX_NAME>
+ * DROP MATERIALIZED VIEW [IF EXISTS] <view_name>
  */
-dropGlobalIndexStatement returns [DropGlobalIndexStatement expr]
+dropMaterializedViewStatement returns [DropMaterializedViewStatement expr]
     @init { boolean ifExists = false; }
-    : K_DROP K_GLOBAL K_INDEX (K_IF K_EXISTS { ifExists = true; } )? index=indexName
-      { $expr = new DropGlobalIndexStatement(index, ifExists); }
+    : K_DROP K_MATERIALIZED K_VIEW (K_IF K_EXISTS { ifExists = true; } )? cf=columnFamilyName
+      { $expr = new DropMaterializedViewStatement(cf, ifExists); }
     ;
 
 /**
@@ -1620,11 +1614,11 @@ K_KEYSPACE:    ( K E Y S P A C E
 K_KEYSPACES:   K E Y S P A C E S;
 K_COLUMNFAMILY:( C O L U M N F A M I L Y
                  | T A B L E );
+K_MATERIALIZED:M A T E R I A L I Z E D;
+K_VIEW:        V I E W;
 K_INDEX:       I N D E X;
 K_CUSTOM:      C U S T O M;
 K_ON:          O N;
-K_GLOBAL:      G L O B A L;
-K_INCLUDE:     I N C L U D E;
 K_TO:          T O;
 K_DROP:        D R O P;
 K_PRIMARY:     P R I M A R Y;

@@ -23,13 +23,16 @@ import java.util.*;
 import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.ColumnDefinition;
+
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.Term.Terminal;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
+
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
-import org.apache.cassandra.db.index.*;
+import org.apache.cassandra.db.index.SecondaryIndex;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -70,9 +73,9 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
     }
 
     @Override
-    public boolean hasSupportingIndex(IndexManager indexManager)
+    public boolean hasSupportingIndex(SecondaryIndexManager indexManager)
     {
-        Index index = indexManager.getIndexForColumn(columnDef.name.bytes);
+        SecondaryIndex index = indexManager.getIndexForColumn(columnDef.name.bytes);
         return index != null && isSupportedBy(index);
     }
 
@@ -90,11 +93,11 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
     /**
      * Check if this type of restriction is supported by the specified index.
      *
-     * @param index the index
+     * @param index the Secondary index
      * @return <code>true</code> this type of restriction is supported by the specified index,
      * <code>false</code> otherwise.
      */
-    protected abstract boolean isSupportedBy(Index index);
+    protected abstract boolean isSupportedBy(SecondaryIndex index);
 
     public static final class EQ extends SingleColumnRestriction
     {
@@ -120,7 +123,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         IndexManager indexManager,
+                                         SecondaryIndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             ByteBuffer buffer = validateIndexedValue(columnDef, value.bindAndGet(options));
@@ -149,7 +152,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             return index.supportsOperator(Operator.EQ);
         }
@@ -185,7 +188,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         IndexManager indexManager,
+                                         SecondaryIndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             List<ByteBuffer> values = getValues(options);
@@ -196,7 +199,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected final boolean isSupportedBy(Index index)
+        protected final boolean isSupportedBy(SecondaryIndex index)
         {
             return index.supportsOperator(Operator.IN);
         }
@@ -338,7 +341,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         IndexManager indexManager,
+                                         SecondaryIndexManager indexManager,
                                          QueryOptions options) throws InvalidRequestException
         {
             for (Bound b : Bound.values())
@@ -357,7 +360,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             return slice.isSupportedBy(index);
         }
@@ -428,7 +431,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
 
         @Override
         public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                         IndexManager indexManager,
+                                         SecondaryIndexManager indexManager,
                                          QueryOptions options)
                                          throws InvalidRequestException
         {
@@ -448,7 +451,7 @@ public abstract class SingleColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             boolean supported = false;
 

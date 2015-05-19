@@ -59,7 +59,7 @@ import org.apache.cassandra.utils.concurrent.Refs;
  *
  * Do not extend this directly, please pick from PerColumnSecondaryIndex or PerRowSecondaryIndex
  */
-public abstract class SecondaryIndex implements Index
+public abstract class SecondaryIndex
 {
     protected static final Logger logger = LoggerFactory.getLogger(SecondaryIndex.class);
 

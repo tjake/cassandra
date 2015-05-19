@@ -28,7 +28,7 @@ import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CompositesBuilder;
-import org.apache.cassandra.db.index.IndexManager;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 /**
@@ -75,9 +75,9 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
     }
 
     @Override
-    public boolean hasSupportingIndex(IndexManager indexManager)
+    public boolean hasSupportingIndex(SecondaryIndexManager secondaryIndexManager)
     {
-        return getDelegate().hasSupportingIndex(indexManager);
+        return getDelegate().hasSupportingIndex(secondaryIndexManager);
     }
 
     @Override
@@ -178,7 +178,7 @@ abstract class ForwardingPrimaryKeyRestrictions implements PrimaryKeyRestriction
 
     @Override
     public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                     IndexManager indexManager,
+                                     SecondaryIndexManager indexManager,
                                      QueryOptions options) throws InvalidRequestException
     {
         getDelegate().addIndexExpressionTo(expressions, indexManager, options);

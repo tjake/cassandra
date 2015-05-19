@@ -32,8 +32,8 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.Uninterruptibles;
 
-import org.apache.cassandra.db.index.GlobalIndexManager;
-import org.apache.cassandra.db.index.global.GlobalIndexUtils;
+import org.apache.cassandra.db.view.MaterializedViewManager;
+import org.apache.cassandra.db.view.MaterializedViewUtils;
 import org.apache.cassandra.metrics.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -215,7 +215,7 @@ public class StorageProxy implements StorageProxyMBean
             consistencyForCommit.validateForCasCommit(keyspaceName);
 
             CFMetaData metadata = Schema.instance.getCFMetaData(keyspaceName, cfName);
-            if (!metadata.getGlobalIndexes().isEmpty())
+            if (!metadata.getMaterializedViews().isEmpty())
                 throw new InvalidRequestException("cas operations are disallowed on Global Indexed column families");
 
             long timeout = TimeUnit.MILLISECONDS.toNanos(DatabaseDescriptor.getCasContentionTimeout());
@@ -654,7 +654,7 @@ public class StorageProxy implements StorageProxyMBean
                 AbstractReplicationStrategy rs = Keyspace.open(keyspaceName).getReplicationStrategy();
 
                 Token tk = StorageService.getPartitioner().getToken(mutation.key());
-                List<InetAddress> naturalEndpoints = Lists.newArrayList(GlobalIndexUtils.getIndexNaturalEndpoint(keyspaceName, dataToken, tk));
+                List<InetAddress> naturalEndpoints = Lists.newArrayList(MaterializedViewUtils.getIndexNaturalEndpoint(keyspaceName, dataToken, tk));
                 Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
 
                 AbstractWriteResponseHandler responseHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, ConsistencyLevel.ONE, null, wt);
@@ -704,14 +704,14 @@ public class StorageProxy implements StorageProxyMBean
     throws WriteTimeoutException, WriteFailureException, UnavailableException, OverloadedException, InvalidRequestException
     {
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
-        boolean touchedGlobalIndex = GlobalIndexManager.touchesIndexedColumns(mutations);
+        boolean touchedMaterializedView = MaterializedViewManager.touchesSelectedColumn(mutations);
 
         if (augmented != null)
-            mutateAtomically(augmented, consistencyLevel, touchedGlobalIndex);
+            mutateAtomically(augmented, consistencyLevel, touchedMaterializedView);
         else
         {
             if (mutateAtomically || touchedGlobalIndex)
-                mutateAtomically((Collection<Mutation>) mutations, consistencyLevel, touchedGlobalIndex);
+                mutateAtomically((Collection<Mutation>) mutations, consistencyLevel, touchedMaterializedView);
             else
                 mutate(mutations, consistencyLevel);
         }

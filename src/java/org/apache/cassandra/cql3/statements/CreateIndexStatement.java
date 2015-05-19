@@ -25,7 +25,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.auth.Permission;
-import org.apache.cassandra.config.*;
+import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.IndexType;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.cql3.*;
@@ -73,12 +76,6 @@ public class CreateIndexStatement extends SchemaAlteringStatement
 
         if (cd == null)
             throw new InvalidRequestException("No column definition found for column " + target.column);
-
-        for (GlobalIndexDefinition definition: cfm.getGlobalIndexes().values())
-        {
-            if (definition.target.bytes.compareTo(target.column.bytes) == 0)
-                throw new InvalidRequestException("GlobalIndex " + definition.indexName + " has already been defined for column " + target.column);
-        }
 
         boolean isMap = cd.type instanceof MapType;
         boolean isFrozenCollection = cd.type.isCollection() && !cd.type.isMultiCell();

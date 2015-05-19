@@ -24,9 +24,9 @@ import java.util.Map;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.cql3.*;
-import org.apache.cassandra.db.index.GlobalIndex;
+import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
@@ -90,8 +90,8 @@ public class AlterTableStatement extends SchemaAlteringStatement
             def = cfm.getColumnDefinition(columnName);
         }
 
-        List<CFMetaData> globalIndexUpdates = null;
-        List<CFMetaData> globalIndexDrops = null;
+        List<CFMetaData> materializedViewUpdates = null;
+        List<CFMetaData> materializedViewDrops = null;
 
         switch (oType)
         {
@@ -151,23 +151,20 @@ public class AlterTableStatement extends SchemaAlteringStatement
                                         ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
                                         : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
 
-                // Adding a column to a table which has an INCLUDE ALL global index requires the column to be
-                // added to the global index as well
-                for (GlobalIndexDefinition indexDef: cfm.getGlobalIndexes().values())
+                // Adding a column to a table which has a SELECT * materialized view requires the column to be
+                // added to the materialized view as well
+                for (MaterializedViewDefinition indexDef: cfm.getMaterializedViews().values())
                 {
                     if (indexDef.included.isEmpty())
                     {
-                        if (type.isCollection())
-                            throw new InvalidRequestException(String.format("Cannot add a collection because global index %s includes all columns",
-                                                                            indexDef.indexName));
-                        CFMetaData indexCfm = GlobalIndex.getCFMetaData(indexDef, meta).copy();
+                        CFMetaData indexCfm = MaterializedView.getCFMetaData(indexDef, meta).copy();
                         componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
                         indexCfm.addColumnDefinition(isStatic
                                                      ? ColumnDefinition.staticDef(indexCfm, columnName.bytes, type, componentIndex)
                                                      : ColumnDefinition.regularDef(indexCfm, columnName.bytes, type, componentIndex));
-                        if (globalIndexUpdates == null)
-                            globalIndexUpdates = new ArrayList<>();
-                        globalIndexUpdates.add(indexCfm);
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
                     }
                 }
 
@@ -254,12 +251,12 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 // In any case, we update the column definition
                 cfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
 
-                // We have to alter the schema of the global index table as well; it doesn't affect the definition however
-                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                // We have to alter the schema of the materialized view table as well; it doesn't affect the definition however
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
                 {
-                    if (!gi.indexes(columnName)) continue;
+                    if (!mv.selects(columnName)) continue;
                     // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
-                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
+                    CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
                     ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
 
                     // see the above rules about changing types
@@ -279,9 +276,9 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         indexCfm.addOrReplaceColumnDefinition(indexDef.withNewType(validatorType));
                     }
 
-                    if (globalIndexUpdates == null)
-                        globalIndexUpdates = new ArrayList<>();
-                    globalIndexUpdates.add(indexCfm);
+                    if (materializedViewUpdates == null)
+                        materializedViewUpdates = new ArrayList<>();
+                    materializedViewUpdates.add(indexCfm);
                 }
                 break;
 
@@ -314,32 +311,34 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         break;
                 }
 
-                // If a globally indexed column is dropped, then we need to drop the indexed table.
-                // If an included column is dropped, we need to drop that column from
-                // the included global index table and definition.
-                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                // If a column is dropped which is the target of a materialized view,
+                // then we need to drop the view.
+                // If a column is dropped which was selected into a materialized view,
+                // we need to drop that column from the included materialzied view table
+                // and definition.
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
                 {
-                    if (!gi.indexes(columnName)) continue;
+                    if (!mv.selects(columnName)) continue;
 
                     // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
-                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
-                    ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
+                    CFMetaData viewCfm = MaterializedView.getCFMetaData(mv, meta).copy();
+                    ColumnDefinition viewTarget = viewCfm.getColumnDefinition(def.name);
 
-                    assert !indexDef.isClusteringColumn() : "Global Index clustering columns should be undroppable because they are PRIMARY KEY on data table";
+                    assert !viewTarget.isClusteringColumn() : "Materialized View clustering columns should be undroppable because they are PRIMARY KEY on data table";
                     // otherwise, at least a column was dropped, at most the whole global index
-                    if (indexDef.isPrimaryKeyColumn())
+                    if (viewTarget.isPrimaryKeyColumn())
                     {
                         // index must be dropped
-                        if (globalIndexDrops == null)
-                            globalIndexDrops = new ArrayList<>();
-                        globalIndexDrops.add(indexCfm);
-                        cfm.removeGlobalIndex(gi.indexName);
+                        if (materializedViewDrops == null)
+                            materializedViewDrops = new ArrayList<>();
+                        materializedViewDrops.add(viewCfm);
+                        cfm.removeMaterializedView(mv.viewName);
                     }
                     else
                     {
                         ColumnIdentifier toDelete = null;
-                        GlobalIndexDefinition copyGi = gi.copy();
-                        for (ColumnIdentifier ci : copyGi.included)
+                        MaterializedViewDefinition copyMv = mv.copy();
+                        for (ColumnIdentifier ci : copyMv.included)
                         {
                             if (ci.bytes.compareTo(def.name.bytes) == 0)
                             {
@@ -347,16 +346,16 @@ public class AlterTableStatement extends SchemaAlteringStatement
                                 break;
                             }
                         }
-                        copyGi.included.remove(toDelete);
+                        copyMv.included.remove(toDelete);
 
-                        cfm.replaceGlobalIndex(copyGi);
+                        cfm.replaceMaterializedView(copyMv);
 
-                        indexCfm.removeColumnDefinition(indexDef);
-                        indexCfm.recordColumnDrop(indexDef);
+                        viewCfm.removeColumnDefinition(viewTarget);
+                        viewCfm.recordColumnDrop(viewTarget);
 
-                        if (globalIndexUpdates == null)
-                            globalIndexUpdates = new ArrayList<>();
-                        globalIndexUpdates.add(indexCfm);
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(viewCfm);
                     }
                 }
                 break;
@@ -370,14 +369,14 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     throw new InvalidRequestException("Cannot set default_time_to_live on a table with counters");
 
                 cfProps.applyToCFMetadata(cfm);
-                // If there are global indexes, need to apply the modifications to those tables as well.
-                for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                // If there are materialized views, need to apply the modifications to those tables as well.
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
                 {
-                    CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
+                    CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
                     cfProps.applyToCFMetadata(indexCfm);
-                    if (globalIndexUpdates == null)
-                        globalIndexUpdates = new ArrayList<>();
-                    globalIndexUpdates.add(indexCfm);
+                    if (materializedViewUpdates == null)
+                        materializedViewUpdates = new ArrayList<>();
+                    materializedViewUpdates.add(indexCfm);
                 }
                 break;
             case RENAME:
@@ -387,38 +386,38 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     ColumnIdentifier to = entry.getValue().prepare(cfm);
                     cfm.renameColumn(from, to);
 
-                    // If the global index includes a renamed column, it must be renamed in the index table and the definition.
-                    for (GlobalIndexDefinition gi: cfm.getGlobalIndexes().values())
+                    // If the materialized view includes a renamed column, it must be renamed in the index table and the definition.
+                    for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
                     {
-                        if (!gi.indexes(from)) continue;
+                        if (!mv.selects(from)) continue;
 
-                        CFMetaData indexCfm = GlobalIndex.getCFMetaData(gi, meta).copy();
+                        CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
                         ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
                         ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
                         indexCfm.renameColumn(indexFrom, indexTo);
 
-                        GlobalIndexDefinition giCopy = gi.copy();
-                        gi.renameColumn(from, to);
+                        MaterializedViewDefinition giCopy = mv.copy();
+                        mv.renameColumn(from, to);
 
-                        cfm.replaceGlobalIndex(gi);
+                        cfm.replaceMaterializedView(mv);
 
-                        if (globalIndexUpdates == null)
-                            globalIndexUpdates = new ArrayList<>();
-                        globalIndexUpdates.add(indexCfm);
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
                     }
                 }
                 break;
         }
 
-        if (globalIndexUpdates != null)
+        if (materializedViewUpdates != null)
         {
-            for (CFMetaData giUpdates : globalIndexUpdates)
-                MigrationManager.announceColumnFamilyUpdate(giUpdates, false, isLocalOnly);
+            for (CFMetaData mvUpdates : materializedViewUpdates)
+                MigrationManager.announceColumnFamilyUpdate(mvUpdates, false, isLocalOnly);
         }
-        if (globalIndexDrops != null)
+        if (materializedViewDrops != null)
         {
-            for (CFMetaData giDrops : globalIndexDrops)
-                MigrationManager.announceColumnFamilyDrop(giDrops.ksName, giDrops.cfName, isLocalOnly);
+            for (CFMetaData mvDrops : materializedViewDrops)
+                MigrationManager.announceColumnFamilyDrop(mvDrops.ksName, mvDrops.cfName, isLocalOnly);
         }
 
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);

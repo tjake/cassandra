@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index;
+package org.apache.cassandra.db.view;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -34,7 +34,7 @@ import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.Operator;
@@ -59,15 +59,13 @@ import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
-import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
-import org.apache.cassandra.db.index.global.GlobalIndexSelector;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ColumnToCollectionType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
 
-public class GlobalIndex implements Index
+public class MaterializedView
 {
     // This is a class that allows comparisons based on partition key and clustering columns, and resolves existing and
     // new mutation values
@@ -213,7 +211,8 @@ public class GlobalIndex implements Index
         }
     }
 
-    private final GlobalIndexDefinition definition;
+    private final MaterializedViewDefinition definition;
+    public final String name;
 
     private ColumnDefinition target;
     private boolean includeAll;
@@ -222,23 +221,22 @@ public class GlobalIndex implements Index
     private List<ColumnDefinition> regularColumns;
     private List<ColumnDefinition> staticColumns;
 
-    private GlobalIndexSelector targetSelector;
-    private List<GlobalIndexSelector> clusteringSelectors;
-    private List<GlobalIndexSelector> regularSelectors;
-    private List<GlobalIndexSelector> staticSelectors;
+    private MaterializedViewSelector targetSelector;
+    private List<MaterializedViewSelector> clusteringSelectors;
+    private List<MaterializedViewSelector> regularSelectors;
+    private List<MaterializedViewSelector> staticSelectors;
 
     ColumnFamilyStore baseCfs;
-    public ColumnFamilyStore indexCfs;
-    GlobalIndexBuilder builder;
-    public final String indexName;
+    public ColumnFamilyStore viewCfs;
+    MaterializedViewBuilder builder;
 
-    public GlobalIndex(GlobalIndexDefinition definition,
-                       ColumnDefinition target,
-                       Collection<ColumnDefinition> included,
-                       ColumnFamilyStore baseCfs)
+    public MaterializedView(MaterializedViewDefinition definition,
+                            ColumnDefinition target,
+                            Collection<ColumnDefinition> included,
+                            ColumnFamilyStore baseCfs)
     {
         this.definition = definition;
-        this.indexName = definition.indexName;
+        this.name = this.definition.viewName;
 
         this.target = target;
         this.included = included;
@@ -254,23 +252,23 @@ public class GlobalIndex implements Index
         staticColumns = new ArrayList<>();
     }
 
-    private synchronized void createIndexCfsAndSelectors()
+    private synchronized void createViewCfsAndSelectors()
     {
-        if (indexCfs != null)
+        if (viewCfs != null)
             return;
 
         assert baseCfs != null;
         assert target != null;
 
-        CFMetaData indexedCfMetadata = getCFMetaData(definition, baseCfs.metadata);
-        targetSelector = GlobalIndexSelector.create(baseCfs, target);
+        CFMetaData viewCfm = getCFMetaData(definition, baseCfs.metadata);
+        targetSelector = MaterializedViewSelector.create(baseCfs, target);
 
-        // All partition and clustering columns are included in the index, whether they are specified in the included columns or not
+        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
         for (ColumnDefinition column: baseCfs.metadata.partitionKeyColumns())
         {
             if (column != target)
             {
-                clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                clusteringSelectors.add(MaterializedViewSelector.create(baseCfs, column));
                 clusteringKeys.add(column);
             }
         }
@@ -279,7 +277,7 @@ public class GlobalIndex implements Index
         {
             if (column != target)
             {
-                clusteringSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                clusteringSelectors.add(MaterializedViewSelector.create(baseCfs, column));
                 clusteringKeys.add(column);
             }
         }
@@ -288,7 +286,7 @@ public class GlobalIndex implements Index
         {
             if (column != target && (includeAll || included.contains(column)))
             {
-                regularSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
                 regularColumns.add(column);
             }
         }
@@ -297,25 +295,25 @@ public class GlobalIndex implements Index
         {
             if (column != target && (includeAll || included.contains(column)))
             {
-                staticSelectors.add(GlobalIndexSelector.create(baseCfs, column));
+                staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
                 staticColumns.add(column);
             }
         }
 
-        indexCfs = Schema.instance.getColumnFamilyStoreInstance(indexedCfMetadata.cfId);
+        viewCfs = Schema.instance.getColumnFamilyStoreInstance(viewCfm.cfId);
     }
 
     /**
-     * Check to see if any value that is part of the index is updated. If so, we possibly need to mutate the index.
+     * Check to see if any value that is part of the view is updated. If so, we possibly need to mutate the view.
      *
-     * @param cf Column family to check for indexed values with
-     * @return True if any of the indexed or included values are contained in the column family.
+     * @param cf Column family to check for selected values with
+     * @return True if any of the selected values are contained in the column family.
      */
-    public boolean cfModifiesIndexedColumn(ColumnFamily cf)
+    public boolean cfModifiesSelectedColumn(ColumnFamily cf)
     {
-        createIndexCfsAndSelectors();
+        createViewCfsAndSelectors();
 
-        // If we are including all of the columns, then any non-empty column family will need to be indexed
+        // If we are including all of the columns, then any non-empty column family will need to be selected
         if (includeAll)
             return true;
 
@@ -323,7 +321,7 @@ public class GlobalIndex implements Index
         {
             if (targetSelector.selects(cellName))
                 return true;
-            for (GlobalIndexSelector column: Iterables.concat(clusteringSelectors, regularSelectors, staticSelectors))
+            for (MaterializedViewSelector column: Iterables.concat(clusteringSelectors, regularSelectors, staticSelectors))
             {
                 if (column.selects(cellName))
                     return true;
@@ -345,16 +343,16 @@ public class GlobalIndex implements Index
     private Mutation createTombstone(MutationUnit mutationUnit, long timestamp)
     {
         // Need to generate a tombstone in this case; there will be only one element because we do not allow Collections
-        // for keys of a global index.
+        // for keys of a materialized view.
         Collection<Cell> oldValue = mutationUnit.oldValueIfUpdated(target.name);
         if (oldValue.isEmpty())
             return null;
 
         Cell partitionKey = Iterables.getOnlyElement(oldValue);
 
-        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey.value());
-        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
-        CellNameType cellNameType = indexCfs.getComparator();
+        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey.value());
+        ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
+        CellNameType cellNameType = viewCfs.getComparator();
         if (cellNameType.isCompound())
         {
             CBuilder builder = cellNameType.prefixBuilder();
@@ -362,13 +360,13 @@ public class GlobalIndex implements Index
                 builder = builder.add(mutationUnit.primaryKeyValue(definition));
             Composite cellName = builder.build();
             RangeTombstone rt = new RangeTombstone(cellName.start(), cellName.end(), timestamp, Integer.MAX_VALUE);
-            indexCf.addAtom(rt);
+            viewCf.addAtom(rt);
         }
         else
         {
             assert clusteringKeys.size() == 1;
             CellName cellName = cellNameType.cellFromByteBuffer(mutationUnit.primaryKeyValue(clusteringKeys.get(0)));
-            indexCf.addTombstone(cellName, 0, timestamp);
+            viewCf.addTombstone(cellName, 0, timestamp);
         }
 
         return mutation;
@@ -409,9 +407,9 @@ public class GlobalIndex implements Index
             clusteringColumns[i] = mutationUnit.primaryKeyValue(clusteringKeys.get(i));
         }
 
-        Mutation mutation = new Mutation(indexCfs.metadata.ksName, partitionKey);
-        ColumnFamily indexCf = mutation.addOrGet(indexCfs.metadata);
-        CellNameType cellNameType = indexCfs.getComparator();
+        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
+        ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
+        CellNameType cellNameType = viewCfs.getComparator();
         Composite composite;
         if (cellNameType.isCompound())
         {
@@ -425,7 +423,7 @@ public class GlobalIndex implements Index
             assert clusteringColumns.length == 1;
             composite = cellNameType.make(clusteringColumns[0]);
         }
-        CFRowAdder rowAdder = new RowAdder(indexCf, composite, timestamp, mutationUnit.ttl);
+        CFRowAdder rowAdder = new RowAdder(viewCf, composite, timestamp, mutationUnit.ttl);
 
         for (int i = 0; i < regularColumns.size(); i++)
         {
@@ -639,16 +637,16 @@ public class GlobalIndex implements Index
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency, boolean isBuilding)
     {
-        createIndexCfsAndSelectors();
+        createViewCfsAndSelectors();
 
-        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !cfModifiesIndexedColumn(cf))
+        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !cfModifiesSelectedColumn(cf))
         {
             return null;
         }
 
         Collection<MutationUnit> mutationUnits = separateMutationUnits(key, cf);
 
-        // If we are building the index, we do not want to add old values; they will always be the same
+        // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
             query(key, mutationUnits, consistency);
 
@@ -701,20 +699,20 @@ public class GlobalIndex implements Index
             this.builder = null;
         }
 
-        createIndexCfsAndSelectors();
+        createViewCfsAndSelectors();
 
-        this.builder = new GlobalIndexBuilder(baseCfs, this);
-        CompactionManager.instance.submitGlobalIndexBuilder(builder);
+        this.builder = new MaterializedViewBuilder(baseCfs, this);
+        CompactionManager.instance.submitMaterializedViewBuilder(builder);
     }
 
     public void reload()
     {
-        createIndexCfsAndSelectors();
+        createViewCfsAndSelectors();
 
         build();
     }
 
-    public static CFMetaData getCFMetaData(GlobalIndexDefinition definition,
+    public static CFMetaData getCFMetaData(MaterializedViewDefinition definition,
                                            CFMetaData baseCf)
     {
         Collection<ColumnDefinition> included = new ArrayList<>();
@@ -726,24 +724,23 @@ public class GlobalIndex implements Index
         }
         ColumnDefinition target = baseCf.getColumnDefinition(definition.target);
 
-        String name = definition.getCfName();
-        UUID cfId = Schema.instance.getId(baseCf.ksName, name);
+        UUID cfId = Schema.instance.getId(baseCf.ksName, definition.viewName);
         if (cfId != null)
             return Schema.instance.getCFMetaData(cfId);
 
-        CellNameType comparator = getIndexComparator(baseCf, target, definition.included);
-        CFMetaData indexedCfMetadata = CFMetaData.createGlobalIndexMetadata(name, baseCf, target, comparator);
+        CellNameType comparator = getViewComparator(baseCf, target, definition.included);
+        CFMetaData viewCfm = CFMetaData.createMaterializedViewMetadata(definition.viewName, baseCf, target, comparator);
 
-        indexedCfMetadata.addColumnDefinition(ColumnDefinition.partitionKeyDef(indexedCfMetadata, target.name.bytes, target.type, null));
+        viewCfm.addColumnDefinition(ColumnDefinition.partitionKeyDef(viewCfm, target.name.bytes, target.type, null));
 
         boolean includeAll = included.isEmpty();
         Integer position = 0;
-        // All partition and clustering columns are included in the index, whether they are specified in the included columns or not
+        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
         for (ColumnDefinition column: baseCf.partitionKeyColumns())
         {
             if (column != target)
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position++));
+                viewCfm.addColumnDefinition(ColumnDefinition.clusteringKeyDef(viewCfm, column.name.bytes, column.type, position++));
             }
         }
 
@@ -751,7 +748,7 @@ public class GlobalIndex implements Index
         {
             if (column != target)
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.clusteringKeyDef(indexedCfMetadata, column.name.bytes, column.type, position++));
+                viewCfm.addColumnDefinition(ColumnDefinition.clusteringKeyDef(viewCfm, column.name.bytes, column.type, position++));
             }
         }
 
@@ -760,7 +757,7 @@ public class GlobalIndex implements Index
         {
             if (column != target && (includeAll || included.contains(column)))
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.regularDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
+                viewCfm.addColumnDefinition(ColumnDefinition.regularDef(viewCfm, column.name.bytes, column.type, componentIndex));
             }
         }
 
@@ -768,17 +765,17 @@ public class GlobalIndex implements Index
         {
             if (column != target && (includeAll || included.contains(column)))
             {
-                indexedCfMetadata.addColumnDefinition(ColumnDefinition.staticDef(indexedCfMetadata, column.name.bytes, column.type, componentIndex));
+                viewCfm.addColumnDefinition(ColumnDefinition.staticDef(viewCfm, column.name.bytes, column.type, componentIndex));
             }
         }
 
-        return indexedCfMetadata;
+        return viewCfm;
     }
 
-    public static CellNameType getIndexComparator(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnIdentifier> included)
+    public static CellNameType getViewComparator(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnIdentifier> included)
     {
         List<AbstractType<?>> types = new ArrayList<>();
-        // All partition and clustering columns are included in the index, whether they are specified in the included columns or not
+        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
         for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
         {
             if (column != target)

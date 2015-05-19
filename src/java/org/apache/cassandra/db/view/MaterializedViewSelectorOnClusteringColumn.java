@@ -15,12 +15,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.cassandra.db.view;
 
-package org.apache.cassandra.db.index;
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.composites.CellName;
 
 import java.nio.ByteBuffer;
 
-public interface IndexManager
+public class MaterializedViewSelectorOnClusteringColumn extends MaterializedViewSelector
 {
-    public Index getIndexForColumn(ByteBuffer column);
+    public MaterializedViewSelectorOnClusteringColumn(ColumnDefinition columnDefinition)
+    {
+        super(columnDefinition);
+    }
+
+    public boolean canGenerateTombstones()
+    {
+        return false;
+    }
+
+    public boolean selects(CellName cellName)
+    {
+        return true;
+    }
+
+    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
+        return cellName.get(columnDefinition.position());
+    }
+
 }

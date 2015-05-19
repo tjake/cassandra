@@ -58,8 +58,8 @@ import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.compaction.CompactionInfo.Holder;
 import org.apache.cassandra.db.index.SecondaryIndexBuilder;
-import org.apache.cassandra.db.index.global.GlobalIndexBuilder;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
+import org.apache.cassandra.db.view.MaterializedViewBuilder;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -1303,7 +1303,7 @@ public class CompactionManager implements CompactionManagerMBean
         return executor.submit(runnable);
     }
 
-    public Future<?> submitGlobalIndexBuilder(final GlobalIndexBuilder builder)
+    public Future<?> submitMaterializedViewBuilder(final MaterializedViewBuilder builder)
     {
         Runnable runnable = new Runnable()
         {

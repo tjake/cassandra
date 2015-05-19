@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
@@ -27,9 +27,9 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 
-public final class GlobalIndexUtils
+public final class MaterializedViewUtils
 {
-    private GlobalIndexUtils()
+    private MaterializedViewUtils()
     {
     }
 

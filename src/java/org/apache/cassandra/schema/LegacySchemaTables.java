@@ -41,7 +41,6 @@ import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.filter.QueryFilter;
-import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.dht.Range;
@@ -67,12 +66,12 @@ public class LegacySchemaTables
     public static final String COLUMNFAMILIES = "schema_columnfamilies";
     public static final String COLUMNS = "schema_columns";
     public static final String TRIGGERS = "schema_triggers";
-    public static final String GLOBALINDEXES = "schema_globalindexes";
+    public static final String MATERIALIZEDVIEWS = "schema_materializedviews";
     public static final String USERTYPES = "schema_usertypes";
     public static final String FUNCTIONS = "schema_functions";
     public static final String AGGREGATES = "schema_aggregates";
 
-    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, GLOBALINDEXES, USERTYPES, FUNCTIONS, AGGREGATES);
+    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, MATERIALIZEDVIEWS, USERTYPES, FUNCTIONS, AGGREGATES);
 
     private static final CFMetaData Keyspaces =
         compile(KEYSPACES,
@@ -142,16 +141,16 @@ public class LegacySchemaTables
                 + "trigger_options map<text, text>,"
                 + "PRIMARY KEY ((keyspace_name), columnfamily_name, trigger_name))");
 
-    private static final CFMetaData GlobalIndexes =
-     compile(GLOBALINDEXES,
-             "global index definitions",
+    private static final CFMetaData MaterializedViews =
+     compile(MATERIALIZEDVIEWS,
+             "materialized views definitions",
              "CREATE TABLE %s ("
               + "keyspace_name text,"
               + "columnfamily_name text,"
-              + "index_name text,"
-              + "indexed_column text,"
+              + "view_name text,"
+              + "target_column text,"
               + "included_columns list<text>,"
-              + "PRIMARY KEY ((keyspace_name), columnfamily_name, index_name))");
+              + "PRIMARY KEY ((keyspace_name), columnfamily_name, view_name))");
 
     private static final CFMetaData Usertypes =
         compile(USERTYPES,
@@ -193,7 +192,7 @@ public class LegacySchemaTables
                 + "state_type text,"
                 + "PRIMARY KEY ((keyspace_name), aggregate_name, signature))");
 
-    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, GlobalIndexes, Usertypes, Functions, Aggregates);
+    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, MaterializedViews, Usertypes, Functions, Aggregates);
 
     private static CFMetaData compile(String name, String description, String schema)
     {
@@ -916,8 +915,8 @@ public class LegacySchemaTables
             for (TriggerDefinition trigger : table.getTriggers().values())
                 addTriggerToSchemaMutation(table, trigger, timestamp, mutation);
 
-            for (GlobalIndexDefinition globalIndex: table.getGlobalIndexes().values())
-                addGlobalIndexToSchemaMutation(table, globalIndex, timestamp, mutation);
+            for (MaterializedViewDefinition materializedView: table.getMaterializedViews().values())
+                addMaterializedViewToSchemaMutation(table, materializedView, timestamp, mutation);
         }
     }
 
@@ -963,15 +962,15 @@ public class LegacySchemaTables
         for (TriggerDefinition trigger : triggerDiff.entriesOnlyOnRight().values())
             addTriggerToSchemaMutation(newTable, trigger, timestamp, mutation);
 
-        MapDifference<String, GlobalIndexDefinition> globalIndexDiff = Maps.difference(oldTable.getGlobalIndexes(), newTable.getGlobalIndexes());
+        MapDifference<String, MaterializedViewDefinition> materializedViewDiff = Maps.difference(oldTable.getMaterializedViews(), newTable.getMaterializedViews());
 
-        // dropped global indexes
-        for (GlobalIndexDefinition globalIndex : globalIndexDiff.entriesOnlyOnLeft().values())
-            dropGlobalIndexFromSchemaMutation(oldTable, globalIndex, timestamp, mutation);
+        // dropped materialized views
+        for (MaterializedViewDefinition materializedView : materializedViewDiff.entriesOnlyOnLeft().values())
+            dropMaterializedViewFromSchemaMutation(oldTable, materializedView, timestamp, mutation);
 
-        // newly created global indexes
-        for (GlobalIndexDefinition globalIndex : globalIndexDiff.entriesOnlyOnRight().values())
-            addGlobalIndexToSchemaMutation(oldTable, globalIndex, timestamp, mutation);
+        // newly created materialized views
+        for (MaterializedViewDefinition materializedView : materializedViewDiff.entriesOnlyOnRight().values())
+            addMaterializedViewToSchemaMutation(oldTable, materializedView, timestamp, mutation);
 
         return mutation;
     }
@@ -993,8 +992,8 @@ public class LegacySchemaTables
         for (TriggerDefinition trigger : table.getTriggers().values())
             dropTriggerFromSchemaMutation(table, trigger, timestamp, mutation);
 
-        for (GlobalIndexDefinition globalIndex: table.getGlobalIndexes().values())
-            dropGlobalIndexFromSchemaMutation(table, globalIndex, timestamp, mutation);
+        for (MaterializedViewDefinition materializedView: table.getMaterializedViews().values())
+            dropMaterializedViewFromSchemaMutation(table, materializedView, timestamp, mutation);
 
         // TODO: get rid of in #6717
         ColumnFamily indexCells = mutation.addOrGet(SystemKeyspace.BuiltIndexes);
@@ -1069,9 +1068,9 @@ public class LegacySchemaTables
         for (TriggerDefinition trigger : createTriggersFromTriggersPartition(serializedTriggers))
             cfm.addTriggerDefinition(trigger);
 
-        Row serializedGlobalIndexes = readSchemaPartitionForTable(GLOBALINDEXES, ksName, cfName);
-        for (GlobalIndexDefinition globalIndex : createGlobalIndexesFromGlobalIndexesPartition(serializedGlobalIndexes))
-            cfm.addGlobalIndex(globalIndex);
+        Row serializedMaterializedViews = readSchemaPartitionForTable(MATERIALIZEDVIEWS, ksName, cfName);
+        for (MaterializedViewDefinition materializedView : createMaterializedViewsFromMaterializedViewsPartition(serializedMaterializedViews))
+            cfm.addMaterializedView(materializedView);
 
         return cfm;
     }
@@ -1298,36 +1297,36 @@ public class LegacySchemaTables
      * Global Index metadata serialization/deserialization.
      */
 
-    private static void addGlobalIndexToSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
+    private static void addMaterializedViewToSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
     {
-        ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
-        Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
+        ColumnFamily cells = mutation.addOrGet(MaterializedViews);
+        Composite prefix = MaterializedViews.comparator.make(table.cfName, materializedView.viewName);
         CFRowAdder adder = new CFRowAdder(cells, prefix, timestamp);
-        adder.add("indexed_column", globalIndex.target.toString());
-        for (ColumnIdentifier includedColumn: globalIndex.included)
+        adder.add("target_column", materializedView.target.toString());
+        for (ColumnIdentifier includedColumn: materializedView.included)
             adder.addListEntry("included_columns", includedColumn.toString());
     }
 
-    private static void dropGlobalIndexFromSchemaMutation(CFMetaData table, GlobalIndexDefinition globalIndex, long timestamp, Mutation mutation)
+    private static void dropMaterializedViewFromSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
     {
         {
-            Composite prefix = GlobalIndexes.comparator.make(table.cfName, globalIndex.indexName);
-            ColumnFamily cells = mutation.addOrGet(GlobalIndexes);
+            Composite prefix = MaterializedViews.comparator.make(table.cfName, materializedView.viewName);
+            ColumnFamily cells = mutation.addOrGet(MaterializedViews);
             int ldt = (int) (System.currentTimeMillis() / 1000);
 
             cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
         }
 
         {
-            Composite prefix = SystemKeyspace.GlobalIndexBuildsInProgress.comparator.make(globalIndex.indexName);
-            ColumnFamily cells = mutation.addOrGet(SystemKeyspace.GLOBAL_INDEX_BUILDS_IN_PROGRESS);
+            Composite prefix = SystemKeyspace.MaterializedViewsBuilds.comparator.make(materializedView.viewName);
+            ColumnFamily cells = mutation.addOrGet(SystemKeyspace.MATERIALIZEDVIEW_BUILDS);
             int ldt = (int) (System.currentTimeMillis() / 1000);
 
             cells.addAtom(new RangeTombstone(prefix, prefix.end(), timestamp, ldt));
         }
 
         {
-            Composite prefix = SystemKeyspace.BuiltIndexes.comparator.makeCellName(globalIndex.indexName);
+            Composite prefix = SystemKeyspace.BuiltIndexes.comparator.makeCellName(materializedView.viewName);
             ColumnFamily cells = mutation.addOrGet(SystemKeyspace.BUILT_INDEXES);
             int ldt = (int) (System.currentTimeMillis() / 1000);
 
@@ -1336,19 +1335,19 @@ public class LegacySchemaTables
     }
 
     /**
-     * Deserialize global indexes from storage-level representation.
+     * Deserialize materialized views from storage-level representation.
      *
-     * @param partition storage-level partition containing the global indexes definitions
-     * @return the list of processed GlobalIndexDefinitions
+     * @param partition storage-level partition containing the materialized view definitions
+     * @return the list of processed MaterializedViewDefinitions
      */
-    private static List<GlobalIndexDefinition> createGlobalIndexesFromGlobalIndexesPartition(Row partition)
+    private static List<MaterializedViewDefinition> createMaterializedViewsFromMaterializedViewsPartition(Row partition)
     {
-        List<GlobalIndexDefinition> globalIndexes = new ArrayList<>();
-        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, GLOBALINDEXES);
+        List<MaterializedViewDefinition> materializedViews = new ArrayList<>();
+        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, MATERIALIZEDVIEWS);
         for (UntypedResultSet.Row row : QueryProcessor.resultify(query, partition))
         {
-            String name = row.getString("index_name");
-            String indexedColumn = row.getString("indexed_column");
+            String name = row.getString("view_name");
+            String targetColumn = row.getString("target_column");
             String cfName = row.getString("columnfamily_name");
             List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
             List<ColumnIdentifier> includedColumns = new ArrayList<>();
@@ -1357,9 +1356,9 @@ public class LegacySchemaTables
                 for (String columnName : includedColumnNames)
                     includedColumns.add(new ColumnIdentifier(columnName, false));
             }
-            globalIndexes.add(new GlobalIndexDefinition(cfName, name, new ColumnIdentifier(indexedColumn, false), includedColumns));
+            materializedViews.add(new MaterializedViewDefinition(cfName, name, new ColumnIdentifier(targetColumn, false), includedColumns));
         }
-        return globalIndexes;
+        return materializedViews;
     }
 
     /*

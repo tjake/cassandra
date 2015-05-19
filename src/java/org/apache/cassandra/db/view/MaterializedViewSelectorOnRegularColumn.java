@@ -15,21 +15,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.db.marshal.CompositeType;
+import org.apache.cassandra.db.marshal.AbstractType;
 
 import java.nio.ByteBuffer;
 
-public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
+public class MaterializedViewSelectorOnRegularColumn extends MaterializedViewSelector
 {
-    ColumnFamilyStore baseCfs;
+    private final ColumnFamilyStore baseCfs;
 
-    public GlobalIndexSelectorOnPartitionKey(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
+    public MaterializedViewSelectorOnRegularColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
         super(columnDefinition);
         this.baseCfs = baseCfs;
@@ -37,25 +37,18 @@ public class GlobalIndexSelectorOnPartitionKey extends GlobalIndexSelector
 
     public boolean canGenerateTombstones()
     {
-        return false;
+        return true;
     }
 
-    public boolean selects(CellName cellName)
+    public boolean selects(CellName name)
     {
-        return false;
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDefinition);
+        return name.size() > columnDefinition.position()
+                && comp.compare(name.get(columnDefinition.position()), columnDefinition.name.bytes) == 0;
     }
 
     public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        throw new AssertionError("PartitionKey cannot produce value from a CellName");
+        return cf.getColumn(cellName).value();
     }
 
-    public ByteBuffer value(ByteBuffer key)
-    {
-        if (columnDefinition.isOnAllComponents())
-            return key;
-
-        CompositeType keyComparator = (CompositeType)baseCfs.metadata.getKeyValidator();
-        ByteBuffer[] components = keyComparator.split(key);
-        return components[columnDefinition.position()];
-    }
 }

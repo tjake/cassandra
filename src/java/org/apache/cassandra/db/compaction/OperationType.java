@@ -27,12 +27,13 @@ public enum OperationType
     CLEANUP("Cleanup"),
     SCRUB("Scrub"),
     UPGRADE_SSTABLES("Upgrade sstables"),
-    INDEX_BUILD("Index build"),
+    INDEX_BUILD("Secondary index build"),
     /** Compaction for tombstone removal */
     TOMBSTONE_COMPACTION("Tombstone Compaction"),
     UNKNOWN("Unknown compaction type"),
     ANTICOMPACTION("Anticompaction after repair"),
-    VERIFY("Verify");
+    VERIFY("Verify"),
+    VIEW_BUILD("Materialized view build");
 
     private final String type;
 
