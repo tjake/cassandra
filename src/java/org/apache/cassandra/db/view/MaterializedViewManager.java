@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index;
+package org.apache.cassandra.db.view;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.GlobalIndexDefinition;
+import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
@@ -55,71 +55,76 @@ import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
-public class GlobalIndexManager implements IndexManager
+public class MaterializedViewManager
 {
     private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
-    private static final Logger logger = LoggerFactory.getLogger(GlobalIndexManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(MaterializedViewManager.class);
 
-    private final Set<GlobalIndex> allIndexes;
+    private final Set<MaterializedView> allViews;
 
     /**
-     * Organizes the indexes by column name
+     * Organizes the views by column name
      */
-    private final ConcurrentNavigableMap<ByteBuffer, GlobalIndex> indexesByColumn;
+    private final ConcurrentNavigableMap<ByteBuffer, MaterializedView> viewsByColumn;
 
     private final ColumnFamilyStore baseCfs;
 
-    public GlobalIndexManager(ColumnFamilyStore baseCfs)
+    public MaterializedViewManager(ColumnFamilyStore baseCfs)
     {
-        this.indexesByColumn = new ConcurrentSkipListMap<>();
-        this.allIndexes = Collections.newSetFromMap(new ConcurrentHashMap<GlobalIndex, Boolean>());
+        this.viewsByColumn = new ConcurrentSkipListMap<>();
+        this.allViews = Collections.newSetFromMap(new ConcurrentHashMap<MaterializedView, Boolean>());
 
         this.baseCfs = baseCfs;
     }
 
+    public MaterializedView getViewForColumn(ByteBuffer bytes)
+    {
+        return viewsByColumn.get(bytes);
+    }
+
     public void reload()
     {
-        Map<ByteBuffer, GlobalIndexDefinition> newIndexesByColumn = new HashMap<>();
-        for (GlobalIndexDefinition definition: baseCfs.metadata.getGlobalIndexes().values())
+        Map<ByteBuffer, MaterializedViewDefinition> newViewsByColumn = new HashMap<>();
+        for (MaterializedViewDefinition definition: baseCfs.metadata.getMaterializedViews().values())
         {
-            newIndexesByColumn.put(definition.target.bytes, definition);
+            newViewsByColumn.put(definition.target.bytes, definition);
         }
 
-        for (ByteBuffer indexedColumn: indexesByColumn.keySet())
+        for (ByteBuffer indexedColumn: viewsByColumn.keySet())
         {
-            if (!newIndexesByColumn.containsKey(indexedColumn))
-                removeIndexedColumn(indexedColumn);
+            if (!newViewsByColumn.containsKey(indexedColumn))
+                removeMaterializedColumn(indexedColumn);
         }
 
-        for (ByteBuffer indexedColumn: newIndexesByColumn.keySet())
+        for (Map.Entry<ByteBuffer, MaterializedViewDefinition> entry : newViewsByColumn.entrySet())
         {
-            if (!indexesByColumn.containsKey(indexedColumn))
-                addIndexedColumn(newIndexesByColumn.get(indexedColumn));
+            if (!viewsByColumn.containsKey(entry.getKey()))
+                addMaterializedColumn(entry.getValue());
         }
 
-        for (GlobalIndex index: allIndexes)
-            index.reload();
+        for (MaterializedView view: allViews)
+            view.reload();
     }
 
     public void buildIfRequired()
     {
-        for (GlobalIndex index: allIndexes)
-            index.build();
+        for (MaterializedView view: allViews)
+            view.build();
     }
 
-    private void removeIndexedColumn(ByteBuffer column)
+    private void removeMaterializedColumn(ByteBuffer column)
     {
-        GlobalIndex index = indexesByColumn.remove(column);
+        MaterializedView view = viewsByColumn.remove(column);
 
-        if (index == null)
+        if (view == null)
             return;
 
-        allIndexes.remove(index);
+        allViews.remove(view);
 
-        SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, index.indexName);
+        SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, view.name);
     }
 
-    public void addIndexedColumn(GlobalIndexDefinition definition)
+    public void addMaterializedColumn(MaterializedViewDefinition definition)
     {
         ColumnDefinition targetCd = baseCfs.metadata.getColumnDefinition(definition.target);
         assert targetCd != null;
@@ -132,16 +137,11 @@ public class GlobalIndexManager implements IndexManager
             includedDefs.add(cfDef);
         }
 
-        GlobalIndex index = new GlobalIndex(definition, targetCd, includedDefs, baseCfs);
+        MaterializedView view = new MaterializedView(definition, targetCd, includedDefs, baseCfs);
 
-        indexesByColumn.put(definition.target.bytes, index);
+        viewsByColumn.put(definition.target.bytes, view);
 
-        allIndexes.add(index);
-    }
-
-    public GlobalIndex getIndexForColumn(ByteBuffer column)
-    {
-        return indexesByColumn.get(column);
+        allViews.add(view);
     }
 
     public void pushReplicaMutations(ByteBuffer key, ColumnFamily cf)
@@ -151,14 +151,14 @@ public class GlobalIndexManager implements IndexManager
         if (!StorageService.instance.isJoined()) return;
 
         List<Mutation> mutations = null;
-        for (GlobalIndex index: allIndexes)
+        for (MaterializedView view: allViews)
         {
-            Collection<Mutation> indexMutations = index.createMutations(key, cf, ConsistencyLevel.ONE, false);
-            if (indexMutations != null && !indexMutations.isEmpty())
+            Collection<Mutation> viewMutations = view.createMutations(key, cf, ConsistencyLevel.ONE, false);
+            if (viewMutations != null && !viewMutations.isEmpty())
             {
                 if (mutations == null)
                     mutations = Lists.newLinkedList();
-                mutations.addAll(indexMutations);
+                mutations.addAll(viewMutations);
             }
         }
         if (mutations != null)
@@ -167,11 +167,11 @@ public class GlobalIndexManager implements IndexManager
         }
     }
 
-    public boolean cfModifiesIndexedColumn(ColumnFamily cf)
+    public boolean cfModifiesSelectedColumn(ColumnFamily cf)
     {
-        for (GlobalIndex index: allIndexes)
+        for (MaterializedView view: allViews)
         {
-            if (index.cfModifiesIndexedColumn(cf))
+            if (view.cfModifiesSelectedColumn(cf))
                 return true;
         }
         return false;
@@ -200,15 +200,15 @@ public class GlobalIndexManager implements IndexManager
         }
     }
 
-    public static boolean touchesIndexedColumns(Collection<? extends IMutation> mutations)
+    public static boolean touchesSelectedColumn(Collection<? extends IMutation> mutations)
     {
         for (IMutation mutation : mutations)
         {
             for (ColumnFamily cf : mutation.getColumnFamilies())
             {
-                GlobalIndexManager indexManager = Keyspace.open(cf.metadata().ksName)
-                                                          .getColumnFamilyStore(cf.metadata().cfId).globalIndexManager;
-                if (indexManager.cfModifiesIndexedColumn(cf))
+                MaterializedViewManager viewManager = Keyspace.open(cf.metadata().ksName)
+                                                              .getColumnFamilyStore(cf.metadata().cfId).materializedViewManager;
+                if (viewManager.cfModifiesSelectedColumn(cf))
                     return true;
             }
         }

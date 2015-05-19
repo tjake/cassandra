@@ -224,7 +224,7 @@ public abstract class Event
     public static class SchemaChange extends Event
     {
         public enum Change { CREATED, UPDATED, DROPPED }
-        public enum Target { KEYSPACE, TABLE, TYPE, FUNCTION, AGGREGATE }
+        public enum Target { KEYSPACE, TABLE, TYPE, FUNCTION, AGGREGATE, VIEW }
 
         public final Change change;
         public final Target target;

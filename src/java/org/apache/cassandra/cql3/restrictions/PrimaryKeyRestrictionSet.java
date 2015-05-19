@@ -29,7 +29,7 @@ import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.*;
 import org.apache.cassandra.db.composites.Composite.EOC;
-import org.apache.cassandra.db.index.IndexManager;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
@@ -273,14 +273,14 @@ final class PrimaryKeyRestrictionSet extends AbstractPrimaryKeyRestrictions
     }
 
     @Override
-    public boolean hasSupportingIndex(IndexManager indexManager)
+    public boolean hasSupportingIndex(SecondaryIndexManager indexManager)
     {
         return restrictions.hasSupportingIndex(indexManager);
     }
 
     @Override
     public void addIndexExpressionTo(List<IndexExpression> expressions,
-                                     IndexManager indexManager,
+                                     SecondaryIndexManager indexManager,
                                      QueryOptions options) throws InvalidRequestException
     {
         Boolean clusteringColumns = null;

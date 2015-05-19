@@ -15,10 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
@@ -28,12 +27,10 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 import org.apache.cassandra.concurrent.ScheduledExecutors;
-import org.apache.cassandra.config.GlobalIndexDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.compaction.CompactionInfo;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.compaction.OperationType;
-import org.apache.cassandra.db.index.GlobalIndex;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
@@ -46,27 +43,27 @@ import org.apache.cassandra.utils.Pair;
 
 // TODO: If key is only present in repaired sstables, write if it we are primary
 // If key is present in unrepaired sstables, write it no matter what
-public class GlobalIndexBuilder extends CompactionInfo.Holder
+public class MaterializedViewBuilder extends CompactionInfo.Holder
 {
     private final ColumnFamilyStore baseCfs;
-    private final GlobalIndex index;
+    private final MaterializedView view;
     private volatile Token prevToken = null;
 
     private volatile boolean isStopped = false;
 
-    public GlobalIndexBuilder(ColumnFamilyStore baseCfs, GlobalIndex index)
+    public MaterializedViewBuilder(ColumnFamilyStore baseCfs, MaterializedView view)
     {
         this.baseCfs = baseCfs;
-        this.index = index;
+        this.view = view;
     }
 
-    private void indexKey(DecoratedKey key)
+    private void buildKey(DecoratedKey key)
     {
         Iterator<ColumnFamily> columnFamilies = QueryPagers.pageRowLocally(baseCfs, key.getKey(), 5000);
         while (columnFamilies.hasNext())
         {
             ColumnFamily cf = columnFamilies.next();
-            Collection<Mutation> mutations = index.createMutations(key.getKey(), cf, ConsistencyLevel.ONE, true);
+            Collection<Mutation> mutations = view.createMutations(key.getKey(), cf, ConsistencyLevel.ONE, true);
 
             if (mutations != null)
             {
@@ -90,17 +87,17 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
 
     public void run()
     {
-        String ksname = baseCfs.metadata.ksName, indexname = index.indexName;
+        String ksname = baseCfs.metadata.ksName, viewName = view.name;
 
-        if (SystemKeyspace.isIndexBuilt(ksname, indexname))
+        if (SystemKeyspace.isIndexBuilt(ksname, viewName))
             return;
 
         Iterable<Range<Token>> ranges = StorageService.instance.getLocalRanges(baseCfs.metadata.ksName);
-        final Pair<Integer, Token> indexStatus = SystemKeyspace.getGlobalIndexBuildStatus(ksname, indexname);
+        final Pair<Integer, Token> buildStatus = SystemKeyspace.getMaterializedViewBuildStatus(ksname, viewName;
         ReducingKeyIterator iter;
         Token lastToken;
         // Need to figure out where to start
-        if (indexStatus == null)
+        if (buildStatus == null)
         {
             int generation = Integer.MIN_VALUE;
             baseCfs.forceBlockingFlush();
@@ -109,7 +106,7 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
             {
                 generation = Math.max(reader.descriptor.generation, generation);
             }
-            SystemKeyspace.beginGlobalIndexBuild(ksname, indexname, generation);
+            SystemKeyspace.beginMaterializedViewBuild(ksname, indexname, generation);
             iter = new ReducingKeyIterator(sstables);
             lastToken = null;
         }
@@ -120,11 +117,11 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
                 @Override
                 public boolean apply(SSTableReader ssTableReader)
                 {
-                    return ssTableReader.descriptor.generation <= indexStatus.left;
+                    return ssTableReader.descriptor.generation <= buildStatus.left;
                 }
             }));
             iter = new ReducingKeyIterator(sstables);
-            lastToken = indexStatus.right;
+            lastToken = buildStatus.right;
         }
 
         prevToken = lastToken;
@@ -140,11 +137,11 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
                     {
                         if (range.contains(token))
                         {
-                            indexKey(key);
+                            buildKey(key);
 
                             if (prevToken == null || prevToken.compareTo(token) != 0)
                             {
-                                SystemKeyspace.updateGlobalIndexBuildStatus(ksname, indexname, key.getToken());
+                                SystemKeyspace.updateMaterializedViewBuildStatus(ksname, indexname, key.getToken());
                                 prevToken = token;
                             }
                         }
@@ -155,12 +152,12 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
         }
         catch (Exception e)
         {
-            final GlobalIndexBuilder builder = new GlobalIndexBuilder(baseCfs, index);
+            final MaterializedViewBuilder builder = new MaterializedViewBuilder(baseCfs, index);
             ScheduledExecutors.nonPeriodicTasks.schedule(new Runnable()
                                                          {
                                                              public void run()
                                                              {
-                                                                 CompactionManager.instance.submitGlobalIndexBuilder(builder);
+                                                                 CompactionManager.instance.submitMaterializedViewBuilder(builder);
                                                              }
                                                          },
                                                          5,
@@ -168,7 +165,7 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
             throw e;
         }
 
-        SystemKeyspace.finishGlobalIndexBuildStatus(ksname, indexname);
+        SystemKeyspace.finishMaterializedViewBuildStatus(ksname, viewName);
 
         try
         {
@@ -191,7 +188,7 @@ public class GlobalIndexBuilder extends CompactionInfo.Holder
             if (lastToken == null || range.contains(lastToken))
                 rangesLeft = 0;
         }
-        return new CompactionInfo(baseCfs.metadata, OperationType.INDEX_BUILD, rangesLeft, rangesTotal, "ranges");
+        return new CompactionInfo(baseCfs.metadata, OperationType.VIEW_BUILD, rangesLeft, rangesTotal, "ranges");
     }
 
     public void stop()

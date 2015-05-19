@@ -28,8 +28,6 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.GlobalIndexDefinition;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.StatementRestrictions;
@@ -87,7 +85,7 @@ public class SelectStatement implements CQLStatement
     private final Comparator<List<ByteBuffer>> orderingComparator;
 
     // Used by forSelection below
-    private static final Parameters defaultParameters = new Parameters(Collections.<ColumnIdentifier.Raw, Boolean>emptyMap(), false, false, false, false);
+    private static final Parameters defaultParameters = new Parameters(Collections.<ColumnIdentifier.Raw, Boolean>emptyMap(), false, false, false);
 
     public SelectStatement(CFMetaData cfm,
                            int boundTerms,
@@ -716,10 +714,10 @@ public class SelectStatement implements CQLStatement
 
     public static class RawStatement extends CFStatement
     {
-        private final Parameters parameters;
-        private final List<RawSelector> selectClause;
-        private final List<Relation> whereClause;
-        private final Term.Raw limit;
+        public final Parameters parameters;
+        public final List<RawSelector> selectClause;
+        public final List<Relation> whereClause;
+        public final Term.Raw limit;
 
         public RawStatement(CFName cfName, Parameters parameters, List<RawSelector> selectClause, List<Relation> whereClause, Term.Raw limit)
         {
@@ -740,9 +738,6 @@ public class SelectStatement implements CQLStatement
                                   : Selection.fromSelectors(cfm, selectClause);
 
             StatementRestrictions restrictions = prepareRestrictions(cfm, boundNames, selection);
-
-            if (globalIndexRestriction(cfm, restrictions))
-                return prepareGlobalIndex(cfm, restrictions);
 
             if (parameters.isDistinct)
                 validateDistinctSelection(cfm, selection, restrictions);
@@ -841,38 +836,6 @@ public class SelectStatement implements CQLStatement
                           "SELECT DISTINCT queries must request all the partition key columns (missing %s)", def.name);
         }
 
-        private static boolean globalIndexRestriction(CFMetaData cfm, StatementRestrictions restrictions)
-        {
-            Collection<GlobalIndexDefinition> definitions = cfm.getGlobalIndexes().values();
-            if (definitions.isEmpty())
-                return false;
-
-            if (!restrictions.usesSecondaryIndexing())
-                return false;
-
-            return restrictions.getGlobalIndex(definitions) != null;
-        }
-
-        private Prepared prepareGlobalIndex(CFMetaData cfm,
-                                            StatementRestrictions restrictions)
-        {
-            Collection<GlobalIndexDefinition> definitions = cfm.getGlobalIndexes().values();
-            GlobalIndexDefinition globalIndexDefinition = restrictions.getGlobalIndex(definitions);
-
-            if (globalIndexDefinition == null)
-                return null;
-
-            String name = globalIndexDefinition.getCfName();
-            CFName cfName = new CFName();
-            cfName.setColumnFamily(name, true);
-            cfName.setKeyspace(keyspace(), true);
-
-            Parameters params = new Parameters(parameters.orderings, parameters.isDistinct, parameters.allowFiltering, parameters.isJson, true);
-            RawStatement rawStatement = new RawStatement(cfName, params, selectClause, whereClause, limit);
-            rawStatement.variables = getBoundVariables();
-            return rawStatement.prepare();
-        }
-
         private void handleUnrecognizedOrderingColumn(ColumnIdentifier column) throws InvalidRequestException
         {
             checkFalse(containsAlias(column), "Aliases are not allowed in order by clause ('%s')", column);
@@ -968,15 +931,6 @@ public class SelectStatement implements CQLStatement
         /** If ALLOW FILTERING was not specified, this verifies that it is not needed */
         private void checkNeedsFiltering(StatementRestrictions restrictions) throws InvalidRequestException
         {
-            // non-key-range global index queries cannot involve filtering underneath
-            if (parameters.usesGlobalIndexing && (restrictions.isKeyRange() || restrictions.usesSecondaryIndexing()))
-            {
-                // We will potentially filter data if either:
-                //  - Have more than one IndexExpression
-                //  - Have no index expression and the column filter is not the identity
-                throw invalidRequest("Cannot execute this query as it targets a global index and might involve data filtering.");
-            }
-
             // non-key-range non-indexed queries cannot involve filtering underneath
             if (!parameters.allowFiltering && (restrictions.isKeyRange() || restrictions.usesSecondaryIndexing()))
             {
@@ -1056,22 +1010,19 @@ public class SelectStatement implements CQLStatement
     public static class Parameters
     {
         private final Map<ColumnIdentifier.Raw, Boolean> orderings;
-        private final boolean isDistinct;
-        private final boolean allowFiltering;
+        public final boolean isDistinct;
+        public final boolean allowFiltering;
         public final boolean isJson;
-        private final boolean usesGlobalIndexing;
 
         public Parameters(Map<ColumnIdentifier.Raw, Boolean> orderings,
                           boolean isDistinct,
                           boolean allowFiltering,
-                          boolean isJson,
-                          boolean usesGlobalIndexing)
+                          boolean isJson)
         {
             this.orderings = orderings;
             this.isDistinct = isDistinct;
             this.allowFiltering = allowFiltering;
             this.isJson = isJson;
-            this.usesGlobalIndexing = usesGlobalIndexing;
         }
     }
 

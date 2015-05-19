@@ -188,7 +188,7 @@ public final class CFMetaData
     private volatile SpeculativeRetry speculativeRetry = DEFAULT_SPECULATIVE_RETRY;
     private volatile Map<ColumnIdentifier, Long> droppedColumns = new HashMap<>();
     private volatile Map<String, TriggerDefinition> triggers = new HashMap<>();
-    private volatile Map<String, GlobalIndexDefinition> globalIndexes = new HashMap<>();
+    private volatile Map<String, MaterializedViewDefinition> materializedViews = new HashMap<>();
     private volatile boolean isPurged = false;
     /*
      * All CQL3 columns definition are stored in the columnMetadata map.
@@ -239,7 +239,7 @@ public final class CFMetaData
     public CFMetaData speculativeRetry(SpeculativeRetry prop) {speculativeRetry = prop; return this;}
     public CFMetaData droppedColumns(Map<ColumnIdentifier, Long> cols) {droppedColumns = cols; return this;}
     public CFMetaData triggers(Map<String, TriggerDefinition> prop) {triggers = prop; return this;}
-    public CFMetaData globalIndexes(Map<String, GlobalIndexDefinition> prop) {globalIndexes = prop; return this;}
+    public CFMetaData materializedViews(Map<String, MaterializedViewDefinition> prop) {materializedViews = prop; return this;}
     public CFMetaData isDense(Boolean prop) {isDense = prop; return this;}
 
     /**
@@ -291,9 +291,9 @@ public final class CFMetaData
         return triggers;
     }
 
-    public Map<String, GlobalIndexDefinition> getGlobalIndexes()
+    public Map<String, MaterializedViewDefinition> getMaterializedViews()
     {
-        return globalIndexes;
+        return materializedViews;
     }
 
     public static CFMetaData compile(String cql, String keyspace)
@@ -336,7 +336,7 @@ public final class CFMetaData
      * @param indexComparator Comparator for secondary index
      * @return CFMetaData for secondary index
      */
-    public static CFMetaData newSecondaryIndexMetadata(CFMetaData parent, ColumnDefinition info, CellNameType indexComparator)
+    public static CFMetaData newIndexMetadata(CFMetaData parent, ColumnDefinition info, CellNameType indexComparator)
     {
         // Depends on parent's cache setting, turn on its index CF's cache.
         // Row caching is never enabled; see CASSANDRA-5732
@@ -357,9 +357,9 @@ public final class CFMetaData
                              .rebuild();
     }
 
-    public static CFMetaData createGlobalIndexMetadata(String name, CFMetaData parent, ColumnDefinition target, CellNameType indexComparator)
+    public static CFMetaData createMaterializedViewMetadata(String name, CFMetaData parent, ColumnDefinition target, CellNameType viewComparator)
     {
-        return new CFMetaData(parent.ksName, name, ColumnFamilyType.Standard, indexComparator)
+        return new CFMetaData(parent.ksName, name, ColumnFamilyType.Standard, viewComparator)
                 .speculativeRetry(parent.speculativeRetry)
                 .compactionStrategyClass(parent.compactionStrategyClass)
                 .compactionStrategyOptions(parent.compactionStrategyOptions)
@@ -419,7 +419,7 @@ public final class CFMetaData
                       .speculativeRetry(oldCFMD.speculativeRetry)
                       .memtableFlushPeriod(oldCFMD.memtableFlushPeriod)
                       .droppedColumns(new HashMap<>(oldCFMD.droppedColumns))
-                      .globalIndexes(new HashMap<>(oldCFMD.globalIndexes))
+                      .materializedViews(new HashMap<>(oldCFMD.materializedViews))
                       .triggers(new HashMap<>(oldCFMD.triggers))
                       .isDense(oldCFMD.isDense)
                       .rebuild();
@@ -691,7 +691,7 @@ public final class CFMetaData
             && Objects.equal(speculativeRetry, other.speculativeRetry)
             && Objects.equal(droppedColumns, other.droppedColumns)
             && Objects.equal(triggers, other.triggers)
-            && Objects.equal(globalIndexes, other.globalIndexes)
+            && Objects.equal(materializedViews, other.materializedViews)
             && Objects.equal(isDense, other.isDense);
     }
 
@@ -725,7 +725,7 @@ public final class CFMetaData
             .append(speculativeRetry)
             .append(droppedColumns)
             .append(triggers)
-            .append(globalIndexes)
+            .append(materializedViews)
             .append(isDense)
             .toHashCode();
     }
@@ -807,7 +807,7 @@ public final class CFMetaData
         compressionParameters = cfm.compressionParameters;
 
         triggers = cfm.triggers;
-        globalIndexes = cfm.globalIndexes;
+        materializedViews = cfm.materializedViews;
 
         isDense(cfm.isDense);
 
@@ -1212,21 +1212,21 @@ public final class CFMetaData
         return triggers.remove(name) != null;
     }
 
-    public void addGlobalIndex(GlobalIndexDefinition def)
+    public void addMaterializedView(MaterializedViewDefinition def)
     {
-        if (globalIndexes.containsKey(def.indexName))
-            throw new InvalidRequestException(String.format("Cannot create global index %s, a global index with the same name already exists", def.indexName));
-        globalIndexes.put(def.indexName, def);
+        if (materializedViews.containsKey(def.viewName))
+            throw new InvalidRequestException(String.format("Cannot create materialized view %s, a materialized view with the same name already exists", def.viewName));
+        materializedViews.put(def.viewName, def);
     }
 
-    public void removeGlobalIndex(String name)
+    public void removeMaterializedView(String name)
     {
-        globalIndexes.remove(name);
+        materializedViews.remove(name);
     }
 
-    public void replaceGlobalIndex(GlobalIndexDefinition def)
+    public void replaceMaterializedView(MaterializedViewDefinition def)
     {
-        globalIndexes.put(def.indexName, def);
+        materializedViews.put(def.viewName, def);
     }
 
     public void recordColumnDrop(ColumnDefinition def)
@@ -1511,7 +1511,7 @@ public final class CFMetaData
             .append("speculativeRetry", speculativeRetry)
             .append("droppedColumns", droppedColumns)
             .append("triggers", triggers.values())
-            .append("globalIndexes", globalIndexes.values())
+            .append("materializedViews", materializedViews.values())
             .append("isDense", isDense)
             .toString();
     }

@@ -26,7 +26,7 @@ import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.SingleColumnRestriction.Contains;
 import org.apache.cassandra.db.IndexExpression;
-import org.apache.cassandra.db.index.IndexManager;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 /**
@@ -67,7 +67,7 @@ final class RestrictionSet implements Restrictions, Iterable<Restriction>
 
     @Override
     public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                           IndexManager indexManager,
+                                           SecondaryIndexManager indexManager,
                                            QueryOptions options) throws InvalidRequestException
     {
         for (Restriction restriction : restrictions.values())
@@ -166,7 +166,7 @@ final class RestrictionSet implements Restrictions, Iterable<Restriction>
     }
 
     @Override
-    public final boolean hasSupportingIndex(IndexManager indexManager)
+    public final boolean hasSupportingIndex(SecondaryIndexManager indexManager)
     {
         for (Restriction restriction : restrictions.values())
         {

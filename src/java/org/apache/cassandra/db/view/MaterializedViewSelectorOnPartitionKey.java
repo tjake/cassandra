@@ -15,19 +15,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.marshal.CompositeType;
 
 import java.nio.ByteBuffer;
 
-public class GlobalIndexSelectorOnSet extends GlobalIndexSelector
+public class MaterializedViewSelectorOnPartitionKey extends MaterializedViewSelector
 {
-    public GlobalIndexSelectorOnSet(ColumnDefinition columnDefinition)
+    ColumnFamilyStore baseCfs;
+
+    public MaterializedViewSelectorOnPartitionKey(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
         super(columnDefinition);
+        this.baseCfs = baseCfs;
     }
 
     public boolean canGenerateTombstones()
@@ -41,7 +46,16 @@ public class GlobalIndexSelectorOnSet extends GlobalIndexSelector
     }
 
     public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        return null;
+        throw new AssertionError("PartitionKey cannot produce value from a CellName");
     }
 
+    public ByteBuffer value(ByteBuffer key)
+    {
+        if (columnDefinition.isOnAllComponents())
+            return key;
+
+        CompositeType keyComparator = (CompositeType)baseCfs.metadata.getKeyValidator();
+        ByteBuffer[] components = keyComparator.split(key);
+        return components[columnDefinition.position()];
+    }
 }

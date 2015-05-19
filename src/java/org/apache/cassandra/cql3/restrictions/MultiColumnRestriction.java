@@ -26,9 +26,8 @@ import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
 import org.apache.cassandra.db.IndexExpression;
 import org.apache.cassandra.db.composites.CompositesBuilder;
-import org.apache.cassandra.db.composites.Composites;
-import org.apache.cassandra.db.index.Index;
-import org.apache.cassandra.db.index.IndexManager;
+import org.apache.cassandra.db.index.SecondaryIndex;
+import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
@@ -105,11 +104,11 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
     }
 
     @Override
-    public final boolean hasSupportingIndex(IndexManager indexManager)
+    public final boolean hasSupportingIndex(SecondaryIndexManager indexManager)
     {
         for (ColumnDefinition columnDef : columnDefs)
         {
-            Index index = indexManager.getIndexForColumn(columnDef.name.bytes);
+            SecondaryIndex index = indexManager.getIndexForColumn(columnDef.name.bytes);
             if (index != null && isSupportedBy(index))
                 return true;
         }
@@ -118,11 +117,12 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
     /**
      * Check if this type of restriction is supported for by the specified index.
+     * @param index the Secondary index
      *
      * @return <code>true</code> this type of restriction is supported by the specified index,
      * <code>false</code> otherwise.
      */
-    protected abstract boolean isSupportedBy(Index index);
+    protected abstract boolean isSupportedBy(SecondaryIndex index);
 
     public static class EQ  extends MultiColumnRestriction
     {
@@ -154,7 +154,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             return index.supportsOperator(Operator.EQ);
         }
@@ -174,7 +174,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               IndexManager indexManager,
+                                               SecondaryIndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             Tuples.Value t = ((Tuples.Value) value.bind(options));
@@ -224,14 +224,14 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             return index.supportsOperator(Operator.IN);
         }
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               IndexManager indexManager,
+                                               SecondaryIndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             List<List<ByteBuffer>> splitInValues = splitValues(options);
@@ -365,7 +365,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
         }
 
         @Override
-        protected boolean isSupportedBy(Index index)
+        protected boolean isSupportedBy(SecondaryIndex index)
         {
             return slice.isSupportedBy(index);
         }
@@ -419,7 +419,7 @@ public abstract class MultiColumnRestriction extends AbstractRestriction
 
         @Override
         public final void addIndexExpressionTo(List<IndexExpression> expressions,
-                                               IndexManager indexManager,
+                                               SecondaryIndexManager indexManager,
                                                QueryOptions options) throws InvalidRequestException
         {
             throw invalidRequest("Slice restrictions are not supported on indexed columns");

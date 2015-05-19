@@ -385,11 +385,11 @@ public class Keyspace
                 Lock lock = null;
                 try
                 {
-                    if (cfs.globalIndexManager.cfModifiesIndexedColumn(cf))
+                    if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
                     {
-                        Tracing.trace("Create global index mutations from replica");
-                        lock = cfs.globalIndexManager.acquireLockFor(mutation.key());
-                        cfs.globalIndexManager.pushReplicaMutations(mutation.key(), cf);
+                        Tracing.trace("Create materialized view mutations from replica");
+                        lock = cfs.materializedViewManager.acquireLockFor(mutation.key());
+                        cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
                     }
 
                     Tracing.trace("Adding to {} memtable", cf.metadata().cfName);

@@ -21,27 +21,24 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.index.GlobalIndex;
 
-public class GlobalIndexDefinition
+public class MaterializedViewDefinition
 {
     public String baseCfName;
-    public String indexName;
+    public String viewName;
     public ColumnIdentifier target;
     public Collection<ColumnIdentifier> included;
 
-    public GlobalIndexDefinition(String baseCfName, String indexName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
+    public MaterializedViewDefinition(String baseCfName, String viewName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
     {
         assert target != null;
         this.baseCfName = baseCfName;
-        this.indexName = indexName;
+        this.viewName = viewName;
         this.target = target;
         this.included = included;
     }
 
-    public boolean indexes(ColumnIdentifier def)
+    public boolean selects(ColumnIdentifier def)
     {
         if (target.bytes.compareTo(def.bytes) == 0)
             return true;
@@ -80,18 +77,13 @@ public class GlobalIndexDefinition
         }
     }
 
-    public GlobalIndexDefinition copy()
+    public MaterializedViewDefinition copy()
     {
         Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included.size());
         for (ColumnIdentifier include: included)
         {
             copyIncluded.add(include);
         }
-        return new GlobalIndexDefinition(baseCfName, indexName, target, copyIncluded);
-    }
-
-    public String getCfName()
-    {
-        return baseCfName + "_" + indexName;
+        return new MaterializedViewDefinition(baseCfName, viewName, target, copyIncluded);
     }
 }

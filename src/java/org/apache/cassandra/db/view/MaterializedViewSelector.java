@@ -15,53 +15,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import java.nio.ByteBuffer;
-import java.util.List;
 
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.CFRowAdder;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.Mutation;
-import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.marshal.CollectionType;
 
-public abstract class GlobalIndexSelector
+public abstract class MaterializedViewSelector
 {
     public final ColumnDefinition columnDefinition;
-    protected GlobalIndexSelector(ColumnDefinition columnDefinition)
+    protected MaterializedViewSelector(ColumnDefinition columnDefinition)
     {
         this.columnDefinition = columnDefinition;
     }
 
-    public static GlobalIndexSelector create(ColumnFamilyStore baseCfs, ColumnDefinition cfDef)
+    public static MaterializedViewSelector create(ColumnFamilyStore baseCfs, ColumnDefinition cfDef)
     {
         if (cfDef.type.isCollection() && cfDef.type.isMultiCell())
         {
             switch (((CollectionType)cfDef.type).kind)
             {
                 case LIST:
-                    return new GlobalIndexSelectorOnList(cfDef);
+                    return new MaterializedViewSelectorOnList(cfDef);
                 case SET:
-                    return new GlobalIndexSelectorOnSet(cfDef);
+                    return new MaterializedViewSelectorOnSet(cfDef);
                 case MAP:
-                    return new GlobalIndexSelectorOnMap(cfDef);
+                    return new MaterializedViewSelectorOnMap(cfDef);
             }
         }
 
         switch (cfDef.kind)
         {
             case CLUSTERING_COLUMN:
-                return new GlobalIndexSelectorOnClusteringColumn(cfDef);
+                return new MaterializedViewSelectorOnClusteringColumn(cfDef);
             case REGULAR:
-                return new GlobalIndexSelectorOnRegularColumn(baseCfs, cfDef);
+                return new MaterializedViewSelectorOnRegularColumn(baseCfs, cfDef);
             case PARTITION_KEY:
-                return new GlobalIndexSelectorOnPartitionKey(baseCfs, cfDef);
+                return new MaterializedViewSelectorOnPartitionKey(baseCfs, cfDef);
         }
         throw new AssertionError();
     }

@@ -1,5 +1,5 @@
 
-package org.apache.cassandra.db.index.global;
+package org.apache.cassandra.db.view;
 
 import java.net.InetAddress;
 import java.util.HashMap;
@@ -12,6 +12,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.Keyspace;
+import org.apache.cassandra.db.view.MaterializedViewUtils;
 import org.apache.cassandra.dht.OrderPreservingPartitioner.StringToken;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.IEndpointSnitch;
@@ -19,7 +20,7 @@ import org.apache.cassandra.locator.PropertyFileSnitch;
 import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.service.StorageService;
 
-public class GlobalIndexUtilsTest
+public class MaterializedViewUtilsTest
 {
     @BeforeClass
     public static void setUp() throws ConfigurationException
@@ -51,9 +52,9 @@ public class GlobalIndexUtilsTest
         KSMetaData meta = KSMetaData.newKeyspace("Keyspace1", "NetworkTopologyStrategy", configOptions, false);
         Schema.instance.setKeyspaceDefinition(meta);
 
-        InetAddress naturalEndpoint = GlobalIndexUtils.getIndexNaturalEndpoint("Keyspace1",
-                                                                               new StringToken("CA"),
-                                                                               new StringToken("BB"));
+        InetAddress naturalEndpoint = MaterializedViewUtils.getIndexNaturalEndpoint("Keyspace1",
+                                                                                    new StringToken("CA"),
+                                                                                    new StringToken("BB"));
 
         assert naturalEndpoint.equals(InetAddress.getByName("127.0.0.5"));
     }

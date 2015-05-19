@@ -52,7 +52,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
         columnDef = columnDefs.iterator().next();
 
         CellNameType indexComparator = SecondaryIndex.getIndexComparator(baseCfs.metadata, columnDef);
-        CFMetaData indexedCfMetadata = CFMetaData.newSecondaryIndexMetadata(baseCfs.metadata, columnDef, indexComparator);
+        CFMetaData indexedCfMetadata = CFMetaData.newIndexMetadata(baseCfs.metadata, columnDef, indexComparator);
         indexCfs = ColumnFamilyStore.createColumnFamilyStore(baseCfs.keyspace,
                                                              indexedCfMetadata.cfName,
                                                              new LocalPartitioner(getIndexKeyComparator()),

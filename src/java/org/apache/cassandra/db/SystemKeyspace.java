@@ -91,7 +91,7 @@ public final class SystemKeyspace
     public static final String SSTABLE_ACTIVITY = "sstable_activity";
     public static final String SIZE_ESTIMATES = "size_estimates";
     public static final String AVAILABLE_RANGES = "available_ranges";
-    public static final String GLOBAL_INDEX_BUILDS_IN_PROGRESS = "global_index_builds_in_progress";
+    public static final String MATERIALIZEDVIEW_BUILDS = "materializedviews_builds";
 
     public static final CFMetaData Hints =
         compile(HINTS,
@@ -250,9 +250,9 @@ public final class SystemKeyspace
                         + "ranges set<blob>"
                         + ")");
 
-    public static final CFMetaData GlobalIndexBuildsInProgress =
-        compile(GLOBAL_INDEX_BUILDS_IN_PROGRESS,
-                "global index builds remaining",
+    public static final CFMetaData MaterializedViewsBuilds =
+        compile(MATERIALIZEDVIEW_BUILDS,
+                "materialized views builds current progress",
                 "CREATE TABLE %s ("
                 + "keyspace_name text,"
                 + "index_name text,"
@@ -283,7 +283,7 @@ public final class SystemKeyspace
                                            SSTableActivity,
                                            SizeEstimates,
                                            AvailableRanges,
-                                           GlobalIndexBuildsInProgress));
+                                           MaterializedViewsBuilds));
         return new KSMetaData(NAME, LocalStrategy.class, Collections.<String, String>emptyMap(), true, tables);
     }
 
@@ -429,38 +429,38 @@ public final class SystemKeyspace
         return CompactionHistoryTabularData.from(queryResultSet);
     }
 
-    public static void beginGlobalIndexBuild(String ksname, String indexname, int generationNumber)
+    public static void beginMaterializedViewBuild(String ksname, String indexname, int generationNumber)
     {
-        executeInternal(String.format("INSERT INTO system.%s (keyspace_name, index_name, generation_number) VALUES (?, ?, ?)", GLOBAL_INDEX_BUILDS_IN_PROGRESS),
+        executeInternal(String.format("INSERT INTO system.%s (keyspace_name, index_name, generation_number) VALUES (?, ?, ?)", MATERIALIZEDVIEW_BUILDS),
                         ksname,
                         indexname,
                         generationNumber);
     }
 
-    public static void finishGlobalIndexBuildStatus(String ksname, String indexname)
+    public static void finishMaterializedViewBuildStatus(String ksname, String indexname)
     {
-        // We flush the index built first, because if we fail now, we'll restart at the last place we checkpointed global indexes
+        // We flush the view built first, because if we fail now, we'll restart at the last place we checkpointed
+        // materialized view build.
         // If we flush the delete first, we'll have to restart from the beginning.
-        // Also, if the build succeeded, but the global indexes failed, we will be able to skip the global index check next boot.
+        // Also, if the build succeeded, but the materailized view build failed, we will be able to skip the
+        // materialized view build check next boot.
         setIndexBuilt(ksname, indexname);
         forceBlockingFlush(BUILT_INDEXES);
-        executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
-        forceBlockingFlush(GLOBAL_INDEX_BUILDS_IN_PROGRESS);
+        executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", MATERIALIZEDVIEW_BUILDS), ksname, indexname);
+        forceBlockingFlush(MATERIALIZEDVIEW_BUILDS);
     }
 
-    public static void updateGlobalIndexBuildStatus(String ksname, String indexname, Token token)
+    public static void updateMaterializedViewBuildStatus(String ksname, String indexname, Token token)
     {
-        // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
         String req = "INSERT INTO system.%s (keyspace_name, index_name, last_token) VALUES (?, ?, ?)";
         Token.TokenFactory factory = StorageService.getPartitioner().getTokenFactory();
-        executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname, factory.toString(token));
+        executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, indexname, factory.toString(token));
     }
 
-    public static Pair<Integer, Token> getGlobalIndexBuildStatus(String ksname, String indexname)
+    public static Pair<Integer, Token> getMaterializedViewBuildStatus(String ksname, String indexname)
     {
-        // don't write anything when the history table itself is compacted, since that would in turn cause new compactions
         String req = "SELECT generation_number, last_token FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
-        UntypedResultSet queryResultSet = executeInternal(String.format(req, GLOBAL_INDEX_BUILDS_IN_PROGRESS), ksname, indexname);
+        UntypedResultSet queryResultSet = executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, indexname);
         if (queryResultSet == null || queryResultSet.isEmpty())
             return null;
 
