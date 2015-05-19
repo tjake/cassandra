@@ -371,7 +371,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
         for (MaterializedViewDefinition definition: metadata.getMaterializedViews().values())
         {
-            materializedViewManager.addIndexedColumn(definition);
+            materializedViewManager.addMaterializedColumn(definition);
         }
 
         if (registerBookkeeping)

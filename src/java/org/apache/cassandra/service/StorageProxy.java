@@ -710,7 +710,7 @@ public class StorageProxy implements StorageProxyMBean
             mutateAtomically(augmented, consistencyLevel, touchedMaterializedView);
         else
         {
-            if (mutateAtomically || touchedGlobalIndex)
+            if (mutateAtomically || touchedMaterializedView)
                 mutateAtomically((Collection<Mutation>) mutations, consistencyLevel, touchedMaterializedView);
             else
                 mutate(mutations, consistencyLevel);
