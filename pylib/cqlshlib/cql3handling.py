@@ -45,7 +45,7 @@ class Cql3ParsingRuleSet(CqlParsingRuleSet):
         'primary', 'into', 'values', 'date', 'time', 'timestamp', 'ttl', 'alter', 'add', 'type',
         'compact', 'storage', 'order', 'by', 'asc', 'desc', 'clustering',
         'token', 'writetime', 'map', 'list', 'to', 'custom', 'if', 'not',
-        'global', 'include'
+        'materialized', 'view'
     ))
 
     unreserved_keywords = set((
@@ -235,7 +235,7 @@ JUNK ::= /([ \t\r\f\v]+|(--|[/][/])[^\n\r]*([\n\r]|$)|[/][*].*?[*][/])/ ;
 <schemaChangeStatement> ::= <createKeyspaceStatement>
                           | <createColumnFamilyStatement>
                           | <createIndexStatement>
-                          | <createGlobalIndexStatement>
+                          | <createMaterializedViewStatement>
                           | <createUserTypeStatement>
                           | <createFunctionStatement>
                           | <createAggregateStatement>
@@ -243,7 +243,7 @@ JUNK ::= /([ \t\r\f\v]+|(--|[/][/])[^\n\r]*([\n\r]|$)|[/][*].*?[*][/])/ ;
                           | <dropKeyspaceStatement>
                           | <dropColumnFamilyStatement>
                           | <dropIndexStatement>
-                          | <dropGlobalIndexStatement>
+                          | <dropMaterializedViewStatement>
                           | <dropUserTypeStatement>
                           | <dropFunctionStatement>
                           | <dropAggregateStatement>
@@ -1019,16 +1019,10 @@ syntax_rules += r'''
                                ( "USING" <stringLiteral> ( "WITH" "OPTIONS" "=" <mapLiteral> )? )?
                          ;
 
-<createGlobalIndexStatement> ::= "CREATE" "GLOBAL" "INDEX" ("IF" "NOT" "EXISTS")? indexname=<idxName>? "ON"
-                                     cf=<columnFamilyName> "(" (
-                                         col=<cident>
-                                     ) ")"
-                                     "INCLUDE" "(" include=<includeClause> ")"
-                                     ( "USING" <stringLiteral> ( "WITH" "OPTIONS" "=" <mapLiteral> )? )?
-                               ;
-
-<includeClause> ::= "*" | <cident> ("," <cident>)*
-                  ;
+<createMaterializedViewStatement> ::= "CREATE" "MATERIALIZED" "VIEW" ("IF" "NOT" "EXISTS")? <columnFamilyName>?
+                                      "AS" <selectStatement>
+                                      "PRIMARY" "KEY" <pkDef>
+                                    ;
 
 <createUserTypeStatement> ::= "CREATE" "TYPE" ( ks=<nonSystemKeyspaceName> dot="." )? typename=<cfOrKsName> "(" newcol=<cident> <storageType>
                                 ( "," [newcolname]=<cident> <storageType> )*
@@ -1086,10 +1080,8 @@ syntax_rules += r'''
 <dropIndexStatement> ::= "DROP" "INDEX" ("IF" "EXISTS")? idx=<indexName>
                        ;
 
-<globalIndexName> ::= ( ksname=<idxOrKsName> dot="." )? idxname=<idxOrKsName> ;
-
-<dropGlobalIndexStatement> ::= "DROP" "GLOBAL" "INDEX" ("IF" "EXISTS")? idx=<globalIndexName>
-                             ;
+<dropMaterializedViewStatement> ::= "DROP" "MATERIALIZED" "VIEW" ("IF" "EXISTS")? mv=<columnFamilyName>
+                                  ;
 
 <dropUserTypeStatement> ::= "DROP" "TYPE" ut=<userTypeName>
                           ;
