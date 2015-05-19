@@ -686,11 +686,6 @@ public class MaterializedView
         return mutations;
     }
 
-    public boolean supportsOperator(Operator operator)
-    {
-        return operator == Operator.EQ;
-    }
-
     public synchronized void build()
     {
         if (this.builder != null)
@@ -728,28 +723,17 @@ public class MaterializedView
         if (cfId != null)
             return Schema.instance.getCFMetaData(cfId);
 
-        CellNameType comparator = getViewComparator(baseCf, target, definition.included);
+        CellNameType comparator = getViewComparator(baseCf, definition.clusteringColumns, definition.included);
         CFMetaData viewCfm = CFMetaData.createMaterializedViewMetadata(definition.viewName, baseCf, target, comparator);
 
         viewCfm.addColumnDefinition(ColumnDefinition.partitionKeyDef(viewCfm, target.name.bytes, target.type, null));
 
         boolean includeAll = included.isEmpty();
         Integer position = 0;
-        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
-        for (ColumnDefinition column: baseCf.partitionKeyColumns())
+        for (ColumnIdentifier ident: definition.clusteringColumns)
         {
-            if (column != target)
-            {
-                viewCfm.addColumnDefinition(ColumnDefinition.clusteringKeyDef(viewCfm, column.name.bytes, column.type, position++));
-            }
-        }
-
-        for (ColumnDefinition column: baseCf.clusteringColumns())
-        {
-            if (column != target)
-            {
-                viewCfm.addColumnDefinition(ColumnDefinition.clusteringKeyDef(viewCfm, column.name.bytes, column.type, position++));
-            }
+            ColumnDefinition column = baseCf.getColumnDefinition(ident);
+            viewCfm.addColumnDefinition(ColumnDefinition.clusteringKeyDef(viewCfm, column.name.bytes, column.type, position++));
         }
 
         Integer componentIndex = comparator.isCompound() ? comparator.clusteringPrefixSize() : null;
@@ -772,24 +756,12 @@ public class MaterializedView
         return viewCfm;
     }
 
-    public static CellNameType getViewComparator(CFMetaData baseCFMD, ColumnDefinition target, Collection<ColumnIdentifier> included)
+    public static CellNameType getViewComparator(CFMetaData baseCFMD, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
     {
         List<AbstractType<?>> types = new ArrayList<>();
-        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
-        for (ColumnDefinition column: baseCFMD.partitionKeyColumns())
+        for (ColumnIdentifier clusteringColumn: clusteringColumns)
         {
-            if (column != target)
-            {
-                types.add(column.type);
-            }
-        }
-
-        for (ColumnDefinition column: baseCFMD.clusteringColumns())
-        {
-            if (column != target)
-            {
-                types.add(column.type);
-            }
+            types.add(baseCFMD.getColumnDefinition(clusteringColumn).type);
         }
 
         Map<ByteBuffer, CollectionType> ctct = null;

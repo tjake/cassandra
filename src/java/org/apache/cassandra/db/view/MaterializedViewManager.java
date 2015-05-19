@@ -33,6 +33,7 @@ import java.util.concurrent.locks.Lock;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.Striped;
 
 import org.slf4j.Logger;
@@ -60,71 +61,58 @@ public class MaterializedViewManager
     private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
     private static final Logger logger = LoggerFactory.getLogger(MaterializedViewManager.class);
 
-    private final Set<MaterializedView> allViews;
-
-    /**
-     * Organizes the views by column name
-     */
-    private final ConcurrentNavigableMap<ByteBuffer, MaterializedView> viewsByColumn;
+    private final ConcurrentNavigableMap<String, MaterializedView> viewsByName;
 
     private final ColumnFamilyStore baseCfs;
 
     public MaterializedViewManager(ColumnFamilyStore baseCfs)
     {
-        this.viewsByColumn = new ConcurrentSkipListMap<>();
-        this.allViews = Collections.newSetFromMap(new ConcurrentHashMap<MaterializedView, Boolean>());
+        this.viewsByName = new ConcurrentSkipListMap<>();
 
         this.baseCfs = baseCfs;
     }
 
-    public MaterializedView getViewForColumn(ByteBuffer bytes)
-    {
-        return viewsByColumn.get(bytes);
-    }
-
     public void reload()
     {
-        Map<ByteBuffer, MaterializedViewDefinition> newViewsByColumn = new HashMap<>();
+        Map<String, MaterializedViewDefinition> newViewsByName = new HashMap<>();
         for (MaterializedViewDefinition definition: baseCfs.metadata.getMaterializedViews().values())
         {
-            newViewsByColumn.put(definition.target.bytes, definition);
+            newViewsByName.put(definition.viewName, definition);
         }
 
-        for (ByteBuffer indexedColumn: viewsByColumn.keySet())
+        for (String viewName: viewsByName.keySet())
         {
-            if (!newViewsByColumn.containsKey(indexedColumn))
-                removeMaterializedColumn(indexedColumn);
+            if (!newViewsByName.containsKey(viewName))
+                removeMaterializedView(viewName);
         }
 
-        for (Map.Entry<ByteBuffer, MaterializedViewDefinition> entry : newViewsByColumn.entrySet())
+        for (Map.Entry<String, MaterializedViewDefinition> entry : newViewsByName.entrySet())
         {
-            if (!viewsByColumn.containsKey(entry.getKey()))
-                addMaterializedColumn(entry.getValue());
+            if (!viewsByName.containsKey(entry.getKey()))
+                addMaterializedView(entry.getValue());
         }
 
-        for (MaterializedView view: allViews)
+        for (MaterializedView view: viewsByName.values())
             view.reload();
     }
 
     public void buildIfRequired()
     {
-        for (MaterializedView view: allViews)
+        for (MaterializedView view: viewsByName.values())
             view.build();
     }
 
-    private void removeMaterializedColumn(ByteBuffer column)
+    private void removeMaterializedView(String name)
     {
-        MaterializedView view = viewsByColumn.remove(column);
+        MaterializedView view = viewsByName.remove(name);
 
         if (view == null)
             return;
 
-        allViews.remove(view);
-
         SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, view.name);
     }
 
-    public void addMaterializedColumn(MaterializedViewDefinition definition)
+    public void addMaterializedView(MaterializedViewDefinition definition)
     {
         ColumnDefinition targetCd = baseCfs.metadata.getColumnDefinition(definition.target);
         assert targetCd != null;
@@ -139,9 +127,7 @@ public class MaterializedViewManager
 
         MaterializedView view = new MaterializedView(definition, targetCd, includedDefs, baseCfs);
 
-        viewsByColumn.put(definition.target.bytes, view);
-
-        allViews.add(view);
+        viewsByName.put(definition.viewName, view);
     }
 
     public void pushReplicaMutations(ByteBuffer key, ColumnFamily cf)
@@ -151,7 +137,7 @@ public class MaterializedViewManager
         if (!StorageService.instance.isJoined()) return;
 
         List<Mutation> mutations = null;
-        for (MaterializedView view: allViews)
+        for (MaterializedView view: viewsByName.values())
         {
             Collection<Mutation> viewMutations = view.createMutations(key, cf, ConsistencyLevel.ONE, false);
             if (viewMutations != null && !viewMutations.isEmpty())
@@ -169,12 +155,17 @@ public class MaterializedViewManager
 
     public boolean cfModifiesSelectedColumn(ColumnFamily cf)
     {
-        for (MaterializedView view: allViews)
+        for (MaterializedView view: viewsByName.values())
         {
             if (view.cfModifiesSelectedColumn(cf))
                 return true;
         }
         return false;
+    }
+
+    public Iterable<? extends MaterializedView> allViews()
+    {
+        return viewsByName.values();
     }
 
     public Lock acquireLockFor(ByteBuffer key)
