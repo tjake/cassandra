@@ -19,6 +19,7 @@ package org.apache.cassandra.config;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
 
@@ -27,14 +28,16 @@ public class MaterializedViewDefinition
     public String baseCfName;
     public String viewName;
     public ColumnIdentifier target;
+    public List<ColumnIdentifier> clusteringColumns;
     public Collection<ColumnIdentifier> included;
 
-    public MaterializedViewDefinition(String baseCfName, String viewName, ColumnIdentifier target, Collection<ColumnIdentifier> included)
+    public MaterializedViewDefinition(String baseCfName, String viewName, ColumnIdentifier target, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
     {
         assert target != null;
         this.baseCfName = baseCfName;
         this.viewName = viewName;
         this.target = target;
+        this.clusteringColumns = clusteringColumns;
         this.included = included;
     }
 
@@ -75,15 +78,24 @@ public class MaterializedViewDefinition
             }
             included = columns;
         }
+
+        int primaryKeyIndex = clusteringColumns.indexOf(from);
+        if (primaryKeyIndex >= 0)
+            clusteringColumns.set(primaryKeyIndex, to);
     }
 
     public MaterializedViewDefinition copy()
     {
+        List<ColumnIdentifier> copyClusteringColumns = new ArrayList<>(clusteringColumns.size());
+        for (ColumnIdentifier clustering: this.clusteringColumns)
+        {
+            copyClusteringColumns.add(clustering);
+        }
         Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included.size());
         for (ColumnIdentifier include: included)
         {
             copyIncluded.add(include);
         }
-        return new MaterializedViewDefinition(baseCfName, viewName, target, copyIncluded);
+        return new MaterializedViewDefinition(baseCfName, viewName, target, copyClusteringColumns, copyIncluded);
     }
 }

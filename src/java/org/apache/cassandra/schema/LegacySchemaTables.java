@@ -149,6 +149,7 @@ public class LegacySchemaTables
               + "columnfamily_name text,"
               + "view_name text,"
               + "target_column text,"
+              + "clustering_columns list<text>,"
               + "included_columns list<text>,"
               + "PRIMARY KEY ((keyspace_name), columnfamily_name, view_name))");
 
@@ -1298,6 +1299,8 @@ public class LegacySchemaTables
         Composite prefix = MaterializedViews.comparator.make(table.cfName, materializedView.viewName);
         CFRowAdder adder = new CFRowAdder(cells, prefix, timestamp);
         adder.add("target_column", materializedView.target.toString());
+        for (ColumnIdentifier clusteringColumn: materializedView.clusteringColumns)
+            adder.addListEntry("clustering_columns", clusteringColumn.toString());
         for (ColumnIdentifier includedColumn: materializedView.included)
             adder.addListEntry("included_columns", includedColumn.toString());
     }
@@ -1344,14 +1347,24 @@ public class LegacySchemaTables
             String name = row.getString("view_name");
             String targetColumn = row.getString("target_column");
             String cfName = row.getString("columnfamily_name");
+            List<String> clusteringColumnNames = row.getList("clustering_columns", UTF8Type.instance);
+            List<ColumnIdentifier> clusteringColumns = new ArrayList<>();
+            for (String columnName: clusteringColumnNames)
+            {
+                clusteringColumns.add(new ColumnIdentifier(columnName, true));
+            }
             List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
             List<ColumnIdentifier> includedColumns = new ArrayList<>();
             if (includedColumnNames != null)
             {
                 for (String columnName : includedColumnNames)
-                    includedColumns.add(new ColumnIdentifier(columnName, false));
+                    includedColumns.add(new ColumnIdentifier(columnName, true));
             }
-            materializedViews.add(new MaterializedViewDefinition(cfName, name, new ColumnIdentifier(targetColumn, false), includedColumns));
+            materializedViews.add(new MaterializedViewDefinition(cfName,
+                                                                 name,
+                                                                 new ColumnIdentifier(targetColumn, true),
+                                                                 clusteringColumns,
+                                                                 includedColumns));
         }
         return materializedViews;
     }

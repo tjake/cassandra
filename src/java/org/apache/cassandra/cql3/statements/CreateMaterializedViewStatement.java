@@ -18,7 +18,9 @@
 package org.apache.cassandra.cql3.statements;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,7 +103,7 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
         if (cfm.isCounter())
             throw new InvalidRequestException("Global indexes are not supported on counter tables");
 
-        List<ColumnIdentifier> included = new ArrayList<>();
+        Set<ColumnIdentifier> included = new HashSet<>();
         for (RawSelector selector: select.selectClause)
         {
             Selectable.Raw selectable = selector.selectable;
@@ -117,7 +119,7 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
                 throw new InvalidRequestException(String.format("Cannot alias column '%s' as '%s' when defining a materialized view", identifier.toString(), selector.alias.toString()));
         }
 
-        List<ColumnIdentifier> primaryKeyCols = new ArrayList<>();
+        Set<ColumnIdentifier> primaryKeyCols = new HashSet<>();
         for (ColumnDefinition definition: cfm.partitionKeyColumns())
             primaryKeyCols.add(definition.name);
         for (ColumnDefinition definition: cfm.clusteringColumns())
@@ -125,6 +127,7 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
 
         boolean isTarget = true;
         ColumnIdentifier target = null;
+        List<ColumnIdentifier> clusteringColumns = new ArrayList<>();
         for (ColumnIdentifier.Raw raw: primaryKeys)
         {
             ColumnIdentifier identifier = raw.prepare(cfm);
@@ -136,18 +139,23 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
             }
             else
             {
+                clusteringColumns.add(identifier);
                 if (!primaryKeyCols.remove(identifier))
-                    throw new InvalidRequestException("Clustering columns for a materialized view must be part of base table's primary key");
+                    throw new InvalidRequestException(String.format("Cannot include non-primary key column '%s' in materialized view primary key", identifier));
             }
+            included.add(identifier);
         }
 
-        if (!primaryKeyCols.isEmpty())
-            throw new InvalidRequestException("Must select all primary key columns from base table");
+        for (ColumnIdentifier primaryKeyCol: primaryKeyCols)
+        {
+            clusteringColumns.add(primaryKeyCol);
+            included.add(primaryKeyCol);
+        }
 
         if (target == null)
             throw new InvalidRequestException("Must select at least a column for a Materialized View");
 
-        MaterializedViewDefinition definition = new MaterializedViewDefinition(base.getColumnFamily(), columnFamily(), target, included);
+        MaterializedViewDefinition definition = new MaterializedViewDefinition(base.getColumnFamily(), columnFamily(), target, clusteringColumns, included);
 
         CFMetaData indexCf = MaterializedView.getCFMetaData(definition, cfm);
         MigrationManager.announceNewColumnFamily(indexCf, isLocalOnly);
