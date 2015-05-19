@@ -93,7 +93,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
             return;
 
         Iterable<Range<Token>> ranges = StorageService.instance.getLocalRanges(baseCfs.metadata.ksName);
-        final Pair<Integer, Token> buildStatus = SystemKeyspace.getMaterializedViewBuildStatus(ksname, viewName;
+        final Pair<Integer, Token> buildStatus = SystemKeyspace.getMaterializedViewBuildStatus(ksname, viewName);
         ReducingKeyIterator iter;
         Token lastToken;
         // Need to figure out where to start
@@ -106,7 +106,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
             {
                 generation = Math.max(reader.descriptor.generation, generation);
             }
-            SystemKeyspace.beginMaterializedViewBuild(ksname, indexname, generation);
+            SystemKeyspace.beginMaterializedViewBuild(ksname, viewName, generation);
             iter = new ReducingKeyIterator(sstables);
             lastToken = null;
         }
@@ -141,7 +141,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
 
                             if (prevToken == null || prevToken.compareTo(token) != 0)
                             {
-                                SystemKeyspace.updateMaterializedViewBuildStatus(ksname, indexname, key.getToken());
+                                SystemKeyspace.updateMaterializedViewBuildStatus(ksname, viewName, key.getToken());
                                 prevToken = token;
                             }
                         }
@@ -152,7 +152,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
         }
         catch (Exception e)
         {
-            final MaterializedViewBuilder builder = new MaterializedViewBuilder(baseCfs, index);
+            final MaterializedViewBuilder builder = new MaterializedViewBuilder(baseCfs, view);
             ScheduledExecutors.nonPeriodicTasks.schedule(new Runnable()
                                                          {
                                                              public void run()
