@@ -758,13 +758,6 @@ class Shell(cmd.Cmd):
                     idxnames.append(col.index.name)
         return idxnames
 
-    def get_global_index_names(self, ksname=None):
-        idxnames = []
-        for cfname in self.get_columnfamily_names(ksname=ksname):
-            for gid in self.get_table_meta(ksname, cfname).global_indexes.values():
-                idxnames.append(gid.name)
-        return idxnames
-
     def get_column_names(self, ksname, cfname):
         if ksname is None:
             ksname = self.current_keyspace
