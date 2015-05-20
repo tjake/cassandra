@@ -268,6 +268,7 @@ public class CommitLogReplayer
         }
     }
 
+    @SuppressWarnings("resource")
     public void recover(File file) throws IOException
     {
         CommitLogDescriptor desc = CommitLogDescriptor.fromFileName(file.getName());
@@ -340,6 +341,7 @@ public class CommitLogReplayer
 
                 FileDataInput sectionReader = reader;
                 if (compressor != null)
+                {
                     try
                     {
                         int start = (int) reader.getFilePointer();
@@ -363,6 +365,7 @@ public class CommitLogReplayer
                         logger.error("Unexpected exception decompressing section {}", e);
                         continue;
                     }
+                }
 
                 if (!replaySyncSection(sectionReader, replayEnd, desc))
                     break;

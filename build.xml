@@ -1912,8 +1912,7 @@
 	    <arg value="${target.version}" /> 
 	    <arg value="-d" />
             <arg value="none" />
- 	    <arg value="-proc:none" />
-            <arg value="-enableJavadoc" />
+	    <arg value="-proc:none" /> 
             <arg value="-log" />
             <arg value="${ecj.warnings.file}" /> 
             <arg value="-properties" />
