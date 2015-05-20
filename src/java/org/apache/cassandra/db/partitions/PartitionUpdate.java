@@ -536,7 +536,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
         }
     }
 
-    public class RegularWriter extends Writer
+    protected class RegularWriter extends Writer
     {
         // For complex column, the writer assumptions is that for a given row, cells of different
         // complex columns are not intermingled (they also should be in cellPath order). We however
@@ -576,6 +576,28 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
                 updatedComplex.add(column);
             }
             super.writeCell(column, isCounter, value, info, path);
+        }
+
+        @Override
+        public void endOfRow()
+        {
+            super.endOfRow();
+            clear();
+        }
+
+        @Override
+        public Writer reset()
+        {
+            super.reset();
+            clear();
+            return this;
+        }
+
+        private void clear()
+        {
+            updatedComplex.clear();
+            lastUpdatedComplex = null;
+            lastUpdatedComplexPath = null;
         }
     }
 

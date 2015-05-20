@@ -397,6 +397,7 @@ public abstract class LegacyLayout
 
     private static Iterator<Row> convertToRows(final CellGrouper grouper, final Iterator<LegacyCell> cells, final LegacyDeletionInfo delInfo)
     {
+        // A reducer that basically does nothing, we know the 2 merge iterators can't have conflicting atoms.
         MergeIterator.Reducer<LegacyAtom, LegacyAtom> reducer = new MergeIterator.Reducer<LegacyAtom, LegacyAtom>()
         {
             private LegacyAtom atom;

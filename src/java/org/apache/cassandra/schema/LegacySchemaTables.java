@@ -1074,9 +1074,9 @@ public class LegacySchemaTables
             for (UntypedResultSet.Row row : defs)
             {
                 if (row.getString("column_name").isEmpty())
-                    return true;
+                    return false;
             }
-            return false;
+            return true;
         }
 
         // For static compact tables, we need to upgrade if the regular definitions haven't been converted to static yet,
