@@ -70,6 +70,7 @@ import org.apache.cassandra.metrics.CompactionMetrics;
 import org.apache.cassandra.repair.Validator;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.CloseableIterator;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.MerkleTree;
@@ -798,13 +799,16 @@ public class CompactionManager implements CompactionManagerMBean
                 if (ci.isStopRequested())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                SSTableIdentityIterator row = (SSTableIdentityIterator) scanner.next();
-                row = cleanupStrategy.cleanup(row);
-                if (row == null)
-                    continue;
-                AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(row));
-                if (writer.append(compactedRow) != null)
-                    totalkeysWritten++;
+                try (SSTableIdentityIterator row = cleanupStrategy.cleanup((SSTableIdentityIterator) scanner.next()))
+                {
+                    if (row == null)
+                        continue;
+                    try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(row)))
+                    {
+                        if (writer.append(compactedRow) != null)
+                            totalkeysWritten++;
+                    }
+                }
             }
 
             // flush to ensure we don't lose the tombstones on a restart, since they are not commitlog'd
@@ -1020,43 +1024,43 @@ public class CompactionManager implements CompactionManagerMBean
             // flush first so everyone is validating data that is as similar as possible
             StorageService.instance.forceKeyspaceFlush(cfs.keyspace.getName(), cfs.name);
             ActiveRepairService.ParentRepairSession prs = ActiveRepairService.instance.getParentRepairSession(validator.desc.parentSessionId);
-            ColumnFamilyStore.RefViewFragment sstableCandidates = cfs.selectAndReference(prs.isIncremental ? ColumnFamilyStore.UNREPAIRED_SSTABLES : ColumnFamilyStore.CANONICAL_SSTABLES);
-            Set<SSTableReader> sstablesToValidate = new HashSet<>();
-
-            for (SSTableReader sstable : sstableCandidates.sstables)
+            try (ColumnFamilyStore.RefViewFragment sstableCandidates = cfs.selectAndReference(prs.isIncremental ? ColumnFamilyStore.UNREPAIRED_SSTABLES : ColumnFamilyStore.CANONICAL_SSTABLES))
             {
-                if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singletonList(validator.desc.range)))
+                Set<SSTableReader> sstablesToValidate = new HashSet<>();
+
+                for (SSTableReader sstable : sstableCandidates.sstables)
                 {
-                    sstablesToValidate.add(sstable);
+                    if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singletonList(validator.desc.range)))
+                    {
+                        sstablesToValidate.add(sstable);
+                    }
                 }
-            }
 
-            Set<SSTableReader> currentlyRepairing = ActiveRepairService.instance.currentlyRepairing(cfs.metadata.cfId, validator.desc.parentSessionId);
+                Set<SSTableReader> currentlyRepairing = ActiveRepairService.instance.currentlyRepairing(cfs.metadata.cfId, validator.desc.parentSessionId);
 
-            if (!Sets.intersection(currentlyRepairing, sstablesToValidate).isEmpty())
-            {
-                logger.error("Cannot start multiple repair sessions over the same sstables");
-                throw new RuntimeException("Cannot start multiple repair sessions over the same sstables");
-            }
-
-            try (Refs<SSTableReader> sstables = Refs.tryRef(sstablesToValidate))
-            {
-                if (sstables == null)
+                if (!Sets.intersection(currentlyRepairing, sstablesToValidate).isEmpty())
                 {
-                    logger.error("Could not reference sstables");
-                    throw new RuntimeException("Could not reference sstables");
+                    logger.error("Cannot start multiple repair sessions over the same sstables");
+                    throw new RuntimeException("Cannot start multiple repair sessions over the same sstables");
                 }
-                sstableCandidates.release();
-                prs.addSSTables(cfs.metadata.cfId, sstablesToValidate);
 
-                if (validator.gcBefore > 0)
-                    gcBefore = validator.gcBefore;
-                else
-                    gcBefore = getDefaultGcBefore(cfs);
+                try (Refs<SSTableReader> sstables = Refs.tryRef(sstablesToValidate))
+                {
+                    if (sstables == null)
+                    {
+                        logger.error("Could not reference sstables");
+                        throw new RuntimeException("Could not reference sstables");
+                    }
+                    prs.addSSTables(cfs.metadata.cfId, sstablesToValidate);
+
+                    if (validator.gcBefore > 0)
+                        gcBefore = validator.gcBefore;
+                    else
+                        gcBefore = getDefaultGcBefore(cfs);
 
 
-                
-                buildMerkleTree(cfs, sstables, validator, gcBefore);
+                    buildMerkleTree(cfs, sstables, validator, gcBefore);
+                }
             }
         }
     }
@@ -1078,24 +1082,32 @@ public class CompactionManager implements CompactionManagerMBean
         try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables, validator.desc.range))
         {
             CompactionIterable ci = new ValidationCompactionIterable(cfs, scanners.scanners, gcBefore);
-            Iterator<AbstractCompactedRow> iter = ci.iterator();
-            metrics.beginCompaction(ci);
-            try
+            try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator())
             {
-                // validate the CF as we iterate over it
-                validator.prepare(cfs, tree);
-                while (iter.hasNext())
+                metrics.beginCompaction(ci);
+                try
                 {
-                    if (ci.isStopRequested())
-                        throw new CompactionInterruptedException(ci.getCompactionInfo());
-                    AbstractCompactedRow row = iter.next();
-                    validator.add(row);
+                    // validate the CF as we iterate over it
+                    validator.prepare(cfs, tree);
+                    while (iter.hasNext())
+                    {
+                        if (ci.isStopRequested())
+                            throw new CompactionInterruptedException(ci.getCompactionInfo());
+                        try (AbstractCompactedRow row = iter.next())
+                        {
+                            validator.add(row);
+                        }
+                    }
+                    validator.complete();
                 }
-                validator.complete();
+                finally
+                {
+                    metrics.finishCompaction(ci);
+                }
             }
-            finally
+            catch (Exception e)
             {
-                metrics.finishCompaction(ci);
+                throw new RuntimeException(e);
             }
         }
 
@@ -1186,30 +1198,38 @@ public class CompactionManager implements CompactionManagerMBean
             unRepairedSSTableWriter.switchWriter(CompactionManager.createWriterForAntiCompaction(cfs, destination, expectedBloomFilterSize, ActiveRepairService.UNREPAIRED_SSTABLE, sstableAsSet));
 
             CompactionIterable ci = new CompactionIterable(OperationType.ANTICOMPACTION, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), UUIDGen.getTimeUUID());
-            Iterator<AbstractCompactedRow> iter = ci.iterator();
-            metrics.beginCompaction(ci);
-            try
+            try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator())
             {
-                while (iter.hasNext())
+                metrics.beginCompaction(ci);
+                try
                 {
-                    AbstractCompactedRow row = iter.next();
-                    // if current range from sstable is repaired, save it into the new repaired sstable
-                    if (Range.isInRanges(row.key.getToken(), ranges))
+                    while (iter.hasNext())
                     {
-                        repairedSSTableWriter.append(row);
-                        repairedKeyCount++;
-                    }
-                    // otherwise save into the new 'non-repaired' table
-                    else
-                    {
-                        unRepairedSSTableWriter.append(row);
-                        unrepairedKeyCount++;
+                        try (AbstractCompactedRow row = iter.next())
+                        {
+                            // if current range from sstable is repaired, save it into the new repaired sstable
+                            if (Range.isInRanges(row.key.getToken(), ranges))
+                            {
+                                repairedSSTableWriter.append(row);
+                                repairedKeyCount++;
+                            }
+                            // otherwise save into the new 'non-repaired' table
+                            else
+                            {
+                                unRepairedSSTableWriter.append(row);
+                                unrepairedKeyCount++;
+                            }
+                        }
                     }
                 }
+                finally
+                {
+                    metrics.finishCompaction(ci);
+                }
             }
-            finally
+            catch (Exception e)
             {
-                metrics.finishCompaction(ci);
+                throw new RuntimeException(e);
             }
 
             List<SSTableReader> anticompactedSSTables = new ArrayList<>();
@@ -1314,6 +1334,7 @@ public class CompactionManager implements CompactionManagerMBean
 
     private static class ValidationCompactionIterable extends CompactionIterable
     {
+        @SuppressWarnings("resource")
         public ValidationCompactionIterable(ColumnFamilyStore cfs, List<ISSTableScanner> scanners, int gcBefore)
         {
             super(OperationType.VALIDATION, scanners, new ValidationCompactionController(cfs, gcBefore), DatabaseDescriptor.getSSTableFormat(), UUIDGen.getTimeUUID());

@@ -47,6 +47,7 @@ import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DataOutputBuffer;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.net.MessageIn;
 import org.apache.cassandra.net.MessageOut;
 import org.apache.cassandra.net.MessagingService;
@@ -148,20 +149,17 @@ public class BatchlogManager implements BatchlogManagerMBean
 
     private static ByteBuffer serializeMutations(Collection<Mutation> mutations, int version)
     {
-        DataOutputBuffer buf = new DataOutputBuffer();
-
-        try
+        try (DataOutputBuffer buf = new DataOutputBuffer())
         {
             buf.writeInt(mutations.size());
             for (Mutation mutation : mutations)
                 Mutation.serializer.serialize(mutation, buf, version);
+            return buf.buffer();
         }
         catch (IOException e)
         {
             throw new AssertionError(); // cannot happen.
         }
-
-        return buf.buffer();
     }
 
     private void replayAllFailedBatches() throws ExecutionException, InterruptedException

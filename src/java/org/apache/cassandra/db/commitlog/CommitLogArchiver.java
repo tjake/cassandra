@@ -63,7 +63,7 @@ public class CommitLogArchiver
     public CommitLogArchiver()
     {
         Properties commitlog_commands = new Properties();
-        try ( InputStream stream = getClass().getClassLoader().getResourceAsStream("commitlog_archiving.properties"))
+        try (InputStream stream = getClass().getClassLoader().getResourceAsStream("commitlog_archiving.properties"))
         {
             if (stream == null)
             {

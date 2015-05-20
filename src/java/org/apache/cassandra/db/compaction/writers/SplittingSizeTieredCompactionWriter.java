@@ -56,6 +56,7 @@ public class SplittingSizeTieredCompactionWriter extends CompactionAwareWriter
         this(cfs, txn, nonExpiredSSTables, compactionType, DEFAULT_SMALLEST_SSTABLE_BYTES);
     }
 
+    @SuppressWarnings("resource")
     public SplittingSizeTieredCompactionWriter(ColumnFamilyStore cfs, LifecycleTransaction txn, Set<SSTableReader> nonExpiredSSTables, OperationType compactionType, long smallestSSTable)
     {
         super(cfs, txn, nonExpiredSSTables, false);
@@ -95,6 +96,7 @@ public class SplittingSizeTieredCompactionWriter extends CompactionAwareWriter
     }
 
     @Override
+    @SuppressWarnings("resource")
     public boolean append(AbstractCompactedRow row)
     {
         RowIndexEntry rie = sstableWriter.append(row);

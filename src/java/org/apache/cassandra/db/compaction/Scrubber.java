@@ -86,6 +86,7 @@ public class Scrubber implements Closeable
         this(cfs, transaction, skipCorrupted, new OutputHandler.LogOutput(), isOffline, checkData);
     }
 
+    @SuppressWarnings("resource")
     public Scrubber(ColumnFamilyStore cfs, LifecycleTransaction transaction, boolean skipCorrupted, OutputHandler outputHandler, boolean isOffline, boolean checkData) throws IOException
     {
         this.cfs = cfs;
@@ -204,11 +205,13 @@ public class Scrubber implements Closeable
                         continue;
                     }
 
-                    AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms));
-                    if (writer.tryAppend(compactedRow) == null)
-                        emptyRows++;
-                    else
-                        goodRows++;
+                    try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms)))
+                    {
+                        if (writer.tryAppend(compactedRow) == null)
+                            emptyRows++;
+                        else
+                            goodRows++;
+                    }
 
                     prevKey = key;
                 }
@@ -234,11 +237,13 @@ public class Scrubber implements Closeable
                                 continue;
                             }
 
-                            AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms));
-                            if (writer.tryAppend(compactedRow) == null)
-                                emptyRows++;
-                            else
-                                goodRows++;
+                            try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms)))
+                            {
+                                if (writer.tryAppend(compactedRow) == null)
+                                    emptyRows++;
+                                else
+                                    goodRows++;
+                            }
 
                             prevKey = key;
                         }

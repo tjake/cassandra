@@ -39,6 +39,7 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
     private final long estimatedSSTables;
     private final Set<SSTableReader> allSSTables;
 
+    @SuppressWarnings("resource")
     public MaxSSTableSizeWriter(ColumnFamilyStore cfs, LifecycleTransaction txn, Set<SSTableReader> nonExpiredSSTables, long maxSSTableSize, int level, boolean offline, OperationType compactionType)
     {
         super(cfs, txn, nonExpiredSSTables, offline);
@@ -60,6 +61,7 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
     }
 
     @Override
+    @SuppressWarnings("resource")
     public boolean append(AbstractCompactedRow row)
     {
         RowIndexEntry rie = sstableWriter.append(row);

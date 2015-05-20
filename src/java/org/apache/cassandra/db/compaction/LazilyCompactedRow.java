@@ -157,13 +157,11 @@ public class LazilyCompactedRow extends AbstractCompactedRow
 
         // no special-case for rows.size == 1, we're actually skipping some bytes here so just
         // blindly updating everything wouldn't be correct
-        DataOutputBuffer out = new DataOutputBuffer();
-
-        // initialize indexBuilder for the benefit of its tombstoneTracker, used by our reducing iterator
-        indexBuilder = new ColumnIndex.Builder(emptyColumnFamily, key.getKey(), out);
-
-        try
+        try (DataOutputBuffer out = new DataOutputBuffer())
         {
+            // initialize indexBuilder for the benefit of its tombstoneTracker, used by our reducing iterator
+            indexBuilder = new ColumnIndex.Builder(emptyColumnFamily, key.getKey(), out);
+
             DeletionTime.serializer.serialize(emptyColumnFamily.deletionInfo().getTopLevelDeletion(), out);
 
             // do not update digest in case of missing or purged row level tombstones, see CASSANDRA-8979
