@@ -659,35 +659,35 @@ public class CompactionManager implements CompactionManagerMBean
 
     private void scrubOne(ColumnFamilyStore cfs, LifecycleTransaction modifier, boolean skipCorrupted, boolean checkData) throws IOException
     {
-        Scrubber scrubber = new Scrubber(cfs, modifier, skipCorrupted, false, checkData);
+        CompactionInfo.Holder scrubInfo = null;
 
-        CompactionInfo.Holder scrubInfo = scrubber.getScrubInfo();
-        metrics.beginCompaction(scrubInfo);
-        try
+        try (Scrubber scrubber = new Scrubber(cfs, modifier, skipCorrupted, false, checkData))
         {
+            scrubInfo = scrubber.getScrubInfo();
+            metrics.beginCompaction(scrubInfo);
             scrubber.scrub();
         }
         finally
         {
-            scrubber.close();
-            metrics.finishCompaction(scrubInfo);
+            if (scrubInfo != null)
+                metrics.finishCompaction(scrubInfo);
         }
     }
 
     private void verifyOne(ColumnFamilyStore cfs, SSTableReader sstable, boolean extendedVerify) throws IOException
     {
-        Verifier verifier = new Verifier(cfs, sstable, false);
+        CompactionInfo.Holder verifyInfo = null;
 
-        CompactionInfo.Holder verifyInfo = verifier.getVerifyInfo();
-        metrics.beginCompaction(verifyInfo);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
+            verifyInfo = verifier.getVerifyInfo();
+            metrics.beginCompaction(verifyInfo);
             verifier.verify(extendedVerify);
         }
         finally
         {
-            verifier.close();
-            metrics.finishCompaction(verifyInfo);
+            if (verifyInfo != null)
+                metrics.finishCompaction(verifyInfo);
         }
     }
 
@@ -991,52 +991,56 @@ public class CompactionManager implements CompactionManagerMBean
         if (!cfs.isValid())
             return;
 
-        Refs<SSTableReader> sstables = null;
-        try
+        String snapshotName = validator.desc.sessionId.toString();
+        boolean isSnapshotValidation = cfs.snapshotExists(snapshotName);
+
+        int gcBefore;
+
+        if (isSnapshotValidation)
         {
+            // If there is a snapshot created for the session then read from there.
+            // note that we populate the parent repair session when creating the snapshot, meaning the sstables in the snapshot are the ones we
+            // are supposed to validate.
 
-            String snapshotName = validator.desc.sessionId.toString();
-            int gcBefore;
-            boolean isSnapshotValidation = cfs.snapshotExists(snapshotName);
-            if (isSnapshotValidation)
+            try (Refs<SSTableReader> sstables = cfs.getSnapshotSSTableReader(snapshotName))
             {
-                // If there is a snapshot created for the session then read from there.
-                // note that we populate the parent repair session when creating the snapshot, meaning the sstables in the snapshot are the ones we
-                // are supposed to validate.
-                sstables = cfs.getSnapshotSSTableReader(snapshotName);
-
-
                 // Computing gcbefore based on the current time wouldn't be very good because we know each replica will execute
                 // this at a different time (that's the whole purpose of repair with snaphsot). So instead we take the creation
                 // time of the snapshot, which should give us roughtly the same time on each replica (roughtly being in that case
                 // 'as good as in the non-snapshot' case)
                 gcBefore = cfs.gcBefore(cfs.getSnapshotCreationTime(snapshotName));
+
+                buildMerkleTree(cfs, sstables, validator, gcBefore);
+
+                cfs.clearSnapshot(snapshotName);
             }
-            else
+        }
+        else
+        {
+            // flush first so everyone is validating data that is as similar as possible
+            StorageService.instance.forceKeyspaceFlush(cfs.keyspace.getName(), cfs.name);
+            ActiveRepairService.ParentRepairSession prs = ActiveRepairService.instance.getParentRepairSession(validator.desc.parentSessionId);
+            ColumnFamilyStore.RefViewFragment sstableCandidates = cfs.selectAndReference(prs.isIncremental ? ColumnFamilyStore.UNREPAIRED_SSTABLES : ColumnFamilyStore.CANONICAL_SSTABLES);
+            Set<SSTableReader> sstablesToValidate = new HashSet<>();
+
+            for (SSTableReader sstable : sstableCandidates.sstables)
             {
-                // flush first so everyone is validating data that is as similar as possible
-                StorageService.instance.forceKeyspaceFlush(cfs.keyspace.getName(), cfs.name);
-                ActiveRepairService.ParentRepairSession prs = ActiveRepairService.instance.getParentRepairSession(validator.desc.parentSessionId);
-                ColumnFamilyStore.RefViewFragment sstableCandidates = cfs.selectAndReference(prs.isIncremental ? ColumnFamilyStore.UNREPAIRED_SSTABLES : ColumnFamilyStore.CANONICAL_SSTABLES);
-                Set<SSTableReader> sstablesToValidate = new HashSet<>();
-
-                for (SSTableReader sstable : sstableCandidates.sstables)
+                if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singletonList(validator.desc.range)))
                 {
-                    if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singletonList(validator.desc.range)))
-                    {
-                        sstablesToValidate.add(sstable);
-                    }
+                    sstablesToValidate.add(sstable);
                 }
+            }
 
-                Set<SSTableReader> currentlyRepairing = ActiveRepairService.instance.currentlyRepairing(cfs.metadata.cfId, validator.desc.parentSessionId);
+            Set<SSTableReader> currentlyRepairing = ActiveRepairService.instance.currentlyRepairing(cfs.metadata.cfId, validator.desc.parentSessionId);
 
-                if (!Sets.intersection(currentlyRepairing, sstablesToValidate).isEmpty())
-                {
-                    logger.error("Cannot start multiple repair sessions over the same sstables");
-                    throw new RuntimeException("Cannot start multiple repair sessions over the same sstables");
-                }
+            if (!Sets.intersection(currentlyRepairing, sstablesToValidate).isEmpty())
+            {
+                logger.error("Cannot start multiple repair sessions over the same sstables");
+                throw new RuntimeException("Cannot start multiple repair sessions over the same sstables");
+            }
 
-                sstables = Refs.tryRef(sstablesToValidate);
+            try (Refs<SSTableReader> sstables = Refs.tryRef(sstablesToValidate))
+            {
                 if (sstables == null)
                 {
                     logger.error("Could not reference sstables");
@@ -1049,69 +1053,64 @@ public class CompactionManager implements CompactionManagerMBean
                     gcBefore = validator.gcBefore;
                 else
                     gcBefore = getDefaultGcBefore(cfs);
-            }
 
-            // Create Merkle tree suitable to hold estimated partitions for given range.
-            // We blindly assume that partition is evenly distributed on all sstables for now.
-            long numPartitions = 0;
-            for (SSTableReader sstable : sstables)
-            {
-                numPartitions += sstable.estimatedKeysForRanges(singleton(validator.desc.range));
-            }
-            // determine tree depth from number of partitions, but cap at 20 to prevent large tree.
-            int depth = numPartitions > 0 ? (int) Math.min(Math.floor(Math.log(numPartitions)), 20) : 0;
-            MerkleTree tree = new MerkleTree(cfs.partitioner, validator.desc.range, MerkleTree.RECOMMENDED_DEPTH, (int) Math.pow(2, depth));
 
-            long start = System.nanoTime();
-            try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables, validator.desc.range))
-            {
-                CompactionIterable ci = new ValidationCompactionIterable(cfs, scanners.scanners, gcBefore);
-                Iterator<AbstractCompactedRow> iter = ci.iterator();
-                metrics.beginCompaction(ci);
-                try
-                {
-                    // validate the CF as we iterate over it
-                    validator.prepare(cfs, tree);
-                    while (iter.hasNext())
-                    {
-                        if (ci.isStopRequested())
-                            throw new CompactionInterruptedException(ci.getCompactionInfo());
-                        AbstractCompactedRow row = iter.next();
-                        validator.add(row);
-                    }
-                    validator.complete();
-                }
-                finally
-                {
-                    if (isSnapshotValidation)
-                    {
-                        cfs.clearSnapshot(snapshotName);
-                    }
-
-                    metrics.finishCompaction(ci);
-                }
+                
+                buildMerkleTree(cfs, sstables, validator, gcBefore);
             }
-
-            if (logger.isDebugEnabled())
-            {
-                // MT serialize may take time
-                long duration = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-                logger.debug("Validation finished in {} msec, depth {} for {} keys, serialized size {} bytes for {}",
-                             duration,
-                             depth,
-                             numPartitions,
-                             MerkleTree.serializer.serializedSize(tree, 0),
-                             validator.desc);
-            }
-        }
-        finally
-        {
-            if (sstables != null)
-                sstables.release();
         }
     }
 
+    private void buildMerkleTree(ColumnFamilyStore cfs, Refs<SSTableReader> sstables, Validator validator, int gcBefore)
+    {
+        // Create Merkle tree suitable to hold estimated partitions for given range.
+        // We blindly assume that partition is evenly distributed on all sstables for now.
+        long numPartitions = 0;
+        for (SSTableReader sstable : sstables)
+        {
+            numPartitions += sstable.estimatedKeysForRanges(singleton(validator.desc.range));
+        }
+        // determine tree depth from number of partitions, but cap at 20 to prevent large tree.
+        int depth = numPartitions > 0 ? (int) Math.min(Math.floor(Math.log(numPartitions)), 20) : 0;
+        MerkleTree tree = new MerkleTree(cfs.partitioner, validator.desc.range, MerkleTree.RECOMMENDED_DEPTH, (int) Math.pow(2, depth));
 
+        long start = System.nanoTime();
+        try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables, validator.desc.range))
+        {
+            CompactionIterable ci = new ValidationCompactionIterable(cfs, scanners.scanners, gcBefore);
+            Iterator<AbstractCompactedRow> iter = ci.iterator();
+            metrics.beginCompaction(ci);
+            try
+            {
+                // validate the CF as we iterate over it
+                validator.prepare(cfs, tree);
+                while (iter.hasNext())
+                {
+                    if (ci.isStopRequested())
+                        throw new CompactionInterruptedException(ci.getCompactionInfo());
+                    AbstractCompactedRow row = iter.next();
+                    validator.add(row);
+                }
+                validator.complete();
+            }
+            finally
+            {
+                metrics.finishCompaction(ci);
+            }
+        }
+
+        if (logger.isDebugEnabled())
+        {
+            // MT serialize may take time
+            long duration = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            logger.debug("Validation finished in {} msec, depth {} for {} keys, serialized size {} bytes for {}",
+                         duration,
+                         depth,
+                         numPartitions,
+                         MerkleTree.serializer.serializedSize(tree, 0),
+                         validator.desc);
+        }
+    }
 
     /**
      * Splits up an sstable into two new sstables. The first of the new tables will store repaired ranges, the second

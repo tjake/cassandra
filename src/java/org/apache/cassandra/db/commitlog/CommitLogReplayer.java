@@ -499,15 +499,12 @@ public class CommitLogReplayer
         {
             JVMStabilityInspector.inspectThrowable(t);
             File f = File.createTempFile("mutation", "dat");
-            DataOutputStream out = new DataOutputStream(new FileOutputStream(f));
-            try
+
+            try (DataOutputStream out = new DataOutputStream(new FileOutputStream(f)))
             {
                 out.write(inputBuffer, 0, size);
             }
-            finally
-            {
-                out.close();
-            }
+
             String st = String.format("Unexpected error deserializing mutation; saved to %s and ignored.  This may be caused by replaying a mutation against a table with the same name but incompatible schema.  Exception follows: ",
                                       f.getAbsolutePath());
             logger.error(st, t);

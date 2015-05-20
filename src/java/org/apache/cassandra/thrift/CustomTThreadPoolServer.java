@@ -184,18 +184,16 @@ public class CustomTThreadPoolServer extends TServer
         public void run()
         {
             TProcessor processor = null;
-            TTransport inputTransport = null;
-            TTransport outputTransport = null;
             TProtocol inputProtocol = null;
             TProtocol outputProtocol = null;
             SocketAddress socket = null;
-            try
+            try (TTransport inputTransport = inputTransportFactory_.getTransport(client_);
+                 TTransport outputTransport = outputTransportFactory_.getTransport(client_))
             {
                 socket = ((TCustomSocket) client_).getSocket().getRemoteSocketAddress();
                 ThriftSessionManager.instance.setCurrentSocket(socket);
                 processor = processorFactory_.getProcessor(client_);
-                inputTransport = inputTransportFactory_.getTransport(client_);
-                outputTransport = outputTransportFactory_.getTransport(client_);
+
                 inputProtocol = inputProtocolFactory_.getProtocol(inputTransport);
                 outputProtocol = outputProtocolFactory_.getProtocol(outputTransport);
                 // we check stopped first to make sure we're not supposed to be shutting
@@ -227,10 +225,7 @@ public class CustomTThreadPoolServer extends TServer
             {
                 if (socket != null)
                     ThriftSessionManager.instance.connectionComplete(socket);
-                if (inputTransport != null)
-                    inputTransport.close();
-                if (outputTransport != null)
-                    outputTransport.close();
+
                 activeClients.decrementAndGet();
             }
         }

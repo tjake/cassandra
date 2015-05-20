@@ -162,8 +162,8 @@ public abstract class CommitLogSegment
      */
     Allocation allocate(Mutation mutation, int size)
     {
-        final OpOrder.Group opGroup = appendOrder.start();
-        try
+
+        try (OpOrder.Group opGroup = appendOrder.start())
         {
             int position = allocate(size);
             if (position < 0)
@@ -176,7 +176,6 @@ public abstract class CommitLogSegment
         }
         catch (Throwable t)
         {
-            opGroup.close();
             throw t;
         }
     }
