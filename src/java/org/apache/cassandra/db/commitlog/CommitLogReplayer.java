@@ -472,9 +472,9 @@ public class CommitLogReplayer
     void replayMutation(byte[] inputBuffer, int size,
             final long entryLocation, final CommitLogDescriptor desc) throws IOException
     {
-        FastByteArrayInputStream bufIn = new FastByteArrayInputStream(inputBuffer, 0, size);
+
         final Mutation mutation;
-        try
+        try (FastByteArrayInputStream bufIn = new FastByteArrayInputStream(inputBuffer, 0, size))
         {
             mutation = Mutation.serializer.deserialize(new DataInputStream(bufIn),
                                                        desc.getMessagingVersion(),
