@@ -1177,7 +1177,7 @@ public class StorageProxy implements StorageProxyMBean
                 }
                 catch (Exception ex)
                 {
-                    logger.error("Failed to apply mutation locally : {}", ex.getMessage());
+                    logger.error("Failed to apply mutation locally : {}", ex);
                     responseHandler.onFailure(FBUtilities.getBroadcastAddress());
                 }
             }
