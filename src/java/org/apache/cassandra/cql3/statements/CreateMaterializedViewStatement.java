@@ -63,6 +63,7 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
 
     public void checkAccess(ClientState state) throws UnauthorizedException, InvalidRequestException
     {
+        select.prepareKeyspace(state);
         state.hasKeyspaceAccess(keyspace(), Permission.CREATE);
         state.hasColumnFamilyAccess(select.keyspace(), select.columnFamily(), Permission.SELECT);
     }
