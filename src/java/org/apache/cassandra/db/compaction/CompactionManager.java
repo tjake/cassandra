@@ -428,6 +428,7 @@ public class CompactionManager implements CompactionManagerMBean
         if (executor.isShutdown())
         {
             logger.info("Compaction executor has shut down, not submitting anticompaction");
+            sstables.release();
             return Futures.immediateCancelledFuture();
         }
 

@@ -699,9 +699,8 @@ public class CqlNativeStorage extends LoadFunc implements StoreFuncInterface, Lo
         // Only get the schema if we haven't already gotten it
         if (!properties.containsKey(signature))
         {
-            try
+            try (Session client = CqlConfigHelper.getInputCluster(ConfigHelper.getInputInitialAddress(conf), conf).connect())
             {
-                Session client = CqlConfigHelper.getInputCluster(ConfigHelper.getInputInitialAddress(conf), conf).connect();
                 client.execute("USE " + keyspace);
 
                 // compose the CfDef for the columfamily

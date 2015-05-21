@@ -91,17 +91,7 @@ public class CompressionMetadata
     {
         this.indexFilePath = indexFilePath;
 
-        DataInputStream stream;
-        try
-        {
-            stream = new DataInputStream(new FileInputStream(indexFilePath));
-        }
-        catch (FileNotFoundException e)
-        {
-            throw new RuntimeException(e);
-        }
-
-        try
+        try (DataInputStream stream = new DataInputStream(new FileInputStream(indexFilePath)))
         {
             String compressorName = stream.readUTF();
             int optionCount = stream.readInt();
@@ -126,13 +116,13 @@ public class CompressionMetadata
             compressedFileLength = compressedLength;
             chunkOffsets = readChunkOffsets(stream);
         }
+        catch (FileNotFoundException e)
+        {
+            throw new RuntimeException(e);
+        }
         catch (IOException e)
         {
             throw new CorruptSSTableException(e, indexFilePath);
-        }
-        finally
-        {
-            FileUtils.closeQuietly(stream);
         }
 
         this.chunkOffsetsSize = chunkOffsets.size();
@@ -174,15 +164,17 @@ public class CompressionMetadata
      *
      * @return collection of the chunk offsets.
      */
+    @SuppressWarnings("resource")
     private Memory readChunkOffsets(DataInput input)
     {
+        Memory offsets = null;
         try
         {
             int chunkCount = input.readInt();
             if (chunkCount <= 0)
                 throw new IOException("Compressed file with 0 chunks encountered: " + input);
 
-            Memory offsets = Memory.allocate(chunkCount * 8L);
+            offsets = Memory.allocate(chunkCount * 8L);
 
             for (int i = 0; i < chunkCount; i++)
             {
@@ -192,6 +184,9 @@ public class CompressionMetadata
                 }
                 catch (EOFException e)
                 {
+                    if (offsets != null)
+                        offsets.close();
+
                     String msg = String.format("Corrupted Index File %s: read %d but expected %d chunks.",
                                                indexFilePath, i, chunkCount);
                     throw new CorruptSSTableException(new IOException(msg, e), indexFilePath);
@@ -202,6 +197,9 @@ public class CompressionMetadata
         }
         catch (IOException e)
         {
+            if (offsets != null)
+                offsets.close();
+
             throw new FSReadError(e, indexFilePath);
         }
     }
@@ -345,10 +343,8 @@ public class CompressionMetadata
             }
 
             // flush the data to disk
-            DataOutputStream out = null;
-            try
+            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(filePath))))
             {
-                out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(filePath)));
                 writeHeader(out, dataLength, count);
                 for (int i = 0 ; i < count ; i++)
                     out.writeLong(offsets.getLong(i * 8L));
@@ -357,12 +353,9 @@ public class CompressionMetadata
             {
                 throw Throwables.propagate(e);
             }
-            finally
-            {
-                FileUtils.closeQuietly(out);
-            }
         }
 
+        @SuppressWarnings("resource")
         public CompressionMetadata open(long dataLength, long compressedLength)
         {
             SafeMemory offsets = this.offsets.sharedCopy();
