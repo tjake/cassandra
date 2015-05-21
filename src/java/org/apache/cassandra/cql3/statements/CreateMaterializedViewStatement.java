@@ -143,13 +143,11 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
                 if (!primaryKeyCols.remove(identifier))
                     throw new InvalidRequestException(String.format("Cannot include non-primary key column '%s' in materialized view primary key", identifier));
             }
-            included.add(identifier);
         }
 
         for (ColumnIdentifier primaryKeyCol: primaryKeyCols)
         {
             clusteringColumns.add(primaryKeyCol);
-            included.add(primaryKeyCol);
         }
 
         if (target == null)
