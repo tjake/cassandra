@@ -126,7 +126,7 @@ public class MaterializedViewTest extends CQLTester
 
         executeNet(protocolVersion, "DELETE FROM %s WHERE k = fromJson(?)", "0");
         assertRows(execute("SELECT k, asciival FROM %s WHERE k = ?", 0));
-        assertRows(execute("SELECT k, udtval from mv_asciival WHERE asciival = ?", "ascii \" text"));
+       // assertRows(execute("SELECT k, udtval from mv_asciival WHERE asciival = ?", "ascii \" text"));
 
 
         executeNet(protocolVersion, "INSERT INTO %s (k, asciival) VALUES (?, fromJson(?))", 0, "\"ascii text\"");
@@ -152,84 +152,107 @@ public class MaterializedViewTest extends CQLTester
 
         assertRows(execute("SELECT k, asciival from mv_booleanval WHERE booleanval = ?", true), row(0, "ascii text"));
 
-
         executeNet(protocolVersion, "INSERT INTO %s (k, booleanval) VALUES (?, fromJson(?))", 0, "false");
         assertRows(execute("SELECT k, booleanval FROM %s WHERE k = ?", 0), row(0, false));
 
-
+        assertRows(execute("SELECT k, asciival from mv_booleanval WHERE booleanval = ?", true));
+        assertRows(execute("SELECT k, asciival from mv_booleanval WHERE booleanval = ?", false), row(0, "ascii text"));
 
         // ================ date ================
         executeNet(protocolVersion, "INSERT INTO %s (k, dateval) VALUES (?, fromJson(?))", 0, "\"1987-03-23\"");
         assertRows(execute("SELECT k, dateval FROM %s WHERE k = ?", 0), row(0, SimpleDateSerializer.dateStringToDays("1987-03-23")));
 
+        assertRows(execute("SELECT k, asciival from mv_dateval WHERE dateval = fromJson(?)", "\"1987-03-23\""), row(0, "ascii text"));
 
         // ================ decimal ================
         executeNet(protocolVersion, "INSERT INTO %s (k, decimalval) VALUES (?, fromJson(?))", 0, "123123.123123");
         assertRows(execute("SELECT k, decimalval FROM %s WHERE k = ?", 0), row(0, new BigDecimal("123123.123123")));
 
+        assertRows(execute("SELECT k, asciival from mv_decimalval WHERE decimalval = fromJson(?)", "123123.123123"), row(0, "ascii text"));
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, decimalval) VALUES (?, fromJson(?))", 0, "123123");
         assertRows(execute("SELECT k, decimalval FROM %s WHERE k = ?", 0), row(0, new BigDecimal("123123")));
+
+        assertRows(execute("SELECT k, asciival from mv_decimalval WHERE decimalval = fromJson(?)", "123123.123123"));
+        assertRows(execute("SELECT k, asciival from mv_decimalval WHERE decimalval = fromJson(?)", "123123"), row(0, "ascii text"));
+
 
         // accept strings for numbers that cannot be represented as doubles
         executeNet(protocolVersion, "INSERT INTO %s (k, decimalval) VALUES (?, fromJson(?))", 0, "\"123123.123123\"");
         assertRows(execute("SELECT k, decimalval FROM %s WHERE k = ?", 0), row(0, new BigDecimal("123123.123123")));
 
+        assertRows(execute("SELECT k, asciival from mv_decimalval WHERE decimalval = fromJson(?)", "123123.123123"), row(0, "ascii text"));
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, decimalval) VALUES (?, fromJson(?))", 0, "\"-1.23E-12\"");
         assertRows(execute("SELECT k, decimalval FROM %s WHERE k = ?", 0), row(0, new BigDecimal("-1.23E-12")));
+
+        assertRows(execute("SELECT k, asciival from mv_decimalval WHERE decimalval = fromJson(?)", "\"-1.23E-12\""), row(0, "ascii text"));
+
 
         // ================ double ================
         executeNet(protocolVersion, "INSERT INTO %s (k, doubleval) VALUES (?, fromJson(?))", 0, "123123.123123");
         assertRows(execute("SELECT k, doubleval FROM %s WHERE k = ?", 0), row(0, 123123.123123d));
 
+        assertRows(execute("SELECT k, asciival from mv_doubleval WHERE doubleval = fromJson(?)", "123123.123123"), row(0, "ascii text"));
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, doubleval) VALUES (?, fromJson(?))", 0, "123123");
         assertRows(execute("SELECT k, doubleval FROM %s WHERE k = ?", 0), row(0, 123123.0d));
 
-        // strings are also accepted
-        executeNet(protocolVersion, "INSERT INTO %s (k, doubleval) VALUES (?, fromJson(?))", 0, "\"123123\"");
-        assertRows(execute("SELECT k, doubleval FROM %s WHERE k = ?", 0), row(0, 123123.0d));
-
+        assertRows(execute("SELECT k, asciival from mv_doubleval WHERE doubleval = fromJson(?)", "123123"), row(0, "ascii text"));
 
         // ================ float ================
         executeNet(protocolVersion, "INSERT INTO %s (k, floatval) VALUES (?, fromJson(?))", 0, "123123.123123");
         assertRows(execute("SELECT k, floatval FROM %s WHERE k = ?", 0), row(0, 123123.123123f));
 
+        assertRows(execute("SELECT k, asciival from mv_floatval WHERE floatval = fromJson(?)", "123123.123123"), row(0, "ascii text"));
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, floatval) VALUES (?, fromJson(?))", 0, "123123");
         assertRows(execute("SELECT k, floatval FROM %s WHERE k = ?", 0), row(0, 123123.0f));
 
-        // strings are also accepted
-        executeNet(protocolVersion, "INSERT INTO %s (k, floatval) VALUES (?, fromJson(?))", 0, "\"123123.0\"");
-        assertRows(execute("SELECT k, floatval FROM %s WHERE k = ?", 0), row(0, 123123.0f));
+        assertRows(execute("SELECT k, asciival from mv_floatval WHERE floatval = fromJson(?)", "123123"), row(0, "ascii text"));
 
 
         // ================ inet ================
         executeNet(protocolVersion, "INSERT INTO %s (k, inetval) VALUES (?, fromJson(?))", 0, "\"127.0.0.1\"");
         assertRows(execute("SELECT k, inetval FROM %s WHERE k = ?", 0), row(0, InetAddress.getByName("127.0.0.1")));
 
+        assertRows(execute("SELECT k, asciival from mv_inetval WHERE inetval = fromJson(?)", "\"127.0.0.1\""), row(0, "ascii text"));
+
         executeNet(protocolVersion, "INSERT INTO %s (k, inetval) VALUES (?, fromJson(?))", 0, "\"::1\"");
         assertRows(execute("SELECT k, inetval FROM %s WHERE k = ?", 0), row(0, InetAddress.getByName("::1")));
 
+        assertRows(execute("SELECT k, asciival from mv_inetval WHERE inetval = fromJson(?)", "\"127.0.0.1\""));
+        assertRows(execute("SELECT k, asciival from mv_inetval WHERE inetval = fromJson(?)", "\"::1\""), row(0, "ascii text"));
 
         // ================ int ================
-        executeNet(protocolVersion,"INSERT INTO %s (k, intval) VALUES (?, fromJson(?))", 0, "123123");
+        executeNet(protocolVersion, "INSERT INTO %s (k, intval) VALUES (?, fromJson(?))", 0, "123123");
         assertRows(execute("SELECT k, intval FROM %s WHERE k = ?", 0), row(0, 123123));
 
-        // strings are also accepted
-        executeNet(protocolVersion, "INSERT INTO %s (k, intval) VALUES (?, fromJson(?))", 0, "\"123123\"");
-        assertRows(execute("SELECT k, intval FROM %s WHERE k = ?", 0), row(0, 123123));
+        assertRows(execute("SELECT k, asciival from mv_intval WHERE intval = fromJson(?)", "123123"), row(0, "ascii text"));
 
 
         // ================ text (varchar) ================
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, ""));
 
+        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"\""), row(0, "ascii text"));
+
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"abcd\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "abcd"));
+
+        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"abcd\""), row(0, "ascii text"));
 
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"some \\\" text\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "some \" text"));
 
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"\\u2013\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "\u2013"));
+
+        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"\\u2013\""), row(0, "ascii text"));
 
 
         // ================ time ================
