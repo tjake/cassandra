@@ -181,8 +181,8 @@ public class MaterializedView
                     return clusteringColumns.get(columnIdentifier);
 
                 Collection<Cell> val = value(columnIdentifier);
-                if (val != null)
-                    return Iterables.getOnlyElement(value(columnIdentifier)).value();
+                if (val != null && val.size() == 1)
+                    return Iterables.getOnlyElement(val).value();
             }
             return null;
         }
@@ -354,7 +354,11 @@ public class MaterializedView
         {
             CBuilder builder = cellNameType.prefixBuilder();
             for (ColumnDefinition definition: clusteringKeys)
-                builder = builder.add(mutationUnit.targetValue(definition));
+            {
+                ByteBuffer column = mutationUnit.targetValue(definition);
+                assert column != null : "Clustering Columns should never be null in a mutation";
+                builder = builder.add(column);
+            }
             Composite cellName = builder.build();
             RangeTombstone rt = new RangeTombstone(cellName.start(), cellName.end(), timestamp, Integer.MAX_VALUE);
             viewCf.addAtom(rt);
@@ -362,7 +366,9 @@ public class MaterializedView
         else
         {
             assert clusteringKeys.size() == 1;
-            CellName cellName = cellNameType.cellFromByteBuffer(mutationUnit.targetValue(clusteringKeys.get(0)));
+            ByteBuffer column = mutationUnit.targetValue(clusteringKeys.get(0));
+            assert column != null : "Clustering Columns should never be null in a mutation";
+            CellName cellName = cellNameType.cellFromByteBuffer(column);
             viewCf.addTombstone(cellName, 0, timestamp);
         }
 
@@ -399,7 +405,9 @@ public class MaterializedView
 
         for (int i = 0; i < clusteringColumns.length; i++)
         {
-            clusteringColumns[i] = mutationUnit.targetValue(clusteringKeys.get(i));
+            ByteBuffer column = mutationUnit.targetValue(clusteringKeys.get(i));
+            assert column != null : "Clustering Columns should never be null in a mutation";
+            clusteringColumns[i] = column;
         }
 
         Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
@@ -523,9 +531,12 @@ public class MaterializedView
                 for (MutationUnit mutationUnit : mutationUnits.values())
                 {
                     ByteBuffer value = mutationUnit.targetValue(target);
-                    Mutation mutation = createTombstone(mutationUnit, value, timestamp);
-                    if (mutation != null)
-                        mutations.add(mutation);
+                    if (value != null)
+                    {
+                        Mutation mutation = createTombstone(mutationUnit, value, timestamp);
+                        if (mutation != null)
+                            mutations.add(mutation);
+                    }
                 }
                 return mutations;
             }
