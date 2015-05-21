@@ -84,6 +84,7 @@ public class CustomTThreadPoolServer extends TServer
         this.args = args;
     }
 
+    @SuppressWarnings("resource")
     public void serve()
     {
         try
@@ -233,6 +234,7 @@ public class CustomTThreadPoolServer extends TServer
 
     public static class Factory implements TServerFactory
     {
+        @SuppressWarnings("resource")
         public TServer buildTServer(Args args)
         {
             final InetSocketAddress addr = args.addr;

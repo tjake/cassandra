@@ -249,6 +249,7 @@ public class ConnectionHandler
             return "STREAM-IN";
         }
 
+        @SuppressWarnings("resource")
         public void run()
         {
             try
@@ -318,6 +319,7 @@ public class ConnectionHandler
             messageQueue.put(message);
         }
 
+        @SuppressWarnings("resource")
         public void run()
         {
             try
