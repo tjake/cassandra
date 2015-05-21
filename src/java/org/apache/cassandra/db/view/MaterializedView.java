@@ -390,9 +390,15 @@ public class MaterializedView
 
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        ByteBuffer partitionKey = target.isPrimaryKeyColumn()
-                                  ? mutationUnit.primaryKeyValue(target)
-                                  : Iterables.getOnlyElement(mutationUnit.value(target.name)).value();
+        ByteBuffer partitionKey = null;
+        if (target.isPrimaryKeyColumn())
+            partitionKey = mutationUnit.primaryKeyValue(target);
+        else
+        {
+            Collection<Cell> value = mutationUnit.value(target.name);
+            if (value.size() == 1)
+                partitionKey = Iterables.getOnlyElement(value).value();
+        }
 
         if (partitionKey == null)
         {
