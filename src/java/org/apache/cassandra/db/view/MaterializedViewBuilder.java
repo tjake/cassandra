@@ -20,6 +20,7 @@ package org.apache.cassandra.db.view;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Predicate;
@@ -40,6 +41,7 @@ import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.utils.Pair;
+import org.apache.cassandra.utils.UUIDGen;
 
 // TODO: If key is only present in repaired sstables, write if it we are primary
 // If key is present in unrepaired sstables, write it no matter what
@@ -47,6 +49,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
 {
     private final ColumnFamilyStore baseCfs;
     private final MaterializedView view;
+    private final UUID compactionId;
     private volatile Token prevToken = null;
 
     private volatile boolean isStopped = false;
@@ -55,6 +58,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
     {
         this.baseCfs = baseCfs;
         this.view = view;
+        compactionId = UUIDGen.getTimeUUID();
     }
 
     private void buildKey(DecoratedKey key)
@@ -188,7 +192,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
             if (lastToken == null || range.contains(lastToken))
                 rangesLeft = 0;
         }
-        return new CompactionInfo(baseCfs.metadata, OperationType.VIEW_BUILD, rangesLeft, rangesTotal, "ranges");
+        return new CompactionInfo(baseCfs.metadata, OperationType.VIEW_BUILD, rangesLeft, rangesTotal, "ranges", compactionId);
     }
 
     public void stop()
