@@ -37,7 +37,6 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.CFRowAdder;
 import org.apache.cassandra.db.Cell;
 import org.apache.cassandra.db.ColumnFamily;
@@ -161,7 +160,7 @@ public class MaterializedView
             return values;
         }
 
-        public ByteBuffer primaryKeyValue(ColumnDefinition definition)
+        public ByteBuffer targetValue(ColumnDefinition definition)
         {
             if (definition.isPartitionKey())
             {
@@ -180,6 +179,10 @@ public class MaterializedView
 
                 if (clusteringColumns.containsKey(columnIdentifier))
                     return clusteringColumns.get(columnIdentifier);
+
+                Collection<Cell> val = value(columnIdentifier);
+                if (val != null)
+                    return Iterables.getOnlyElement(value(columnIdentifier)).value();
             }
             return null;
         }
@@ -340,24 +343,18 @@ public class MaterializedView
         return !mutationUnit.oldValueIfUpdated(target.name).isEmpty();
     }
 
-    private Mutation createTombstone(MutationUnit mutationUnit, long timestamp)
+    private Mutation createTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp)
     {
         // Need to generate a tombstone in this case; there will be only one element because we do not allow Collections
         // for keys of a materialized view.
-        Collection<Cell> oldValue = mutationUnit.oldValueIfUpdated(target.name);
-        if (oldValue.isEmpty())
-            return null;
-
-        Cell partitionKey = Iterables.getOnlyElement(oldValue);
-
-        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey.value());
+        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
         ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
         CellNameType cellNameType = viewCfs.getComparator();
         if (cellNameType.isCompound())
         {
             CBuilder builder = cellNameType.prefixBuilder();
             for (ColumnDefinition definition: clusteringKeys)
-                builder = builder.add(mutationUnit.primaryKeyValue(definition));
+                builder = builder.add(mutationUnit.targetValue(definition));
             Composite cellName = builder.build();
             RangeTombstone rt = new RangeTombstone(cellName.start(), cellName.end(), timestamp, Integer.MAX_VALUE);
             viewCf.addAtom(rt);
@@ -365,7 +362,7 @@ public class MaterializedView
         else
         {
             assert clusteringKeys.size() == 1;
-            CellName cellName = cellNameType.cellFromByteBuffer(mutationUnit.primaryKeyValue(clusteringKeys.get(0)));
+            CellName cellName = cellNameType.cellFromByteBuffer(mutationUnit.targetValue(clusteringKeys.get(0)));
             viewCf.addTombstone(cellName, 0, timestamp);
         }
 
@@ -382,7 +379,7 @@ public class MaterializedView
         if (!modifiesTarget(mutationUnit))
             return null;
 
-        Mutation mutation = createTombstone(mutationUnit, timestamp);
+        Mutation mutation = createTombstone(mutationUnit, Iterables.getOnlyElement(mutationUnit.oldValueIfUpdated(target.name)).value(), timestamp);
         if (mutation != null)
             return Collections.singleton(mutation);
         return null;
@@ -390,15 +387,7 @@ public class MaterializedView
 
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        ByteBuffer partitionKey = null;
-        if (target.isPrimaryKeyColumn())
-            partitionKey = mutationUnit.primaryKeyValue(target);
-        else
-        {
-            Collection<Cell> value = mutationUnit.value(target.name);
-            if (value.size() == 1)
-                partitionKey = Iterables.getOnlyElement(value).value();
-        }
+        ByteBuffer partitionKey = mutationUnit.targetValue(target);
 
         if (partitionKey == null)
         {
@@ -410,7 +399,7 @@ public class MaterializedView
 
         for (int i = 0; i < clusteringColumns.length; i++)
         {
-            clusteringColumns[i] = mutationUnit.primaryKeyValue(clusteringKeys.get(i));
+            clusteringColumns[i] = mutationUnit.targetValue(clusteringKeys.get(i));
         }
 
         Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
@@ -533,7 +522,8 @@ public class MaterializedView
                 List<Mutation> mutations = new ArrayList<>();
                 for (MutationUnit mutationUnit : mutationUnits.values())
                 {
-                    Mutation mutation = createTombstone(mutationUnit, timestamp);
+                    ByteBuffer value = mutationUnit.targetValue(target);
+                    Mutation mutation = createTombstone(mutationUnit, value, timestamp);
                     if (mutation != null)
                         mutations.add(mutation);
                 }
