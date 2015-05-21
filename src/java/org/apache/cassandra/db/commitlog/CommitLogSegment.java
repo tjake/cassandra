@@ -160,10 +160,11 @@ public abstract class CommitLogSegment
      * Allocate space in this buffer for the provided mutation, and return the allocated Allocation object.
      * Returns null if there is not enough space in this segment, and a new segment is needed.
      */
+    @SuppressWarnings("resource") //we pass the op order around
     Allocation allocate(Mutation mutation, int size)
     {
-
-        try (OpOrder.Group opGroup = appendOrder.start())
+        final OpOrder.Group opGroup = appendOrder.start();
+        try
         {
             int position = allocate(size);
             if (position < 0)
@@ -176,6 +177,7 @@ public abstract class CommitLogSegment
         }
         catch (Throwable t)
         {
+            opGroup.close();
             throw t;
         }
     }
