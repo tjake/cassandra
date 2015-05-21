@@ -508,13 +508,13 @@ public class BigTableWriter extends SSTableWriter
             if (components.contains(Component.FILTER))
             {
                 String path = descriptor.filenameFor(Component.FILTER);
-                try (FileOutputStream fos = new FileOutputStream(path); DataOutputStreamPlus stream = new BufferedDataOutputStreamPlus(fos))
+                try (FileOutputStream fos = new FileOutputStream(path);
+                     DataOutputStreamPlus stream = new BufferedDataOutputStreamPlus(fos))
                 {
                     // bloom filter
                     FilterFactory.serialize(bf, stream);
                     stream.flush();
                     fos.getFD().sync();
-                    stream.close();
                 }
                 catch (IOException e)
                 {
