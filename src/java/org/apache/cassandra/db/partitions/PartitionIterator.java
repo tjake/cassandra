@@ -19,28 +19,21 @@ package org.apache.cassandra.db.partitions;
 
 import java.util.Iterator;
 
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.*;
 
 /**
- * An iterator over a number of partitions.
+ * An iterator over a number of (filtered) partition.
+ *
+ * PartitionIterator is to RowIterator what UnfilteredPartitionIterator is to UnfilteredRowIterator
+ * though unlike UnfilteredPartitionIterator, it is not guaranteed that the RowIterator
+ * returned are in partitioner order.
  *
  * The object returned by a call to next() is only guaranteed to be
  * valid until the next call to hasNext() or next(). If a consumer wants to keep a
  * reference on the returned objects for longer than the iteration, it must
  * make a copy of it explicitely.
  */
-public interface PartitionIterator extends Iterator<AtomIterator>, AutoCloseable
+public interface PartitionIterator extends Iterator<RowIterator>, AutoCloseable
 {
-    /**
-     * Whether that partition iterator is for a thrift queries.
-     * <p>
-     * If this is true, the partition iterator may return some empty AtomIterator and those
-     * should be preserved as thrift include partitions that "exists" (have some cells even
-     * if this are actually deleted) but have nothing matching the query.
-     *
-     * @return whether the iterator is for a thrift query.
-     */
-    public boolean isForThrift();
-
     public void close();
 }

@@ -20,7 +20,7 @@ package org.apache.cassandra.db.index.composites;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.*;
 
 /**

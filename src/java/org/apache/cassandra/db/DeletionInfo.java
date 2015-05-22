@@ -17,20 +17,13 @@
  */
 package org.apache.cassandra.db;
 
-import java.io.DataInput;
-import java.io.IOException;
-import java.security.MessageDigest;
-import java.util.Comparator;
 import java.util.Iterator;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.Iterators;
 
 import org.apache.cassandra.cache.IMeasurableMemory;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.io.IVersionedSerializer;
-import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.db.rows.Cell;
 import org.apache.cassandra.utils.ObjectSizes;
 import org.apache.cassandra.utils.memory.AbstractAllocator;
 

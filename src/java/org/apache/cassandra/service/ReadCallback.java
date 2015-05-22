@@ -31,7 +31,7 @@ import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ReadFailureException;
 import org.apache.cassandra.exceptions.ReadTimeoutException;
 import org.apache.cassandra.exceptions.UnavailableException;
@@ -131,11 +131,11 @@ public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
             : new ReadTimeoutException(consistencyLevel, received, blockfor, resolver.isDataPresent());
     }
 
-    public DataIterator get() throws ReadFailureException, ReadTimeoutException, DigestMismatchException
+    public PartitionIterator get() throws ReadFailureException, ReadTimeoutException, DigestMismatchException
     {
         awaitResults();
 
-        DataIterator result = blockfor == 1 ? resolver.getData() : resolver.resolve();
+        PartitionIterator result = blockfor == 1 ? resolver.getData() : resolver.resolve();
         if (logger.isDebugEnabled())
             logger.debug("Read: {} ms.", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
         return result;

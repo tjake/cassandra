@@ -17,7 +17,6 @@
  */
 package org.apache.cassandra.cql3.statements;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
@@ -34,7 +33,7 @@ import org.apache.cassandra.cql3.restrictions.Restriction;
 import org.apache.cassandra.cql3.restrictions.SingleColumnRestriction;
 import org.apache.cassandra.cql3.selection.Selection;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.BooleanType;
@@ -520,13 +519,13 @@ public abstract class ModificationStatement implements CQLStatement
 
         SinglePartitionReadCommand.Group group = new SinglePartitionReadCommand.Group(commands, DataLimits.NONE);
 
-        try (DataIterator iter = local ? group.executeLocally() : group.execute(cl, null))
+        try (PartitionIterator iter = local ? group.executeLocally() : group.execute(cl, null))
         {
             while (iter.hasNext())
             {
                 try (RowIterator rowIter = iter.next())
                 {
-                    map.put(rowIter.partitionKey(), ReadPartition.create(rowIter));
+                    map.put(rowIter.partitionKey(), FilteredPartition.create(rowIter));
                 }
             }
         }

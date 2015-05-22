@@ -18,7 +18,6 @@
 package org.apache.cassandra.db;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.MessageIn;
 import org.apache.cassandra.net.MessageOut;

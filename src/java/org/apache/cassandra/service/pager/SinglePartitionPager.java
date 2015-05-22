@@ -18,21 +18,17 @@
 package org.apache.cassandra.service.pager;
 
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.common.base.Objects;
 
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.service.ClientState;
-import org.apache.cassandra.service.StorageProxy;
 
 /**
  * Common interface to single partition queries (by slice and by name).
@@ -78,7 +74,7 @@ public class SinglePartitionPager extends AbstractQueryPager
              : new PagingState(null, LegacyLayout.encodeClustering(command.metadata(), lastReturned), maxRemaining(), remainingInPartition());
     }
 
-    protected DataIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    protected PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
     throws RequestValidationException, RequestExecutionException
     {
         SinglePartitionReadCommand pageCmd = command.forPaging(lastReturned, pageSize);

@@ -40,11 +40,10 @@ import java.util.zip.Checksum;
 import com.google.common.collect.ImmutableMap;
 
 import org.apache.cassandra.PartitionRangeReadBuilder;
-import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.Row;
+import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +51,6 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.Util;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.ParameterizedClass;
@@ -67,7 +65,6 @@ import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.FBUtilities;
 
 public class CommitLogTest
 {
@@ -362,7 +359,7 @@ public class CommitLogTest
                 .build()
                 .applyUnsafe();
 
-            try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+            try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
                                      .addColumn(ByteBufferUtil.bytes("val"))
                                      .executeLocally())
             {
@@ -372,7 +369,7 @@ public class CommitLogTest
 
             cfs.truncateBlocking();
 
-            try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+            try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
                                      .addColumn(ByteBufferUtil.bytes("val"))
                                      .executeLocally())
             {

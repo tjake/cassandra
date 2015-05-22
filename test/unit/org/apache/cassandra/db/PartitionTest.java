@@ -28,9 +28,9 @@ import org.junit.Test;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterators;
-import org.apache.cassandra.db.atoms.AtomStats;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterators;
+import org.apache.cassandra.db.rows.RowStats;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.partitions.ArrayBackedPartition;
@@ -124,40 +124,40 @@ public class PartitionTest
 
         new RowUpdateBuilder(cfs.metadata, 5, "key2").clustering("c").add("val", "val2").build().applyUnsafe();
 
-        try (AtomIterator iter1 = Util.readFullPartition(cfs, Util.dk("key1"));
-             AtomIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
+        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key1"));
+             UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
         {
             MessageDigest digest1 = MessageDigest.getInstance("MD5");
             MessageDigest digest2 = MessageDigest.getInstance("MD5");
-            AtomIterators.digest(iter1, digest1);
-            AtomIterators.digest(iter2, digest2);
+            UnfilteredRowIterators.digest(iter1, digest1);
+            UnfilteredRowIterators.digest(iter2, digest2);
             assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
         }
 
-        try (AtomIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
+        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
         {
             MessageDigest digest1 = MessageDigest.getInstance("MD5");
-            AtomIterators.digest(iter1, digest1);
+            UnfilteredRowIterators.digest(iter1, digest1);
 
-            try (AtomIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
+            try (UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
             {
                 MessageDigest digest2 = MessageDigest.getInstance("MD5");
-                AtomIterators.digest(iter2, digest2);
+                UnfilteredRowIterators.digest(iter2, digest2);
 
                 assertTrue(Arrays.equals(digest1.digest(), digest2.digest()));
             }
         }
 
-        try (AtomIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
+        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
         {
             MessageDigest digest1 = MessageDigest.getInstance("MD5");
-            AtomIterators.digest(iter1, digest1);
+            UnfilteredRowIterators.digest(iter1, digest1);
 
             RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key2", "c").applyUnsafe();
-            try (AtomIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
+            try (UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
             {
                 MessageDigest digest2 = MessageDigest.getInstance("MD5");
-                AtomIterators.digest(iter2, digest2);
+                UnfilteredRowIterators.digest(iter2, digest2);
 
                 assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
             }
@@ -178,7 +178,7 @@ public class PartitionTest
 
         RowUpdateBuilder.deleteRow(cfs.metadata, 10, "key1", "c").applyUnsafe();
         ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
-        AtomStats stats = partition.stats();
+        RowStats stats = partition.stats();
         assertEquals(localDeletionTime, stats.minLocalDeletionTime);
     }
 }

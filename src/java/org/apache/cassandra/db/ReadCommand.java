@@ -29,7 +29,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
@@ -234,9 +234,9 @@ public abstract class ReadCommand implements ReadQuery
      */
     public abstract boolean selects(DecoratedKey partitionKey, Clustering clustering);
 
-    protected abstract PartitionIterator queryStorage(ColumnFamilyStore cfs);
+    protected abstract UnfilteredPartitionIterator queryStorage(ColumnFamilyStore cfs);
 
-    public ReadResponse makeResponse(PartitionIterator iter, boolean isLocalDataQuery)
+    public ReadResponse makeResponse(UnfilteredPartitionIterator iter, boolean isLocalDataQuery)
     {
         if (isDigestQuery())
             return ReadResponse.createDigestResponse(iter);
@@ -258,10 +258,10 @@ public abstract class ReadCommand implements ReadQuery
      *
      * @return an iterator over the result of executing this command locally.
      */
-    public PartitionIterator executeLocally(ColumnFamilyStore cfs)
+    public UnfilteredPartitionIterator executeLocally(ColumnFamilyStore cfs)
     {
         SecondaryIndexSearcher searcher = getIndexSearcher(cfs);
-        PartitionIterator resultIterator = searcher == null
+        UnfilteredPartitionIterator resultIterator = searcher == null
                                          ? queryStorage(cfs)
                                          : searcher.search(this);
 
@@ -275,7 +275,7 @@ public abstract class ReadCommand implements ReadQuery
             // But there is not reason not to do this as a followup so keeping it here for now (we'll have
             // to be wary of cached row if we move this down the layers)
             if (!metadata().getDroppedColumns().isEmpty())
-                resultIterator = PartitionIterators.removeDroppedColumns(resultIterator, metadata().getDroppedColumns());
+                resultIterator = UnfilteredPartitionIterators.removeDroppedColumns(resultIterator, metadata().getDroppedColumns());
 
             // If we've used a 2ndary index, we know the result already satisfy the primary expression used, so
             // no point in checking it again.
@@ -296,18 +296,18 @@ public abstract class ReadCommand implements ReadQuery
         }
     }
 
-    public DataIterator executeLocally()
+    public PartitionIterator executeLocally()
     {
-        return PartitionIterators.asDataIterator(executeLocally(Keyspace.openAndGetStore(metadata())));
+        return UnfilteredPartitionIterators.filter(executeLocally(Keyspace.openAndGetStore(metadata())));
     }
 
     /**
      * Wraps the provided iterator so that metrics on what is scanned by the command are recorded.
      * This also log warning/trow TombstoneOverwhelmingException if appropriate.
      */
-    private PartitionIterator withMetricsRecording(PartitionIterator iter, final ColumnFamilyMetrics metric)
+    private UnfilteredPartitionIterator withMetricsRecording(UnfilteredPartitionIterator iter, final ColumnFamilyMetrics metric)
     {
-        return new WrappingPartitionIterator(iter)
+        return new WrappingUnfilteredPartitionIterator(iter)
         {
             private final int failureThreshold = DatabaseDescriptor.getTombstoneFailureThreshold();
             private final int warningThreshold = DatabaseDescriptor.getTombstoneWarnThreshold();
@@ -318,18 +318,18 @@ public abstract class ReadCommand implements ReadQuery
             private DecoratedKey currentKey;
 
             @Override
-            public AtomIterator computeNext(AtomIterator iter)
+            public UnfilteredRowIterator computeNext(UnfilteredRowIterator iter)
             {
                 currentKey = iter.partitionKey();
 
-                return new WrappingAtomIterator(iter)
+                return new WrappingUnfilteredRowIterator(iter)
                 {
-                    public Atom next()
+                    public Unfiltered next()
                     {
-                        Atom atom = super.next();
-                        if (atom.kind() == Atom.Kind.ROW)
+                        Unfiltered unfiltered = super.next();
+                        if (unfiltered.kind() == Unfiltered.Kind.ROW)
                         {
-                            Row row = (Row)atom;
+                            Row row = (Row) unfiltered;
                             if (row.hasLiveData())
                                 ++liveRows;
                             for (Cell cell : row)
@@ -338,10 +338,10 @@ public abstract class ReadCommand implements ReadQuery
                         }
                         else
                         {
-                            countTombstone(atom.clustering());
+                            countTombstone(unfiltered.clustering());
                         }
 
-                        return atom;
+                        return unfiltered;
                     }
 
                     private void countTombstone(ClusteringPrefix clustering)
@@ -397,10 +397,10 @@ public abstract class ReadCommand implements ReadQuery
     // Skip expired tombstones. We do this because it's safe to do (post-merge of the memtable and sstable at least), it
     // can save us some bandwith, and avoid making us throw a TombstoneOverwhelmingException for expired tombstones (which
     // are to some extend an artefact of compaction lagging behind and hence counting them is somewhat unintuitive).
-    protected PartitionIterator withoutExpiredTombstones(PartitionIterator iterator, ColumnFamilyStore cfs)
+    protected UnfilteredPartitionIterator withoutExpiredTombstones(UnfilteredPartitionIterator iterator, ColumnFamilyStore cfs)
     {
         final int gcBefore = cfs.gcBefore(nowInSec());
-        return new AbstractFilteringIterator(iterator)
+        return new FilteringPartitionIterator(iterator)
         {
             protected FilteringRow makeRowFilter()
             {

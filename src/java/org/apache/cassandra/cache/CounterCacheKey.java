@@ -23,7 +23,7 @@ import java.util.UUID;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.CellPath;
+import org.apache.cassandra.db.rows.CellPath;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.utils.*;
 

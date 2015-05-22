@@ -28,8 +28,8 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.statements.SelectStatement;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.service.pager.QueryPager;
 import org.apache.cassandra.transport.Server;
@@ -185,7 +185,7 @@ public abstract class UntypedResultSet implements Iterable<UntypedResultSet.Row>
                         if (pager.isExhausted())
                             return endOfData();
 
-                        try (DataIterator iter = pager.fetchPage(pageSize))
+                        try (PartitionIterator iter = pager.fetchPage(pageSize))
                         {
                             currentPage = select.process(iter).rows.iterator();
                         }
@@ -218,7 +218,7 @@ public abstract class UntypedResultSet implements Iterable<UntypedResultSet.Row>
                 data.put(names.get(i).name.toString(), columns.get(i));
         }
 
-        public static Row fromInternalRow(CFMetaData metadata, DecoratedKey key, org.apache.cassandra.db.atoms.Row row)
+        public static Row fromInternalRow(CFMetaData metadata, DecoratedKey key, org.apache.cassandra.db.rows.Row row)
         {
             Map<String, ByteBuffer> data = new HashMap<>();
 

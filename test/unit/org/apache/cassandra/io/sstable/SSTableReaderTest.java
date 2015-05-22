@@ -37,7 +37,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import org.apache.cassandra.AbstractReadCommandBuilder;
 import org.apache.cassandra.OrderedJUnit4ClassRunner;
 import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
@@ -51,15 +50,12 @@ import org.apache.cassandra.db.BufferDecoratedKey;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.ReadCommand;
-import org.apache.cassandra.db.RowPosition;
 import org.apache.cassandra.db.RowUpdateBuilder;
-import org.apache.cassandra.db.Slice;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.partitions.ArrayBackedPartition;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.dht.LocalPartitioner;
 import org.apache.cassandra.dht.LocalPartitioner.LocalToken;
 import org.apache.cassandra.dht.Range;
@@ -71,7 +67,6 @@ import org.apache.cassandra.io.util.SegmentedFile;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.thrift.IndexExpression;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
@@ -558,7 +553,7 @@ public class SSTableReaderTest
 
         List<SecondaryIndexSearcher> searchers = indexedCFS.indexManager.getIndexSearchersFor(rc);
         assertEquals(searchers.size(), 1);
-        try (PartitionIterator pi = searchers.get(0).search(rc))
+        try (UnfilteredPartitionIterator pi = searchers.get(0).search(rc))
         {
             assert pi.hasNext();
             pi.next();

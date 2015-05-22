@@ -18,28 +18,23 @@
 package org.apache.cassandra.io.sstable;
 
 import java.io.*;
-import java.util.Iterator;
 
 import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
-import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.RandomAccessReader;
-import org.apache.cassandra.serializers.MarshalException;
-import org.apache.cassandra.utils.FBUtilities;
 
-public class SSTableIdentityIterator extends AbstractIterator<Atom> implements Comparable<SSTableIdentityIterator>, AtomIterator
+public class SSTableIdentityIterator extends AbstractIterator<Unfiltered> implements Comparable<SSTableIdentityIterator>, UnfilteredRowIterator
 {
     private final SSTableReader sstable;
     private final DecoratedKey key;
     private final DeletionTime partitionLevelDeletion;
     private final String filename;
 
-    private final SSTableAtomIterator iterator;
+    private final SSTableSimpleIterator iterator;
     private final Row staticRow;
 
     /**
@@ -58,7 +53,7 @@ public class SSTableIdentityIterator extends AbstractIterator<Atom> implements C
         {
             this.partitionLevelDeletion = DeletionTime.serializer.deserialize(file);
             SerializationHelper helper = new SerializationHelper(sstable.descriptor.version.correspondingMessagingVersion(), SerializationHelper.Flag.LOCAL, nowInSec);
-            this.iterator = SSTableAtomIterator.create(sstable.metadata, file, sstable.header, helper, partitionLevelDeletion);
+            this.iterator = SSTableSimpleIterator.create(sstable.metadata, file, sstable.header, helper, partitionLevelDeletion);
             this.staticRow = iterator.readStaticRow();
         }
         catch (IOException e)
@@ -98,7 +93,7 @@ public class SSTableIdentityIterator extends AbstractIterator<Atom> implements C
         return staticRow;
     }
 
-    protected Atom computeNext()
+    protected Unfiltered computeNext()
     {
         try
         {
@@ -129,11 +124,11 @@ public class SSTableIdentityIterator extends AbstractIterator<Atom> implements C
         return filename;
     }
 
-    public AtomStats stats()
+    public RowStats stats()
     {
         // We could return sstable.header.stats(), but this may not be as accurate than the actual sstable stats (see
         // SerializationHeader.make() for details) so we use the latter instead.
-        return new AtomStats(sstable.getMinTimestamp(), sstable.getMinLocalDeletionTime(), sstable.getMinTTL(), sstable.getAvgColumnSetPerRow());
+        return new RowStats(sstable.getMinTimestamp(), sstable.getMinLocalDeletionTime(), sstable.getMinTTL(), sstable.getAvgColumnSetPerRow());
     }
 
     public int compareTo(SSTableIdentityIterator o)

@@ -31,8 +31,8 @@ import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterators;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterators;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.repair.messages.ValidationComplete;
 import org.apache.cassandra.tracing.Tracing;
@@ -122,7 +122,7 @@ public class Validator implements Runnable
      *
      * @param row Row to add hash
      */
-    public void add(AtomIterator partition)
+    public void add(UnfilteredRowIterator partition)
     {
         assert desc.range.contains(partition.partitionKey().getToken()) : partition.partitionKey().getToken() + " is not contained in " + desc.range;
         assert lastKey == null || lastKey.compareTo(partition.partitionKey()) < 0
@@ -187,12 +187,12 @@ public class Validator implements Runnable
 
     }
 
-    private MerkleTree.RowHash rowHash(AtomIterator partition)
+    private MerkleTree.RowHash rowHash(UnfilteredRowIterator partition)
     {
         validated++;
         // MerkleTree uses XOR internally, so we want lots of output bits here
         CountingDigest digest = new CountingDigest(FBUtilities.newMessageDigest("SHA-256"));
-        AtomIterators.digest(partition, digest);
+        UnfilteredRowIterators.digest(partition, digest);
         // only return new hash for merkle tree in case digest was updated - see CASSANDRA-8979
         return digest.count > 0
              ? new MerkleTree.RowHash(partition.partitionKey().getToken(), digest.digest(), digest.count)

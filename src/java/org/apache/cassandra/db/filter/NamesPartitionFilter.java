@@ -19,18 +19,15 @@ package org.apache.cassandra.db.filter;
 
 import java.io.DataInput;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
-import org.apache.cassandra.db.columniterator.SSTableIterator;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.utils.SearchIterator;
 
 /**
@@ -130,12 +127,12 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
         return false;
     }
 
-    // Given another iterator, only return the atoms that match this filter
-    public AtomIterator filter(AtomIterator iterator)
+    // Given another iterator, only return the rows that match this filter
+    public UnfilteredRowIterator filter(UnfilteredRowIterator iterator)
     {
         // Note that we don't filter markers because that's a bit trickier (we don't know in advance until when
         // the range extend) and it's harmless to left them.
-        return new RowFilteringAtomIterator(iterator)
+        return new FilteringRowIterator(iterator)
         {
             @Override
             public FilteringRow makeRowFilter()
@@ -151,12 +148,12 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
         };
     }
 
-    public AtomIterator filter(final SliceableAtomIterator iter)
+    public UnfilteredRowIterator filter(final SliceableUnfilteredRowIterator iter)
     {
-        return new WrappingAtomIterator(iter)
+        return new WrappingUnfilteredRowIterator(iter)
         {
             private final Iterator<Clustering> clusteringIter = clusteringsInQueryOrder.iterator();
-            private Atom next;
+            private Unfiltered next;
 
             @Override
             public boolean hasNext()
@@ -167,7 +164,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
                 while (clusteringIter.hasNext())
                 {
                     Clustering nextClustering = clusteringIter.next();
-                    Iterator<Atom> sliceIter = iter.slice(Slice.make(metadata().comparator, nextClustering));
+                    Iterator<Unfiltered> sliceIter = iter.slice(Slice.make(metadata().comparator, nextClustering));
                     if (sliceIter.hasNext())
                     {
                         next = sliceIter.next();
@@ -179,22 +176,22 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
             }
 
             @Override
-            public Atom next()
+            public Unfiltered next()
             {
                 if (next == null && !hasNext())
                     throw new NoSuchElementException();
 
-                Atom toReturn = next;
+                Unfiltered toReturn = next;
                 next = null;
                 return toReturn;
             }
         };
     }
 
-    public AtomIterator getAtomIterator(final Partition partition, final int nowInSec)
+    public UnfilteredRowIterator getUnfilteredRowIterator(final Partition partition, final int nowInSec)
     {
         final SearchIterator<Clustering, Row> searcher = partition.searchIterator(queriedColumns, reversed, nowInSec);
-        return new AbstractAtomIterator(partition.metadata(),
+        return new AbstractUnfilteredRowIterator(partition.metadata(),
                                         partition.partitionKey(),
                                         partition.partitionLevelDeletion(),
                                         queriedColumns.columns(),
@@ -205,7 +202,7 @@ public class NamesPartitionFilter extends AbstractPartitionFilter
         {
             private final Iterator<Clustering> clusteringIter = clusteringsInQueryOrder.iterator();
 
-            protected Atom computeNext()
+            protected Unfiltered computeNext()
             {
                 while (clusteringIter.hasNext() && searcher.hasNext())
                 {

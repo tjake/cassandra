@@ -25,12 +25,11 @@ import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
-import org.apache.cassandra.service.DataResolver;
 import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.SearchIterator;
@@ -68,7 +67,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
         return new SinglePartitionNamesCommand(isDigestQuery(), isForThrift(), metadata(), nowInSec(), columnFilter(), limits(), partitionKey(), partitionFilter());
     }
 
-    protected AtomIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap)
+    protected UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap)
     {
         Tracing.trace("Acquiring sstable references");
         ColumnFamilyStore.ViewFragment view = cfs.select(cfs.viewFilter(partitionKey()));
@@ -83,13 +82,13 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
             if (partition == null)
                 continue;
 
-            try (AtomIterator iter = filter.getAtomIterator(partition, nowInSec()))
+            try (UnfilteredRowIterator iter = filter.getUnfilteredRowIterator(partition, nowInSec()))
             {
-                if (AtomIterators.isEmpty(iter))
+                if (UnfilteredRowIterators.isEmpty(iter))
                     continue;
 
-                AtomIterator clonedFilter = copyOnHeap
-                                          ? AtomIterators.cloningIterator(iter, HeapAllocator.instance)
+                UnfilteredRowIterator clonedFilter = copyOnHeap
+                                          ? UnfilteredRowIterators.cloningIterator(iter, HeapAllocator.instance)
                                           : iter;
                 result = add(isForThrift() ? ThriftResultsMerger.maybeWrap(clonedFilter) : clonedFilter, result);
             }
@@ -115,9 +114,9 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
 
             Tracing.trace("Merging data from sstable {}", sstable.descriptor.generation);
             sstable.incrementReadCount();
-            try (AtomIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift())))
+            try (UnfilteredRowIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift())))
             {
-                if (AtomIterators.isEmpty(iter))
+                if (UnfilteredRowIterators.isEmpty(iter))
                     continue;
 
                 sstablesIterated++;
@@ -128,7 +127,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
         cfs.metric.updateSSTableIterated(sstablesIterated);
 
         if (result == null || result.isEmpty())
-            return AtomIterators.emptyIterator(metadata(), partitionKey(), false, nowInSec());
+            return UnfilteredRowIterators.emptyIterator(metadata(), partitionKey(), false, nowInSec());
 
         DecoratedKey key = result.partitionKey();
         cfs.metric.samplers.get(Sampler.READS).addSample(key.getKey(), key.hashCode(), 1);
@@ -142,9 +141,9 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
             //               we will need to track the lifetime of this mutation as well
             Tracing.trace("Defragmenting requested data");
 
-            try (AtomIterator iter = result.atomIterator(queriedColumns(), Slices.ALL, false, nowInSec()))
+            try (UnfilteredRowIterator iter = result.unfilteredIterator(queriedColumns(), Slices.ALL, false, nowInSec()))
             {
-                final Mutation mutation = new Mutation(AtomIterators.toUpdate(iter));
+                final Mutation mutation = new Mutation(UnfilteredRowIterators.toUpdate(iter));
                 StageManager.getStage(Stage.MUTATION).execute(new Runnable()
                 {
                     public void run()
@@ -156,16 +155,16 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
             }
         }
 
-        return result.atomIterator(queriedColumns(), Slices.ALL, partitionFilter().isReversed(), nowInSec());
+        return result.unfilteredIterator(queriedColumns(), Slices.ALL, partitionFilter().isReversed(), nowInSec());
     }
 
-    private ArrayBackedPartition add(AtomIterator iter, ArrayBackedPartition result)
+    private ArrayBackedPartition add(UnfilteredRowIterator iter, ArrayBackedPartition result)
     {
         int maxRows = partitionFilter().maxQueried(false);
         if (result == null)
             return ArrayBackedPartition.create(iter, maxRows);
 
-        AtomIterator merged = AtomIterators.merge(Arrays.asList(iter, result.atomIterator(queriedColumns(), Slices.ALL, false, nowInSec())));
+        UnfilteredRowIterator merged = UnfilteredRowIterators.merge(Arrays.asList(iter, result.unfilteredIterator(queriedColumns(), Slices.ALL, false, nowInSec())));
         return ArrayBackedPartition.create(merged, maxRows);
     }
 

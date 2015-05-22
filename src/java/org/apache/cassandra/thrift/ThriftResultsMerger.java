@@ -28,7 +28,7 @@ import com.google.common.collect.PeekingIterator;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.db.partitions.*;
@@ -59,14 +59,14 @@ import org.apache.cassandra.db.partitions.*;
  *                 "c5": { value : 4 }
  *                 "c7": { value : 1 }
  */
-public class ThriftResultsMerger extends WrappingPartitionIterator
+public class ThriftResultsMerger extends WrappingUnfilteredPartitionIterator
 {
-    private ThriftResultsMerger(PartitionIterator wrapped)
+    private ThriftResultsMerger(UnfilteredPartitionIterator wrapped)
     {
         super(wrapped);
     }
 
-    public static PartitionIterator maybeWrap(PartitionIterator iterator, CFMetaData metadata)
+    public static UnfilteredPartitionIterator maybeWrap(UnfilteredPartitionIterator iterator, CFMetaData metadata)
     {
         if (!metadata.isStaticCompactTable() && !metadata.isSuper())
             return iterator;
@@ -74,7 +74,7 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
         return new ThriftResultsMerger(iterator);
     }
 
-    public static AtomIterator maybeWrap(AtomIterator iterator)
+    public static UnfilteredRowIterator maybeWrap(UnfilteredRowIterator iterator)
     {
         if (!iterator.metadata().isStaticCompactTable() && !iterator.metadata().isSuper())
             return iterator;
@@ -84,14 +84,14 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
              : new PartitionMerger(iterator);
     }
 
-    protected AtomIterator computeNext(AtomIterator iter)
+    protected UnfilteredRowIterator computeNext(UnfilteredRowIterator iter)
     {
         return iter.metadata().isSuper()
              ? new SuperColumnsPartitionMerger(iter)
              : new PartitionMerger(iter);
     }
 
-    private static class PartitionMerger extends WrappingAtomIterator
+    private static class PartitionMerger extends WrappingUnfilteredRowIterator
     {
         // We initialize lazily to avoid having this iterator fetch the wrapped iterator before it's actually asked for it.
         private boolean isInit;
@@ -100,9 +100,9 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
         private int i; // the index of the next column of static row to return
 
         private ReusableRow nextToMerge;
-        private Atom nextFromWrapped;
+        private Unfiltered nextFromWrapped;
 
-        private PartitionMerger(AtomIterator results)
+        private PartitionMerger(UnfilteredRowIterator results)
         {
             super(results);
             assert results.metadata().isStaticCompactTable();
@@ -140,7 +140,7 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
         }
 
         @Override
-        public Atom next()
+        public Unfiltered next()
         {
             if (!isInit)
                 init();
@@ -172,9 +172,9 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
             return row;
         }
 
-        private Atom consumeNextWrapped()
+        private Unfiltered consumeNextWrapped()
         {
-            Atom toReturn = nextFromWrapped;
+            Unfiltered toReturn = nextFromWrapped;
             nextFromWrapped = null;
             return toReturn;
         }
@@ -208,13 +208,13 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
         }
     }
 
-    private static class SuperColumnsPartitionMerger extends WrappingAtomIterator
+    private static class SuperColumnsPartitionMerger extends WrappingUnfilteredRowIterator
     {
         private final ReusableRow reusableRow;
         private final ColumnDefinition superColumnMapColumn;
         private final AbstractType<?> columnComparator;
 
-        private SuperColumnsPartitionMerger(AtomIterator results)
+        private SuperColumnsPartitionMerger(UnfilteredRowIterator results)
         {
             super(results);
             assert results.metadata().isSuper();
@@ -230,10 +230,10 @@ public class ThriftResultsMerger extends WrappingPartitionIterator
         }
 
         @Override
-        public Atom next()
+        public Unfiltered next()
         {
-            Atom next = super.next();
-            if (next.kind() != Atom.Kind.ROW)
+            Unfiltered next = super.next();
+            if (next.kind() != Unfiltered.Kind.ROW)
                 return next;
 
             Row row = (Row)next;

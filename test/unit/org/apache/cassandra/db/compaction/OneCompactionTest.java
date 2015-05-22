@@ -30,11 +30,9 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RowUpdateBuilder;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -79,7 +77,7 @@ public class OneCompactionTest
 
             inserted.add(key);
             store.forceBlockingFlush();
-            try (PartitionIterator it = Util.getRangeSlice(store))
+            try (UnfilteredPartitionIterator it = Util.getRangeSlice(store))
             {
                 assertEquals(inserted.size(), Iterables.size(Util.once(it)));
             }

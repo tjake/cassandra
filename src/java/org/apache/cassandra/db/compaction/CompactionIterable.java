@@ -17,34 +17,26 @@
  */
 package org.apache.cassandra.db.compaction;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.google.common.collect.ImmutableList;
-
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.metrics.CompactionMetrics;
-import org.apache.cassandra.utils.CloseableIterator;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.MergeIterator;
 
 // TODO: this should be merged with AbstractCompactionIterable (it's the only implementation) and
 // we should rename it as CompactionIterator
 public class CompactionIterable extends AbstractCompactionIterable
 {
-    private static final long ATOMS_TO_UPDATE_PROGRESS = 100;
+    private static final long UNFILTERED_TO_UPDATE_PROGRESS = 100;
 
-    private final PartitionIterator mergedIterator;
-    private final AtomicInteger atomsMerged = new AtomicInteger();
+    private final UnfilteredPartitionIterator mergedIterator;
+    private final AtomicInteger merged = new AtomicInteger();
     private final SSTableFormat format;
     private final CompactionMetrics metrics;
 
@@ -58,8 +50,8 @@ public class CompactionIterable extends AbstractCompactionIterable
         super(controller, type, scanners);
         this.format = formatType.info;
         this.mergedIterator = scanners.isEmpty()
-                            ? PartitionIterators.EMPTY
-                            : new PurgingPartitionIterator(PartitionIterators.merge(scanners, listener()), controller);
+                            ? UnfilteredPartitionIterators.EMPTY
+                            : new PurgingPartitionIterator(UnfilteredPartitionIterators.merge(scanners, listener()), controller);
 
         this.metrics = metrics;
 
@@ -67,15 +59,15 @@ public class CompactionIterable extends AbstractCompactionIterable
             metrics.beginCompaction(this);
     }
 
-    private PartitionIterators.MergeListener listener()
+    private UnfilteredPartitionIterators.MergeListener listener()
     {
-        return new PartitionIterators.MergeListener()
+        return new UnfilteredPartitionIterators.MergeListener()
         {
-            public AtomIterators.MergeListener getAtomMergeListener(DecoratedKey partitionKey, List<AtomIterator> versions)
+            public UnfilteredRowIterators.MergeListener getRowMergeListener(DecoratedKey partitionKey, List<UnfilteredRowIterator> versions)
             {
                 int merged = 0;
                 int nowInSec = 0;
-                for (AtomIterator iter : versions)
+                for (UnfilteredRowIterator iter : versions)
                 {
                     if (iter != null)
                     {
@@ -89,15 +81,14 @@ public class CompactionIterable extends AbstractCompactionIterable
                 CompactionIterable.this.updateCounterFor(merged);
 
                 /*
-                 * The atom level listener does 2 things:
+                 * The row level listener does 2 things:
                  *  - It updates 2ndary indexes for deleted/shadowed cells
-                 *  - It updates progress regularly (every ATOMS_TO_UPDATE_PROGRESS atoms)
+                 *  - It updates progress regularly (every UNFILTERED_TO_UPDATE_PROGRESS)
                  */
                 final SecondaryIndexManager.Updater indexer = controller.cfs.indexManager.gcUpdaterFor(partitionKey, nowInSec);
-                return new AtomIterators.MergeListener()
+                return new UnfilteredRowIterators.MergeListener()
                 {
                     private Clustering clustering;
-                    private ColumnDefinition column;
 
                     public void onMergePartitionLevelDeletion(DeletionTime mergedDeletion, DeletionTime[] versions)
                     {
@@ -110,7 +101,6 @@ public class CompactionIterable extends AbstractCompactionIterable
 
                     public void onMergedComplexDeletion(ColumnDefinition c, DeletionTime mergedCompositeDeletion, DeletionTime[] versions)
                     {
-                        this.column = c;
                     }
 
                     public void onMergedCells(Cell mergedCell, Cell[] versions)
@@ -128,15 +118,15 @@ public class CompactionIterable extends AbstractCompactionIterable
 
                     public void onRowDone()
                     {
-                        int merged = atomsMerged.incrementAndGet();
-                        if (merged % ATOMS_TO_UPDATE_PROGRESS == 0)
+                        int merged = CompactionIterable.this.merged.incrementAndGet();
+                        if (merged % UNFILTERED_TO_UPDATE_PROGRESS == 0)
                             updateBytesRead();
                     }
 
                     public void onMergedRangeTombstoneMarkers(Slice.Bound bound, DeletionTime mergedDeletion, RangeTombstoneMarker[] versions)
                     {
-                        int merged = atomsMerged.incrementAndGet();
-                        if (merged % ATOMS_TO_UPDATE_PROGRESS == 0)
+                        int merged = CompactionIterable.this.merged.incrementAndGet();
+                        if (merged % UNFILTERED_TO_UPDATE_PROGRESS == 0)
                             updateBytesRead();
                     }
 
@@ -165,7 +155,7 @@ public class CompactionIterable extends AbstractCompactionIterable
         return mergedIterator.hasNext();
     }
 
-    public AtomIterator next()
+    public UnfilteredRowIterator next()
     {
         return mergedIterator.next();
     }
@@ -193,7 +183,7 @@ public class CompactionIterable extends AbstractCompactionIterable
         return this.getCompactionInfo().toString();
     }
 
-    private static class PurgingPartitionIterator extends AbstractFilteringIterator
+    private static class PurgingPartitionIterator extends FilteringPartitionIterator
     {
         private final CompactionController controller;
 
@@ -201,7 +191,7 @@ public class CompactionIterable extends AbstractCompactionIterable
         private long maxPurgeableTimestamp;
         private boolean hasCalculatedMaxPurgeableTimestamp;
 
-        private PurgingPartitionIterator(PartitionIterator toPurge, CompactionController controller)
+        private PurgingPartitionIterator(UnfilteredPartitionIterator toPurge, CompactionController controller)
         {
             super(toPurge);
             this.controller = controller;
@@ -243,12 +233,12 @@ public class CompactionIterable extends AbstractCompactionIterable
         }
 
         @Override
-        protected boolean shouldFilter(AtomIterator atoms)
+        protected boolean shouldFilter(UnfilteredRowIterator iterator)
         {
-            currentKey = atoms.partitionKey();
+            currentKey = iterator.partitionKey();
             hasCalculatedMaxPurgeableTimestamp = false;
 
-            // TODO: we could be able to skip filtering if AtomIterator was giving us some stats
+            // TODO: we could be able to skip filtering if UnfilteredRowIterator was giving us some stats
             // (like the smallest local deletion time).
             return true;
         }

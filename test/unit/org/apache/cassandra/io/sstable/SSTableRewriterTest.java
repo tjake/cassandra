@@ -40,11 +40,10 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RowUpdateBuilder;
 import org.apache.cassandra.db.SerializationHeader;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomStats;
+import org.apache.cassandra.db.rows.RowStats;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.compaction.AbstractCompactionStrategy;
 import org.apache.cassandra.db.compaction.CompactionController;
 import org.apache.cassandra.db.compaction.CompactionIterable;
@@ -61,7 +60,6 @@ import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.metrics.StorageMetrics;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
@@ -184,7 +182,7 @@ public class SSTableRewriterTest extends SchemaLoader
             writer.switchWriter(getWriter(cfs, sstables.iterator().next().descriptor.directory));
             while (ci.hasNext())
             {
-                AtomIterator row = ci.next();
+                UnfilteredRowIterator row = ci.next();
                 writer.append(row);
                 if (!checked && writer.currentWriter().getFilePointer() > 15000000)
                 {
@@ -245,7 +243,7 @@ public class SSTableRewriterTest extends SchemaLoader
                     update = builder.buildUpdate();
                 }
 
-                writer.append(update.atomIterator());
+                writer.append(update.unfilteredIterator());
             }
 
             SSTableReader s = writer.setMaxDataAge(1000).openEarly();
@@ -263,7 +261,7 @@ public class SSTableRewriterTest extends SchemaLoader
                     update = builder.buildUpdate();
                 }
 
-                writer.append(update.atomIterator());
+                writer.append(update.unfilteredIterator());
             }
             SSTableReader s2 = writer.setMaxDataAge(1000).openEarly();
             assertTrue(s.last.compareTo(s2.last) < 0);
@@ -871,7 +869,7 @@ public class SSTableRewriterTest extends SchemaLoader
         File dir = cfs.directories.getDirectoryForNewSSTables();
         String filename = cfs.getTempSSTablePath(dir);
 
-        try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), AtomStats.NO_STATS, true)))
+        try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), RowStats.NO_STATS, true)))
         {
             for (int i = 0; i < count * 5; i++)
             {
@@ -888,7 +886,7 @@ public class SSTableRewriterTest extends SchemaLoader
                     update = builder.buildUpdate();
                 }
 
-                writer.append(update.atomIterator());
+                writer.append(update.unfilteredIterator());
             }
             return writer.finish(true);
         }
@@ -942,7 +940,7 @@ public class SSTableRewriterTest extends SchemaLoader
     private SSTableWriter getWriter(ColumnFamilyStore cfs, File directory)
     {
         String filename = cfs.getTempSSTablePath(directory);
-        return SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), AtomStats.NO_STATS, true));
+        return SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), RowStats.NO_STATS, true));
     }
 
     public static ByteBuffer random(int i, int size)

@@ -28,7 +28,6 @@ import org.junit.Test;
 
 import junit.framework.Assert;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
@@ -37,11 +36,11 @@ import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.SingletonUnfilteredPartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
-import org.apache.cassandra.db.partitions.SingletonPartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -91,9 +90,9 @@ public class PerRowSecondaryIndexTest
         builder.build().apply();
 
 
-        AtomIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
+        UnfilteredRowIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
         assertNotNull(indexedRow);
-        assertEquals(ByteBufferUtil.bytes("foo"), new RowIteratorFromAtomIterator(indexedRow).next().getCell(cdef).value());
+        assertEquals(ByteBufferUtil.bytes("foo"), UnfilteredRowIterators.filter(indexedRow).next().getCell(cdef).value());
 
         // update the row and verify what was indexed
         builder = new RowUpdateBuilder(cfm, FBUtilities.timestampMicros() + 1 , "k1");
@@ -102,7 +101,7 @@ public class PerRowSecondaryIndexTest
 
         indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
         assertNotNull(indexedRow);
-        assertEquals(ByteBufferUtil.bytes("bar"), new RowIteratorFromAtomIterator(indexedRow).next().getCell(cdef).value());
+        assertEquals(ByteBufferUtil.bytes("bar"), UnfilteredRowIterators.filter(indexedRow).next().getCell(cdef).value());
         assertTrue(Arrays.equals("k1".getBytes(), PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_KEY.array()));
     }
 
@@ -118,11 +117,11 @@ public class PerRowSecondaryIndexTest
             .build()
             .apply();
 
-        AtomIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
+        UnfilteredRowIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
         assertNotNull(indexedRow);
 
         //We filter tombstones now...
-        Assert.assertFalse(new RowIteratorFromAtomIterator(indexedRow).hasNext());
+        Assert.assertFalse(UnfilteredRowIterators.filter(indexedRow).hasNext());
         assertTrue(Arrays.equals("k2".getBytes(), PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_KEY.array()));
     }
 
@@ -133,10 +132,10 @@ public class PerRowSecondaryIndexTest
         CFMetaData cfm = Schema.instance.getCFMetaData(KEYSPACE1, CF_INDEXED);
         RowUpdateBuilder.deleteRow(cfm, FBUtilities.timestampMicros(), "k3").apply();
 
-        AtomIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
+        UnfilteredRowIterator indexedRow = PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_PARTITION;
         assertNotNull(indexedRow);
         assertNotNull(indexedRow.partitionLevelDeletion());
-        Assert.assertFalse(new RowIteratorFromAtomIterator(indexedRow).hasNext());
+        Assert.assertFalse(UnfilteredRowIterators.filter(indexedRow).hasNext());
         assertTrue(Arrays.equals("k3".getBytes(), PerRowSecondaryIndexTest.TestIndex.LAST_INDEXED_KEY.array()));
     }
 
@@ -169,7 +168,7 @@ public class PerRowSecondaryIndexTest
 
     public static class TestIndex extends PerRowSecondaryIndex
     {
-        public static AtomIterator LAST_INDEXED_PARTITION;
+        public static UnfilteredRowIterator LAST_INDEXED_PARTITION;
         public static ByteBuffer LAST_INDEXED_KEY;
 
         public static void reset()
@@ -179,7 +178,7 @@ public class PerRowSecondaryIndexTest
         }
 
         @Override
-        public void index(ByteBuffer rowKey, AtomIterator cf)
+        public void index(ByteBuffer rowKey, UnfilteredRowIterator cf)
         {
             LAST_INDEXED_PARTITION = cf;
             LAST_INDEXED_KEY = rowKey;
@@ -187,7 +186,7 @@ public class PerRowSecondaryIndexTest
 
         public void index(ByteBuffer rowKey, PartitionUpdate atoms)
         {
-            LAST_INDEXED_PARTITION = atoms.atomIterator();
+            LAST_INDEXED_PARTITION = atoms.unfilteredIterator();
             LAST_INDEXED_KEY = rowKey;
         }
 
@@ -224,9 +223,9 @@ public class PerRowSecondaryIndexTest
             {
                 
                 @Override
-                public PartitionIterator search(ReadCommand filter)
+                public UnfilteredPartitionIterator search(ReadCommand filter)
                 {
-                    return new SingletonPartitionIterator(LAST_INDEXED_PARTITION, false);
+                    return new SingletonUnfilteredPartitionIterator(LAST_INDEXED_PARTITION, false);
                 }
 
                 @Override
@@ -240,7 +239,7 @@ public class PerRowSecondaryIndexTest
                     return expression;
                 }
 
-                protected PartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, RowIterator indexHits, ReadCommand command, OpOrder.Group writeOp)
+                protected UnfilteredPartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, RowIterator indexHits, ReadCommand command, OpOrder.Group writeOp)
                 {
                     // As we override 'search()' directly for the test, we don't care about this.
                     throw new UnsupportedOperationException();

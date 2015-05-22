@@ -26,10 +26,9 @@ import com.google.common.collect.Iterators;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 /**
  * Represents the selection of multiple range of rows within a partition.
@@ -143,14 +142,14 @@ public abstract class Slices implements Iterable<Slice>
     public abstract boolean intersects(List<ByteBuffer> minClusteringValues, List<ByteBuffer> maxClusteringValues);
 
     /**
-     * Given a sliceable atom iterator, returns an atom iterator that only return atoms selected by the slice of
+     * Given a sliceable row iterator, returns a row iterator that only return rows selected by the slice of
      * this {@code Slices} object.
      *
      * @param iter the sliceable iterator to filter.
      *
-     * @return an iterator that only returns the atom of {@code iter} that are selected by those slices.
+     * @return an iterator that only returns the rows (or rather Unfiltered) of {@code iter} that are selected by those slices.
      */
-    public abstract AtomIterator makeSliceIterator(SliceableAtomIterator iter);
+    public abstract UnfilteredRowIterator makeSliceIterator(SliceableUnfilteredRowIterator iter);
 
     public abstract String toCQLString(CFMetaData metadata);
 
@@ -444,14 +443,14 @@ public abstract class Slices implements Iterable<Slice>
             return false;
         }
 
-        public AtomIterator makeSliceIterator(final SliceableAtomIterator iter)
+        public UnfilteredRowIterator makeSliceIterator(final SliceableUnfilteredRowIterator iter)
         {
-            return new WrappingAtomIterator(iter)
+            return new WrappingUnfilteredRowIterator(iter)
             {
                 private int nextSlice = iter.isReverseOrder() ? slices.length - 1 : 0;
-                private Iterator<Atom> currentSliceIterator = Collections.emptyIterator();
+                private Iterator<Unfiltered> currentSliceIterator = Collections.emptyIterator();
 
-                private Atom next;
+                private Unfiltered next;
 
                 @Override
                 public boolean hasNext()
@@ -461,10 +460,10 @@ public abstract class Slices implements Iterable<Slice>
                 }
 
                 @Override
-                public Atom next()
+                public Unfiltered next()
                 {
                     prepareNext();
-                    Atom toReturn = next;
+                    Unfiltered toReturn = next;
                     next = null;
                     return toReturn;
                 }
@@ -795,7 +794,7 @@ public abstract class Slices implements Iterable<Slice>
             return true;
         }
 
-        public AtomIterator makeSliceIterator(SliceableAtomIterator iter)
+        public UnfilteredRowIterator makeSliceIterator(SliceableUnfilteredRowIterator iter)
         {
             return iter;
         }
@@ -875,9 +874,9 @@ public abstract class Slices implements Iterable<Slice>
             return false;
         }
 
-        public AtomIterator makeSliceIterator(SliceableAtomIterator iter)
+        public UnfilteredRowIterator makeSliceIterator(SliceableUnfilteredRowIterator iter)
         {
-            return AtomIterators.emptyIterator(iter.metadata(), iter.partitionKey(), iter.isReverseOrder(), iter.nowInSec());
+            return UnfilteredRowIterators.emptyIterator(iter.metadata(), iter.partitionKey(), iter.isReverseOrder(), iter.nowInSec());
         }
 
         public Iterator<Slice> iterator()

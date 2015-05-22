@@ -293,13 +293,13 @@ public class SSTableExport
     //            ByteBufferUtil.readWithShortLength(dfile); // row key
     //            DeletionInfo deletionInfo = new DeletionInfo(DeletionTime.serializer.deserialize(dfile));
 
-    //            Iterator<OnDiskAtom> atomIterator = sstable.metadata.getOnDiskIterator(dfile, sstable.descriptor.version);
+    //            Iterator<OnDiskAtom> unfilteredIterator = sstable.metadata.getOnDiskIterator(dfile, sstable.descriptor.version);
     //            checkStream(outs);
 
     //            if (i != 0)
     //                outs.println(",");
     //            i++;
-    //            serializeRow(deletionInfo, atomIterator, sstable.metadata, decoratedKey, outs);
+    //            serializeRow(deletionInfo, unfilteredIterator, sstable.metadata, decoratedKey, outs);
     //        }
 
     //        outs.println("\n]");

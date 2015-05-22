@@ -22,12 +22,11 @@ import java.io.IOException;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.io.util.FileDataInput;
 
 /**
  * A filter that selects (some of the columns of) rows of a single partition.
@@ -100,39 +99,39 @@ public interface PartitionFilter
     public boolean selects(Clustering clustering);
 
     /**
-     * Returns an iterator that only returns the atom of the provided iterator that this filter selects.
+     * Returns an iterator that only returns the rows of the provided iterator that this filter selects.
      * <p>
-     * This method is the "dumb" counterpart to {@link #filter(SliceableAtomIterator)} in that it has no way to quickly get
+     * This method is the "dumb" counterpart to {@link #filter(SliceableUnfilteredRowIterator)} in that it has no way to quickly get
      * to what is actually selected, so it simply iterate over it all and filters out what shouldn't be returned. This should
-     * be avoided in general, we should make sure to have {@code SliceableAtomIterator} when we have filtering to do, but this
+     * be avoided in general, we should make sure to have {@code SliceableUnfilteredRowIterator} when we have filtering to do, but this
      * currently only used in {@link SinglePartitionReadCommand#getThroughCache} when we know this won't be a performance problem.
      *
-     * @param iterator the iterator for which we should filter atoms.
+     * @param iterator the iterator for which we should filter rows.
      *
-     * @return an iterator that only returns the atoms from {@code iterator} that are selected by this filter.
+     * @return an iterator that only returns the rows (or rather Unfilted) from {@code iterator} that are selected by this filter.
      */
-    public AtomIterator filter(AtomIterator iterator);
+    public UnfilteredRowIterator filter(UnfilteredRowIterator iterator);
 
     /**
-     * Returns an iterator that only returns the atom of the provided sliceable iterator that this filter selects.
+     * Returns an iterator that only returns the rows of the provided sliceable iterator that this filter selects.
      *
-     * @param iterator the sliceable iterator for which we should filter atoms.
+     * @param iterator the sliceable iterator for which we should filter rows.
      *
-     * @return an iterator that only returns the atoms from {@code iterator} that are selected by this filter.
+     * @return an iterator that only returns the rows (or rather unfiltered) from {@code iterator} that are selected by this filter.
      */
-    public AtomIterator filter(SliceableAtomIterator iterator);
+    public UnfilteredRowIterator filter(SliceableUnfilteredRowIterator iterator);
 
     /**
-     * Given a partition, return an atom iterator for the atoms of this partition that are selected by this filter.
+     * Given a partition, returns a row iterator for the rows of this partition that are selected by this filter.
      *
-     * @param partition the partition containing the atoms to filter.
+     * @param partition the partition containing the rows to filter.
      * @param nowInSec the current time in seconds.
      *
-     * @return an atom iterator returning those atoms from {@code partition} that are selected by this filter.
+     * @return a unfiltered row iterator returning those rows (or rather Unfiltered) from {@code partition} that are selected by this filter.
      */
-    // TODO: we could get rid of that if Partition was exposing a SliceableAtomIterator (instead of the two searchIterator() and
-    // atomIterator() methods). However, for AtomicBtreePartition this would require changes to Btree so we'll leave that for later.
-    public AtomIterator getAtomIterator(Partition partition, int nowInSec);
+    // TODO: we could get rid of that if Partition was exposing a SliceableUnfilteredRowIterator (instead of the two searchIterator() and
+    // unfilteredIterator() methods). However, for AtomicBtreePartition this would require changes to Btree so we'll leave that for later.
+    public UnfilteredRowIterator getUnfilteredRowIterator(Partition partition, int nowInSec);
 
     /**
      * Whether the provided sstable may contain data that is selected by this filter (based on the sstable metadata).

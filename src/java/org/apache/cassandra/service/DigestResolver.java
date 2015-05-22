@@ -20,10 +20,9 @@ package org.apache.cassandra.service;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.partitions.DataIterator;
-import org.apache.cassandra.db.partitions.PartitionIterators;
+import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterators;
 import org.apache.cassandra.net.MessageIn;
 
 public class DigestResolver extends ResponseResolver
@@ -46,10 +45,10 @@ public class DigestResolver extends ResponseResolver
     /**
      * Special case of resolve() so that CL.ONE reads never throw DigestMismatchException in the foreground
      */
-    public DataIterator getData()
+    public PartitionIterator getData()
     {
         assert isDataPresent();
-        return PartitionIterators.asDataIterator(dataResponse.makeIterator());
+        return UnfilteredPartitionIterators.filter(dataResponse.makeIterator());
     }
 
     /*
@@ -62,7 +61,7 @@ public class DigestResolver extends ResponseResolver
      * b) we're checking additional digests that arrived after the minimum to handle
      *    the requested ConsistencyLevel, i.e. asynchronous read repair check
      */
-    public DataIterator resolve() throws DigestMismatchException
+    public PartitionIterator resolve() throws DigestMismatchException
     {
         if (responses.size() == 1)
             return getData();
@@ -89,7 +88,7 @@ public class DigestResolver extends ResponseResolver
         if (logger.isDebugEnabled())
             logger.debug("resolve: {} ms.", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
 
-        return PartitionIterators.asDataIterator(dataResponse.makeIterator());
+        return UnfilteredPartitionIterators.filter(dataResponse.makeIterator());
     }
 
     public boolean mayDigestData()

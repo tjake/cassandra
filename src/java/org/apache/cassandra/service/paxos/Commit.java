@@ -24,14 +24,13 @@ package org.apache.cassandra.service.paxos;
 import java.io.DataInput;
 import java.io.IOException;
 import java.util.UUID;
-import java.nio.ByteBuffer;
 
 import com.google.common.base.Objects;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
@@ -131,7 +130,7 @@ public class Commit
     private static void copyWithUpdatedTimestamp(Row row, Row.Writer writer, long timestamp)
     {
         Rows.writeClustering(row.clustering(), writer);
-        writer.writePartitionKeyLivenessInfo(row.partitionKeyLivenessInfo().withUpdatedTimestamp(timestamp));
+        writer.writePartitionKeyLivenessInfo(row.primaryKeyLivenessInfo().withUpdatedTimestamp(timestamp));
         writer.writeRowDeletion(row.deletion());
         writer.writeMaxLiveTimestamp(row.hasLiveData() ? timestamp : LivenessInfo.NO_TIMESTAMP);
 

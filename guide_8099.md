@@ -49,7 +49,7 @@ its end). I'll discuss the reasoning for this a bit more later. A
 what the `Clustering` is to `Row`) and simply store its deletion information.
 
 The engine thus mainly work with rows and range tombstone markers, and they are
-both grouped under the common `Atom` interface. An "atom" is thus just that:
+both grouped under the common `Atom` interface. An "unfiltered" is thus just that:
 either a row or a range tombstone marker.
 
 > Side Note: the "Atom" naming is pretty bad. I've reused it mainly because it
@@ -101,7 +101,7 @@ Those iterators are closeable and the code has to be make sure to always close
 them as they will often have resources to clean (like an OpOrder.Group to close
 or files to release).
 
-The read path mainly consists in getting atom and partition iterators from
+The read path mainly consists in getting unfiltered and partition iterators from
 sstables and memtable and merging, filtering and transforming them. There is a
 number of functions to do just that (merging, filtering and transforming) in
 `AtomIterators` and `PartitionIterators`, but there is also a number of classes
@@ -242,7 +242,7 @@ shadowed data:
    been filtered (and make the code cleaner), we transform an `AtomIterator`
    into a `RowIterator`. Both being essentially the same thing, except that a
    `RowIterator` only return live stuffs. Which mean in particular that it's an
-   iterator of `Row` (since an atom is either a row or a range tombstone and
+   iterator of `Row` (since an unfiltered is either a row or a range tombstone and
    we've filtered tombstones). Similarly, a `PartitionIterator` becomes a
    `DataIterator`, which is just an iterator of `RowIterator`.
 3. In the existing code a CQL row deletion involves a range tombstone. But as

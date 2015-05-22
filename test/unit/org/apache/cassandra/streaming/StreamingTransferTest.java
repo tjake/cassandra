@@ -19,14 +19,12 @@ package org.apache.cassandra.streaming;
 
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.sql.Date;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.Uninterruptibles;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -38,28 +36,21 @@ import org.apache.cassandra.OrderedJUnit4ClassRunner;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.cql3.QueryProcessor;
-import org.apache.cassandra.cql3.RangeDeletionTest;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.context.CounterContext;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.thrift.IndexExpression;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.CounterId;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.Refs;
 
@@ -202,7 +193,7 @@ public class StreamingTransferTest
         assertEquals(1, cfs.getSSTables().size());
 
         // and that the index and filter were properly recovered
-        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
         {
             for (int i = 0; i < offs.length; i++)
             {
@@ -212,7 +203,7 @@ public class StreamingTransferTest
                 SinglePartitionReadCommand readCommand = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk(key), Slices.ALL);
 
                 assert readCommand.executeLocally(cfs).hasNext();
-                RowIterator row = new RowIteratorFromAtomIterator(iterator.next());
+                RowIterator row = UnfilteredRowIterators.filter(iterator.next());
                 assert ByteBufferUtil.compareUnsigned(row.partitionKey().getKey(), ByteBufferUtil.bytes(key)) == 0;
                 assert ByteBufferUtil.compareUnsigned(row.next().clustering().get(0), ByteBufferUtil.bytes(col)) == 0;
             }
@@ -348,9 +339,9 @@ public class StreamingTransferTest
         // confirm that a single SSTable was transferred and registered
         assertEquals(1, cfs.getSSTables().size());
 
-        try (PartitionIterator rows = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator rows = Util.getRangeSlice(cfs))
         {
-            RowIterator it = new RowIteratorFromAtomIterator(rows.next());
+            RowIterator it = UnfilteredRowIterators.filter(rows.next());
 
             Assert.assertTrue(!rows.hasNext());
             Row r = it.next();

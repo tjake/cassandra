@@ -34,19 +34,14 @@ import static org.junit.Assert.*;
 import com.googlecode.concurrentlinkedhashmap.Weighers;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.partitions.ArrayBackedPartition;
-import org.apache.cassandra.db.partitions.ReadPartition;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class CacheProviderTest
 {
@@ -108,8 +103,8 @@ public class CacheProviderTest
         {
             MessageDigest d1 = MessageDigest.getInstance("MD5");
             MessageDigest d2 = MessageDigest.getInstance("MD5");
-            AtomIterators.digest(((ArrayBackedPartition) one).atomIterator(), d1);
-            AtomIterators.digest(((ArrayBackedPartition) two).atomIterator(), d2);
+            UnfilteredRowIterators.digest(((ArrayBackedPartition) one).unfilteredIterator(), d1);
+            UnfilteredRowIterators.digest(((ArrayBackedPartition) two).unfilteredIterator(), d2);
             assertTrue(MessageDigest.isEqual(d1.digest(), d2.digest()));
         }
         catch (NoSuchAlgorithmException e)

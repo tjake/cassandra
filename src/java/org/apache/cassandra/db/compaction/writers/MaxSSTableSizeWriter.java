@@ -18,17 +18,14 @@
 package org.apache.cassandra.db.compaction.writers;
 
 import java.io.File;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.SerializationHeader;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.compaction.CompactionTask;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.io.sstable.SSTableRewriter;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
@@ -64,7 +61,7 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
     }
 
     @Override
-    public boolean append(AtomIterator partition)
+    public boolean append(UnfilteredRowIterator partition)
     {
         RowIndexEntry rie = sstableWriter.append(partition);
         if (sstableWriter.currentWriter().getOnDiskFilePointer() > maxSSTableSize)

@@ -25,7 +25,6 @@ import com.google.common.collect.Multimap;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -147,7 +146,7 @@ public class CQL3CasRequest implements CASRequest
         return SinglePartitionReadCommand.create(cfm, nowInSec, key, filter);
     }
 
-    public boolean appliesTo(ReadPartition current) throws InvalidRequestException
+    public boolean appliesTo(FilteredPartition current) throws InvalidRequestException
     {
         for (RowCondition condition : conditions.values())
         {
@@ -165,7 +164,7 @@ public class CQL3CasRequest implements CASRequest
         return builder.build();
     }
 
-    public PartitionUpdate makeUpdates(ReadPartition current) throws InvalidRequestException
+    public PartitionUpdate makeUpdates(FilteredPartition current) throws InvalidRequestException
     {
         PartitionUpdate update = new PartitionUpdate(cfm, key, updatedColumns(), conditions.size(), current.nowInSec());
         for (RowUpdate upd : updates)
@@ -198,7 +197,7 @@ public class CQL3CasRequest implements CASRequest
             this.timestamp = timestamp;
         }
 
-        public void applyUpdates(ReadPartition current, PartitionUpdate updates) throws InvalidRequestException
+        public void applyUpdates(FilteredPartition current, PartitionUpdate updates) throws InvalidRequestException
         {
             Map<DecoratedKey, Partition> map = stmt.requiresRead() ? Collections.<DecoratedKey, Partition>singletonMap(key, current) : null;
             UpdateParameters params = new UpdateParameters(cfm, options, timestamp, stmt.getTimeToLive(options), map, true);
@@ -215,7 +214,7 @@ public class CQL3CasRequest implements CASRequest
             this.clustering = clustering;
         }
 
-        public abstract boolean appliesTo(ReadPartition current) throws InvalidRequestException;
+        public abstract boolean appliesTo(FilteredPartition current) throws InvalidRequestException;
     }
 
     private static class NotExistCondition extends RowCondition
@@ -225,7 +224,7 @@ public class CQL3CasRequest implements CASRequest
             super(clustering);
         }
 
-        public boolean appliesTo(ReadPartition current)
+        public boolean appliesTo(FilteredPartition current)
         {
             return current == null || current.getRow(clustering) == null;
         }
@@ -238,7 +237,7 @@ public class CQL3CasRequest implements CASRequest
             super(clustering);
         }
 
-        public boolean appliesTo(ReadPartition current)
+        public boolean appliesTo(FilteredPartition current)
         {
             return current != null && current.getRow(clustering) != null;
         }
@@ -262,7 +261,7 @@ public class CQL3CasRequest implements CASRequest
             }
         }
 
-        public boolean appliesTo(ReadPartition current) throws InvalidRequestException
+        public boolean appliesTo(FilteredPartition current) throws InvalidRequestException
         {
             if (current == null)
                 return conditions.isEmpty();

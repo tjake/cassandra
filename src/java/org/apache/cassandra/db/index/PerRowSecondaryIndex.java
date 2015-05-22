@@ -20,8 +20,7 @@ package org.apache.cassandra.db.index;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -33,14 +32,8 @@ public abstract class PerRowSecondaryIndex extends SecondaryIndex
 {
     /**
      * Index the given partition.
-     *
-     * @param atom the row key
      */
-    // TODO: we probably want just one: see if we can get easily an AtomIterator from
-    // a PartitionUpdate. Though we should fix that damn secondary index API once and
-    // for all.
-    public abstract void index(ByteBuffer key, PartitionUpdate atoms);
-    public abstract void index(ByteBuffer key, AtomIterator atoms);
+    public abstract void index(ByteBuffer key, UnfilteredRowIterator atoms);
 
     /**
      * cleans up deleted columns from cassandra cleanup compaction

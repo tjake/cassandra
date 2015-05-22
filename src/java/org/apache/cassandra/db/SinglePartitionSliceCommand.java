@@ -22,7 +22,7 @@ import java.util.*;
 import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.SlicePartitionFilter;
@@ -30,7 +30,6 @@ import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.metrics.ColumnFamilyMetrics.Sampler;
-import org.apache.cassandra.service.DataResolver;
 import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.memory.HeapAllocator;
@@ -100,12 +99,12 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
         return new SinglePartitionSliceCommand(isDigestQuery(), isForThrift(), metadata(), nowInSec(), columnFilter(), limits(), partitionKey(), partitionFilter());
     }
 
-    protected AtomIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap)
+    protected UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap)
     {
         Tracing.trace("Acquiring sstable references");
         ColumnFamilyStore.ViewFragment view = cfs.select(cfs.viewFilter(partitionKey()));
 
-        List<AtomIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
+        List<UnfilteredRowIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
         SlicePartitionFilter filter = partitionFilter();
 
         try
@@ -116,9 +115,9 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                 if (partition == null)
                     continue;
 
-                AtomIterator iter = filter.getAtomIterator(partition, nowInSec());
+                UnfilteredRowIterator iter = filter.getUnfilteredRowIterator(partition, nowInSec());
                 if (copyOnHeap)
-                    iter = AtomIterators.cloningIterator(iter, HeapAllocator.instance);
+                    iter = UnfilteredRowIterators.cloningIterator(iter, HeapAllocator.instance);
                 iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter) : iter);
             }
 
@@ -163,7 +162,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                 }
 
                 sstable.incrementReadCount();
-                AtomIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift()));
+                UnfilteredRowIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift()));
                 mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone, iter.partitionLevelDeletion().markedForDeleteAt());
                 sstablesIterated++;
                 iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter) : iter);
@@ -179,7 +178,7 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
                         continue;
 
                     sstable.incrementReadCount();
-                    AtomIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift()));
+                    UnfilteredRowIterator iter = filter.filter(sstable.iterator(partitionKey(), filter.queriedColumns(), filter.isReversed(), nowInSec(), isForThrift()));
                     if (iter.partitionLevelDeletion().markedForDeleteAt() > minTimestamp)
                     {
                         includedDueToTombstones++;
@@ -199,12 +198,12 @@ public class SinglePartitionSliceCommand extends SinglePartitionReadCommand<Slic
             cfs.metric.updateSSTableIterated(sstablesIterated);
 
             if (iterators.isEmpty())
-                return AtomIterators.emptyIterator(cfs.metadata, partitionKey(), filter.isReversed(), nowInSec());
+                return UnfilteredRowIterators.emptyIterator(cfs.metadata, partitionKey(), filter.isReversed(), nowInSec());
 
             Tracing.trace("Merging data from memtables and {} sstables", sstablesIterated);
 
-            AtomIterator merged = AtomIterators.merge(iterators);
-            if (!AtomIterators.isEmpty(merged))
+            UnfilteredRowIterator merged = UnfilteredRowIterators.merge(iterators);
+            if (!UnfilteredRowIterators.isEmpty(merged))
             {
                 DecoratedKey key = merged.partitionKey();
                 cfs.metric.samplers.get(Sampler.READS).addSample(key.getKey(), key.hashCode(), 1);

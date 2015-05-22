@@ -17,7 +17,6 @@
  */
 package org.apache.cassandra.db.index.composites;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
@@ -26,14 +25,11 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.index.*;
-import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.utils.concurrent.OpOrder;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 
 public class CompositesSearcher extends SecondaryIndexSearcher
@@ -50,7 +46,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         return command.selects(partitionKey, entry.indexedEntryClustering);
     }
 
-    protected PartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex secondaryIdx,
+    protected UnfilteredPartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex secondaryIdx,
                                                    final DecoratedKey indexKey,
                                                    final RowIterator indexHits,
                                                    final ReadCommand command,
@@ -61,11 +57,11 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         assert secondaryIdx instanceof CompositesIndex;
         final CompositesIndex index = (CompositesIndex)secondaryIdx;
 
-        return new PartitionIterator()
+        return new UnfilteredPartitionIterator()
         {
             private CompositesIndex.IndexedEntry nextEntry;
 
-            private AtomIterator next;
+            private UnfilteredRowIterator next;
 
             public boolean isForThrift()
             {
@@ -77,12 +73,12 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                 return prepareNext();
             }
 
-            public AtomIterator next()
+            public UnfilteredRowIterator next()
             {
                 if (next == null)
                     prepareNext();
 
-                AtomIterator toReturn = next;
+                UnfilteredRowIterator toReturn = next;
                 next = null;
                 return toReturn;
             }
@@ -134,8 +130,8 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                                                                                      DataLimits.NONE,
                                                                                      partitionKey,
                                                                                      filter);
-                AtomIterator dataIter = filterStaleEntries(dataCmd.queryMemtableAndDisk(baseCfs), index, indexKey.getKey(), entries, writeOp);
-                if (AtomIterators.isEmpty(dataIter))
+                UnfilteredRowIterator dataIter = filterStaleEntries(dataCmd.queryMemtableAndDisk(baseCfs), index, indexKey.getKey(), entries, writeOp);
+                if (UnfilteredRowIterators.isEmpty(dataIter))
                 {
                     dataIter.close();
                     return prepareNext();
@@ -159,15 +155,15 @@ public class CompositesSearcher extends SecondaryIndexSearcher
         };
     }
 
-    private AtomIterator filterStaleEntries(AtomIterator dataIter,
+    private UnfilteredRowIterator filterStaleEntries(UnfilteredRowIterator dataIter,
                                             final CompositesIndex index,
                                             final ByteBuffer indexValue,
                                             final Map<Clustering, CompositesIndex.IndexedEntry> entries,
                                             final OpOrder.Group writeOp)
     {
-        return new WrappingAtomIterator(dataIter)
+        return new WrappingUnfilteredRowIterator(dataIter)
         {
-            private Atom next;
+            private Unfiltered next;
 
             @Override
             public boolean hasNext()
@@ -176,12 +172,12 @@ public class CompositesSearcher extends SecondaryIndexSearcher
             }
 
             @Override
-            public Atom next()
+            public Unfiltered next()
             {
                 if (next == null)
                     prepareNext();
 
-                Atom toReturn = next;
+                Unfiltered toReturn = next;
                 next = null;
                 return toReturn;
             }
@@ -194,7 +190,7 @@ public class CompositesSearcher extends SecondaryIndexSearcher
                 while (next == null && super.hasNext())
                 {
                     next = super.next();
-                    if (next.kind() != Atom.Kind.ROW)
+                    if (next.kind() != Unfiltered.Kind.ROW)
                         return true;
 
                     Row row = (Row)next;

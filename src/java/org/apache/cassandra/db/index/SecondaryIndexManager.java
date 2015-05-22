@@ -18,7 +18,6 @@
 package org.apache.cassandra.db.index;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -35,7 +34,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Future;
 
-import com.google.common.collect.Multimap;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,14 +41,13 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.IndexType;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.sstable.ReducingKeyIterator;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
-import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 
@@ -407,7 +404,7 @@ public class SecondaryIndexManager
     /**
      * When building an index against existing data, add the given partition to the index
      */
-    public void indexPartition(AtomIterator atoms, OpOrder.Group opGroup, Set<SecondaryIndex> allIndexes)
+    public void indexPartition(UnfilteredRowIterator atoms, OpOrder.Group opGroup, Set<SecondaryIndex> allIndexes)
     {
         Set<PerRowSecondaryIndex> perRowIndexes = perRowIndexes();
         Set<PerColumnSecondaryIndex> perColumnIndexes = perColumnIndexes();
@@ -429,7 +426,7 @@ public class SecondaryIndexManager
             for (PerColumnSecondaryIndex index : perColumnIndexes)
             {
                 index.indexRow(key, atoms.staticRow(), opGroup, atoms.nowInSec());
-                Iterator<Row> iter = AtomIterators.asRowIterator(atoms);
+                Iterator<Row> iter = UnfilteredRowIterators.filter(atoms);
                 while (iter.hasNext())
                     index.indexRow(key, iter.next(), opGroup, atoms.nowInSec());
             }
@@ -439,7 +436,7 @@ public class SecondaryIndexManager
     /**
      * Delete all data from all indexes for this partition.  For when cleanup rips a partition out entirely.
      */
-    public void deleteFromIndexes(AtomIterator partition, OpOrder.Group opGroup)
+    public void deleteFromIndexes(UnfilteredRowIterator partition, OpOrder.Group opGroup)
     {
         ByteBuffer key = partition.partitionKey().getKey();
 
@@ -450,11 +447,11 @@ public class SecondaryIndexManager
 
         while (partition.hasNext())
         {
-            Atom atom = partition.next();
-            if (atom.kind() != Atom.Kind.ROW)
+            Unfiltered unfiltered = partition.next();
+            if (unfiltered.kind() != Unfiltered.Kind.ROW)
                 continue;
 
-            Row row = (Row)atom;
+            Row row = (Row) unfiltered;
             Clustering clustering = row.clustering();
             if (!row.deletion().isLive())
                 for (PerColumnSecondaryIndex index : indexes)
@@ -494,7 +491,7 @@ public class SecondaryIndexManager
 
     /**
      * Get a list of IndexSearchers from the union of expression index types
-     * @param clause the query clause
+     * @param command the query
      * @return the searchers needed to query the index
      */
     public List<SecondaryIndexSearcher> getIndexSearchersFor(ReadCommand command)
@@ -709,7 +706,7 @@ public class SecondaryIndexManager
         public void updateRowLevelIndexes()
         {
             for (SecondaryIndex index : rowLevelIndexMap.values())
-                ((PerRowSecondaryIndex) index).index(key.getKey(), (PartitionUpdate)null);
+                ((PerRowSecondaryIndex) index).index(key.getKey(), null);
         }
     }
 
@@ -781,7 +778,7 @@ public class SecondaryIndexManager
         public void updateRowLevelIndexes()
         {
             for (SecondaryIndex index : rowLevelIndexMap.values())
-                ((PerRowSecondaryIndex) index).index(update.partitionKey().getKey(), update);
+                ((PerRowSecondaryIndex) index).index(update.partitionKey().getKey(), update.unfilteredIterator());
         }
 
     }

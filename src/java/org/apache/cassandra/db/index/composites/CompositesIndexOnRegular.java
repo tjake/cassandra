@@ -18,15 +18,9 @@
 package org.apache.cassandra.db.index.composites;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
-import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.index.SecondaryIndex;
-import org.apache.cassandra.db.marshal.*;
+import org.apache.cassandra.db.rows.*;
 
 /**
  * Index on a REGULAR column definition on a composite type.
@@ -68,7 +62,7 @@ public class CompositesIndexOnRegular extends CompositesIndex
         CBuilder builder = CBuilder.create(baseComparator);
         for (int i = 0; i < baseComparator.size(); i++)
             builder.add(clustering.get(i + 1));
-        return new IndexedEntry(indexedValue, clustering, indexEntry.partitionKeyLivenessInfo().timestamp(), clustering.get(0), builder.build());
+        return new IndexedEntry(indexedValue, clustering, indexEntry.primaryKeyLivenessInfo().timestamp(), clustering.get(0), builder.build());
     }
 
     public boolean isStale(Row data, ByteBuffer indexValue)

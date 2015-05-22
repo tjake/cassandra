@@ -23,7 +23,6 @@ import java.util.*;
 import com.google.common.base.Objects;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Iterators;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +35,7 @@ import org.apache.cassandra.cql3.restrictions.StatementRestrictions;
 import org.apache.cassandra.cql3.selection.RawSelector;
 import org.apache.cassandra.cql3.selection.Selection;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
@@ -48,7 +47,6 @@ import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.service.*;
 import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.thrift.ThriftValidation;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -203,7 +201,7 @@ public class SelectStatement implements CQLStatement
                   + " you must either remove the ORDER BY or the IN and sort client side, or disable paging for this query");
 
         ResultMessage.Rows msg;
-        try (DataIterator page = pager.fetchPage(pageSize))
+        try (PartitionIterator page = pager.fetchPage(pageSize))
         {
             msg = processResults(page, options);
         }
@@ -228,7 +226,7 @@ public class SelectStatement implements CQLStatement
 
     private ResultMessage.Rows execute(ReadQuery query, QueryOptions options, QueryState state) throws RequestValidationException, RequestExecutionException
     {
-        try (DataIterator data = query.execute(options.getConsistency(), state.getClientState()))
+        try (PartitionIterator data = query.execute(options.getConsistency(), state.getClientState()))
         {
             return processResults(data, options);
         }
@@ -240,7 +238,7 @@ public class SelectStatement implements CQLStatement
         Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
         while (!pager.isExhausted())
         {
-            try (DataIterator iter = pager.fetchPage(pageSize))
+            try (PartitionIterator iter = pager.fetchPage(pageSize))
             {
                 while (iter.hasNext())
                     processPartition(iter.next(), options, result);
@@ -249,7 +247,7 @@ public class SelectStatement implements CQLStatement
         return new ResultMessage.Rows(result.build(options.getProtocolVersion()));
     }
 
-    private ResultMessage.Rows processResults(DataIterator partitions, QueryOptions options) throws RequestValidationException
+    private ResultMessage.Rows processResults(PartitionIterator partitions, QueryOptions options) throws RequestValidationException
     {
         ResultSet rset = process(partitions, options);
         return new ResultMessage.Rows(rset);
@@ -257,13 +255,13 @@ public class SelectStatement implements CQLStatement
 
     public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
-        try (DataIterator data = getQuery(options).executeLocally())
+        try (PartitionIterator data = getQuery(options).executeLocally())
         {
             return processResults(data, options);
         }
     }
 
-    public ResultSet process(DataIterator partitions) throws InvalidRequestException
+    public ResultSet process(PartitionIterator partitions) throws InvalidRequestException
     {
         return process(partitions, QueryOptions.DEFAULT);
     }
@@ -436,7 +434,7 @@ public class SelectStatement implements CQLStatement
         return filter;
     }
 
-    private ResultSet process(DataIterator partitions, QueryOptions options) throws InvalidRequestException
+    private ResultSet process(PartitionIterator partitions, QueryOptions options) throws InvalidRequestException
     {
         Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
         while (partitions.hasNext())
@@ -473,7 +471,7 @@ public class SelectStatement implements CQLStatement
             ByteBuffer[] keyComponents = getComponents(cfm, partition.partitionKey());
 
             Row staticRow = partition.staticRow().takeAlias();
-            // If there is no atoms, then provided the select was a full partition selection
+            // If there is no rows, then provided the select was a full partition selection
             // (i.e. not a 2ndary index search and there was no condition on clustering columns),
             // we want to include static columns and we're done.
             if (!partition.hasNext())

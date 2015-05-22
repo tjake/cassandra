@@ -26,7 +26,7 @@ import com.google.common.collect.Iterables;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
@@ -132,7 +132,7 @@ public class PartitionRangeReadCommand extends ReadCommand
         return dataRange().contains(partitionKey) && dataRange().partitionFilter(partitionKey).selects(clustering);
     }
 
-    public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+    public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
         return StorageProxy.getRangeSlice(this, consistency);
     }
@@ -155,7 +155,7 @@ public class PartitionRangeReadCommand extends ReadCommand
             return new RangeSliceQueryPager(this, consistency, local, pagingState);
     }
 
-    protected PartitionIterator queryStorage(final ColumnFamilyStore cfs)
+    protected UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs)
     {
         final long start = System.nanoTime();
         final OpOrder.Group op = cfs.readOrdering.start();
@@ -163,7 +163,7 @@ public class PartitionRangeReadCommand extends ReadCommand
         {
             ColumnFamilyStore.ViewFragment view = cfs.select(cfs.viewFilter(dataRange().keyRange()));
             Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), dataRange().keyRange().getString(metadata().getKeyValidator()));
-            return new WrappingPartitionIterator(getSequentialIterator(view, cfs))
+            return new WrappingUnfilteredPartitionIterator(getSequentialIterator(view, cfs))
             {
                 private boolean closed;
 
@@ -194,32 +194,32 @@ public class PartitionRangeReadCommand extends ReadCommand
         }
     }
 
-    private PartitionIterator getSequentialIterator(ColumnFamilyStore.ViewFragment view, ColumnFamilyStore cfs)
+    private UnfilteredPartitionIterator getSequentialIterator(ColumnFamilyStore.ViewFragment view, ColumnFamilyStore cfs)
     {
         // fetch data from current memtable, historical memtables, and SSTables in the correct order.
-        final List<PartitionIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
+        final List<UnfilteredPartitionIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
 
         for (Memtable memtable : view.memtables)
         {
-            PartitionIterator iter = memtable.makePartitionIterator(dataRange(), nowInSec(), isForThrift());
+            UnfilteredPartitionIterator iter = memtable.makePartitionIterator(dataRange(), nowInSec(), isForThrift());
             iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
         }
 
         for (SSTableReader sstable : view.sstables)
         {
-            PartitionIterator iter = sstable.getScanner(dataRange(), nowInSec(), isForThrift());
+            UnfilteredPartitionIterator iter = sstable.getScanner(dataRange(), nowInSec(), isForThrift());
             iterators.add(isForThrift() ? ThriftResultsMerger.maybeWrap(iter, metadata()) : iter);
         }
 
-        return checkCacheFilter(PartitionIterators.mergeLazily(iterators), cfs);
+        return checkCacheFilter(UnfilteredPartitionIterators.mergeLazily(iterators), cfs);
     }
 
-    private PartitionIterator checkCacheFilter(PartitionIterator iter, final ColumnFamilyStore cfs)
+    private UnfilteredPartitionIterator checkCacheFilter(UnfilteredPartitionIterator iter, final ColumnFamilyStore cfs)
     {
-        return new WrappingPartitionIterator(iter)
+        return new WrappingUnfilteredPartitionIterator(iter)
         {
             @Override
-            public AtomIterator computeNext(AtomIterator iter)
+            public UnfilteredRowIterator computeNext(UnfilteredRowIterator iter)
             {
                 // Note that we rely on the fact that until we actually advance 'iter', no really costly operation is actually done
                 // (except for reading the partition key from the index file) due to the call to mergeLazily in getSequentialIterator.
@@ -234,7 +234,7 @@ public class PartitionRangeReadCommand extends ReadCommand
                     // We won't use 'iter' so close it now.
                     iter.close();
 
-                    return filter.getAtomIterator(cached, nowInSec());
+                    return filter.getUnfilteredRowIterator(cached, nowInSec());
                 }
 
                 return iter;
@@ -265,7 +265,7 @@ public class PartitionRangeReadCommand extends ReadCommand
      *
      * See CASSANDRA-8717 for why this exists.
      */
-    public DataIterator postReconciliationProcessing(DataIterator result)
+    public PartitionIterator postReconciliationProcessing(PartitionIterator result)
     {
         ColumnFamilyStore cfs = Keyspace.open(metadata().ksName).getColumnFamilyStore(metadata().cfName);
         SecondaryIndexSearcher searcher = getIndexSearcher(cfs);

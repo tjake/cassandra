@@ -24,11 +24,10 @@ import org.junit.Test;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.ClusteringComparator;
 import org.apache.cassandra.db.LivenessInfo;
-import org.apache.cassandra.db.atoms.AbstractCell;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.CellPath;
+import org.apache.cassandra.db.rows.AbstractCell;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.CellPath;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.serializers.Int32Serializer;

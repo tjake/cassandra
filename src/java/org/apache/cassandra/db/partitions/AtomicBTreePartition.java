@@ -19,7 +19,6 @@ package org.apache.cassandra.db.partitions;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
@@ -32,10 +31,9 @@ import com.google.common.collect.AbstractIterator;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
-import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.utils.btree.BTree;
 import org.apache.cassandra.utils.btree.BTreeSearchIterator;
 import org.apache.cassandra.utils.btree.UpdateFunction;
@@ -93,7 +91,7 @@ public class AtomicBTreePartition implements Partition
     private static final DeletionInfo LIVE = DeletionInfo.live();
     // This is a small optimization: DeletionInfo is mutable, but we know that we will always copy it in that class,
     // so we can safely alias one DeletionInfo.live() reference and avoid some allocations.
-    private static final Holder EMPTY = new Holder(BTree.empty(), LIVE, null, AtomStats.NO_STATS);
+    private static final Holder EMPTY = new Holder(BTree.empty(), LIVE, null, RowStats.NO_STATS);
 
     private final CFMetaData metadata;
     private final DecoratedKey partitionKey;
@@ -142,7 +140,7 @@ public class AtomicBTreePartition implements Partition
         return !BTree.isEmpty(ref.tree);
     }
 
-    public AtomStats stats()
+    public RowStats stats()
     {
         return ref.stats;
     }
@@ -184,21 +182,21 @@ public class AtomicBTreePartition implements Partition
         };
     }
 
-    public AtomIterator atomIterator(int nowInSec)
+    public UnfilteredRowIterator unfilteredIterator(int nowInSec)
     {
-        return atomIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
+        return unfilteredIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
     }
 
-    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
+    public UnfilteredRowIterator unfilteredIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
     {
         if (slices.size() == 0)
         {
             Holder current = ref;
             DeletionTime partitionDeletion = current.deletionInfo.getPartitionDeletion();
             if (columns.columns().statics.isEmpty() && partitionDeletion.isLive())
-                return AtomIterators.emptyIterator(metadata, partitionKey, reversed, nowInSec);
+                return UnfilteredRowIterators.emptyIterator(metadata, partitionKey, reversed, nowInSec);
 
-            return new AbstractAtomIterator(metadata,
+            return new AbstractUnfilteredRowIterator(metadata,
                                             partitionKey,
                                             partitionDeletion,
                                             columns.columns(),
@@ -207,7 +205,7 @@ public class AtomicBTreePartition implements Partition
                                             current.stats,
                                             nowInSec)
             {
-                protected Atom computeNext()
+                protected Unfiltered computeNext()
                 {
                     return endOfData();
                 }
@@ -286,9 +284,9 @@ public class AtomicBTreePartition implements Partition
         }
     }
 
-    private static class SingleSliceIterator extends AbstractAtomIterator
+    private static class SingleSliceIterator extends AbstractUnfilteredRowIterator
     {
-        private final Iterator<Atom> atomIter;
+        private final Iterator<Unfiltered> iterator;
         private final ReusableFilteringRow row;
 
         private SingleSliceIterator(CFMetaData metadata,
@@ -316,7 +314,7 @@ public class AtomicBTreePartition implements Partition
                                             allocator,
                                             nowInSec);
 
-            this.atomIter = new RowAndTombstoneMergeIterator(metadata.comparator, isReversed)
+            this.iterator = new RowAndTombstoneMergeIterator(metadata.comparator, isReversed)
                             .setTo(rowIter, holder.deletionInfo.rangeIterator(slice, isReversed));
 
             this.row = new ReusableFilteringRow(columns.columns().regulars, columns)
@@ -344,12 +342,12 @@ public class AtomicBTreePartition implements Partition
             };
         }
 
-        protected Atom computeNext()
+        protected Unfiltered computeNext()
         {
-            while (atomIter.hasNext())
+            while (iterator.hasNext())
             {
-                Atom next = atomIter.next();
-                if (next.kind() == Atom.Kind.ROW)
+                Unfiltered next = iterator.next();
+                if (next.kind() == Unfiltered.Kind.ROW)
                 {
                     row.setTo((Row)next);
                     if (!row.isEmpty())
@@ -374,7 +372,7 @@ public class AtomicBTreePartition implements Partition
         }
     }
 
-    public static class SlicesIterator extends AbstractAtomIterator
+    public static class SlicesIterator extends AbstractUnfilteredRowIterator
     {
         private final Holder holder;
         private final MemtableAllocator allocator;
@@ -383,7 +381,7 @@ public class AtomicBTreePartition implements Partition
         private final int nowInSec;
 
         private int idx;
-        private AtomIterator currentSlice;
+        private UnfilteredRowIterator currentSlice;
 
         private SlicesIterator(CFMetaData metadata,
                                DecoratedKey key,
@@ -402,7 +400,7 @@ public class AtomicBTreePartition implements Partition
             this.nowInSec = nowInSec;
         }
 
-        protected Atom computeNext()
+        protected Unfiltered computeNext()
         {
             while (true)
             {
@@ -475,7 +473,7 @@ public class AtomicBTreePartition implements Partition
                                           ? current.staticRow
                                           : (current.staticRow == null ? updater.apply(newStatic) : updater.apply(current.staticRow, newStatic));
                 Object[] tree = BTree.<Clusterable, Row, MemtableRowData>update(current.tree, update.metadata().comparator, update, update.rowCount(), updater);
-                AtomStats newStats = current.stats.mergeWith(update.stats());
+                RowStats newStats = current.stats.mergeWith(update.stats());
 
                 if (tree != null && refUpdater.compareAndSet(this, current, new Holder(tree, deletionInfo, staticRow, newStats)))
                 {
@@ -559,9 +557,9 @@ public class AtomicBTreePartition implements Partition
         // the btree of rows
         final Object[] tree;
         final MemtableRowData staticRow;
-        final AtomStats stats;
+        final RowStats stats;
 
-        Holder(Object[] tree, DeletionInfo deletionInfo, MemtableRowData staticRow, AtomStats stats)
+        Holder(Object[] tree, DeletionInfo deletionInfo, MemtableRowData staticRow, RowStats stats)
         {
             this.tree = tree;
             this.deletionInfo = deletionInfo;
@@ -645,7 +643,7 @@ public class AtomicBTreePartition implements Partition
                 return;
 
             Clustering clustering = toInsert.clustering();
-            indexer.maybeIndex(clustering, toInsert.maxLiveTimestamp(), toInsert.partitionKeyLivenessInfo().ttl(), toInsert.deletion());
+            indexer.maybeIndex(clustering, toInsert.maxLiveTimestamp(), toInsert.primaryKeyLivenessInfo().ttl(), toInsert.deletion());
             for (Cell cell : toInsert)
                 indexer.insert(clustering, cell);
         }

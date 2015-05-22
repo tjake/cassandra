@@ -23,15 +23,12 @@ import java.util.List;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.columniterator.SSTableIterator;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.io.util.FileDataInput;
 
 /**
  * A filter over a single partition.
@@ -92,14 +89,14 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
         return !reversed && slices.size() == 1 && !slices.hasLowerBound();
     }
 
-    // Given another iterator, only return the atoms that match this filter
-    public AtomIterator filter(AtomIterator iterator)
+    // Given another iterator, only return the rows that match this filter
+    public UnfilteredRowIterator filter(UnfilteredRowIterator iterator)
     {
         final Slices.InOrderTester tester = slices.inOrderTester(reversed);
 
         // Note that we don't filter markers because that's a bit trickier (we don't know in advance until when
         // the range extend) and it's harmless to left them.
-        return new RowFilteringAtomIterator(iterator)
+        return new FilteringRowIterator(iterator)
         {
             @Override
             public FilteringRow makeRowFilter()
@@ -121,14 +118,14 @@ public class SlicePartitionFilter extends AbstractPartitionFilter
         };
     }
 
-    public AtomIterator filter(SliceableAtomIterator iterator)
+    public UnfilteredRowIterator filter(SliceableUnfilteredRowIterator iterator)
     {
         return slices.makeSliceIterator(iterator);
     }
 
-    public AtomIterator getAtomIterator(Partition partition, int nowInSec)
+    public UnfilteredRowIterator getUnfilteredRowIterator(Partition partition, int nowInSec)
     {
-        return partition.atomIterator(queriedColumns, slices, reversed, nowInSec);
+        return partition.unfilteredIterator(queriedColumns, slices, reversed, nowInSec);
     }
 
     public boolean shouldInclude(SSTableReader sstable)

@@ -17,94 +17,34 @@
  */
 package org.apache.cassandra.db.partitions;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.Iterator;
+import org.apache.cassandra.db.rows.RowIterator;
 
-import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.DeletionTime;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterators;
-
-/**
- * A utility class for writing partition iterators that filter/modify other
- * partition iterators.
- *
- * This work a little bit like Guava's AbstractIterator in that you only need
- * to implement the computeNext() method, though that method takes as argument
- * the AtomIterator to filter from the wrapped partition iterator.
- */
-public abstract class WrappingPartitionIterator extends AbstractPartitionIterator
+public abstract class WrappingPartitionIterator implements PartitionIterator
 {
     protected final PartitionIterator wrapped;
-
-    private AtomIterator next;
 
     protected WrappingPartitionIterator(PartitionIterator wrapped)
     {
         this.wrapped = wrapped;
     }
 
-    public boolean isForThrift()
-    {
-        return wrapped.isForThrift();
-    }
-
     public boolean hasNext()
     {
-        prepareNext();
-        return next != null;
+        return wrapped.hasNext();
     }
 
-    public AtomIterator next()
+    public RowIterator next()
     {
-        prepareNext();
-        assert next != null;
-
-        AtomIterator toReturn = next;
-        next = null;
-        return toReturn;
+        return wrapped.next();
     }
 
-    private void prepareNext()
+    public void remove()
     {
-        while (next == null && wrapped.hasNext())
-        {
-            AtomIterator wrappedNext = wrapped.next();
-            AtomIterator maybeNext = computeNext(wrappedNext);
-
-            // As the wrappd iterator shouldn't return an empty iterator, if computeNext
-            // gave us back it's input we save the isEmpty check.
-            if (maybeNext != null && (isForThrift() || maybeNext == wrappedNext || !AtomIterators.isEmpty(maybeNext)))
-            {
-                next = maybeNext;
-                return;
-            }
-            else
-            {
-                wrappedNext.close();
-            }
-        }
+        wrapped.remove();
     }
 
-    /**
-     * Given the next AtomIterator from the wrapped partition iterator, return
-     * the (potentially modified) AtomIterator to return. Please note that the
-     * result will be skipped if it's either {@code null} of if it's empty.
-     *
-     * The default implementation return it's input unchanged to make it easier
-     * to write wrapping partition iterators that only change the close method.
-     */
-    protected AtomIterator computeNext(AtomIterator iter)
-    {
-        return iter;
-    }
-
-    @Override
     public void close()
     {
         wrapped.close();
-        if (next != null)
-            next.close();
     }
 }

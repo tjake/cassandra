@@ -41,15 +41,14 @@ import org.apache.cassandra.cql3.functions.FunctionName;
 import org.apache.cassandra.cql3.functions.Functions;
 import org.apache.cassandra.cql3.statements.*;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.RowIterator;
-import org.apache.cassandra.db.partitions.DataIterator;
-import org.apache.cassandra.db.partitions.DataIterators;
+import org.apache.cassandra.db.rows.RowIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.PartitionIterators;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.metrics.CQLMetrics;
 import org.apache.cassandra.service.*;
 import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.thrift.ThriftClientState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.ResultMessage;
@@ -335,12 +334,12 @@ public class QueryProcessor implements QueryHandler
 
     public static UntypedResultSet resultify(String query, RowIterator partition)
     {
-        return resultify(query, DataIterators.singletonIterator(partition));
+        return resultify(query, PartitionIterators.singletonIterator(partition));
     }
 
-    public static UntypedResultSet resultify(String query, DataIterator partitions)
+    public static UntypedResultSet resultify(String query, PartitionIterator partitions)
     {
-        try (DataIterator iter = partitions)
+        try (PartitionIterator iter = partitions)
         {
             SelectStatement ss = (SelectStatement) getStatement(query, null).statement;
             ResultSet cqlRows = ss.process(iter);

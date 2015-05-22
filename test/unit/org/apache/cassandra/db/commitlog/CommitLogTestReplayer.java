@@ -28,7 +28,7 @@ import org.junit.Assert;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Mutation;
-import org.apache.cassandra.db.atoms.SerializationHelper;
+import org.apache.cassandra.db.rows.SerializationHelper;
 import org.apache.cassandra.io.util.FastByteArrayInputStream;
 
 /**

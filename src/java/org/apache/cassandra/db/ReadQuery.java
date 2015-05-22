@@ -17,7 +17,6 @@
  */
 package org.apache.cassandra.db;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
@@ -36,14 +35,14 @@ public interface ReadQuery
 {
     public static final ReadQuery EMPTY = new ReadQuery()
     {
-        public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+        public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
         {
-            return DataIterators.EMPTY;
+            return PartitionIterators.EMPTY;
         }
 
-        public DataIterator executeLocally()
+        public PartitionIterator executeLocally()
         {
-            return DataIterators.EMPTY;
+            return PartitionIterators.EMPTY;
         }
 
         public DataLimits limits()
@@ -74,14 +73,14 @@ public interface ReadQuery
      *
      * @return the result of the query.
      */
-    public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException;
+    public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException;
 
     /**
      * Execute the query locally.
      *
      * @return the result of the query.
      */
-    public DataIterator executeLocally();
+    public PartitionIterator executeLocally();
 
     /**
      * Returns a pager for the query.

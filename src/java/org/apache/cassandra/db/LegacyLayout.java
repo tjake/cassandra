@@ -31,19 +31,12 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.io.ISerializer;
-import org.apache.cassandra.io.ISSTableSerializer;
-import org.apache.cassandra.io.sstable.format.Version;
-import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.utils.*;
-
-import static org.apache.cassandra.io.sstable.IndexHelper.IndexInfo;
 
 /**
  * Functions to deal with the old format.
@@ -257,7 +250,7 @@ public abstract class LegacyLayout
     }
 
     // For serializing to old wire format
-    public static Pair<DeletionInfo, Iterator<LegacyCell>> fromAtomIterator(AtomIterator iterator)
+    public static Pair<DeletionInfo, Iterator<LegacyCell>> fromUnfilteredRowIterator(UnfilteredRowIterator iterator)
     {
         // we need to extract the range tombstone so materialize the partition. Since this is
         // used for the on-wire format, this is not worst than it used to be.
@@ -268,29 +261,29 @@ public abstract class LegacyLayout
     }
 
     // For thrift sake
-    public static AtomIterator toAtomIterator(CFMetaData metadata,
-                                              DecoratedKey key,
-                                              DeletionInfo delInfo,
-                                              Iterator<LegacyCell> cells,
-                                              int nowInSec)
+    public static UnfilteredRowIterator toUnfilteredRowIterator(CFMetaData metadata,
+                                                                DecoratedKey key,
+                                                                DeletionInfo delInfo,
+                                                                Iterator<LegacyCell> cells,
+                                                                int nowInSec)
     {
-        return toAtomIterator(metadata, key, LegacyDeletionInfo.from(delInfo), cells, false, nowInSec);
+        return toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.from(delInfo), cells, false, nowInSec);
     }
 
     // For deserializing old wire format
-    public static AtomIterator onWireCellstoAtomIterator(CFMetaData metadata,
-                                                         DecoratedKey key,
-                                                         LegacyDeletionInfo delInfo,
-                                                         Iterator<LegacyCell> cells,
-                                                         boolean reversed,
-                                                         int nowInSec)
+    public static UnfilteredRowIterator onWireCellstoUnfilteredRowIterator(CFMetaData metadata,
+                                                                           DecoratedKey key,
+                                                                           LegacyDeletionInfo delInfo,
+                                                                           Iterator<LegacyCell> cells,
+                                                                           boolean reversed,
+                                                                           int nowInSec)
     {
         // If the table is a static compact, the "column_metadata" are now internally encoded as
         // static. This has already been recognized by decodeCellName, but it means the cells
         // provided are not in the expected order (the "static" cells are not necessarily at the front).
-        // So sort them to make sure toAtomIterator works as expected.
+        // So sort them to make sure toUnfilteredRowIterator works as expected.
         // Further, if the query is reversed, then the on-wire format still has cells in non-reversed
-        // order, but we need to have them reverse in the final AtomIterator. So reverse them.
+        // order, but we need to have them reverse in the final UnfilteredRowIterator. So reverse them.
         if (metadata.isStaticCompactTable() || reversed)
         {
             List<LegacyCell> l = new ArrayList<>();
@@ -299,15 +292,15 @@ public abstract class LegacyLayout
             cells = l.iterator();
         }
 
-        return toAtomIterator(metadata, key, delInfo, cells, reversed, nowInSec);
+        return toUnfilteredRowIterator(metadata, key, delInfo, cells, reversed, nowInSec);
     }
 
-    private static AtomIterator toAtomIterator(CFMetaData metadata,
-                                               DecoratedKey key,
-                                               LegacyDeletionInfo delInfo,
-                                               Iterator<LegacyCell> cells,
-                                               boolean reversed,
-                                               int nowInSec)
+    private static UnfilteredRowIterator toUnfilteredRowIterator(CFMetaData metadata,
+                                                                 DecoratedKey key,
+                                                                 LegacyDeletionInfo delInfo,
+                                                                 Iterator<LegacyCell> cells,
+                                                                 boolean reversed,
+                                                                 int nowInSec)
     {
         // Check if we have some static
         PeekingIterator<LegacyCell> iter = Iterators.peekingIterator(cells);
@@ -317,19 +310,19 @@ public abstract class LegacyLayout
 
         Iterator<Row> rows = convertToRows(new CellGrouper(metadata, nowInSec), iter, delInfo);
         Iterator<RangeTombstone> ranges = delInfo.deletionInfo.rangeIterator(reversed);
-        final Iterator<Atom> atoms = new RowAndTombstoneMergeIterator(metadata.comparator, reversed)
+        final Iterator<Unfiltered> atoms = new RowAndTombstoneMergeIterator(metadata.comparator, reversed)
                                      .setTo(rows, ranges);
 
-        return new AbstractAtomIterator(metadata,
+        return new AbstractUnfilteredRowIterator(metadata,
                                         key,
                                         delInfo.deletionInfo.getPartitionDeletion(),
                                         metadata.partitionColumns(),
                                         staticRow,
                                         reversed,
-                                        AtomStats.NO_STATS,
+                                        RowStats.NO_STATS,
                                         nowInSec)
         {
-            protected Atom computeNext()
+            protected Unfiltered computeNext()
             {
                 return atoms.hasNext() ? atoms.next() : endOfData();
             }
@@ -390,6 +383,7 @@ public abstract class LegacyLayout
         return grouper.getRow();
     }
 
+    @SuppressWarnings("unchecked")
     private static Iterator<LegacyAtom> asLegacyAtomIterator(Iterator<? extends LegacyAtom> iter)
     {
         return (Iterator<LegacyAtom>)iter;
@@ -406,7 +400,7 @@ public abstract class LegacyLayout
             {
                 // We're merging cell with range tombstones, so we should always only have a single atom to reduce.
                 assert atom == null;
-                atom = (LegacyAtom)current;
+                atom = current;
             }
 
             protected LegacyAtom getReduced()
@@ -476,7 +470,7 @@ public abstract class LegacyLayout
                 {
                     hasReturnedRowMarker = true;
                     LegacyCellName cellName = new LegacyCellName(row.clustering(), null, null);
-                    LivenessInfo info = row.partitionKeyLivenessInfo();
+                    LivenessInfo info = row.primaryKeyLivenessInfo();
                     return new LegacyCell(LegacyCell.Kind.REGULAR, cellName, ByteBufferUtil.EMPTY_BYTE_BUFFER, info.timestamp(), info.localDeletionTime(), info.ttl());
                 }
 
@@ -484,12 +478,12 @@ public abstract class LegacyLayout
                     return endOfData();
 
                 Cell cell = cells.next();
-                return makeLegacyCell(metadata, row.clustering(), cell);
+                return makeLegacyCell(row.clustering(), cell);
             }
         };
     }
 
-    private static LegacyCell makeLegacyCell(CFMetaData metadata, Clustering clustering, Cell cell)
+    private static LegacyCell makeLegacyCell(Clustering clustering, Cell cell)
     {
         LegacyCell.Kind kind;
         if (cell.isCounterCell())
@@ -513,7 +507,7 @@ public abstract class LegacyLayout
                                             final Iterator<LegacyCell> cells,
                                             final int nowInSec)
     {
-        return AtomIterators.asRowIterator(toAtomIterator(metadata, key, LegacyDeletionInfo.live(), cells, false, nowInSec));
+        return UnfilteredRowIterators.filter(toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.live(), cells, false, nowInSec));
     }
 
     private static LivenessInfo livenessInfo(CFMetaData metadata, LegacyCell cell)
@@ -586,7 +580,7 @@ public abstract class LegacyLayout
                 {
                     // A null for the column means it's a row marker
                     if (c1.column == null)
-                        return c2.column == null ? 0 : -1;
+                        return -1;
                     if (c2.column == null)
                         return 1;
 
@@ -653,7 +647,7 @@ public abstract class LegacyLayout
         // and we want to throw only after having deserialized the full cell.
         if ((mask & COUNTER_MASK) != 0)
         {
-            long timestampOfLastDelete = in.readLong();
+            in.readLong(); // timestampOfLastDelete: this has been unused for a long time so we ignore it
             long ts = in.readLong();
             ByteBuffer value = ByteBufferUtil.readWithLength(in);
             if (flag == SerializationHelper.Flag.FROM_REMOTE || (flag == SerializationHelper.Flag.LOCAL && CounterContext.instance().shouldClearLocal(value)))
@@ -698,7 +692,6 @@ public abstract class LegacyLayout
 
     public static Iterator<LegacyCell> deserializeCells(final CFMetaData metadata,
                                                         final DataInput in,
-                                                        final int version,
                                                         final SerializationHelper.Flag flag,
                                                         final int size)
     {
@@ -812,7 +805,7 @@ public abstract class LegacyLayout
             }
             else
             {
-                if (collectionDeletion != null && collectionDeletion.start.collectionName.equals(cell.name.column.name.bytes) && collectionDeletion.deletionTime.deletes(cell.timestamp))
+                if (collectionDeletion != null && collectionDeletion.start.collectionName.name.equals(cell.name.column.name) && collectionDeletion.deletionTime.deletes(cell.timestamp))
                     return true;
 
                 CellPath path = cell.name.collectionElement == null ? null : CellPath.create(cell.name.collectionElement);
@@ -836,7 +829,7 @@ public abstract class LegacyLayout
                 return true;
             }
 
-            if (tombstone.isCollectionTombstone(metadata))
+            if (tombstone.isCollectionTombstone())
             {
                 if (clustering == null)
                 {
@@ -931,10 +924,10 @@ public abstract class LegacyLayout
         public String toString()
         {
             StringBuilder sb = new StringBuilder();
-            sb.append(bound.kind()).append("(");
+            sb.append(bound.kind()).append('(');
             for (int i = 0; i < bound.size(); i++)
                 sb.append(i > 0 ? ":" : "").append(bound.get(i) == null ? "null" : ByteBufferUtil.bytesToHex(bound.get(i)));
-            sb.append(")");
+            sb.append(')');
             return String.format("Bound(%s, collection=%s)", sb.toString(), collectionName == null ? "null" : collectionName.name);
         }
     }
@@ -1136,7 +1129,7 @@ public abstract class LegacyLayout
             return this;
         }
 
-        public boolean isCollectionTombstone(CFMetaData metadata)
+        public boolean isCollectionTombstone()
         {
             return start.collectionName != null;
         }
@@ -1217,7 +1210,7 @@ public abstract class LegacyLayout
                     long markedAt = in.readLong();
 
                     LegacyRangeTombstone tombstone = new LegacyRangeTombstone(start, end, new SimpleDeletionTime(markedAt, delTime));
-                    if (tombstone.isCollectionTombstone(metadata) || tombstone.isRowDeletion(metadata))
+                    if (tombstone.isCollectionTombstone() || tombstone.isRowDeletion(metadata))
                         inRowTombsones.add(tombstone);
                     else
                         ranges.add(start.bound, end.bound, markedAt, delTime);
@@ -1263,7 +1256,7 @@ public abstract class LegacyLayout
             }
 
             LegacyRangeTombstone tombstone = atom.asRangeTombstone();
-            if (tombstone.deletionTime.supersedes(partitionDeletion) && !tombstone.isRowDeletion(metadata) && !tombstone.isCollectionTombstone(metadata))
+            if (tombstone.deletionTime.supersedes(partitionDeletion) && !tombstone.isRowDeletion(metadata) && !tombstone.isCollectionTombstone())
                 openTombstones.add(tombstone);
         }
 
@@ -1386,7 +1379,7 @@ public abstract class LegacyLayout
     //    return rangeTombstoneSerializer;
     //}
 
-    //public static class LegacyAtomDeserializer extends AtomDeserializer
+    //public static class LegacyAtomDeserializer extends UnfilteredDeserializer
     //{
     //    private final Deserializer nameDeserializer;
 
@@ -1428,7 +1421,7 @@ public abstract class LegacyLayout
     //        return nameDeserializer.compareNextTo(prefix);
     //    }
 
-    //    public Atom readNext() throws IOException
+    //    public Unfiltered readNext() throws IOException
     //    {
     //        if (openTombstone != null && nameDeserializer.compareNextTo(openTombstone.max) > 0)
     //            return marker.setTo(openTombstone.max, false, openTombstone.data);

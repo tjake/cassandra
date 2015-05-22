@@ -22,9 +22,9 @@ import java.io.File;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.CQLTester;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomStats;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.RowStats;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -45,7 +45,7 @@ public class RowIndexEntryTest extends CQLTester
         final RowIndexEntry simple = new RowIndexEntry(123);
 
         DataOutputBuffer buffer = new DataOutputBuffer();
-        SerializationHeader header = new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), AtomStats.NO_STATS, true);
+        SerializationHeader header = new SerializationHeader(cfs.metadata, cfs.metadata.partitionColumns(), RowStats.NO_STATS, true);
         RowIndexEntry.Serializer serializer = new RowIndexEntry.Serializer(cfs.metadata, BigFormat.latestVersion, header);
 
         serializer.serialize(simple, buffer);
@@ -57,14 +57,14 @@ public class RowIndexEntryTest extends CQLTester
             execute("INSERT INTO %s (a, b, c) VALUES (?, ?, ?)", 0, "" + i, i);
 
         buffer = new DataOutputBuffer();
-        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
         {
-            try (AtomIterator atomIterator = iterator.next())
+            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
             {
                 File tempFile = File.createTempFile("row_index_entry_test", null);
                 tempFile.deleteOnExit();
                 SequentialWriter writer = SequentialWriter.open(tempFile);
-                ColumnIndex columnIndex = ColumnIndex.writeAndBuildIndex(atomIterator, writer, header, BigFormat.latestVersion);
+                ColumnIndex columnIndex = ColumnIndex.writeAndBuildIndex(unfilteredRowIterator, writer, header, BigFormat.latestVersion);
                 RowIndexEntry<IndexHelper.IndexInfo> withIndex = RowIndexEntry.create(0xdeadbeef, DeletionTime.LIVE, columnIndex);
 
                 // sanity check

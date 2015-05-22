@@ -32,11 +32,11 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -99,7 +99,7 @@ public class RowTest
         writeRangeTombstone(update2, "4", "41", 123, 1230);
         writeRangeTombstone(update2, "5", "51", 123, 1230);
 
-        try (AtomIterator merged = AtomIterators.merge(ImmutableList.of(update1.atomIterator(), update2.atomIterator())))
+        try (UnfilteredRowIterator merged = UnfilteredRowIterators.merge(ImmutableList.of(update1.unfilteredIterator(), update2.unfilteredIterator())))
         {
             Object[][] expected = new Object[][]{ { "1", "11", 123l, 123 },
                                                   { "111", "112", 1230l, 123 },
@@ -139,9 +139,9 @@ public class RowTest
         writeSimpleCellValue(update.writer(), cfm, defB, "b1", 1, nowInSeconds);
         update.writer().endOfRow();
 
-        Atom atom = update.atomIterator().next();
-        assertTrue(atom.kind() == Atom.Kind.ROW);
-        Row row = (Row)atom;
+        Unfiltered unfiltered = update.unfilteredIterator().next();
+        assertTrue(unfiltered.kind() == Unfiltered.Kind.ROW);
+        Row row = (Row) unfiltered;
         assertEquals("a2", defA.cellValueType().getString(row.getCell(defA).value()));
         assertEquals("b1", defB.cellValueType().getString(row.getCell(defB).value()));
         assertEquals(2, row.columns().columnCount());
@@ -161,8 +161,8 @@ public class RowTest
         new Mutation(update).applyUnsafe();
 
         // when we read with a nowInSeconds before the cell has expired,
-        // the DataIterator includes the row we just wrote
-        try( DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds, dk).addClustering("c1")
+        // the PartitionIterator includes the row we just wrote
+        try( PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds, dk).addClustering("c1")
                                                                                            .build()
                                                                                            .executeLocally())
         {
@@ -171,8 +171,8 @@ public class RowTest
         }
 
         // when we read with a nowInSeconds after the cell has expired, the row is filtered
-        // so the DataIterator is empty
-        try( DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds + ttl + 1, dk).addClustering("c1")
+        // so the PartitionIterator is empty
+        try( PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds + ttl + 1, dk).addClustering("c1")
                                                                                                      .build()
                                                                                                      .executeLocally())
         {

@@ -34,10 +34,10 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.Slice.Bound;
-import org.apache.cassandra.db.atoms.Atom;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.Row;
+import org.apache.cassandra.db.rows.Unfiltered;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.filter.NamesPartitionFilter;
@@ -114,9 +114,9 @@ public class RowCacheTest
 
         CachedPartition cachedCf = (CachedPartition)CacheService.instance.rowCache.get(rck);
         assertEquals(cachedCf.rowCount(), 1);
-        for (Atom atom : Util.once(cachedCf.atomIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
+        for (Unfiltered unfiltered : Util.once(cachedCf.unfilteredIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
         {
-            Row r = (Row)atom;
+            Row r = (Row) unfiltered;
 
             for (Cell c : r)
             {
@@ -147,13 +147,13 @@ public class RowCacheTest
         {
             DecoratedKey key = Util.dk("key" + i);
 
-            try (AtomIterator ignored = Util.readFullPartition(cachedStore, key)) {}
+            try (UnfilteredRowIterator ignored = Util.readFullPartition(cachedStore, key)) {}
             assert CacheService.instance.rowCache.size() == i + 1;
             assert cachedStore.containsCachedParition(key); // current key should be stored in the cache
 
             // checking if cell is read correctly after cache
             CachedPartition cp = cachedStore.getRawCachedPartition(key);
-            try (AtomIterator ai = cp.atomIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
+            try (UnfilteredRowIterator ai = cp.unfilteredIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
             {
                 assert ai.hasNext();
                 Row r = (Row)ai.next();
@@ -175,12 +175,12 @@ public class RowCacheTest
         {
             DecoratedKey key = Util.dk("key" + i);
 
-            try (AtomIterator ignored = Util.readFullPartition(cachedStore, key)) {}
+            try (UnfilteredRowIterator ignored = Util.readFullPartition(cachedStore, key)) {}
             assert cachedStore.containsCachedParition(key); // cache should be populated with the latest rows read (old ones should be popped)
 
             // checking if cell is read correctly after cache
             CachedPartition cp = cachedStore.getRawCachedPartition(key);
-            try (AtomIterator ai = cp.atomIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
+            try (UnfilteredRowIterator ai = cp.unfilteredIterator(ColumnsSelection.withoutSubselection(cp.columns()), Slices.ALL, false, FBUtilities.nowInSeconds()))
             {
                 assert ai.hasNext();
                 Row r = (Row)ai.next();
@@ -306,9 +306,9 @@ public class RowCacheTest
         assertEquals(cachedCf.rowCount(), 100);
         int i = 0;
 
-        for (Atom atom : Util.once(cachedCf.atomIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
+        for (Unfiltered unfiltered : Util.once(cachedCf.unfilteredIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
         {
-            Row r = (Row)atom;
+            Row r = (Row) unfiltered;
 
             assertEquals(r.clustering().get(0), ByteBufferUtil.bytes(values[i].substring(3)));
 

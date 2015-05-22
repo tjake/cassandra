@@ -22,9 +22,8 @@ package org.apache.cassandra.db.compaction;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.marshal.AsciiType;
-import org.apache.cassandra.db.partitions.ArrayBackedPartition;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.junit.BeforeClass;
 import com.google.common.collect.Sets;
@@ -45,7 +44,6 @@ import org.apache.cassandra.utils.FBUtilities;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -226,7 +224,7 @@ public class TTLExpiryTest
         assertTrue(scanner.hasNext());
         while(scanner.hasNext())
         {
-            AtomIterator iter = scanner.next();
+            UnfilteredRowIterator iter = scanner.next();
             assertEquals(Util.dk(noTTLKey), iter.partitionKey());
         }
         scanner.close();

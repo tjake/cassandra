@@ -32,8 +32,8 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.AbstractAtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.AbstractUnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.util.FileUtils;
@@ -68,11 +68,11 @@ public class RecoveryManagerMissingHeaderTest
         Keyspace keyspace2 = Keyspace.open(KEYSPACE2);
 
         DecoratedKey dk = Util.dk("keymulti");
-        AtomIterator upd1 = Util.apply(new RowUpdateBuilder(keyspace1.getColumnFamilyStore(CF_STANDARD1).metadata, 1L, 0, "keymulti")
+        UnfilteredRowIterator upd1 = Util.apply(new RowUpdateBuilder(keyspace1.getColumnFamilyStore(CF_STANDARD1).metadata, 1L, 0, "keymulti")
                                        .clustering("col1").add("val", "1")
                                        .build());
 
-        AtomIterator upd2 = Util.apply(new RowUpdateBuilder(keyspace2.getColumnFamilyStore(CF_STANDARD3).metadata, 1L, 0, "keymulti")
+        UnfilteredRowIterator upd2 = Util.apply(new RowUpdateBuilder(keyspace2.getColumnFamilyStore(CF_STANDARD3).metadata, 1L, 0, "keymulti")
                                        .clustering("col1").add("val", "1")
                                        .build());
 
@@ -88,7 +88,7 @@ public class RecoveryManagerMissingHeaderTest
 
         CommitLog.instance.resetUnsafe(false);
 
-        Assert.assertTrue(AbstractAtomIterator.equal(upd1, Util.readFullPartition(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk)));
-        Assert.assertTrue(AbstractAtomIterator.equal(upd2, Util.readFullPartition(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk)));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd1, Util.readFullPartition(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk)));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd2, Util.readFullPartition(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk)));
     }
 }

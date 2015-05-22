@@ -21,7 +21,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import org.apache.cassandra.cache.KeyCacheKey;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.SliceableAtomIterator;
+import org.apache.cassandra.db.rows.SliceableUnfilteredRowIterator;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.columniterator.SSTableIterator;
 import org.apache.cassandra.db.columniterator.SSTableReversedIterator;
@@ -58,14 +58,14 @@ public class BigTableReader extends SSTableReader
         super(desc, components, metadata, partitioner, maxDataAge, sstableMetadata, openReason, header);
     }
 
-    public SliceableAtomIterator iterator(DecoratedKey key, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift)
+    public SliceableUnfilteredRowIterator iterator(DecoratedKey key, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift)
     {
         return reversed
              ? new SSTableReversedIterator(this, key, selectedColumns, nowInSec, isForThrift)
              : new SSTableIterator(this, key, selectedColumns, nowInSec, isForThrift);
     }
 
-    public SliceableAtomIterator iterator(FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift)
+    public SliceableUnfilteredRowIterator iterator(FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift)
     {
         return reversed
              ? new SSTableReversedIterator(this, file, key, indexEntry, selectedColumns, nowInSec, isForThrift)

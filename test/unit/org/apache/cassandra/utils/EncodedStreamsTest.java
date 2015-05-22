@@ -25,15 +25,12 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.RowUpdateBuilder;
 import org.apache.cassandra.db.TypeSizes;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.marshal.CounterColumnType;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.net.MessagingService;
@@ -109,7 +106,7 @@ public class EncodedStreamsTest
             Assert.assertEquals(i, idis.readLong());
     }
 
-    private AtomIterator createTable()
+    private UnfilteredRowIterator createTable()
     {
         CFMetaData cfm = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD).metadata;
 
@@ -118,10 +115,10 @@ public class EncodedStreamsTest
         builder.clustering("vijay").add(cfm.partitionColumns().iterator().next(), "try").build();
         builder.clustering("to").add(cfm.partitionColumns().iterator().next(), "be_nice").build();
 
-        return builder.atomIterator();
+        return builder.unfilteredIterator();
     }
 
-    private AtomIterator createCounterTable()
+    private UnfilteredRowIterator createCounterTable()
     {
         CFMetaData cfm = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_COUNTER).metadata;
         RowUpdateBuilder builder = new RowUpdateBuilder(cfm, 0, "key");
@@ -129,7 +126,7 @@ public class EncodedStreamsTest
         builder.clustering("vijay").add(cfm.partitionColumns().iterator().next(), 1L).build();
         builder.clustering("wants").add(cfm.partitionColumns().iterator().next(), 1000000L).build();
 
-        return builder.atomIterator();
+        return builder.unfilteredIterator();
     }
 
     @Test
@@ -137,13 +134,13 @@ public class EncodedStreamsTest
     {
         ByteArrayOutputStream byteArrayOStream1 = new ByteArrayOutputStream();
         EncodedDataOutputStream odos = new EncodedDataOutputStream(byteArrayOStream1);
-        AtomIteratorSerializer.serializer.serialize(createTable(), odos, version, 1);
+        UnfilteredRowIteratorSerializer.serializer.serialize(createTable(), odos, version, 1);
 
         ByteArrayInputStream byteArrayIStream1 = new ByteArrayInputStream(byteArrayOStream1.toByteArray());
         EncodedDataInputStream odis = new EncodedDataInputStream(new DataInputStream(byteArrayIStream1));
-        AtomIterator partition = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
+        UnfilteredRowIterator partition = UnfilteredRowIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
         Assert.assertTrue(Iterators.elementsEqual(partition, createTable()));
-        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(createTable(), version, 1, TypeSizes.VINT));
+        Assert.assertEquals(byteArrayOStream1.size(), (int) UnfilteredRowIteratorSerializer.serializer.serializedSize(createTable(), version, 1, TypeSizes.VINT));
     }
 
     @Test
@@ -151,13 +148,13 @@ public class EncodedStreamsTest
     {
         ByteArrayOutputStream byteArrayOStream1 = new ByteArrayOutputStream();
         EncodedDataOutputStream odos = new EncodedDataOutputStream(byteArrayOStream1);
-        AtomIteratorSerializer.serializer.serialize(createCounterTable(), odos, version, 1);
+        UnfilteredRowIteratorSerializer.serializer.serialize(createCounterTable(), odos, version, 1);
 
         ByteArrayInputStream byteArrayIStream1 = new ByteArrayInputStream(byteArrayOStream1.toByteArray());
         EncodedDataInputStream odis = new EncodedDataInputStream(new DataInputStream(byteArrayIStream1));
-        AtomIterator partition = AtomIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
+        UnfilteredRowIterator partition = UnfilteredRowIteratorSerializer.serializer.deserialize(odis, version, SerializationHelper.Flag.LOCAL);
         Assert.assertTrue(Iterators.elementsEqual(partition, createCounterTable()));
-        Assert.assertEquals(byteArrayOStream1.size(), (int) AtomIteratorSerializer.serializer.serializedSize(createCounterTable(), version, 1, TypeSizes.VINT));
+        Assert.assertEquals(byteArrayOStream1.size(), (int) UnfilteredRowIteratorSerializer.serializer.serializedSize(createCounterTable(), version, 1, TypeSizes.VINT));
     }
 }
 

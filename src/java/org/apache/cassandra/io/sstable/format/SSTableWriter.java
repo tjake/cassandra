@@ -18,24 +18,19 @@
 
 package org.apache.cassandra.io.sstable.format;
 
-import java.io.DataInput;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
-import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.RowIndexEntry;
 import org.apache.cassandra.db.SerializationHeader;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -164,7 +159,7 @@ public abstract class SSTableWriter extends SSTable implements Transactional
      *
      * @throws FSWriteError if a write to the dataFile fails
      */
-    public abstract RowIndexEntry append(AtomIterator iterator);
+    public abstract RowIndexEntry append(UnfilteredRowIterator iterator);
 
     public abstract long getFilePointer();
 

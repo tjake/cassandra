@@ -18,7 +18,6 @@
 */
 package org.apache.cassandra.db.compaction;
 
-import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.concurrent.ExecutionException;
 
@@ -33,8 +32,6 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.Atom;
-import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.partitions.ArrayBackedPartition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.ConfigurationException;

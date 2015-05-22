@@ -18,11 +18,7 @@
 package org.apache.cassandra.io.sstable.format.big;
 
 import java.io.*;
-import java.nio.ByteBuffer;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,16 +26,13 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
-import org.apache.cassandra.io.sstable.format.Version;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.Schema;
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.FSWriteError;
 import org.apache.cassandra.io.compress.CompressedSequentialWriter;
@@ -52,7 +45,6 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.FilterFactory;
 import org.apache.cassandra.utils.IFilter;
-import org.apache.cassandra.utils.StreamingHistogram;
 import org.apache.cassandra.utils.concurrent.Transactional;
 
 import static org.apache.cassandra.utils.Throwables.merge;
@@ -136,7 +128,7 @@ public class BigTableWriter extends SSTableWriter
      *
      * @throws FSWriteError if a write to the dataFile fails
      */
-    public RowIndexEntry append(AtomIterator iterator)
+    public RowIndexEntry append(UnfilteredRowIterator iterator)
     {
         DecoratedKey key = iterator.partitionKey();
 
@@ -146,7 +138,7 @@ public class BigTableWriter extends SSTableWriter
             return null;
         }
 
-        if (AtomIterators.isEmpty(iterator))
+        if (UnfilteredRowIterators.isEmpty(iterator))
             return null;
 
         long startPosition = beforeAppend(key);
@@ -168,13 +160,13 @@ public class BigTableWriter extends SSTableWriter
         }
     }
 
-    private static class StatsCollector extends WrappingAtomIterator
+    private static class StatsCollector extends WrappingUnfilteredRowIterator
     {
         private int cellCount;
         private final MetadataCollector collector;
         private final Set<ColumnDefinition> complexColumnsSetInRow = new HashSet<>();
 
-        StatsCollector(AtomIterator iter, MetadataCollector collector)
+        StatsCollector(UnfilteredRowIterator iter, MetadataCollector collector)
         {
             super(iter);
             this.collector = collector;
@@ -182,16 +174,16 @@ public class BigTableWriter extends SSTableWriter
         }
 
         @Override
-        public Atom next()
+        public Unfiltered next()
         {
-            Atom atom = super.next();
-            collector.updateClusteringValues(atom.clustering());
+            Unfiltered unfiltered = super.next();
+            collector.updateClusteringValues(unfiltered.clustering());
 
-            switch (atom.kind())
+            switch (unfiltered.kind())
             {
                 case ROW:
-                    Row row = (Row)atom;
-                    collector.update(row.partitionKeyLivenessInfo());
+                    Row row = (Row) unfiltered;
+                    collector.update(row.primaryKeyLivenessInfo());
                     collector.update(row.deletion());
 
                     int simpleColumnsSet = 0;
@@ -218,10 +210,10 @@ public class BigTableWriter extends SSTableWriter
 
                     break;
                 case RANGE_TOMBSTONE_MARKER:
-                    collector.update(((RangeTombstoneMarker)atom).deletionTime());
+                    collector.update(((RangeTombstoneMarker) unfiltered).deletionTime());
                     break;
             }
-            return atom;
+            return unfiltered;
         }
 
         @Override

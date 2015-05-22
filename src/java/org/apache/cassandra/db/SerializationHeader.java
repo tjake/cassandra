@@ -28,7 +28,7 @@ import com.google.common.base.Function;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.UTF8Type;
@@ -51,7 +51,7 @@ public class SerializationHeader
     private final List<AbstractType<?>> clusteringTypes;
 
     private final PartitionColumns columns;
-    private final AtomStats stats;
+    private final RowStats stats;
 
     private final Map<ByteBuffer, AbstractType<?>> typeMap;
 
@@ -59,7 +59,7 @@ public class SerializationHeader
     public final int baseDeletionTime;
     private final int baseTTL;
 
-    // Whether or not to store cell in a sparse or dense way. See AtomSerializer for details.
+    // Whether or not to store cell in a sparse or dense way. See UnfilteredSerializer for details.
     private final boolean useSparseColumnLayout;
 
     private final boolean forSSTable;
@@ -67,7 +67,7 @@ public class SerializationHeader
     private SerializationHeader(AbstractType<?> keyType,
                                 List<AbstractType<?>> clusteringTypes,
                                 PartitionColumns columns,
-                                AtomStats stats,
+                                RowStats stats,
                                 Map<ByteBuffer, AbstractType<?>> typeMap,
                                 boolean forSSTable)
     {
@@ -117,7 +117,7 @@ public class SerializationHeader
         return new SerializationHeader(BytesType.instance,
                                        clusteringTypes,
                                        PartitionColumns.NONE,
-                                       AtomStats.NO_STATS,
+                                       RowStats.NO_STATS,
                                        Collections.<ByteBuffer, AbstractType<?>>emptyMap(),
                                        true);
     }
@@ -126,7 +126,7 @@ public class SerializationHeader
     {
         // The serialization header has to be computed before the start of compaction (since it's used to write)
         // the result. This means that when compacting multiple sources, we won't have perfectly accurate stats
-        // (for AtomStats) since compaction may delete, purge and generally merge rows in unknown ways. This is
+        // (for RowStats) since compaction may delete, purge and generally merge rows in unknown ways. This is
         // kind of ok because those stats are only used for optimizing the underlying storage format and so we
         // just have to strive for as good as possible. Currently, we stick to a relatively naive merge of existing
         // global stats because it's simple and probably good enough in most situation but we could probably
@@ -134,7 +134,7 @@ public class SerializationHeader
         // Note however that to avoid seeing our accuracy degrade through successive compactions, we don't base
         // our stats merging on the compacted files headers, which as we just said can be somewhat inaccurate,
         // but rather on their stats stored in StatsMetadata that are fully accurate.
-        AtomStats.Collector stats = new AtomStats.Collector();
+        RowStats.Collector stats = new RowStats.Collector();
         PartitionColumns.Builder columns = PartitionColumns.builder();
         for (SSTableReader sstable : sstables)
         {
@@ -152,7 +152,7 @@ public class SerializationHeader
 
     public SerializationHeader(CFMetaData metadata,
                                PartitionColumns columns,
-                               AtomStats stats,
+                               RowStats stats,
                                boolean forSSTable)
     {
         this(metadata.getKeyValidator(),
@@ -205,7 +205,7 @@ public class SerializationHeader
         return (int)(c.getTimeInMillis() / 1000);
     }
 
-    public AtomStats stats()
+    public RowStats stats()
     {
         return stats;
     }
@@ -288,13 +288,13 @@ public class SerializationHeader
         private final List<AbstractType<?>> clusteringTypes;
         private final Map<ByteBuffer, AbstractType<?>> staticColumns;
         private final Map<ByteBuffer, AbstractType<?>> regularColumns;
-        private final AtomStats stats;
+        private final RowStats stats;
 
         private Component(AbstractType<?> keyType,
                           List<AbstractType<?>> clusteringTypes,
                           Map<ByteBuffer, AbstractType<?>> staticColumns,
                           Map<ByteBuffer, AbstractType<?>> regularColumns,
-                          AtomStats stats)
+                          RowStats stats)
         {
             this.keyType = keyType;
             this.clusteringTypes = clusteringTypes;
@@ -344,7 +344,7 @@ public class SerializationHeader
     {
         public void serializeForMessaging(SerializationHeader header, DataOutputPlus out, boolean hasStatic) throws IOException
         {
-            AtomStats.serializer.serialize(header.stats, out);
+            RowStats.serializer.serialize(header.stats, out);
 
             if (hasStatic)
                 Columns.serializer.serialize(header.columns.statics, out);
@@ -353,7 +353,7 @@ public class SerializationHeader
 
         public SerializationHeader deserializeForMessaging(DataInput in, CFMetaData metadata, boolean hasStatic) throws IOException
         {
-            AtomStats stats = AtomStats.serializer.deserialize(in);
+            RowStats stats = RowStats.serializer.deserialize(in);
 
             AbstractType<?> keyType = metadata.getKeyValidator();
             List<AbstractType<?>> clusteringTypes = typesOf(metadata.clusteringColumns());
@@ -366,7 +366,7 @@ public class SerializationHeader
 
         public long serializedSizeForMessaging(SerializationHeader header, TypeSizes sizes, boolean hasStatic)
         {
-            long size = AtomStats.serializer.serializedSize(header.stats, sizes);
+            long size = RowStats.serializer.serializedSize(header.stats, sizes);
 
             if (hasStatic)
                 size += Columns.serializer.serializedSize(header.columns.statics, sizes);
@@ -377,7 +377,7 @@ public class SerializationHeader
         // For SSTables
         public void serialize(Component header, DataOutputPlus out) throws IOException
         {
-            AtomStats.serializer.serialize(header.stats, out);
+            RowStats.serializer.serialize(header.stats, out);
 
             writeType(header.keyType, out);
             out.writeShort(header.clusteringTypes.size());
@@ -391,7 +391,7 @@ public class SerializationHeader
         // For SSTables
         public Component deserialize(Version version, DataInput in) throws IOException
         {
-            AtomStats stats = AtomStats.serializer.deserialize(in);
+            RowStats stats = RowStats.serializer.deserialize(in);
 
             AbstractType<?> keyType = readType(in);
             int size = in.readUnsignedShort();
@@ -412,7 +412,7 @@ public class SerializationHeader
         public int serializedSize(Component header)
         {
             TypeSizes sizes = TypeSizes.NATIVE;
-            int size = AtomStats.serializer.serializedSize(header.stats, sizes);
+            int size = RowStats.serializer.serializedSize(header.stats, sizes);
 
             size += sizeofType(header.keyType, sizes);
             size += sizes.sizeof((short)header.clusteringTypes.size());

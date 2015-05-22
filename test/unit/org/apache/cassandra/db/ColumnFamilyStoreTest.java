@@ -35,13 +35,13 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.*;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.cql3.Operator;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
-import org.apache.cassandra.db.partitions.DataIterators;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
+import org.apache.cassandra.db.partitions.PartitionIterators;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -124,7 +124,7 @@ public class ColumnFamilyStoreTest
         cfs.forceBlockingFlush();
 
         ((ClearableHistogram)cfs.metric.sstablesPerReadHistogram.cf).clear(); // resets counts
-        DataIterators.consume(new SinglePartitionNamesReadBuilder(cfs, Util.dk("key1")).addClustering("c1").executeLocally());
+        PartitionIterators.consume(new SinglePartitionNamesReadBuilder(cfs, Util.dk("key1")).addClustering("c1").executeLocally());
         assertEquals(1, cfs.metric.sstablesPerReadHistogram.cf.getCount());
     }
 
@@ -145,7 +145,7 @@ public class ColumnFamilyStoreTest
         List<SSTableReader> ssTables = keyspace.getAllSSTables();
         assertEquals(1, ssTables.size());
         ssTables.get(0).forceFilterFailures();
-        try (AtomIterator result = Util.readFullPartition(cfs, Util.dk("key2")))
+        try (UnfilteredRowIterator result = Util.readFullPartition(cfs, Util.dk("key2")))
         {
             assertEquals(0, Iterators.size(result));
         }
@@ -586,7 +586,7 @@ public class ColumnFamilyStoreTest
     }
     private void assertRangeCount(ColumnFamilyStore cfs, ColumnDefinition col, ByteBuffer val, int count)
     {
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .addFilter(col, Operator.EQ, val)
                 .build().executeLocally())
         {

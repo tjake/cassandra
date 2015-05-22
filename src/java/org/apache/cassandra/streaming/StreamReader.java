@@ -22,7 +22,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.UUID;
 
 import com.google.common.base.Throwables;
@@ -36,15 +35,13 @@ import com.ning.compress.lzf.LZFInputStream;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.context.CounterContext;
-import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.io.sstable.SSTableAtomIterator;
+import org.apache.cassandra.io.sstable.SSTableSimpleIterator;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.io.sstable.format.Version;
-import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.streaming.messages.FileMessageHeader;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -173,7 +170,7 @@ public class StreamReader
         cfs.invalidateCachedPartition(key);
     }
 
-    public static class StreamDeserializer extends UnmodifiableIterator<Atom> implements AtomIterator
+    public static class StreamDeserializer extends UnmodifiableIterator<Unfiltered> implements UnfilteredRowIterator
     {
         private final CFMetaData metadata;
         private final DataInput in;
@@ -182,7 +179,7 @@ public class StreamReader
 
         private DecoratedKey key;
         private DeletionTime partitionLevelDeletion;
-        private SSTableAtomIterator atomIter;
+        private SSTableSimpleIterator iterator;
         private Row staticRow;
         private IOException exception;
 
@@ -202,8 +199,8 @@ public class StreamReader
         {
             key = StorageService.getPartitioner().decorateKey(ByteBufferUtil.readWithShortLength(in));
             partitionLevelDeletion = DeletionTime.serializer.deserialize(in);
-            atomIter = SSTableAtomIterator.create(metadata, in, header, helper, partitionLevelDeletion);
-            staticRow = atomIter.readStaticRow();
+            iterator = SSTableSimpleIterator.create(metadata, in, header, helper, partitionLevelDeletion);
+            staticRow = iterator.readStaticRow();
             return key;
         }
 
@@ -238,7 +235,7 @@ public class StreamReader
             return staticRow;
         }
 
-        public AtomStats stats()
+        public RowStats stats()
         {
             return header.stats();
         }
@@ -252,7 +249,7 @@ public class StreamReader
         {
             try
             {
-                return atomIter.hasNext();
+                return iterator.hasNext();
             }
             catch (IOError e)
             {
@@ -265,15 +262,15 @@ public class StreamReader
             }
         }
 
-        public Atom next()
+        public Unfiltered next()
         {
             // Note that in practice we know that IOException will be thrown by hasNext(), because that's
             // where the actual reading happens, so we don't bother catching RuntimeException here (contrarily
             // to what we do in hasNext)
-            Atom atom = atomIter.next();
-            return metadata.isCounter() && atom.kind() == Atom.Kind.ROW
-                 ? maybeMarkLocalToBeCleared((Row)atom)
-                 : atom;
+            Unfiltered unfiltered = iterator.next();
+            return metadata.isCounter() && unfiltered.kind() == Unfiltered.Kind.ROW
+                 ? maybeMarkLocalToBeCleared((Row) unfiltered)
+                 : unfiltered;
         }
 
         private Row maybeMarkLocalToBeCleared(Row row)

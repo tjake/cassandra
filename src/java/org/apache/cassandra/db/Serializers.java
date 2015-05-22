@@ -18,11 +18,8 @@
 package org.apache.cassandra.db;
 
 import java.io.*;
-import java.nio.ByteBuffer;
-import java.util.*;
 
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.sstable.format.Version;

@@ -55,7 +55,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.compaction.CompactionInfo.Holder;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.index.SecondaryIndexBuilder;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
@@ -790,7 +790,7 @@ public class CompactionManager implements CompactionManagerMBean
                 if (ci.isStopRequested())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                AtomIterator partition = ci.next();
+                UnfilteredRowIterator partition = ci.next();
                 partition = cleanupStrategy.cleanup(partition);
                 if (partition == null)
                     continue;
@@ -832,7 +832,7 @@ public class CompactionManager implements CompactionManagerMBean
         }
 
         public abstract ISSTableScanner getScanner(SSTableReader sstable, RateLimiter limiter);
-        public abstract AtomIterator cleanup(AtomIterator partition);
+        public abstract UnfilteredRowIterator cleanup(UnfilteredRowIterator partition);
 
         private static final class Bounded extends CleanupStrategy
         {
@@ -858,7 +858,7 @@ public class CompactionManager implements CompactionManagerMBean
             }
 
             @Override
-            public AtomIterator cleanup(AtomIterator partition)
+            public UnfilteredRowIterator cleanup(UnfilteredRowIterator partition)
             {
                 return partition;
             }
@@ -882,7 +882,7 @@ public class CompactionManager implements CompactionManagerMBean
             }
 
             @Override
-            public AtomIterator cleanup(AtomIterator partition)
+            public UnfilteredRowIterator cleanup(UnfilteredRowIterator partition)
             {
                 if (Range.isInRanges(partition.partitionKey().getToken(), ranges))
                     return partition;
@@ -890,7 +890,7 @@ public class CompactionManager implements CompactionManagerMBean
                 cfs.invalidateCachedPartition(partition.partitionKey());
 
                 // acquire memtable lock here because secondary index deletion may cause a race. See CASSANDRA-3712
-                try (AtomIterator iter = partition; OpOrder.Group opGroup = cfs.keyspace.writeOrder.start())
+                try (UnfilteredRowIterator iter = partition; OpOrder.Group opGroup = cfs.keyspace.writeOrder.start())
                 {
                     cfs.indexManager.deleteFromIndexes(partition, opGroup);
                 }
@@ -1149,7 +1149,7 @@ public class CompactionManager implements CompactionManagerMBean
 
             while (ci.hasNext())
             {
-                AtomIterator partition = ci.next();
+                UnfilteredRowIterator partition = ci.next();
                 // if current range from sstable is repaired, save it into the new repaired sstable
                 if (Range.isInRanges(partition.partitionKey().getToken(), ranges))
                 {

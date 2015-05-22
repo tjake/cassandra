@@ -18,7 +18,7 @@
 package org.apache.cassandra.db.partitions;
 
 import org.apache.cassandra.cache.IRowCacheEntry;
-import org.apache.cassandra.db.atoms.Row;
+import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.io.ISerializer;
 
 /**

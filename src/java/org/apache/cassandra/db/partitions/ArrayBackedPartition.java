@@ -20,17 +20,14 @@ package org.apache.cassandra.db.partitions;
 import java.io.DataInput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.filter.ColumnsSelection;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.utils.FBUtilities;
 
 public class ArrayBackedPartition extends AbstractPartitionData implements CachedPartition
 {
@@ -62,7 +59,7 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
      * @param iterator the iterator got gather in memory.
      * @return the created partition.
      */
-    public static ArrayBackedPartition create(AtomIterator iterator)
+    public static ArrayBackedPartition create(UnfilteredRowIterator iterator)
     {
         return create(iterator, 16);
     }
@@ -78,7 +75,7 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
      * correspond or be a good estimation of the number or rows in {@code iterator}.
      * @return the created partition.
      */
-    public static ArrayBackedPartition create(AtomIterator iterator, int initialRowCapacity)
+    public static ArrayBackedPartition create(UnfilteredRowIterator iterator, int initialRowCapacity)
     {
         ArrayBackedPartition partition = new ArrayBackedPartition(iterator.metadata(),
                                                                   iterator.partitionKey(),
@@ -95,11 +92,11 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
 
         while (iterator.hasNext())
         {
-            Atom atom = iterator.next();
-            if (atom.kind() == Atom.Kind.ROW)
-                ((Row)atom).copyTo(writer);
+            Unfiltered unfiltered = iterator.next();
+            if (unfiltered.kind() == Unfiltered.Kind.ROW)
+                ((Row) unfiltered).copyTo(writer);
             else
-                ((RangeTombstoneMarker)atom).copyTo(markerCollector);
+                ((RangeTombstoneMarker) unfiltered).copyTo(markerCollector);
         }
 
         // A Partition (or more precisely AbstractPartitionData) always assumes that its data is in clustering
@@ -224,22 +221,22 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             assert partition instanceof ArrayBackedPartition;
             ArrayBackedPartition p = (ArrayBackedPartition)partition;
 
-            try (AtomIterator iter = p.sliceableAtomIterator())
+            try (UnfilteredRowIterator iter = p.sliceableUnfilteredIterator())
             {
-                AtomIteratorSerializer.serializer.serialize(iter, out, MessagingService.current_version, p.rows);
+                UnfilteredRowIteratorSerializer.serializer.serialize(iter, out, MessagingService.current_version, p.rows);
             }
         }
 
         public CachedPartition deserialize(DataInput in) throws IOException
         {
             // Note that it would be slightly simpler to just do
-            //   ArrayBackedPartition.create(AtomIteratorSerializer.serializer.deserialize(...));
+            //   ArrayBackedPartition.create(UnfilteredRowIteratorSerializer.serializer.deserialize(...));
             // However deserializing the header separatly is not a lot harder and allows us to:
             //   1) get the capacity of the partition so we can size it properly directly
-            //   2) saves the creation of a temporary iterator: atoms are directly written to the partition, which
+            //   2) saves the creation of a temporary iterator: rows are directly written to the partition, which
             //      is slightly faster.
 
-            AtomIteratorSerializer.Header h = AtomIteratorSerializer.serializer.deserializeHeader(in, MessagingService.current_version, SerializationHelper.Flag.LOCAL);
+            UnfilteredRowIteratorSerializer.Header h = UnfilteredRowIteratorSerializer.serializer.deserializeHeader(in, MessagingService.current_version, SerializationHelper.Flag.LOCAL);
             assert !h.isReversed && h.rowEstimate >= 0;
 
             ArrayBackedPartition partition = new ArrayBackedPartition(h.metadata, h.key, h.partitionDeletion, h.sHeader.columns(), h.rowEstimate, false, h.nowInSec);
@@ -248,7 +245,7 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             Writer writer = partition.new Writer(h.nowInSec);
             RangeTombstoneMarker.Writer markerWriter = partition.new RangeTombstoneCollector();
 
-            AtomIteratorSerializer.serializer.deserializeAtoms(in, new SerializationHelper(MessagingService.current_version, SerializationHelper.Flag.LOCAL, h.nowInSec), h.sHeader, writer, markerWriter);
+            UnfilteredRowIteratorSerializer.serializer.deserialize(in, new SerializationHelper(MessagingService.current_version, SerializationHelper.Flag.LOCAL, h.nowInSec), h.sHeader, writer, markerWriter);
             return partition;
         }
 
@@ -257,9 +254,9 @@ public class ArrayBackedPartition extends AbstractPartitionData implements Cache
             assert partition instanceof ArrayBackedPartition;
             ArrayBackedPartition p = (ArrayBackedPartition)partition;
 
-            try (AtomIterator iter = p.sliceableAtomIterator())
+            try (UnfilteredRowIterator iter = p.sliceableUnfilteredIterator())
             {
-                return AtomIteratorSerializer.serializer.serializedSize(iter, MessagingService.current_version, p.rows, sizes);
+                return UnfilteredRowIteratorSerializer.serializer.serializedSize(iter, MessagingService.current_version, p.rows, sizes);
             }
         }
     }

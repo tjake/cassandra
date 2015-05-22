@@ -30,13 +30,9 @@ import com.google.common.base.Throwables;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterators;
-import org.apache.cassandra.db.atoms.AtomStats;
-import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.rows.RowStats;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.io.FSError;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.service.ActiveRepairService;
@@ -93,7 +89,7 @@ class SSTableSimpleWriter
         return SSTableWriter.create(createDescriptor(directory, metadata.ksName, metadata.cfName, formatType),
                                     0,
                                     ActiveRepairService.UNREPAIRED_SSTABLE,
-                                    new SerializationHeader(metadata, metadata.partitionColumns(), AtomStats.NO_STATS, true));
+                                    new SerializationHeader(metadata, metadata.partitionColumns(), RowStats.NO_STATS, true));
     }
 
     protected static Descriptor createDescriptor(File directory, final String keyspace, final String columnFamily, final SSTableFormat.Type fmt)
@@ -190,7 +186,7 @@ class SSTableSimpleWriter
 
     protected void writePartition(PartitionUpdate update) throws IOException
     {
-        getOrCreateWriter().append(update.atomIterator());
+        getOrCreateWriter().append(update.unfilteredIterator());
     }
 
     protected PartitionUpdate getPartitionUpdate() throws IOException

@@ -25,11 +25,11 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -75,7 +75,7 @@ public class DeletePartitionTest
                 .applyUnsafe();
 
         // validate that data's written
-        try (DataIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
+        try (PartitionIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
                 .executeLocally())
         {
             assertTrue(iter.hasNext());
@@ -97,10 +97,10 @@ public class DeletePartitionTest
             store.forceBlockingFlush();
 
         // validate removal
-        try (PartitionIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
+        try (UnfilteredPartitionIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
                                                                 .executeLocally(store))
         {
-            AtomIterator partition = iter.next();
+            UnfilteredRowIterator partition = iter.next();
             assertFalse(partition.partitionLevelDeletion().isLive());
             assertFalse(partition.hasNext());
         }

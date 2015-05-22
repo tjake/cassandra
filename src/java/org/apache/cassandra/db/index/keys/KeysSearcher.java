@@ -17,11 +17,7 @@
  */
 package org.apache.cassandra.db.index.keys;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -29,13 +25,11 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.index.*;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.dht.AbstractBounds;
-import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 
 public class KeysSearcher extends SecondaryIndexSearcher
@@ -47,7 +41,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
         super(indexManager, columns);
     }
 
-    protected PartitionIterator queryDataFromIndex(final AbstractSimplePerColumnSecondaryIndex index,
+    protected UnfilteredPartitionIterator queryDataFromIndex(final AbstractSimplePerColumnSecondaryIndex index,
                                                    final DecoratedKey indexKey,
                                                    final RowIterator indexHits,
                                                    final ReadCommand command,
@@ -55,9 +49,9 @@ public class KeysSearcher extends SecondaryIndexSearcher
     {
         assert indexHits.staticRow() == Rows.EMPTY_STATIC_ROW;
 
-        return new PartitionIterator()
+        return new UnfilteredPartitionIterator()
         {
-            private AtomIterator next;
+            private UnfilteredRowIterator next;
 
             public boolean isForThrift()
             {
@@ -69,12 +63,12 @@ public class KeysSearcher extends SecondaryIndexSearcher
                 return prepareNext();
             }
 
-            public AtomIterator next()
+            public UnfilteredRowIterator next()
             {
                 if (next == null)
                     prepareNext();
 
-                AtomIterator toReturn = next;
+                UnfilteredRowIterator toReturn = next;
                 next = null;
                 return toReturn;
             }
@@ -93,12 +87,12 @@ public class KeysSearcher extends SecondaryIndexSearcher
                                                                                            DataLimits.NONE,
                                                                                            key,
                                                                                            command.partitionFilter(key));
-                    AtomIterator dataIter = filterIfStale(dataCmd.queryMemtableAndDisk(baseCfs),
+                    UnfilteredRowIterator dataIter = filterIfStale(dataCmd.queryMemtableAndDisk(baseCfs),
                                                           index,
                                                           hit,
                                                           indexKey.getKey(),
                                                           writeOp);
-                    if (dataIter == null || AtomIterators.isEmpty(dataIter))
+                    if (dataIter == null || UnfilteredRowIterators.isEmpty(dataIter))
                     {
                         dataIter.close();
                     }
@@ -125,7 +119,7 @@ public class KeysSearcher extends SecondaryIndexSearcher
         };
     }
 
-    private AtomIterator filterIfStale(AtomIterator iterator,
+    private UnfilteredRowIterator filterIfStale(UnfilteredRowIterator iterator,
                                        AbstractSimplePerColumnSecondaryIndex index,
                                        Row indexHit,
                                        ByteBuffer indexedValue,
@@ -144,11 +138,11 @@ public class KeysSearcher extends SecondaryIndexSearcher
                          clustering,
                          indexedValue,
                          null,
-                         new SimpleDeletionTime(indexHit.partitionKeyLivenessInfo().timestamp(), iterator.nowInSec()),
+                         new SimpleDeletionTime(indexHit.primaryKeyLivenessInfo().timestamp(), iterator.nowInSec()),
                          writeOp,
                          iterator.nowInSec());
             return null;
         }
-        return result.atomIterator();
+        return result.unfilteredIterator();
     }
 }

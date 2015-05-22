@@ -20,15 +20,13 @@ package org.apache.cassandra.service;
 import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.ReadTimeoutException;
@@ -48,18 +46,18 @@ public class DataResolver extends ResponseResolver
         super(keyspace, command, consistency, maxResponseCount);
     }
 
-    public DataIterator getData()
+    public PartitionIterator getData()
     {
         ReadResponse response = responses.iterator().next().payload;
-        return PartitionIterators.asDataIterator(response.makeIterator());
+        return UnfilteredPartitionIterators.filter(response.makeIterator());
     }
 
-    public DataIterator resolve()
+    public PartitionIterator resolve()
     {
         // We could get more responses while this method runs, which is ok (we're happy to ignore any response not here
         // at the beginning of this method), so grab the response count once and use that through the method.
         int count = responses.size();
-        List<PartitionIterator> iters = new ArrayList<>(count);
+        List<UnfilteredPartitionIterator> iters = new ArrayList<>(count);
         InetAddress[] sources = new InetAddress[count];
         for (int i = 0; i < count; i++)
         {
@@ -71,29 +69,29 @@ public class DataResolver extends ResponseResolver
         // Even though every responses should honor the limit, we might have more than requested post reconciliation,
         // so ensure we're respecting the limit.
         DataLimits.Counter counter = command.limits().newCounter(true);
-        return new CountingDataIterator(mergeWithShortReadProtection(iters, sources, counter), counter);
+        return new CountingPartitionIterator(mergeWithShortReadProtection(iters, sources, counter), counter);
     }
 
-    private DataIterator mergeWithShortReadProtection(List<PartitionIterator> results, InetAddress[] sources, DataLimits.Counter resultCounter)
+    private PartitionIterator mergeWithShortReadProtection(List<UnfilteredPartitionIterator> results, InetAddress[] sources, DataLimits.Counter resultCounter)
     {
         // If we have only one results, there is no read repair to do and we can't get short reads
         if (results.size() == 1)
-            return PartitionIterators.asDataIterator(results.get(0));
+            return UnfilteredPartitionIterators.filter(results.get(0));
 
-        PartitionIterators.MergeListener listener = new RepairMergeListener(sources);
+        UnfilteredPartitionIterators.MergeListener listener = new RepairMergeListener(sources);
 
         // So-called "short reads" stems from nodes returning only a subset of the results they have for a partition due to the limit,
         // but that subset not being enough post-reconciliation. So if we don't have limit, don't bother.
         if (command.limits().isUnlimited())
-            return PartitionIterators.mergeAsDataIterator(results, listener);
+            return UnfilteredPartitionIterators.mergeAndFilter(results, listener);
 
         for (int i = 0; i < results.size(); i++)
             results.set(i, new ShortReadProtectedIterator(sources[i], results.get(i), resultCounter));
 
-        return PartitionIterators.mergeAsDataIterator(results, listener);
+        return UnfilteredPartitionIterators.mergeAndFilter(results, listener);
     }
 
-    private class RepairMergeListener implements PartitionIterators.MergeListener
+    private class RepairMergeListener implements UnfilteredPartitionIterators.MergeListener
     {
         private final InetAddress[] sources;
 
@@ -102,16 +100,16 @@ public class DataResolver extends ResponseResolver
             this.sources = sources;
         }
 
-        public AtomIterators.MergeListener getAtomMergeListener(DecoratedKey partitionKey, List<AtomIterator> versions)
+        public UnfilteredRowIterators.MergeListener getRowMergeListener(DecoratedKey partitionKey, List<UnfilteredRowIterator> versions)
         {
             return new MergeListener(partitionKey, columns(versions), nowInSec(versions));
         }
 
-        private PartitionColumns columns(List<AtomIterator> versions)
+        private PartitionColumns columns(List<UnfilteredRowIterator> versions)
         {
             Columns statics = Columns.NONE;
             Columns regulars = Columns.NONE;
-            for (AtomIterator iter : versions)
+            for (UnfilteredRowIterator iter : versions)
             {
                 if (iter == null)
                     continue;
@@ -123,11 +121,11 @@ public class DataResolver extends ResponseResolver
             return new PartitionColumns(statics, regulars);
         }
 
-        private int nowInSec(List<AtomIterator> versions)
+        private int nowInSec(List<UnfilteredRowIterator> versions)
         {
             // We could assert that all versions have the same nowInSec for sanity sake, but
-            // already do so during the merge (in AtomIterators.AtomMergeIterator) so don't bother
-            for (AtomIterator iter : versions)
+            // already do so during the merge (in UnfilteredRowIterators.AtomMergeIterator) so don't bother
+            for (UnfilteredRowIterator iter : versions)
                 if (iter != null)
                     return iter.nowInSec();
             throw new AssertionError();
@@ -152,7 +150,7 @@ public class DataResolver extends ResponseResolver
             }
         }
 
-        private class MergeListener implements AtomIterators.MergeListener
+        private class MergeListener implements UnfilteredRowIterators.MergeListener
         {
             private final DecoratedKey partitionKey;
             private final PartitionColumns columns;
@@ -216,7 +214,7 @@ public class DataResolver extends ResponseResolver
                 {
                     Row version = versions[i];
 
-                    if (version == null || mergedInfo.supersedes(version.partitionKeyLivenessInfo()))
+                    if (version == null || mergedInfo.supersedes(version.primaryKeyLivenessInfo()))
                         currentRow(i).writePartitionKeyLivenessInfo(mergedInfo);
 
                     if (version == null || mergedDeletion.supersedes(version.deletion()))
@@ -291,12 +289,12 @@ public class DataResolver extends ResponseResolver
         }
     }
 
-    private class ShortReadProtectedIterator extends CountingPartitionIterator
+    private class ShortReadProtectedIterator extends CountingUnfilteredPartitionIterator
     {
         private final InetAddress source;
         private final DataLimits.Counter postReconciliationCounter;
 
-        private ShortReadProtectedIterator(InetAddress source, PartitionIterator iterator, DataLimits.Counter postReconciliationCounter)
+        private ShortReadProtectedIterator(InetAddress source, UnfilteredPartitionIterator iterator, DataLimits.Counter postReconciliationCounter)
         {
             super(iterator, command.limits().newCounter(false));
             this.source = source;
@@ -304,18 +302,18 @@ public class DataResolver extends ResponseResolver
         }
 
         @Override
-        public AtomIterator next()
+        public UnfilteredRowIterator next()
         {
-            return new ShortReadProtectedAtomIterator(super.next());
+            return new ShortReadProtectedRowIterator(super.next());
         }
 
-        private class ShortReadProtectedAtomIterator extends WrappingAtomIterator
+        private class ShortReadProtectedRowIterator extends WrappingUnfilteredRowIterator
         {
             private boolean initialReadIsDone;
-            private AtomIterator shortReadContinuation;
+            private UnfilteredRowIterator shortReadContinuation;
             private Clustering lastClustering;
 
-            ShortReadProtectedAtomIterator(AtomIterator iter)
+            ShortReadProtectedRowIterator(UnfilteredRowIterator iter)
             {
                 super(iter);
             }
@@ -335,11 +333,11 @@ public class DataResolver extends ResponseResolver
             }
 
             @Override
-            public Atom next()
+            public Unfiltered next()
             {
-                Atom next = initialReadIsDone ? shortReadContinuation.next() : super.next();
+                Unfiltered next = initialReadIsDone ? shortReadContinuation.next() : super.next();
 
-                if (next.kind() == Atom.Kind.ROW)
+                if (next.kind() == Unfiltered.Kind.ROW)
                     lastClustering = ((Row)next).clustering();
 
                 return next;
@@ -406,7 +404,7 @@ public class DataResolver extends ResponseResolver
                 return shortReadContinuation.hasNext();
             }
 
-            private AtomIterator doShortReadRetry(SinglePartitionReadCommand<?> retryCommand)
+            private UnfilteredRowIterator doShortReadRetry(SinglePartitionReadCommand<?> retryCommand)
             {
                 DataResolver resolver = new DataResolver(keyspace, retryCommand, ConsistencyLevel.ONE, 1);
                 ReadCallback handler = new ReadCallback(resolver, ConsistencyLevel.ONE, retryCommand, Collections.singletonList(source));
@@ -418,7 +416,7 @@ public class DataResolver extends ResponseResolver
                 // We don't call handler.get() because we want to preserve tombstones since we're still in the middle of merging node results.
                 handler.awaitResults();
                 assert resolver.responses.size() == 1;
-                return PartitionIterators.getOnlyElement(resolver.responses.get(0).payload.makeIterator(), retryCommand);
+                return UnfilteredPartitionIterators.getOnlyElement(resolver.responses.get(0).payload.makeIterator(), retryCommand);
             }
         }
     }

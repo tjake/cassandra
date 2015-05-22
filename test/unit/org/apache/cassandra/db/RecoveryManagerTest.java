@@ -31,10 +31,10 @@ import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.AbstractAtomIterator;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.AbstractUnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.context.CounterContext;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 
@@ -100,11 +100,11 @@ public class RecoveryManagerTest
         Keyspace keyspace1 = Keyspace.open(KEYSPACE1);
         Keyspace keyspace2 = Keyspace.open(KEYSPACE2);
 
-        AtomIterator upd1 = Util.apply(new RowUpdateBuilder(keyspace1.getColumnFamilyStore(CF_STANDARD1).metadata, 1L, 0, "keymulti")
+        UnfilteredRowIterator upd1 = Util.apply(new RowUpdateBuilder(keyspace1.getColumnFamilyStore(CF_STANDARD1).metadata, 1L, 0, "keymulti")
             .clustering("col1").add("val", "1")
             .build());
 
-        AtomIterator upd2 = Util.apply(new RowUpdateBuilder(keyspace2.getColumnFamilyStore(CF_STANDARD3).metadata, 1L, 0, "keymulti")
+        UnfilteredRowIterator upd2 = Util.apply(new RowUpdateBuilder(keyspace2.getColumnFamilyStore(CF_STANDARD3).metadata, 1L, 0, "keymulti")
                                        .clustering("col2").add("val", "1")
                                        .build());
 
@@ -114,8 +114,8 @@ public class RecoveryManagerTest
         CommitLog.instance.resetUnsafe(false);
 
         DecoratedKey dk = Util.dk("keymulti");
-        Assert.assertTrue(AbstractAtomIterator.equal(upd1, Util.readFullPartition(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk)));
-        Assert.assertTrue(AbstractAtomIterator.equal(upd2, Util.readFullPartition(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk)));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd1, Util.readFullPartition(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk)));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd2, Util.readFullPartition(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk)));
     }
 
     @Test
@@ -168,7 +168,7 @@ public class RecoveryManagerTest
 
         // Sanity check row count prior to clear and replay
         int rowCount = 0;
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);
         }
@@ -178,7 +178,7 @@ public class RecoveryManagerTest
         CommitLog.instance.resetUnsafe(false);
 
         // TODO: Failing. Nothing's getting replayed.
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);
         }
@@ -213,7 +213,7 @@ public class RecoveryManagerTest
 
         // Sanity check row count prior to clear and replay
         int rowCount = 0;
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);
         }
@@ -223,7 +223,7 @@ public class RecoveryManagerTest
         CommitLog.instance.resetUnsafe(false);
 
         // TODO: Fix this. Nothing's getting replayed
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);
         }

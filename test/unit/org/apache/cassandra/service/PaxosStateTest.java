@@ -27,8 +27,8 @@ import org.junit.Test;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.Row;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.service.paxos.Commit;
@@ -92,7 +92,7 @@ public class PaxosStateTest
 
     private void assertDataPresent(ColumnFamilyStore cfs, DecoratedKey key, String name, ByteBuffer value)
     {
-        AtomIterator cf = Util.readFullPartition(cfs, key);
+        UnfilteredRowIterator cf = Util.readFullPartition(cfs, key);
         assertTrue(cf.hasNext());
         assertEquals(0, ByteBufferUtil.compareUnsigned(value,
                 ((Row) cf.next()).getCell(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(name))).value()));
@@ -100,7 +100,7 @@ public class PaxosStateTest
 
     private void assertNoDataPresent(ColumnFamilyStore cfs, DecoratedKey key)
     {
-        AtomIterator cf = Util.readFullPartition(cfs, key);
+        UnfilteredRowIterator cf = Util.readFullPartition(cfs, key);
         assertFalse(cf.hasNext());
     }
 }

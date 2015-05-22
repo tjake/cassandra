@@ -17,12 +17,9 @@
  */
 package org.apache.cassandra.service;
 
-import java.nio.ByteBuffer;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.net.MessageIn;
@@ -47,8 +44,8 @@ public abstract class ResponseResolver
         this.responses = new Accumulator<>(maxResponseCount);
     }
 
-    public abstract DataIterator getData();
-    public abstract DataIterator resolve() throws DigestMismatchException;
+    public abstract PartitionIterator getData();
+    public abstract PartitionIterator resolve() throws DigestMismatchException;
 
     public abstract boolean isDataPresent();
 

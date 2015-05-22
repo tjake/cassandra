@@ -26,7 +26,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.db.context.CounterContext;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -246,7 +246,7 @@ public class CounterMutationTest
 
         // Get rid of the complete partition
         RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key1", "cc").applyUnsafe();
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .addClustering("cc")
              .addColumn(ByteBufferUtil.bytes("val"))
              .addColumn(ByteBufferUtil.bytes("val2"))
@@ -263,7 +263,7 @@ public class CounterMutationTest
                 .add("val2", 1L)
                 .build(),
             ConsistencyLevel.ONE).apply();
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .addClustering("cc")
              .addColumn(ByteBufferUtil.bytes("val"))
              .addColumn(ByteBufferUtil.bytes("val2"))

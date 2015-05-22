@@ -17,9 +17,7 @@
  */
 package org.apache.cassandra.db.partitions;
 
-import java.io.IOException;
-
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.DataLimits;
 
 public class CountingPartitionIterator extends WrappingPartitionIterator
@@ -30,6 +28,11 @@ public class CountingPartitionIterator extends WrappingPartitionIterator
     {
         super(result);
         this.counter = counter;
+    }
+
+    public CountingPartitionIterator(PartitionIterator result, DataLimits limits)
+    {
+        this(result, limits.newCounter(true));
     }
 
     public DataLimits.Counter counter()
@@ -47,9 +50,10 @@ public class CountingPartitionIterator extends WrappingPartitionIterator
     }
 
     @Override
-    public AtomIterator computeNext(AtomIterator iter)
+    public RowIterator next()
     {
+        RowIterator iter = super.next();
         counter.newPartition(iter.partitionKey());
-        return new CountingAtomIterator(iter, counter);
+        return new CountingRowIterator(iter, counter);
     }
 }

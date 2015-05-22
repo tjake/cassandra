@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -31,13 +29,10 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Iterators;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
-import org.apache.cassandra.db.partitions.DataIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.thrift.IndexExpression;
-import org.apache.cassandra.thrift.IndexOperator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.utils.FBUtilities;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -49,7 +44,6 @@ import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.dht.ByteOrderedPartitioner.BytesToken;
-import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
@@ -93,7 +87,7 @@ public class CleanupTest
         Keyspace keyspace = Keyspace.open(KEYSPACE1);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF_STANDARD1);
 
-        PartitionIterator iter;
+        UnfilteredPartitionIterator iter;
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, "val", LOOPS);
@@ -122,7 +116,7 @@ public class CleanupTest
         Keyspace keyspace = Keyspace.open(KEYSPACE1);
         ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(CF_INDEXED1);
 
-        PartitionIterator rows;
+        UnfilteredPartitionIterator rows;
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, "birthdate", LOOPS);
@@ -139,7 +133,7 @@ public class CleanupTest
         cf.add(cdef, Operator.EQ, VALUE);
         DataRange range = DataRange.allData(cfs.metadata, cfs.partitioner);
         ReadCommand rc = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), cf, DataLimits.NONE, range);
-        try(DataIterator iter = rc.executeLocally())
+        try(PartitionIterator iter = rc.executeLocally())
         {
             assertEquals(LOOPS, Iterators.size(iter));
         }
@@ -164,7 +158,7 @@ public class CleanupTest
 
         // 2ary indexes should result in no results, too (although tombstones won't be gone until compacted)
         rc = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), cf, DataLimits.NONE, range);
-        try(DataIterator iter = rc.executeLocally())
+        try(PartitionIterator iter = rc.executeLocally())
         {
             assertEquals(0, Iterators.size(iter));
         }
@@ -181,7 +175,7 @@ public class CleanupTest
         // insert data and verify we get it back w/ range query
         fillCF(cfs, "val", LOOPS);
 
-        PartitionIterator iter = Util.getRangeSlice(cfs);
+        UnfilteredPartitionIterator iter = Util.getRangeSlice(cfs);
 
         assertEquals(LOOPS, Iterators.size(iter));
         TokenMetadata tmd = StorageService.instance.getTokenMetadata();

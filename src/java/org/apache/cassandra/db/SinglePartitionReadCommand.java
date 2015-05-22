@@ -21,13 +21,11 @@ import java.io.DataInput;
 import java.io.IOException;
 import java.util.*;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.cassandra.cache.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
@@ -193,7 +191,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                       lastReturned == null ? partitionFilter() : partitionFilter.forPaging(metadata().comparator, lastReturned, false));
     }
 
-    public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+    public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
         return StorageProxy.read(Group.one(this), consistency, clientState);
     }
@@ -213,10 +211,10 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         return new SinglePartitionPager(command, consistency, clientState, local, pagingState);
     }
 
-    protected PartitionIterator queryStorage(final ColumnFamilyStore cfs)
+    protected UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs)
     {
         final long start = System.nanoTime();
-        AtomIterator result = null;
+        UnfilteredRowIterator result = null;
         try
         {
             if (cfs.isRowCacheEnabled())
@@ -229,7 +227,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                 result = queryMemtableAndDisk(cfs);
             }
 
-            return new SingletonPartitionIterator(result, isForThrift())
+            return new SingletonUnfilteredPartitionIterator(result, isForThrift())
             {
                 @Override
                 public void close()
@@ -264,7 +262,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      * If the partition is is not cached, we figure out what filter is "biggest", read
      * that from disk, then filter the result and either cache that or return it.
      */
-    private AtomIterator getThroughCache(ColumnFamilyStore cfs)
+    private UnfilteredRowIterator getThroughCache(ColumnFamilyStore cfs)
     {
         assert cfs.isRowCacheEnabled() : String.format("Row cache is not enabled on table [" + cfs.name + "]");
 
@@ -290,7 +288,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             {
                 cfs.metric.rowCacheHit.inc();
                 Tracing.trace("Row cache hit");
-                return partitionFilter().getAtomIterator(cachedPartition, nowInSec());
+                return partitionFilter().getUnfilteredRowIterator(cachedPartition, nowInSec());
             }
 
             cfs.metric.rowCacheHitOutOfRange.inc();
@@ -319,7 +317,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             try
             {
                 int rowsToCache = cacheFullPartitions ? Integer.MAX_VALUE : metadata().getCaching().rowCache.rowsToCache;
-                AtomIterator iter = SinglePartitionReadCommand.fullPartitionRead(metadata(), nowInSec(), partitionKey()).queryMemtableAndDisk(cfs);
+                UnfilteredRowIterator iter = SinglePartitionReadCommand.fullPartitionRead(metadata(), nowInSec(), partitionKey()).queryMemtableAndDisk(cfs);
                 try
                 {
                     // We want to cache only rowsToCache rows
@@ -335,7 +333,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                     // We then re-filter out what this query wants.
                     // Note that in the case where we don't cache full partitions, it's possible that the current query is interested in more
                     // than what we've cached, so we can't just use toCache.
-                    AtomIterator cacheIterator = partitionFilter().getAtomIterator(toCache, nowInSec());
+                    UnfilteredRowIterator cacheIterator = partitionFilter().getUnfilteredRowIterator(toCache, nowInSec());
                     if (cacheFullPartitions)
                     {
                         // Everything is guaranteed to be in 'toCache', we're done with 'iter'
@@ -343,7 +341,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
                         iter.close();
                         return cacheIterator;
                     }
-                    return AtomIterators.concat(cacheIterator, partitionFilter().filter(iter));
+                    return UnfilteredRowIterators.concat(cacheIterator, partitionFilter().filter(iter));
                 }
                 catch (RuntimeException | Error e)
                 {
@@ -374,7 +372,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      * It is publicly exposed because there is a few places where that is exactly what we want,
      * but it should be used only where you know you don't need thoses things.
      */
-    public AtomIterator queryMemtableAndDisk(ColumnFamilyStore cfs)
+    public UnfilteredRowIterator queryMemtableAndDisk(ColumnFamilyStore cfs)
     {
         Tracing.trace("Executing single-partition query on {}", cfs.name);
 
@@ -382,7 +380,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         final OpOrder.Group op = cfs.readOrdering.start();
         try
         {
-            return new WrappingAtomIterator(queryMemtableAndDiskInternal(cfs, copyOnHeap))
+            return new WrappingUnfilteredRowIterator(queryMemtableAndDiskInternal(cfs, copyOnHeap))
             {
                 private boolean closed;
 
@@ -412,7 +410,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         }
     }
 
-    protected abstract AtomIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap);
+    protected abstract UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap);
 
     @Override
     public String toString()
@@ -475,7 +473,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             return new Group(Collections.<SinglePartitionReadCommand<?>>singletonList(command), command.limits());
         }
 
-        public DataIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+        public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
         {
             return StorageProxy.read(this, consistency, clientState);
         }
@@ -490,14 +488,14 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             return commands.get(0).metadata();
         }
 
-        public DataIterator executeLocally()
+        public PartitionIterator executeLocally()
         {
-            List<DataIterator> partitions = new ArrayList<>(commands.size());
+            List<PartitionIterator> partitions = new ArrayList<>(commands.size());
             for (SinglePartitionReadCommand cmd : commands)
                 partitions.add(cmd.executeLocally());
 
             // Because we only have enforce the limit per command, we need to enforce it globally.
-            return limits.filter(DataIterators.concat(partitions));
+            return limits.filter(PartitionIterators.concat(partitions));
         }
 
         public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)

@@ -23,7 +23,7 @@ import java.util.Set;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Directories;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.compaction.CompactionTask;
 import org.apache.cassandra.io.sstable.SSTableRewriter;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -58,7 +58,7 @@ public abstract class CompactionAwareWriter extends Transactional.AbstractTransa
      * @param partition the partition to append
      * @return true if the partition was written, false otherwise
      */
-    public abstract boolean append(AtomIterator partition);
+    public abstract boolean append(UnfilteredRowIterator partition);
 
     @Override
     protected Throwable doAbort(Throwable accumulate)

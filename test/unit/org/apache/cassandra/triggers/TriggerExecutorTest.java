@@ -17,21 +17,18 @@
  */
 package org.apache.cassandra.triggers;
 
-import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.junit.Test;
 
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.TriggerDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterators;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
-import org.apache.cassandra.db.marshal.CompositeType;
+import org.apache.cassandra.db.rows.UnfilteredRowIterators;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.db.partitions.Partition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
@@ -52,7 +49,7 @@ public class TriggerExecutorTest
         CFMetaData metadata = makeCfMetaData("ks1", "cf1", TriggerDefinition.create("test", SameKeySameCfTrigger.class.getName()));
         PartitionUpdate mutated = TriggerExecutor.instance.execute(makeCf(metadata, "k1", "v1", null));
 
-        RowIterator rowIterator = AtomIterators.asRowIterator(mutated.atomIterator());
+        RowIterator rowIterator = UnfilteredRowIterators.filter(mutated.unfilteredIterator());
 
         Iterator<Cell> cells = rowIterator.next().iterator();
         assertEquals(bytes("trigger"), cells.next().value());

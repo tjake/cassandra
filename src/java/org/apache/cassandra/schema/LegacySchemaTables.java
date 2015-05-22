@@ -24,8 +24,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.MapDifference;
 import com.google.common.collect.Maps;
 import org.slf4j.Logger;
@@ -36,20 +34,14 @@ import org.apache.cassandra.config.*;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.*;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.db.partitions.*;
-import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.compress.CompressionParameters;
-import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.thrift.ThriftConversion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -203,7 +195,7 @@ public class LegacySchemaTables
 
     public static Collection<KSMetaData> readSchemaFromSystemTables()
     {
-        try (DataIterator serializedSchema = PartitionIterators.asDataIterator(getSchemaPartitionsForTable(KEYSPACES)))
+        try (PartitionIterator serializedSchema = UnfilteredPartitionIterators.filter(getSchemaPartitionsForTable(KEYSPACES)))
         {
             List<KSMetaData> keyspaces = new ArrayList<>();
 
@@ -266,7 +258,7 @@ public class LegacySchemaTables
 
         for (String table : ALL)
         {
-            try (DataIterator schema = PartitionIterators.asDataIterator(getSchemaPartitionsForTable(table)))
+            try (PartitionIterator schema = UnfilteredPartitionIterators.filter(getSchemaPartitionsForTable(table)))
             {
                 while (schema.hasNext())
                 {
@@ -294,7 +286,7 @@ public class LegacySchemaTables
      * @param schemaTableName The name of the table responsible for part of the schema.
      * @return low-level schema representation
      */
-    private static PartitionIterator getSchemaPartitionsForTable(String schemaTableName)
+    private static UnfilteredPartitionIterator getSchemaPartitionsForTable(String schemaTableName)
     {
         ColumnFamilyStore cfs = getSchemaCFS(schemaTableName);
         ReadCommand cmd = PartitionRangeReadCommand.allDataRead(cfs.metadata, FBUtilities.nowInSeconds());
@@ -313,11 +305,11 @@ public class LegacySchemaTables
 
     private static void convertSchemaToMutations(Map<DecoratedKey, Mutation> mutationMap, String schemaTableName)
     {
-        try (PartitionIterator iter = getSchemaPartitionsForTable(schemaTableName))
+        try (UnfilteredPartitionIterator iter = getSchemaPartitionsForTable(schemaTableName))
         {
             while (iter.hasNext())
             {
-                try (AtomIterator partition = iter.next())
+                try (UnfilteredRowIterator partition = iter.next())
                 {
                     if (isSystemKeyspaceSchemaPartition(partition.partitionKey()))
                         continue;
@@ -330,15 +322,15 @@ public class LegacySchemaTables
                         mutationMap.put(key, mutation);
                     }
 
-                    mutation.add(AtomIterators.toUpdate(partition));
+                    mutation.add(UnfilteredRowIterators.toUpdate(partition));
                 }
             }
         }
     }
 
-    private static Map<DecoratedKey, ReadPartition> readSchemaForKeyspaces(String schemaTableName, Set<String> keyspaceNames)
+    private static Map<DecoratedKey, FilteredPartition> readSchemaForKeyspaces(String schemaTableName, Set<String> keyspaceNames)
     {
-        Map<DecoratedKey, ReadPartition> schema = new HashMap<>();
+        Map<DecoratedKey, FilteredPartition> schema = new HashMap<>();
 
         for (String keyspaceName : keyspaceNames)
         {
@@ -347,7 +339,7 @@ public class LegacySchemaTables
             try (RowIterator iter = readSchemaPartitionForKeyspace(schemaTableName, keyspaceName))
             {
                 if (!RowIterators.isEmpty(iter))
-                    schema.put(iter.partitionKey(), ReadPartition.create(iter));
+                    schema.put(iter.partitionKey(), FilteredPartition.create(iter));
             }
         }
 
@@ -372,8 +364,8 @@ public class LegacySchemaTables
     private static RowIterator readSchemaPartitionForKeyspace(String schemaTableName, DecoratedKey keyspaceKey)
     {
         ColumnFamilyStore schemaCFS = getSchemaCFS(schemaTableName);
-        return AtomIterators.asRowIterator(SinglePartitionReadCommand.fullPartitionRead(schemaCFS.metadata, FBUtilities.nowInSeconds(), keyspaceKey)
-                                                                     .queryMemtableAndDisk(schemaCFS));
+        return UnfilteredRowIterators.filter(SinglePartitionReadCommand.fullPartitionRead(schemaCFS.metadata, FBUtilities.nowInSeconds(), keyspaceKey)
+                                                                       .queryMemtableAndDisk(schemaCFS));
     }
 
     private static RowIterator readSchemaPartitionForTable(String schemaTableName, String keyspaceName, String tableName)
@@ -382,8 +374,8 @@ public class LegacySchemaTables
 
         ClusteringComparator comparator = store.metadata.comparator;
         Slices slices = Slices.with(comparator, Slice.make(comparator, tableName));
-        return AtomIterators.asRowIterator(SinglePartitionSliceCommand.create(store.metadata, FBUtilities.nowInSeconds(), getSchemaKSDecoratedKey(keyspaceName), slices)
-                                                                      .queryMemtableAndDisk(store));
+        return UnfilteredRowIterators.filter(SinglePartitionSliceCommand.create(store.metadata, FBUtilities.nowInSeconds(), getSchemaKSDecoratedKey(keyspaceName), slices)
+                                                                        .queryMemtableAndDisk(store));
     }
 
     private static boolean isSystemKeyspaceSchemaPartition(DecoratedKey partitionKey)
@@ -414,11 +406,11 @@ public class LegacySchemaTables
             keyspaces.add(ByteBufferUtil.string(mutation.key().getKey()));
 
         // current state of the schema
-        Map<DecoratedKey, ReadPartition> oldKeyspaces = readSchemaForKeyspaces(KEYSPACES, keyspaces);
-        Map<DecoratedKey, ReadPartition> oldColumnFamilies = readSchemaForKeyspaces(COLUMNFAMILIES, keyspaces);
-        Map<DecoratedKey, ReadPartition> oldTypes = readSchemaForKeyspaces(USERTYPES, keyspaces);
-        Map<DecoratedKey, ReadPartition> oldFunctions = readSchemaForKeyspaces(FUNCTIONS, keyspaces);
-        Map<DecoratedKey, ReadPartition> oldAggregates = readSchemaForKeyspaces(AGGREGATES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> oldKeyspaces = readSchemaForKeyspaces(KEYSPACES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> oldColumnFamilies = readSchemaForKeyspaces(COLUMNFAMILIES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> oldTypes = readSchemaForKeyspaces(USERTYPES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> oldFunctions = readSchemaForKeyspaces(FUNCTIONS, keyspaces);
+        Map<DecoratedKey, FilteredPartition> oldAggregates = readSchemaForKeyspaces(AGGREGATES, keyspaces);
 
         for (Mutation mutation : mutations)
             mutation.apply();
@@ -427,11 +419,11 @@ public class LegacySchemaTables
             flushSchemaTables();
 
         // with new data applied
-        Map<DecoratedKey, ReadPartition> newKeyspaces = readSchemaForKeyspaces(KEYSPACES, keyspaces);
-        Map<DecoratedKey, ReadPartition> newColumnFamilies = readSchemaForKeyspaces(COLUMNFAMILIES, keyspaces);
-        Map<DecoratedKey, ReadPartition> newTypes = readSchemaForKeyspaces(USERTYPES, keyspaces);
-        Map<DecoratedKey, ReadPartition> newFunctions = readSchemaForKeyspaces(FUNCTIONS, keyspaces);
-        Map<DecoratedKey, ReadPartition> newAggregates = readSchemaForKeyspaces(AGGREGATES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> newKeyspaces = readSchemaForKeyspaces(KEYSPACES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> newColumnFamilies = readSchemaForKeyspaces(COLUMNFAMILIES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> newTypes = readSchemaForKeyspaces(USERTYPES, keyspaces);
+        Map<DecoratedKey, FilteredPartition> newFunctions = readSchemaForKeyspaces(FUNCTIONS, keyspaces);
+        Map<DecoratedKey, FilteredPartition> newAggregates = readSchemaForKeyspaces(AGGREGATES, keyspaces);
 
         Set<String> keyspacesToDrop = mergeKeyspaces(oldKeyspaces, newKeyspaces);
         mergeTables(oldColumnFamilies, newColumnFamilies);
@@ -444,11 +436,11 @@ public class LegacySchemaTables
             Schema.instance.dropKeyspace(keyspaceToDrop);
     }
 
-    private static Set<String> mergeKeyspaces(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after)
+    private static Set<String> mergeKeyspaces(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after)
     {
-        for (ReadPartition newPartition : after.values())
+        for (FilteredPartition newPartition : after.values())
         {
-            ReadPartition oldPartition = before.remove(newPartition.partitionKey());
+            FilteredPartition oldPartition = before.remove(newPartition.partitionKey());
             if (oldPartition == null || oldPartition.isEmpty())
             {
                 Schema.instance.addKeyspace(createKeyspaceFromSchemaPartition(newPartition.rowIterator()));
@@ -472,7 +464,7 @@ public class LegacySchemaTables
         return names;
     }
 
-    private static void mergeTables(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after)
+    private static void mergeTables(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after)
     {
         diffSchema(before, after, new Differ()
         {
@@ -493,7 +485,7 @@ public class LegacySchemaTables
         });
     }
 
-    private static void mergeTypes(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after)
+    private static void mergeTypes(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after)
     {
         diffSchema(before, after, new Differ()
         {
@@ -514,7 +506,7 @@ public class LegacySchemaTables
         });
     }
 
-    private static void mergeFunctions(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after)
+    private static void mergeFunctions(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after)
     {
         diffSchema(before, after, new Differ()
         {
@@ -535,7 +527,7 @@ public class LegacySchemaTables
         });
     }
 
-    private static void mergeAggregates(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after)
+    private static void mergeAggregates(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after)
     {
         diffSchema(before, after, new Differ()
         {
@@ -563,14 +555,14 @@ public class LegacySchemaTables
         public void onUpdated(UntypedResultSet.Row oldRow, UntypedResultSet.Row newRow);
     }
 
-    private static void diffSchema(Map<DecoratedKey, ReadPartition> before, Map<DecoratedKey, ReadPartition> after, Differ differ)
+    private static void diffSchema(Map<DecoratedKey, FilteredPartition> before, Map<DecoratedKey, FilteredPartition> after, Differ differ)
     {
-        for (ReadPartition newPartition : after.values())
+        for (FilteredPartition newPartition : after.values())
         {
             CFMetaData metadata = newPartition.metadata();
             DecoratedKey key = newPartition.partitionKey();
 
-            ReadPartition oldPartition = before.remove(key);
+            FilteredPartition oldPartition = before.remove(key);
 
             if (oldPartition == null || oldPartition.isEmpty())
             {
@@ -622,7 +614,7 @@ public class LegacySchemaTables
         }
 
         // What remains is those keys that were only in before.
-        for (ReadPartition partition : before.values())
+        for (FilteredPartition partition : before.values())
             for (Row row : partition)
                 differ.onDropped(UntypedResultSet.Row.fromInternalRow(partition.metadata(), partition.partitionKey(), row));
     }

@@ -26,8 +26,8 @@ import java.util.*;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 
@@ -109,7 +109,7 @@ public abstract class AbstractReadCommandBuilder
         return this;
     }
 
-    public DataIterator executeLocally()
+    public PartitionIterator executeLocally()
     {
         return build().executeLocally();
     }
@@ -119,7 +119,7 @@ public abstract class AbstractReadCommandBuilder
         return new Util.OnlyRow(build().executeLocally());
     }
 
-    public static List<Row> getRowList(DataIterator iter)
+    public static List<Row> getRowList(PartitionIterator iter)
     {
         List<Row> results = new ArrayList<>();
         while (iter.hasNext())

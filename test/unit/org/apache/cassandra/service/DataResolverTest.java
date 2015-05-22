@@ -32,12 +32,9 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.partitions.*;
@@ -129,7 +126,7 @@ public class DataResolverTest
                                                                                                        .add("c1", "v2")
                                                                                                        .buildUpdate())));
 
-        try(DataIterator data = resolver.resolve();
+        try(PartitionIterator data = resolver.resolve();
             RowIterator rows = Iterators.getOnlyElement(data))
         {
             Row row = Iterators.getOnlyElement(rows);
@@ -159,7 +156,7 @@ public class DataResolverTest
                                                                                                        .add("c2", "v2")
                                                                                                        .buildUpdate())));
 
-        try(DataIterator data = resolver.resolve();
+        try(PartitionIterator data = resolver.resolve();
             RowIterator rows = Iterators.getOnlyElement(data))
         {
             Row row = Iterators.getOnlyElement(rows);
@@ -193,7 +190,7 @@ public class DataResolverTest
                                                                                                        .add("c2", "v2")
                                                                                                        .buildUpdate())));
 
-        try (DataIterator data = resolver.resolve())
+        try (PartitionIterator data = resolver.resolve())
         {
             try (RowIterator rows = data.next())
             {
@@ -238,29 +235,29 @@ public class DataResolverTest
                                                                                   .buildUpdate();
 
         InetAddress peer1 = peer();
-        PartitionIterator iter1 = iter(new RowUpdateBuilder(cfm, nowInSec, 1L, dk).addRangeTombstone(tombstone1)
+        UnfilteredPartitionIterator iter1 = iter(new RowUpdateBuilder(cfm, nowInSec, 1L, dk).addRangeTombstone(tombstone1)
                                                                                   .addRangeTombstone(tombstone2)
                                                                                   .buildUpdate());
         resolver.preprocess(readResponseMessage(peer1, iter1));
         // not covered by any range tombstone
         InetAddress peer2 = peer();
-        PartitionIterator iter2 = iter(new RowUpdateBuilder(cfm, nowInSec, 0L, dk).clustering("0")
+        UnfilteredPartitionIterator iter2 = iter(new RowUpdateBuilder(cfm, nowInSec, 0L, dk).clustering("0")
                                                                                   .add("c1", "v0")
                                                                                   .buildUpdate());
         resolver.preprocess(readResponseMessage(peer2, iter2));
         // covered by a range tombstone
         InetAddress peer3 = peer();
-        PartitionIterator iter3 = iter(new RowUpdateBuilder(cfm, nowInSec, 0L, dk).clustering("10")
+        UnfilteredPartitionIterator iter3 = iter(new RowUpdateBuilder(cfm, nowInSec, 0L, dk).clustering("10")
                                                                                   .add("c2", "v1")
                                                                                   .buildUpdate());
         resolver.preprocess(readResponseMessage(peer3, iter3));
         // range covered by rt, but newer
         InetAddress peer4 = peer();
-        PartitionIterator iter4 = iter(new RowUpdateBuilder(cfm, nowInSec, 2L, dk).clustering("3")
+        UnfilteredPartitionIterator iter4 = iter(new RowUpdateBuilder(cfm, nowInSec, 2L, dk).clustering("3")
                                                                                   .add("one", "A")
                                                                                   .buildUpdate());
         resolver.preprocess(readResponseMessage(peer4, iter4));
-        try (DataIterator data = resolver.resolve())
+        try (PartitionIterator data = resolver.resolve())
         {
             try (RowIterator rows = data.next())
             {
@@ -315,9 +312,9 @@ public class DataResolverTest
                                                                                                        .add("c2", "v2")
                                                                                                        .buildUpdate())));
         InetAddress peer2 = peer();
-        resolver.preprocess(readResponseMessage(peer2, PartitionIterators.EMPTY));
+        resolver.preprocess(readResponseMessage(peer2, UnfilteredPartitionIterators.EMPTY));
 
-        try(DataIterator data = resolver.resolve();
+        try(PartitionIterator data = resolver.resolve();
             RowIterator rows = Iterators.getOnlyElement(data))
         {
             Row row = Iterators.getOnlyElement(rows);
@@ -337,10 +334,10 @@ public class DataResolverTest
     public void testResolveWithBothEmpty()
     {
         DataResolver resolver = new DataResolver(ks, command, ConsistencyLevel.ALL, 2);
-        resolver.preprocess(readResponseMessage(peer(), PartitionIterators.EMPTY));
-        resolver.preprocess(readResponseMessage(peer(), PartitionIterators.EMPTY));
+        resolver.preprocess(readResponseMessage(peer(), UnfilteredPartitionIterators.EMPTY));
+        resolver.preprocess(readResponseMessage(peer(), UnfilteredPartitionIterators.EMPTY));
 
-        try(DataIterator data = resolver.resolve())
+        try(PartitionIterator data = resolver.resolve())
         {
             assertFalse(data.hasNext());
         }
@@ -360,7 +357,7 @@ public class DataResolverTest
         InetAddress peer2 = peer();
         resolver.preprocess(readResponseMessage(peer2, fullPartitionDelete(cfm, dk, 1, nowInSec)));
 
-        try (DataIterator data = resolver.resolve())
+        try (PartitionIterator data = resolver.resolve())
         {
             assertFalse(data.hasNext());
         }
@@ -394,7 +391,7 @@ public class DataResolverTest
         InetAddress peer4 = peer();
         resolver.preprocess(readResponseMessage(peer4, fullPartitionDelete(cfm, dk, 2, nowInSec)));
 
-        try(DataIterator data = resolver.resolve();
+        try(PartitionIterator data = resolver.resolve();
             RowIterator rows = Iterators.getOnlyElement(data))
         {
             Row row = Iterators.getOnlyElement(rows);
@@ -497,7 +494,7 @@ public class DataResolverTest
         assertEquals(update.metadata().cfName, cfm.cfName);
     }
 
-    public MessageIn<ReadResponse> readResponseMessage(InetAddress from, PartitionIterator partitionIterator)
+    public MessageIn<ReadResponse> readResponseMessage(InetAddress from, UnfilteredPartitionIterator partitionIterator)
     {
         return MessageIn.create(from,
                                 ReadResponse.createDataResponse(partitionIterator),
@@ -512,9 +509,9 @@ public class DataResolverTest
                                   new SimpleDeletionTime(markedForDeleteAt, localDeletionTime));
     }
 
-    private PartitionIterator fullPartitionDelete(CFMetaData cfm, DecoratedKey dk, long timestamp, int nowInSec)
+    private UnfilteredPartitionIterator fullPartitionDelete(CFMetaData cfm, DecoratedKey dk, long timestamp, int nowInSec)
     {
-        return new SingletonPartitionIterator(PartitionUpdate.fullPartitionDelete(cfm, dk, timestamp, nowInSec).atomIterator(), false);
+        return new SingletonUnfilteredPartitionIterator(PartitionUpdate.fullPartitionDelete(cfm, dk, timestamp, nowInSec).unfilteredIterator(), false);
     }
 
     private static class MessageRecorder implements IMessageSink
@@ -532,8 +529,8 @@ public class DataResolverTest
         }
     }
 
-    private PartitionIterator iter(PartitionUpdate update)
+    private UnfilteredPartitionIterator iter(PartitionUpdate update)
     {
-        return new SingletonPartitionIterator(update.atomIterator(), false);
+        return new SingletonUnfilteredPartitionIterator(update.unfilteredIterator(), false);
     }
 }

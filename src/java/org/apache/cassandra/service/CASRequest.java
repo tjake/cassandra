@@ -18,7 +18,7 @@
 package org.apache.cassandra.service;
 
 import org.apache.cassandra.db.SinglePartitionReadCommand;
-import org.apache.cassandra.db.partitions.ReadPartition;
+import org.apache.cassandra.db.partitions.FilteredPartition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
@@ -36,11 +36,11 @@ public interface CASRequest
      * Returns whether the provided CF, that represents the values fetched using the
      * readFilter(), match the CAS conditions this object stands for.
      */
-    public boolean appliesTo(ReadPartition current) throws InvalidRequestException;
+    public boolean appliesTo(FilteredPartition current) throws InvalidRequestException;
 
     /**
      * The updates to perform of a CAS success. The values fetched using the readFilter()
      * are passed as argument.
      */
-    public PartitionUpdate makeUpdates(ReadPartition current) throws InvalidRequestException;
+    public PartitionUpdate makeUpdates(FilteredPartition current) throws InvalidRequestException;
 }

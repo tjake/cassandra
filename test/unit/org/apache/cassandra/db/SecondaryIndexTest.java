@@ -37,12 +37,12 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.IndexType;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.cql3.Operator;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
-import org.apache.cassandra.db.partitions.DataIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -106,7 +106,7 @@ public class SecondaryIndexTest
         ColumnDefinition nbDef = cfs.metadata.getColumnDefinition(nbBB);
 
         // basic single-expression query
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k3"))
                 .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
                 .addColumn(bBB).executeLocally())
@@ -125,7 +125,7 @@ public class SecondaryIndexTest
         }
 
         // 2 columns, 3 results
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
                 .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
                 .executeLocally())
@@ -154,13 +154,13 @@ public class SecondaryIndexTest
                 .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(1L)).build();
         List<SecondaryIndexSearcher> searchers = cfs.indexManager.getIndexSearchersFor(rc);
         assertEquals(searchers.size(), 1);
-        try (PartitionIterator pi = searchers.get(0).search(rc))
+        try (UnfilteredPartitionIterator pi = searchers.get(0).search(rc))
         {
             assert(pi.hasNext());
         }
 
         // Verify gt on idx scan
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
                 .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.GT, ByteBufferUtil.bytes(1L))
                 .executeLocally())
@@ -179,7 +179,7 @@ public class SecondaryIndexTest
         }
 
         // Filter on non-indexed, LT comparison
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
                 .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
                 .addFilter(cfs.metadata.getColumnDefinition(nbBB), Operator.LT, ByteBufferUtil.bytes(2L))
@@ -189,7 +189,7 @@ public class SecondaryIndexTest
         }
 
         // Hit on primary, fail on non-indexed filter
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
                 .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
                 .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(1L))
@@ -217,7 +217,7 @@ public class SecondaryIndexTest
                     .applyUnsafe();
         }
 
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(34L))
                 .addFilter(cfs.metadata.getColumnDefinition(nbBB), Operator.EQ, ByteBufferUtil.bytes(1L))
                 .executeLocally())
@@ -462,7 +462,7 @@ public class SecondaryIndexTest
         new RowUpdateBuilder(cfs.metadata, 0, "kk4").clustering("c").add("notbirthdate", 2L).build().applyUnsafe();
 
         // basic single-expression query, limit 1
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
              .addFilter(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("birthdate")), Operator.EQ, ByteBufferUtil.bytes(1L))
              .addFilter(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("notbirthdate")), Operator.GT, ByteBufferUtil.bytes(1L))
              .setCQLLimit(1)
@@ -554,7 +554,7 @@ public class SecondaryIndexTest
         if (count != 0)
             assertTrue(searchers.size() > 0);
 
-        try (PartitionIterator iter = searchers.get(0).search(rc))
+        try (UnfilteredPartitionIterator iter = searchers.get(0).search(rc))
         {
             assertEquals(count, Iterators.size(iter));
         }
@@ -565,7 +565,7 @@ public class SecondaryIndexTest
     }
     private void assertRangeCount(ColumnFamilyStore cfs, ColumnDefinition col, ByteBuffer val, int count)
     {
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
                 .addFilter(col, Operator.EQ, val)
                 .build().executeLocally())
         {

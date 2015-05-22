@@ -18,13 +18,12 @@
 package org.apache.cassandra.db;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.*;
 
 import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.SequentialWriter;
@@ -43,9 +42,9 @@ public class ColumnIndex
         this.columnsIndex = columnsIndex;
     }
 
-    public static ColumnIndex writeAndBuildIndex(AtomIterator iterator, SequentialWriter output, SerializationHeader header, Version version) throws IOException
+    public static ColumnIndex writeAndBuildIndex(UnfilteredRowIterator iterator, SequentialWriter output, SerializationHeader header, Version version) throws IOException
     {
-        assert !AtomIterators.isEmpty(iterator) && version.storeRows();
+        assert !UnfilteredRowIterators.isEmpty(iterator) && version.storeRows();
 
         Builder builder = new Builder(iterator, output, header, version.correspondingMessagingVersion());
         return builder.build();
@@ -63,7 +62,7 @@ public class ColumnIndex
      */
     private static class Builder
     {
-        private final AtomIterator iterator;
+        private final UnfilteredRowIterator iterator;
         private final SequentialWriter writer;
         private final SerializationHeader header;
         private final int version;
@@ -72,14 +71,14 @@ public class ColumnIndex
         private final long initialPosition;
         private long startPosition = -1;
 
-        private int atomWritten;
+        private int written;
 
         private ClusteringPrefix firstClustering;
         private final ReusableClusteringPrefix lastClustering;
 
         private DeletionTime openMarker;
 
-        public Builder(AtomIterator iterator,
+        public Builder(UnfilteredRowIterator iterator,
                        SequentialWriter writer,
                        SerializationHeader header,
                        int version)
@@ -94,12 +93,12 @@ public class ColumnIndex
             this.lastClustering = new ReusableClusteringPrefix(iterator.metadata().clusteringColumns().size());
         }
 
-        private void writePartitionHeader(AtomIterator iterator) throws IOException
+        private void writePartitionHeader(UnfilteredRowIterator iterator) throws IOException
         {
             ByteBufferUtil.writeWithShortLength(iterator.partitionKey().getKey(), writer.stream);
             DeletionTime.serializer.serialize(iterator.partitionLevelDeletion(), writer.stream);
             if (header.hasStatic())
-                AtomSerializer.serializer.serialize(iterator.staticRow(), header, writer.stream, version);
+                UnfilteredSerializer.serializer.serialize(iterator.staticRow(), header, writer.stream, version);
         }
 
         public ColumnIndex build() throws IOException
@@ -128,10 +127,10 @@ public class ColumnIndex
             firstClustering = null;
         }
 
-        private void add(Atom atom) throws IOException
+        private void add(Unfiltered unfiltered) throws IOException
         {
-            lastClustering.copy(atom.clustering());
-            boolean isMarker = atom.kind() == Atom.Kind.RANGE_TOMBSTONE_MARKER;
+            lastClustering.copy(unfiltered.clustering());
+            boolean isMarker = unfiltered.kind() == Unfiltered.Kind.RANGE_TOMBSTONE_MARKER;
 
             if (firstClustering == null)
             {
@@ -142,23 +141,23 @@ public class ColumnIndex
                 // A read could start reading at the beginning of any index block, so if we have an
                 // open range tombstone, we need to "repeat" it at the beginning of the block so a
                 // reader that start by this block is aware of that ongoing deletion.
-                // If we do have an open marker, atom can only be either a Clustering, or a close marker.
+                // If we do have an open marker, unfiltered can only be either a Clustering, or a close marker.
                 // If it's a close marker, then there is really nothing to do. If it's a clustering, we
                 // close and re-open the current marker.
                 if (openMarker != null && !isMarker)
                 {
-                    AtomSerializer.serializer.serialize(SimpleRangeTombstoneMarker.close(firstClustering, openMarker), header, writer.stream, version);
-                    AtomSerializer.serializer.serialize(SimpleRangeTombstoneMarker.open(firstClustering, openMarker), header, writer.stream, version);
-                    atomWritten += 2;
+                    UnfilteredSerializer.serializer.serialize(SimpleRangeTombstoneMarker.close(firstClustering, openMarker), header, writer.stream, version);
+                    UnfilteredSerializer.serializer.serialize(SimpleRangeTombstoneMarker.open(firstClustering, openMarker), header, writer.stream, version);
+                    written += 2;
                 }
             }
 
-            AtomSerializer.serializer.serialize(atom, header, writer.stream, version);
-            ++atomWritten;
+            UnfilteredSerializer.serializer.serialize(unfiltered, header, writer.stream, version);
+            ++written;
 
             if (isMarker)
             {
-                RangeTombstoneMarker marker = (RangeTombstoneMarker)atom;
+                RangeTombstoneMarker marker = (RangeTombstoneMarker) unfiltered;
                 openMarker = marker.clustering().isStart() ? marker.deletionTime().takeAlias() : null;
             }
 
@@ -169,10 +168,10 @@ public class ColumnIndex
 
         private ColumnIndex close() throws IOException
         {
-            AtomSerializer.serializer.writeEndOfPartition(writer.stream);
+            UnfilteredSerializer.serializer.writeEndOfPartition(writer.stream);
 
-            // It's possible we add no atoms, just a top level deletion
-            if (atomWritten == 0)
+            // It's possible we add no rows, just a top level deletion
+            if (written == 0)
                 return ColumnIndex.EMPTY;
 
             // the last column may have fallen on an index boundary already.  if not, index it explicitly.

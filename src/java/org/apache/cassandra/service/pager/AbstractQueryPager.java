@@ -17,19 +17,9 @@
  */
 package org.apache.cassandra.service.pager;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-
-import com.google.common.annotations.VisibleForTesting;
-
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.exceptions.RequestExecutionException;
@@ -72,22 +62,22 @@ abstract class AbstractQueryPager implements QueryPager
         this.remainingInPartition = limits.perPartitionCount();
     }
 
-    public DataIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public PartitionIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
     {
         if (isExhausted())
-            return DataIterators.EMPTY;
+            return PartitionIterators.EMPTY;
 
         pageSize = Math.min(pageSize, remaining);
         return new PagerIterator(queryNextPage(pageSize, consistencyLevel, localQuery), limits.forPaging(pageSize));
     }
 
-    private class PagerIterator extends CountingDataIterator
+    private class PagerIterator extends CountingPartitionIterator
     {
         private final DataLimits pageLimits;
 
         private Row lastRow;
 
-        private PagerIterator(DataIterator iter, DataLimits pageLimits)
+        private PagerIterator(PartitionIterator iter, DataLimits pageLimits)
         {
             super(iter, pageLimits);
             this.pageLimits = pageLimits;
@@ -155,7 +145,7 @@ abstract class AbstractQueryPager implements QueryPager
         return remainingInPartition;
     }
 
-    protected abstract DataIterator queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery) throws RequestValidationException, RequestExecutionException;
+    protected abstract PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery) throws RequestValidationException, RequestExecutionException;
 
     protected abstract void recordLast(DecoratedKey key, Row row);
 }

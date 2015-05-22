@@ -17,12 +17,7 @@
  */
 package org.apache.cassandra.service.pager;
 
-import java.nio.ByteBuffer;
-import java.util.Iterator;
-import java.util.List;
-
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
@@ -56,8 +51,8 @@ public class QueryPagers
         int count = 0;
         while (!pager.isExhausted())
         {
-            CountingDataIterator iter = new CountingDataIterator(pager.fetchPage(pageSize), limits);
-            DataIterators.consume(iter);
+            CountingPartitionIterator iter = new CountingPartitionIterator(pager.fetchPage(pageSize), limits);
+            PartitionIterators.consume(iter);
             count += iter.counter().counted();
         }
         return count;

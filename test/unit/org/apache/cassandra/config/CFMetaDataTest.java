@@ -25,11 +25,9 @@ import java.util.HashSet;
 
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.RowIterator;
-import org.apache.cassandra.db.atoms.RowIteratorFromAtomIterator;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.UTF8Type;
+import org.apache.cassandra.db.rows.UnfilteredRowIterators;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.compress.*;
@@ -149,8 +147,8 @@ public class CFMetaDataTest
         PartitionUpdate cfU = rm.getPartitionUpdate(Schema.instance.getId(SystemKeyspace.NAME, LegacySchemaTables.COLUMNFAMILIES));
         PartitionUpdate cdU = rm.getPartitionUpdate(Schema.instance.getId(SystemKeyspace.NAME, LegacySchemaTables.COLUMNS));
         CFMetaData newCfm = LegacySchemaTables.createTableFromTablePartitionAndColumnsPartition(
-                new RowIteratorFromAtomIterator(cfU.atomIterator()),
-                new RowIteratorFromAtomIterator(cdU.atomIterator())
+                UnfilteredRowIterators.filter(cfU.unfilteredIterator()),
+                UnfilteredRowIterators.filter(cdU.unfilteredIterator())
         );
         assert cfm.equals(newCfm) : String.format("%n%s%n!=%n%s", cfm, newCfm);
     }

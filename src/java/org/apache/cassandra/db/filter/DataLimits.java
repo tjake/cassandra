@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -47,13 +47,13 @@ public abstract class DataLimits
         }
 
         @Override
-        public PartitionIterator filter(PartitionIterator iter)
+        public UnfilteredPartitionIterator filter(UnfilteredPartitionIterator iter)
         {
             return iter;
         }
 
         @Override
-        public AtomIterator filter(AtomIterator iter)
+        public UnfilteredRowIterator filter(UnfilteredRowIterator iter)
         {
             return iter;
         }
@@ -123,19 +123,19 @@ public abstract class DataLimits
 
     public abstract boolean countCells();
 
+    public UnfilteredPartitionIterator filter(UnfilteredPartitionIterator iter)
+    {
+        return new CountingUnfilteredPartitionIterator(iter, newCounter(false));
+    }
+
+    public UnfilteredRowIterator filter(UnfilteredRowIterator iter)
+    {
+        return new CountingUnfilteredRowIterator(iter, newCounter(false));
+    }
+
     public PartitionIterator filter(PartitionIterator iter)
     {
-        return new CountingPartitionIterator(iter, newCounter(false));
-    }
-
-    public AtomIterator filter(AtomIterator iter)
-    {
-        return new CountingAtomIterator(iter, newCounter(false));
-    }
-
-    public DataIterator filter(DataIterator iter)
-    {
-        return new CountingDataIterator(iter, this);
+        return new CountingPartitionIterator(iter, this);
     }
 
     /**
@@ -237,8 +237,8 @@ public abstract class DataLimits
                 return false;
 
             // Otherwise, we need to re-count
-            try (AtomIterator cacheIter = cached.atomIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
-                 CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newCounter(false)))
+            try (UnfilteredRowIterator cacheIter = cached.unfilteredIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
+                 CountingUnfilteredRowIterator iter = new CountingUnfilteredRowIterator(cacheIter, newCounter(false)))
             {
                 // Consume the iterator until we've counted enough
                 while (iter.hasNext() && !iter.counter().isDone())
@@ -454,8 +454,8 @@ public abstract class DataLimits
                 return false;
 
             // Otherwise, we need to re-count
-            try (AtomIterator cacheIter = cached.atomIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
-                 CountingAtomIterator iter = new CountingAtomIterator(cacheIter, newCounter(false)))
+            try (UnfilteredRowIterator cacheIter = cached.unfilteredIterator(ColumnsSelection.withoutSubselection(cached.columns()), Slices.ALL, false, nowInSec);
+                 CountingUnfilteredRowIterator iter = new CountingUnfilteredRowIterator(cacheIter, newCounter(false)))
             {
                 // Consume the iterator until we've counted enough
                 while (iter.hasNext() && !iter.counter().isDone())

@@ -19,11 +19,9 @@ package org.apache.cassandra.db.index;
 
 import java.nio.ByteBuffer;
 
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.utils.concurrent.OpOrder;
-import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * Base class for Secondary indexes that implement a unique index per column
@@ -78,7 +76,7 @@ public abstract class PerColumnSecondaryIndex extends SecondaryIndex
     public void indexRow(DecoratedKey key, Row row, OpOrder.Group opGroup, int nowInSec)
     {
         Clustering clustering = row.clustering();
-        maybeIndex(key.getKey(), clustering, row.maxLiveTimestamp(), row.partitionKeyLivenessInfo().ttl(), opGroup, nowInSec);
+        maybeIndex(key.getKey(), clustering, row.maxLiveTimestamp(), row.primaryKeyLivenessInfo().ttl(), opGroup, nowInSec);
         for (Cell cell : row)
         {
             if (!indexes(cell.column()))

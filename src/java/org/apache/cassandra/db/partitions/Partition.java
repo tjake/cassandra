@@ -20,14 +20,14 @@ package org.apache.cassandra.db.partitions;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.Slices;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.SearchIterator;
 
 /**
  * In-memory representation of a Partition.
  *
- * Note that most of the storage engine works through iterators (PartitionIterator) to
+ * Note that most of the storage engine works through iterators (UnfilteredPartitionIterator) to
  * avoid "materializing" a full partition/query response in memory as much as possible,
  * and so Partition objects should be use as sparingly as possible. There is a couple
  * of cases where we do need to represent partition in-memory (memtables and row cache).
@@ -40,7 +40,7 @@ public interface Partition
 
     public PartitionColumns columns();
 
-    public AtomStats stats();
+    public RowStats stats();
 
     /**
      * Whether the partition object has no informations at all, including any deletion informations.
@@ -53,13 +53,13 @@ public interface Partition
     public SearchIterator<Clustering, Row> searchIterator(ColumnsSelection columns, boolean reversed, int nowInSec);
 
     /**
-     * Returns an AtomIterator over all the atoms contained by this partition.
+     * Returns an UnfilteredRowIterator over all the rows/RT contained by this partition.
      */
-    public AtomIterator atomIterator(int nowInSec);
+    public UnfilteredRowIterator unfilteredIterator(int nowInSec);
 
     /**
-     * Returns an AtomIterator over the atoms contained by this partition
+     * Returns an UnfilteredRowIterator over the rows/RT contained by this partition
      * selected by the provided slices.
      */
-    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec);
+    public UnfilteredRowIterator unfilteredIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec);
 }

@@ -28,12 +28,11 @@ import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.commitlog.CommitLog;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 /**
  * Test for the truncate operation.
@@ -75,7 +74,7 @@ public class RecoveryManagerTruncateTest
         assert 0 != CommitLog.instance.resetUnsafe(false);
 
 		// and validate truncation.
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             assert !iter.hasNext();
         }

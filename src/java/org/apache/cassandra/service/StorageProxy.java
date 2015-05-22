@@ -41,11 +41,9 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
-import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.TombstoneOverwhelmingException;
-import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.marshal.UUIDType;
 import org.apache.cassandra.dht.AbstractBounds;
@@ -233,10 +231,10 @@ public class StorageProxy implements StorageProxyMBean
                 SinglePartitionReadCommand readCommand = request.readCommand(FBUtilities.nowInSeconds());
                 ConsistencyLevel readConsistency = consistencyForPaxos == ConsistencyLevel.LOCAL_SERIAL ? ConsistencyLevel.LOCAL_QUORUM : ConsistencyLevel.QUORUM;
 
-                ReadPartition current;
+                FilteredPartition current;
                 try (RowIterator rowIter = readOne(readCommand, readConsistency))
                 {
-                    current = ReadPartition.create(rowIter);
+                    current = FilteredPartition.create(rowIter);
                 }
 
                 if (!request.appliesTo(current))
@@ -1224,10 +1222,10 @@ public class StorageProxy implements StorageProxyMBean
     public static RowIterator readOne(SinglePartitionReadCommand command, ConsistencyLevel consistencyLevel, ClientState state)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
-        return DataIterators.getOnlyElement(read(SinglePartitionReadCommand.Group.one(command), consistencyLevel, state), command);
+        return PartitionIterators.getOnlyElement(read(SinglePartitionReadCommand.Group.one(command), consistencyLevel, state), command);
     }
 
-    public static DataIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
+    public static PartitionIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
         // When using serial CL, the ClientState should be provided
@@ -1239,7 +1237,7 @@ public class StorageProxy implements StorageProxyMBean
      * Performs the actual reading of a row out of the StorageService, fetching
      * a specific set of column names from a given column family.
      */
-    public static DataIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
+    public static PartitionIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
         if (StorageService.instance.isBootstrapMode() && !systemKeyspaceQuery(group.commands))
@@ -1253,7 +1251,7 @@ public class StorageProxy implements StorageProxyMBean
              : readRegular(group, consistencyLevel);
     }
 
-    private static DataIterator readWithPaxos(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
+    private static PartitionIterator readWithPaxos(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
     throws InvalidRequestException, UnavailableException, ReadFailureException, ReadTimeoutException
     {
         assert state != null;
@@ -1265,7 +1263,7 @@ public class StorageProxy implements StorageProxyMBean
         CFMetaData metadata = command.metadata();
         DecoratedKey key = command.partitionKey();
 
-        DataIterator result = null;
+        PartitionIterator result = null;
         try
         {
             // make sure any in-progress paxos writes are done (i.e., committed to a majority of replicas), before performing a quorum read
@@ -1324,11 +1322,11 @@ public class StorageProxy implements StorageProxyMBean
         return result;
     }
 
-    private static DataIterator readRegular(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
+    private static PartitionIterator readRegular(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
         long start = System.nanoTime();
-        DataIterator result = null;
+        PartitionIterator result = null;
 
         try
         {
@@ -1375,7 +1373,7 @@ public class StorageProxy implements StorageProxyMBean
      * 4. If the digests (if any) match the data return the data
      * 5. else carry out read repair by getting data from all the nodes.
      */
-    private static DataIterator fetchRows(List<SinglePartitionReadCommand<?>> commands, ConsistencyLevel consistencyLevel)
+    private static PartitionIterator fetchRows(List<SinglePartitionReadCommand<?>> commands, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
         int cmdCount = commands.size();
@@ -1397,14 +1395,14 @@ public class StorageProxy implements StorageProxyMBean
             if (!reads[i].isDone())
                 reads[i].maybeAwaitFullDataRead();
 
-        List<DataIterator> results = new ArrayList<>(cmdCount);
+        List<PartitionIterator> results = new ArrayList<>(cmdCount);
         for (int i = 0; i < cmdCount; i++)
         {
             assert reads[i].isDone();
             results.add(reads[i].getResult());
         }
 
-        return DataIterators.concat(results);
+        return PartitionIterators.concat(results);
     }
 
     private static class SinglePartitionReadLifecycle
@@ -1413,7 +1411,7 @@ public class StorageProxy implements StorageProxyMBean
         private final AbstractReadExecutor executor;
         private final ConsistencyLevel consistency;
 
-        private DataIterator result;
+        private PartitionIterator result;
         private ReadCallback repairHandler;
 
         SinglePartitionReadLifecycle(SinglePartitionReadCommand<?> command, ConsistencyLevel consistency)
@@ -1497,7 +1495,7 @@ public class StorageProxy implements StorageProxyMBean
             }
         }
 
-        DataIterator getResult()
+        PartitionIterator getResult()
         {
             assert result != null;
             return result;
@@ -1525,7 +1523,7 @@ public class StorageProxy implements StorageProxyMBean
                 Keyspace keyspace = Keyspace.open(cfm.ksName);
                 ColumnFamilyStore cfs = keyspace.getColumnFamilyStore(cfm.cfId);
 
-                PartitionIterator result = command.executeLocally(cfs);
+                UnfilteredPartitionIterator result = command.executeLocally(cfs);
                 try
                 {
                     MessagingService.instance().addLatency(FBUtilities.getBroadcastAddress(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
@@ -1696,10 +1694,10 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-    private static class SingleRangeResponse extends AbstractIterator<RowIterator> implements DataIterator
+    private static class SingleRangeResponse extends AbstractIterator<RowIterator> implements PartitionIterator
     {
         private final ReadCallback handler;
-        private DataIterator result;
+        private PartitionIterator result;
 
         private SingleRangeResponse(ReadCallback handler)
         {
@@ -1734,7 +1732,7 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-    private static class RangeCommandIterator extends AbstractIterator<RowIterator> implements DataIterator
+    private static class RangeCommandIterator extends AbstractIterator<RowIterator> implements PartitionIterator
     {
         private final Iterator<RangeForQuery> ranges;
         private final int totalRangeCount;
@@ -1743,7 +1741,7 @@ public class StorageProxy implements StorageProxyMBean
         private final ConsistencyLevel consistency;
 
         private final long startTime;
-        private CountingDataIterator sentQueryIterator;
+        private CountingPartitionIterator sentQueryIterator;
 
         private int concurrencyFactor;
         // The two following "metric" are maintained to improve the concurrencyFactor
@@ -1834,9 +1832,9 @@ public class StorageProxy implements StorageProxyMBean
             return new SingleRangeResponse(handler);
         }
 
-        private CountingDataIterator sendNextRequests()
+        private CountingPartitionIterator sendNextRequests()
         {
-            List<DataIterator> concurrentQueries = new ArrayList<>(concurrencyFactor);
+            List<PartitionIterator> concurrentQueries = new ArrayList<>(concurrencyFactor);
             for (int i = 0; i < concurrencyFactor && ranges.hasNext(); i++)
             {
                 concurrentQueries.add(query(ranges.next()));
@@ -1844,7 +1842,7 @@ public class StorageProxy implements StorageProxyMBean
             }
 
             Tracing.trace("Submitted {} concurrent range requests", concurrentQueries.size());
-            return new CountingDataIterator(DataIterators.concat(concurrentQueries), command.limits());
+            return new CountingPartitionIterator(PartitionIterators.concat(concurrentQueries), command.limits());
         }
 
         public void close()
@@ -1863,13 +1861,13 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-    public static DataIterator getRangeSlice(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel)
+    public static PartitionIterator getRangeSlice(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
         Tracing.trace("Computing ranges to query");
         long startTime = System.nanoTime();
 
-        List<ReadPartition> partitions = new ArrayList<>();
+        List<FilteredPartition> partitions = new ArrayList<>();
 
         Keyspace keyspace = Keyspace.open(command.metadata().ksName);
         RangeIterator ranges = new RangeIterator(command, keyspace, consistencyLevel);

@@ -21,8 +21,8 @@ package org.apache.cassandra.db;
 import org.junit.Test;
 
 import org.apache.cassandra.cql3.CQLTester;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.Util;
 
 import static org.junit.Assert.assertEquals;
@@ -58,22 +58,22 @@ public class RowIterationTest extends CQLTester
         execute("DELETE FROM %s USING TIMESTAMP ? WHERE a = ?", 1L, 0);
 
         int localDeletionTime;
-        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
         {
-            try (AtomIterator atomIterator = iterator.next())
+            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
             {
-                DeletionTime deletionTime = atomIterator.partitionLevelDeletion();
+                DeletionTime deletionTime = unfilteredRowIterator.partitionLevelDeletion();
                 localDeletionTime = deletionTime.localDeletionTime();
             }
         }
 
         cfs.forceBlockingFlush();
 
-        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
         {
-            try (AtomIterator atomIterator = iterator.next())
+            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
             {
-                DeletionTime deletionTime = atomIterator.partitionLevelDeletion();
+                DeletionTime deletionTime = unfilteredRowIterator.partitionLevelDeletion();
                 assertEquals(1L, deletionTime.markedForDeleteAt());
                 assertEquals(localDeletionTime, deletionTime.localDeletionTime());
             }
@@ -90,7 +90,7 @@ public class RowIterationTest extends CQLTester
         execute("DELETE FROM %s USING TIMESTAMP ? WHERE a = ?", 0L, 0);
         cfs.forceBlockingFlush();
 
-        try (PartitionIterator iterator = Util.getRangeSlice(cfs))
+        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
         {
             assertTrue(iterator.hasNext());
         }

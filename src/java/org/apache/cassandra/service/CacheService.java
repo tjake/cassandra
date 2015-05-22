@@ -47,12 +47,11 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.ArrayBackedPartition;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.context.CounterContext;
-import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -384,7 +383,7 @@ public class CacheService implements CacheServiceMBean
 
                     PartitionFilter filter = new NamesPartitionFilter(builder.build(), FBUtilities.<Clustering>singleton(name.clustering, cfs.metadata.comparator), false);
                     SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, nowInSec, key, filter);
-                    try (RowIterator iter = AtomIterators.asRowIterator(cmd.queryMemtableAndDisk(cfs)))
+                    try (RowIterator iter = UnfilteredRowIterators.filter(cmd.queryMemtableAndDisk(cfs)))
                     {
                         Cell cell;
                         if (column.isStatic())
@@ -427,7 +426,7 @@ public class CacheService implements CacheServiceMBean
                 {
                     DecoratedKey key = cfs.partitioner.decorateKey(buffer);
                     int nowInSec = FBUtilities.nowInSeconds();
-                    try (AtomIterator iter = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, nowInSec, key).queryMemtableAndDisk(cfs))
+                    try (UnfilteredRowIterator iter = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, nowInSec, key).queryMemtableAndDisk(cfs))
                     {
                         CachedPartition toCache = ArrayBackedPartition.create(DataLimits.cqlLimits(rowsToCache).filter(iter));
                         return Pair.create(new RowCacheKey(cfs.metadata.cfId, key), (IRowCacheEntry)toCache);

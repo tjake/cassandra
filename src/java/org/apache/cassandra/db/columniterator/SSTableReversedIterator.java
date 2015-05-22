@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.partitions.AbstractPartitionData;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -35,7 +35,6 @@ import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.CloseableIterator;
 
 /**
  *  A Cell Iterator in reversed clustering order over SSTable
@@ -104,7 +103,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
     private class ReverseReader extends Reader
     {
         private ReusablePartitionData partition;
-        private Iterator<Atom> atomIter;
+        private UnfilteredRowIterator iterator;
 
         private ReverseReader(FileDataInput file, boolean isAtPartitionStart, boolean shouldCloseFile)
         {
@@ -124,19 +123,19 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                         return false;
                     }
                 });
-                atomIter = partition.atomIterator(columns, Slices.ALL, true, nowInSec());
+                iterator = partition.unfilteredIterator(columns, Slices.ALL, true, nowInSec());
             }
-            return atomIter.hasNext();
+            return iterator.hasNext();
         }
 
-        public Atom next() throws IOException
+        public Unfiltered next() throws IOException
         {
             if (!hasNext())
                 throw new NoSuchElementException();
-            return atomIter.next();
+            return iterator.next();
         }
 
-        public Iterator<Atom> slice(final Slice slice) throws IOException
+        public Iterator<Unfiltered> slice(final Slice slice) throws IOException
         {
             if (partition == null)
             {
@@ -150,14 +149,14 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                 });
             }
 
-            return partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
+            return partition.unfilteredIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
         }
     }
 
     private class ReverseIndexedReader extends IndexedReader
     {
         private ReusablePartitionData partition;
-        private Iterator<Atom> atomIter;
+        private UnfilteredRowIterator iterator;
 
         private ReverseIndexedReader(RowIndexEntry indexEntry, FileDataInput file, boolean isAtPartitionStart, boolean shouldCloseFile)
         {
@@ -175,7 +174,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                 ByteBufferUtil.skipShortLength(file); // partition key
                 DeletionTime.serializer.skip(file);   // partition deletion
                 if (sstable.header.hasStatic())
-                    AtomSerializer.serializer.skipStaticRow(file, sstable.header, helper);
+                    UnfilteredSerializer.serializer.skipStaticRow(file, sstable.header, helper);
                 isInit = true;
             }
 
@@ -189,17 +188,17 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                         return false;
                     }
                 });
-                atomIter = partition.atomIterator(columns, Slices.ALL, true, nowInSec());
+                iterator = partition.unfilteredIterator(columns, Slices.ALL, true, nowInSec());
             }
 
-            return atomIter.hasNext();
+            return iterator.hasNext();
         }
 
-        public Atom next() throws IOException
+        public Unfiltered next() throws IOException
         {
             if (!hasNext())
                 throw new NoSuchElementException();
-            return atomIter.next();
+            return iterator.next();
         }
 
         private void prepareBlock(int blockIdx, Slice.Bound start, Slice.Bound end) throws IOException
@@ -224,7 +223,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
         }
 
         @Override
-        public Iterator<Atom> slice(final Slice slice) throws IOException
+        public Iterator<Unfiltered> slice(final Slice slice) throws IOException
         {
             // if our previous slicing already got us the smallest row in the sstable, we're done
             if (currentIndexIdx < 0)
@@ -252,11 +251,11 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
             // have skipped anything not in the previous slice.
             prepareBlock(startIdx, slice.start(), slice.end());
 
-            return new AbstractIterator<Atom>()
+            return new AbstractIterator<Unfiltered>()
             {
-                private Iterator<Atom> currentBlockIterator = partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
+                private Iterator<Unfiltered> currentBlockIterator = partition.unfilteredIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
 
-                protected Atom computeNext()
+                protected Unfiltered computeNext()
                 {
                     try
                     {
@@ -269,7 +268,7 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
 
                         // Note that since we know we're read blocks backward, there is no point in checking the slice end, so we pass null
                         prepareBlock(currentIndexIdx, slice.start(), null);
-                        currentBlockIterator = partition.atomIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
+                        currentBlockIterator = partition.unfilteredIterator(columns, Slices.with(metadata().comparator, slice), true, nowInSec());
                         return computeNext();
                     }
                     catch (IOException e)
@@ -335,14 +334,14 @@ public class SSTableReversedIterator extends AbstractSSTableIterator
                    && (end == null || reader.deserializer.compareNextTo(end) <= 0)
                    && !tester.isDone())
             {
-                Atom atom = reader.deserializer.readNext();
-                if (atom.kind() == Atom.Kind.ROW)
+                Unfiltered unfiltered = reader.deserializer.readNext();
+                if (unfiltered.kind() == Unfiltered.Kind.ROW)
                 {
-                    ((Row)atom).copyTo(rowWriter);
+                    ((Row) unfiltered).copyTo(rowWriter);
                 }
                 else
                 {
-                    RangeTombstoneMarker marker = (RangeTombstoneMarker)atom;
+                    RangeTombstoneMarker marker = (RangeTombstoneMarker) unfiltered;
                     reader.updateOpenMarker(marker);
                     marker.copyTo(markerWriter);
                 }

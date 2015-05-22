@@ -26,13 +26,12 @@ import com.google.common.base.Objects;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
@@ -91,7 +90,7 @@ public abstract class ColumnFilter implements Iterable<ColumnFilter.Expression>
      * @param iter the iterator to filter
      * @return the filtered iterator.
      */
-    public abstract PartitionIterator filter(PartitionIterator iter);
+    public abstract UnfilteredPartitionIterator filter(UnfilteredPartitionIterator iter);
 
     /**
      * Returns this filter but without the provided expression. This method
@@ -157,21 +156,21 @@ public abstract class ColumnFilter implements Iterable<ColumnFilter.Expression>
             super(expressions);
         }
 
-        public PartitionIterator filter(PartitionIterator iter)
+        public UnfilteredPartitionIterator filter(UnfilteredPartitionIterator iter)
         {
             if (expressions.isEmpty())
                 return iter;
 
-            return new WrappingPartitionIterator(iter)
+            return new WrappingUnfilteredPartitionIterator(iter)
             {
                 @Override
-                public AtomIterator computeNext(final AtomIterator iter)
+                public UnfilteredRowIterator computeNext(final UnfilteredRowIterator iter)
                 {
-                    return new RowFilteringAtomIterator(iter)
+                    return new FilteringRowIterator(iter)
                     {
                         // We filter tombstones when passing the row to isSatisfiedBy so that the method doesn't have to bother with them.
                         // (we should however not filter them in the output of the method, hence it's not used as row filter for the
-                        // RowFilteringAtomIterator)
+                        // FilteringRowIterator)
                         private final TombstoneFilteringRow filter = new TombstoneFilteringRow();
 
                         protected boolean includeRow(Row row)
@@ -209,15 +208,15 @@ public abstract class ColumnFilter implements Iterable<ColumnFilter.Expression>
             super(expressions);
         }
 
-        public PartitionIterator filter(PartitionIterator iter)
+        public UnfilteredPartitionIterator filter(UnfilteredPartitionIterator iter)
         {
             if (expressions.isEmpty())
                 return iter;
 
-            return new WrappingPartitionIterator(iter)
+            return new WrappingUnfilteredPartitionIterator(iter)
             {
                 @Override
-                public AtomIterator computeNext(final AtomIterator iter)
+                public UnfilteredRowIterator computeNext(final UnfilteredRowIterator iter)
                 {
                     // Thrift does not filter rows, it filters entire partition if any of the expression is not
                     // satisfied, which forces us to materialize the result (in theory we could materialize only
@@ -234,7 +233,7 @@ public abstract class ColumnFilter implements Iterable<ColumnFilter.Expression>
                             return null;
                     }
                     // If we get there, it means all expressions where satisfied, so return the original result
-                    return result.atomIterator();
+                    return result.unfilteredIterator();
                 }
             };
         }

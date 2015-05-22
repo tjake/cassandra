@@ -29,22 +29,16 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
-import org.apache.cassandra.db.marshal.UTF8Type;
-import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.SearchIterator;
 import org.apache.cassandra.utils.Sorting;
-import org.apache.cassandra.utils.UUIDSerializer;
 
 /**
  * Stores updates made on a partition.
@@ -355,10 +349,10 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
     }
 
     @Override
-    protected SliceableAtomIterator sliceableAtomIterator(ColumnsSelection columns, boolean reversed, int nowInSec)
+    protected SliceableUnfilteredRowIterator sliceableUnfilteredIterator(ColumnsSelection columns, boolean reversed, int nowInSec)
     {
         maybeSort();
-        return super.sliceableAtomIterator(columns, reversed, nowInSec);
+        return super.sliceableUnfilteredIterator(columns, reversed, nowInSec);
     }
 
     /**
@@ -631,10 +625,10 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
                 // assert count == written: "Table had " + count + " columns, but " + written + " written";
             }
 
-            try (AtomIterator iter = update.sliceableAtomIterator())
+            try (UnfilteredRowIterator iter = update.sliceableUnfilteredIterator())
             {
                 assert !iter.isReverseOrder();
-                AtomIteratorSerializer.serializer.serialize(iter, out, version, update.rows);
+                UnfilteredRowIteratorSerializer.serializer.serialize(iter, out, version, update.rows);
             }
         }
 
@@ -651,14 +645,14 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
                 CFMetaData metadata = CFMetaData.serializer.deserialize(in, version);
                 LegacyLayout.LegacyDeletionInfo info = LegacyLayout.LegacyDeletionInfo.serializer.deserialize(metadata, in, version);
                 int size = in.readInt();
-                Iterator<LegacyLayout.LegacyCell> cells = LegacyLayout.deserializeCells(metadata, in, version, flag, size);
-                AtomIterator iterator = LegacyLayout.onWireCellstoAtomIterator(metadata, key, info, cells, false, FBUtilities.nowInSeconds());
-                return AtomIterators.toUpdate(iterator);
+                Iterator<LegacyLayout.LegacyCell> cells = LegacyLayout.deserializeCells(metadata, in, flag, size);
+                UnfilteredRowIterator iterator = LegacyLayout.onWireCellstoUnfilteredRowIterator(metadata, key, info, cells, false, FBUtilities.nowInSeconds());
+                return UnfilteredRowIterators.toUpdate(iterator);
             }
 
             assert key == null; // key is only there for the old format
 
-            AtomIteratorSerializer.Header h = AtomIteratorSerializer.serializer.deserializeHeader(in, version, flag);
+            UnfilteredRowIteratorSerializer.Header h = UnfilteredRowIteratorSerializer.serializer.deserializeHeader(in, version, flag);
             if (h.isEmpty)
                 return emptyUpdate(h.metadata, h.key);
 
@@ -675,7 +669,7 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
             upd.staticRow = h.staticRow;
 
             RangeTombstoneMarker.Writer markerWriter = upd.new RangeTombstoneCollector();
-            AtomIteratorSerializer.serializer.deserializeAtoms(in, new SerializationHelper(version, flag, h.nowInSec), h.sHeader, upd.writer(), markerWriter);
+            UnfilteredRowIteratorSerializer.serializer.deserialize(in, new SerializationHelper(version, flag, h.nowInSec), h.sHeader, upd.writer(), markerWriter);
 
             // Mark sorted after we're read it all since that's what we use in the writer() method to detect bad uses
             upd.isSorted = true;
@@ -701,9 +695,9 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
                 //}
             }
 
-            try (AtomIterator iter = update.sliceableAtomIterator())
+            try (UnfilteredRowIterator iter = update.sliceableUnfilteredIterator())
             {
-                return AtomIteratorSerializer.serializer.serializedSize(iter, version, update.rows, sizes);
+                return UnfilteredRowIteratorSerializer.serializer.serializedSize(iter, version, update.rows, sizes);
             }
         }
     }

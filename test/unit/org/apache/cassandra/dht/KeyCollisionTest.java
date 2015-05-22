@@ -39,14 +39,11 @@ import org.apache.cassandra.db.BufferDecoratedKey;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.Mutation;
-import org.apache.cassandra.db.RowPosition;
 import org.apache.cassandra.db.RowUpdateBuilder;
-import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
@@ -100,7 +97,7 @@ public class KeyCollisionTest
         insert("key1", "key2", "key3"); // token = 4
         insert("longKey1", "longKey2"); // token = 8
 
-        DataIterator rows = Util.getRangeSlice(cfs, bytes("k2"), bytes("key2"), null, ColumnFilter.NONE);
+        PartitionIterator rows = Util.getRangeSlice(cfs, bytes("k2"), bytes("key2"), null, ColumnFilter.NONE);
 
         assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("k2"));
         assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("kq"));

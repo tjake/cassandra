@@ -28,10 +28,10 @@ import java.nio.charset.CharacterCodingException;
 import org.apache.cassandra.*;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -82,7 +82,7 @@ public class SinglePartitionNamesTest
         cfs.forceBlockingFlush();
 
         // fetch by the first column name; we should get the second version of the column value
-        try (DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
+        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
              .addClustering(new BigInteger(new byte[]{1}))
              .executeLocally())
         {
@@ -94,7 +94,7 @@ public class SinglePartitionNamesTest
         }
 
         // fetch by the second column name; we should get the second version of the column value
-        try (DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
+        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
              .addClustering(new BigInteger(new byte[]{0, 0, 1}))
              .executeLocally())
         {

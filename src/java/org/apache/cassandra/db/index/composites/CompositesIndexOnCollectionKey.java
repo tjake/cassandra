@@ -21,10 +21,8 @@ import java.nio.ByteBuffer;
 
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.db.index.SecondaryIndex;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * Index on the collection element of the cell name of a collection.

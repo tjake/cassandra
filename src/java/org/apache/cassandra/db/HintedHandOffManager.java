@@ -30,7 +30,6 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -39,20 +38,15 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.concurrent.JMXEnabledScheduledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.Int32Type;
 import org.apache.cassandra.db.marshal.UUIDType;
-import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.exceptions.WriteFailureException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.FailureDetector;
@@ -394,9 +388,9 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         RateLimiter rateLimiter = RateLimiter.create(throttleInKB == 0 ? Double.MAX_VALUE : throttleInKB * 1024);
 
         int nowInSec = FBUtilities.nowInSeconds();
-        try (AtomIterator atomIter = SinglePartitionReadCommand.fullPartitionRead(SystemKeyspace.Hints, nowInSec, epkey).queryMemtableAndDisk(hintStore))
+        try (UnfilteredRowIterator iterator = SinglePartitionReadCommand.fullPartitionRead(SystemKeyspace.Hints, nowInSec, epkey).queryMemtableAndDisk(hintStore))
         {
-            RowIterator iter = AtomIterators.asRowIterator(atomIter);
+            RowIterator iter = UnfilteredRowIterators.filter(iterator);
 
             List<WriteResponseHandler<Mutation>> responseHandlers = Lists.newArrayList();
 
@@ -497,11 +491,11 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
                                                         DataLimits.cqlLimits(Integer.MAX_VALUE, 1),
                                                         DataRange.allData(hintStore.metadata, StorageService.getPartitioner()));
 
-        try (PartitionIterator iter = cmd.executeLocally(hintStore))
+        try (UnfilteredPartitionIterator iter = cmd.executeLocally(hintStore))
         {
             while (iter.hasNext())
             {
-                try (AtomIterator partition = iter.next())
+                try (UnfilteredRowIterator partition = iter.next())
                 {
                     UUID hostId = UUIDGen.getUUID(partition.partitionKey().getKey());
                     InetAddress target = StorageService.instance.getTokenMetadata().getEndpointForHostId(hostId);
@@ -566,11 +560,11 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         // Extract the keys as strings to be reported.
         LinkedList<String> result = new LinkedList<>();
         ReadCommand cmd = PartitionRangeReadCommand.allDataRead(SystemKeyspace.Hints, FBUtilities.nowInSeconds());
-        try (PartitionIterator iter = cmd.executeLocally(hintStore))
+        try (UnfilteredPartitionIterator iter = cmd.executeLocally(hintStore))
         {
             while (iter.hasNext())
             {
-                try (AtomIterator partition = iter.next())
+                try (UnfilteredRowIterator partition = iter.next())
                 {
                     // We don't delete by range on the hints table, so we don't have to worry about the
                     // iterator returning only range tombstone marker

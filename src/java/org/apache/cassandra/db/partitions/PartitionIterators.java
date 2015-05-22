@@ -17,83 +17,54 @@
  */
 package org.apache.cassandra.db.partitions;
 
-import java.io.DataInput;
-import java.io.IOError;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.security.MessageDigest;
 import java.util.*;
+import java.security.MessageDigest;
 
-import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
-import org.apache.cassandra.io.IVersionedSerializer;
-import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.utils.MergeIterator;
+import com.google.common.collect.AbstractIterator;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.cassandra.db.SinglePartitionReadCommand;
+import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.io.util.FileUtils;
 
-/**
- * Static methods to work with partition iterators.
- */
 public abstract class PartitionIterators
 {
-    private static final Logger logger = LoggerFactory.getLogger(PartitionIterators.class);
+    private PartitionIterators() {}
 
-    private static final Serializer serializer = new Serializer();
-
-    private static final Comparator<AtomIterator> partitionComparator = new Comparator<AtomIterator>()
+    public static final PartitionIterator EMPTY = new PartitionIterator()
     {
-        public int compare(AtomIterator p1, AtomIterator p2)
-        {
-            return p1.partitionKey().compareTo(p2.partitionKey());
-        }
-    };
-
-    public static final PartitionIterator EMPTY = new AbstractPartitionIterator()
-    {
-        public boolean isForThrift()
-        {
-            return false;
-        }
-
         public boolean hasNext()
         {
             return false;
         }
 
-        public AtomIterator next()
+        public RowIterator next()
         {
             throw new NoSuchElementException();
         }
+
+        public void remove()
+        {
+        }
+
+        public void close()
+        {
+        }
     };
 
-    private PartitionIterators() {}
-
-    public interface MergeListener
-    {
-        public AtomIterators.MergeListener getAtomMergeListener(DecoratedKey partitionKey, List<AtomIterator> versions);
-        public void close();
-    }
-
-    public static AtomIterator getOnlyElement(final PartitionIterator iter, SinglePartitionReadCommand<?> command)
+    public static RowIterator getOnlyElement(final PartitionIterator iter, SinglePartitionReadCommand<?> command)
     {
         // If the query has no results, we'll get an empty iterator, but we still
         // want a RowIterator out of this method, so we return an empty one.
-        AtomIterator toReturn = iter.hasNext()
-                              ? iter.next()
-                              : AtomIterators.emptyIterator(command.metadata(),
-                                                            command.partitionKey(),
-                                                            command.partitionFilter().isReversed(),
-                                                            command.nowInSec());
+        RowIterator toReturn = iter.hasNext()
+                             ? iter.next()
+                             : RowIterators.emptyIterator(command.metadata(),
+                                                          command.partitionKey(),
+                                                          command.partitionFilter().isReversed(),
+                                                          command.nowInSec());
 
         // Note that in general, we should wrap the result so that it's close method actually
         // close the whole PartitionIterator.
-        return new WrappingAtomIterator(toReturn)
+        return new WrappingRowIterator(toReturn)
         {
             public void close()
             {
@@ -103,8 +74,8 @@ public abstract class PartitionIterators
                 }
                 finally
                 {
-                    // asserting this only now because it bothers Serializer if hasNext() is called before
-                    // the previously returned iterator hasn't been fully consumed.
+                    // asserting this only now because it bothers UnfilteredPartitionIterators.Serializer (which might be used
+                    // under the provided DataIter) if hasNext() is called before the previously returned iterator hasn't been fully consumed.
                     assert !iter.hasNext();
 
                     iter.close();
@@ -113,41 +84,32 @@ public abstract class PartitionIterators
         };
     }
 
-    public static DataIterator mergeAsDataIterator(List<PartitionIterator> iterators, MergeListener listener)
+    public static PartitionIterator concat(final List<PartitionIterator> iterators)
     {
-        // TODO: we could have a somewhat faster version if we were to merge the AtomIterators directly as RowIterators
-        return asDataIterator(merge(iterators, listener));
-    }
+        if (iterators.size() == 1)
+            return iterators.get(0);
 
-    public static DataIterator asDataIterator(final PartitionIterator iterator)
-    {
-        return new DataIterator()
+        return new PartitionIterator()
         {
-            private RowIterator next;
+            private int idx = 0;
 
             public boolean hasNext()
             {
-                while (next == null && iterator.hasNext())
+                while (idx < iterators.size())
                 {
-                    AtomIterator atomIter = iterator.next();
-                    next = new RowIteratorFromAtomIterator(atomIter);
-                    if (!iterator.isForThrift() && RowIterators.isEmpty(next))
-                    {
-                        atomIter.close();
-                        next = null;
-                    }
+                    if (iterators.get(idx).hasNext())
+                        return true;
+
+                    ++idx;
                 }
-                return next != null;
+                return false;
             }
 
             public RowIterator next()
             {
-                if (next == null && !hasNext())
+                if (!hasNext())
                     throw new NoSuchElementException();
-
-                RowIterator toReturn = next;
-                next = null;
-                return toReturn;
+                return iterators.get(idx).next();
             }
 
             public void remove()
@@ -157,327 +119,81 @@ public abstract class PartitionIterators
 
             public void close()
             {
-                try
-                {
-                    iterator.close();
-                }
-                finally
-                {
-                    if (next != null)
-                        next.close();
-                }
-            }
-        };
-    }
-
-    public static PartitionIterator merge(final List<? extends PartitionIterator> iterators, final MergeListener listener)
-    {
-        assert listener != null;
-        assert !iterators.isEmpty();
-
-        final boolean isForThrift = iterators.get(0).isForThrift();
-
-        final MergeIterator<AtomIterator, AtomIterator> merged = MergeIterator.get(iterators, partitionComparator, new MergeIterator.Reducer<AtomIterator, AtomIterator>()
-        {
-            private final List<AtomIterator> toMerge = new ArrayList<>(iterators.size());
-
-            private CFMetaData metadata;
-            private DecoratedKey partitionKey;
-            private boolean isReverseOrder;
-            private int nowInSec;
-
-            public void reduce(int idx, AtomIterator current)
-            {
-                metadata = current.metadata();
-                partitionKey = current.partitionKey();
-                isReverseOrder = current.isReverseOrder();
-                nowInSec = current.nowInSec();
-
-                // Note that because the MergeListener cares about it, we want to preserve the index of the iterator.
-                // Non-present iterator will thus be set to empty in getReduced.
-                toMerge.set(idx, current);
-            }
-
-            protected AtomIterator getReduced()
-            {
-                AtomIterators.MergeListener atomListener = listener.getAtomMergeListener(partitionKey, toMerge);
-
-                // Replace nulls by empty iterators
-                for (int i = 0; i < toMerge.size(); i++)
-                    if (toMerge.get(i) == null)
-                        toMerge.set(i, AtomIterators.emptyIterator(metadata, partitionKey, isReverseOrder, nowInSec));
-
-                return AtomIterators.merge(toMerge, atomListener);
-            }
-
-            protected void onKeyChange()
-            {
-                toMerge.clear();
-                for (int i = 0; i < iterators.size(); i++)
-                    toMerge.add(null);
-            }
-        });
-
-        return new AbstractPartitionIterator()
-        {
-            public boolean isForThrift()
-            {
-                return isForThrift;
-            }
-
-            public boolean hasNext()
-            {
-                return merged.hasNext();
-            }
-
-            public AtomIterator next()
-            {
-                return merged.next();
-            }
-
-            @Override
-            public void close()
-            {
-                merged.close();
-            }
-        };
-    }
-
-    public static PartitionIterator mergeLazily(final List<? extends PartitionIterator> iterators)
-    {
-        assert !iterators.isEmpty();
-
-        if (iterators.size() == 1)
-            return iterators.get(0);
-
-        final boolean isForThrift = iterators.get(0).isForThrift();
-
-        final MergeIterator<AtomIterator, AtomIterator> merged = MergeIterator.get(iterators, partitionComparator, new MergeIterator.Reducer<AtomIterator, AtomIterator>()
-        {
-            private final List<AtomIterator> toMerge = new ArrayList<>(iterators.size());
-
-            @Override
-            public boolean trivialReduceIsTrivial()
-            {
-                return false;
-            }
-
-            public void reduce(int idx, AtomIterator current)
-            {
-                toMerge.add(current);
-            }
-
-            protected AtomIterator getReduced()
-            {
-                return new LazilyInitializedAtomIterator(toMerge.get(0).partitionKey())
-                {
-                    protected AtomIterator initializeIterator()
-                    {
-                        return AtomIterators.merge(toMerge);
-                    }
-                };
-            }
-
-            protected void onKeyChange()
-            {
-                toMerge.clear();
-            }
-        });
-
-        return new AbstractPartitionIterator()
-        {
-            public boolean isForThrift()
-            {
-                return isForThrift;
-            }
-
-            public boolean hasNext()
-            {
-                return merged.hasNext();
-            }
-
-            public AtomIterator next()
-            {
-                return merged.next();
-            }
-
-            @Override
-            public void close()
-            {
-                merged.close();
-            }
-        };
-    }
-
-    public static PartitionIterator removeDroppedColumns(PartitionIterator iterator, final Map<ColumnIdentifier, CFMetaData.DroppedColumn> droppedColumns)
-    {
-        return new AbstractFilteringIterator(iterator)
-        {
-            @Override
-            protected FilteringRow makeRowFilter()
-            {
-                return new FilteringRow()
-                {
-                    @Override
-                    protected boolean include(Cell cell)
-                    {
-                        return include(cell.column(), cell.livenessInfo().timestamp());
-                    }
-
-                    @Override
-                    protected boolean include(ColumnDefinition c, DeletionTime dt)
-                    {
-                        return include(c, dt.markedForDeleteAt());
-                    }
-
-                    private boolean include(ColumnDefinition column, long timestamp)
-                    {
-                        CFMetaData.DroppedColumn dropped = droppedColumns.get(column.name);
-                        return dropped == null || timestamp > dropped.droppedTime;
-                    }
-                };
-            }
-
-            @Override
-            protected boolean shouldFilter(AtomIterator atoms)
-            {
-                // TODO: We could have atom iterators return the smallest timestamp they might return
-                // (which we can get from sstable stats), and ignore any dropping if that smallest
-                // timestamp is bigger that the biggest droppedColumns timestamp.
-
-                // If none of the dropped columns is part of the columns that the iterator actually returns, there is nothing to do;
-                for (ColumnDefinition c : atoms.columns())
-                    if (droppedColumns.containsKey(c.name))
-                        return true;
-
-                return false;
+                FileUtils.closeQuietly(iterators);
             }
         };
     }
 
     public static void digest(PartitionIterator iterator, MessageDigest digest)
     {
+        while (iterator.hasNext())
+        {
+            try (RowIterator partition = iterator.next())
+            {
+                RowIterators.digest(partition, digest);
+            }
+        }
+    }
+
+    public static PartitionIterator singletonIterator(RowIterator iterator)
+    {
+        return new SingletonPartitionIterator(iterator);
+    }
+
+    public static void consume(PartitionIterator iterator)
+    {
         try (PartitionIterator iter = iterator)
         {
             while (iter.hasNext())
             {
-                try (AtomIterator partition = iter.next())
+                try (RowIterator partition = iter.next())
                 {
-                    AtomIterators.digest(partition, digest);
+                    while (partition.hasNext())
+                        partition.next();
                 }
             }
         }
     }
 
-    public static Serializer serializerForIntraNode()
-    {
-        return serializer;
-    }
-
     /**
-     * Wraps the provided iterator so it logs the returned atoms for debugging purposes.
+     * Wraps the provided iterator so it logs the returned rows for debugging purposes.
      * <p>
      * Note that this is only meant for debugging as this can log a very large amount of
      * logging at INFO.
      */
-    public static PartitionIterator loggingIterator(PartitionIterator iterator, final String id, final boolean fullDetails)
+    public static PartitionIterator loggingIterator(PartitionIterator iterator, final String id)
     {
         return new WrappingPartitionIterator(iterator)
         {
-            public AtomIterator next()
+            public RowIterator next()
             {
-                return AtomIterators.loggingIterator(super.next(), id, fullDetails);
+                return RowIterators.loggingIterator(super.next(), id);
             }
         };
     }
 
-    /**
-     * Serialize each AtomSerializer one after the other, with an initial byte that indicates whether
-     * we're done or not.
-     */
-    public static class Serializer
+    private static class SingletonPartitionIterator extends AbstractIterator<RowIterator> implements PartitionIterator
     {
-        public void serialize(PartitionIterator iter, DataOutputPlus out, int version) throws IOException
-        {
-            if (version < MessagingService.VERSION_30)
-                throw new UnsupportedOperationException();
+        private final RowIterator iterator;
+        private boolean returned;
 
-            out.writeBoolean(iter.isForThrift());
-            while (iter.hasNext())
-            {
-                out.writeBoolean(true);
-                try (AtomIterator partition = iter.next())
-                {
-                    AtomIteratorSerializer.serializer.serialize(partition, out, version);
-                }
-            }
-            out.writeBoolean(false);
+        private SingletonPartitionIterator(RowIterator iterator)
+        {
+            this.iterator = iterator;
         }
 
-        public PartitionIterator deserialize(final DataInput in, final int version, final SerializationHelper.Flag flag) throws IOException
+        protected RowIterator computeNext()
         {
-            if (version < MessagingService.VERSION_30)
-                throw new UnsupportedOperationException();
+            if (returned)
+                return endOfData();
 
-            final boolean isForThrift = in.readBoolean();
+            returned = true;
+            return iterator;
+        }
 
-            return new AbstractPartitionIterator()
-            {
-                private AtomIterator next;
-                private boolean hasNext;
-                private boolean nextReturned = true;
-
-                public boolean isForThrift()
-                {
-                    return isForThrift;
-                }
-
-                public boolean hasNext()
-                {
-                    if (!nextReturned)
-                        return hasNext;
-
-                    // We can't answer this until the previously returned iterator has been fully consumed,
-                    // so complain if that's not the case.
-                    if (next != null && next.hasNext())
-                        throw new IllegalStateException("Cannot call hasNext() until the previous iterator has been fully consumed");
-
-                    try
-                    {
-                        hasNext = in.readBoolean();
-                        nextReturned = false;
-                        return hasNext;
-                    }
-                    catch (IOException e)
-                    {
-                        throw new IOError(e);
-                    }
-                }
-
-                public AtomIterator next()
-                {
-                    if (nextReturned && !hasNext())
-                        throw new NoSuchElementException();
-
-                    try
-                    {
-                        nextReturned = true;
-                        next = AtomIteratorSerializer.serializer.deserialize(in, version, flag);
-                        return next;
-                    }
-                    catch (IOException e)
-                    {
-                        throw new IOError(e);
-                    }
-                }
-
-                @Override
-                public void close()
-                {
-                    if (next != null)
-                        next.close();
-                }
-            };
+        public void close()
+        {
+            iterator.close();
         }
     }
 }

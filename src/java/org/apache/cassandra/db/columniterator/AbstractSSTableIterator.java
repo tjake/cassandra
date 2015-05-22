@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
@@ -35,9 +35,8 @@ import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.utils.CloseableIterator;
 
-abstract class AbstractSSTableIterator implements SliceableAtomIterator
+abstract class AbstractSSTableIterator implements SliceableUnfilteredRowIterator
 {
     private static final Logger logger = LoggerFactory.getLogger(AbstractSSTableIterator.class);
 
@@ -127,7 +126,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
                                      Columns statics,
                                      boolean isForThrift,
                                      int nowInSec,
-                                     AtomDeserializer deserializer) throws IOException
+                                     UnfilteredDeserializer deserializer) throws IOException
     {
         if (!sstable.descriptor.version.storeRows())
         {
@@ -161,12 +160,12 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
 
         if (statics.isEmpty())
         {
-            AtomSerializer.serializer.skipStaticRow(file, sstable.header, helper);
+            UnfilteredSerializer.serializer.skipStaticRow(file, sstable.header, helper);
             return Rows.EMPTY_STATIC_ROW;
         }
         else
         {
-            return AtomSerializer.serializer.deserializeStaticRow(file, sstable.header, helper);
+            return UnfilteredSerializer.serializer.deserializeStaticRow(file, sstable.header, helper);
         }
     }
 
@@ -197,11 +196,11 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         return staticRow;
     }
 
-    public AtomStats stats()
+    public RowStats stats()
     {
         // We could return sstable.header.stats(), but this may not be as accurate than the actual sstable stats (see
         // SerializationHeader.make() for details) so we use the latter instead.
-        return new AtomStats(sstable.getMinTimestamp(), sstable.getMinLocalDeletionTime(), sstable.getMinTTL(), sstable.getAvgColumnSetPerRow());
+        return new RowStats(sstable.getMinTimestamp(), sstable.getMinLocalDeletionTime(), sstable.getMinTTL(), sstable.getAvgColumnSetPerRow());
     }
 
     public int nowInSec()
@@ -221,7 +220,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         }
     }
 
-    public Atom next()
+    public Unfiltered next()
     {
         try
         {
@@ -234,7 +233,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         }
     }
 
-    public Iterator<Atom> slice(Slice slice)
+    public Iterator<Unfiltered> slice(Slice slice)
     {
         try
         {
@@ -275,7 +274,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         private final boolean shouldCloseFile;
         public FileDataInput file;
 
-        protected AtomDeserializer deserializer;
+        protected UnfilteredDeserializer deserializer;
 
         // Records the currently open range tombstone (if any)
         protected DeletionTime openMarker = null;
@@ -291,7 +290,7 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         private void createDeserializer()
         {
             assert file != null && deserializer == null;
-            deserializer = AtomDeserializer.create(sstable.metadata, file, sstable.header, helper, partitionLevelDeletion, isForThrift);
+            deserializer = UnfilteredDeserializer.create(sstable.metadata, file, sstable.header, helper, partitionLevelDeletion, isForThrift);
         }
 
         protected void seekToPosition(long position) throws IOException
@@ -322,8 +321,8 @@ abstract class AbstractSSTableIterator implements SliceableAtomIterator
         }
 
         public abstract boolean hasNext() throws IOException;
-        public abstract Atom next() throws IOException;
-        public abstract Iterator<Atom> slice(Slice slice) throws IOException;
+        public abstract Unfiltered next() throws IOException;
+        public abstract Iterator<Unfiltered> slice(Slice slice) throws IOException;
 
         public void close() throws IOException
         {

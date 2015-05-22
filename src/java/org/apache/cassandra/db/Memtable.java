@@ -18,7 +18,6 @@
 package org.apache.cassandra.db;
 
 import java.io.File;
-import java.util.AbstractMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -33,7 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
@@ -233,7 +232,7 @@ public class Memtable
                              cfs.name, hashCode(), liveDataSize, currentOperations, 100 * allocator.onHeap().ownershipRatio(), 100 * allocator.offHeap().ownershipRatio());
     }
 
-    public PartitionIterator makePartitionIterator(final DataRange dataRange, final int nowInSec, final boolean isForThrift)
+    public UnfilteredPartitionIterator makePartitionIterator(final DataRange dataRange, final int nowInSec, final boolean isForThrift)
     {
         AbstractBounds<RowPosition> keyRange = dataRange.keyRange();
 
@@ -253,7 +252,7 @@ public class Memtable
 
         final Iterator<Map.Entry<RowPosition, AtomicBTreePartition>> iter = subMap.entrySet().iterator();
 
-        return new AbstractPartitionIterator()
+        return new AbstractUnfilteredPartitionIterator()
         {
             public boolean isForThrift()
             {
@@ -265,14 +264,14 @@ public class Memtable
                 return iter.hasNext();
             }
 
-            public AtomIterator next()
+            public UnfilteredRowIterator next()
             {
                 Map.Entry<RowPosition, AtomicBTreePartition> entry = iter.next();
                 // Actual stored key should be true DecoratedKey
                 assert entry.getKey() instanceof DecoratedKey;
                 DecoratedKey key = (DecoratedKey)entry.getKey();
                 PartitionFilter filter = dataRange.partitionFilter(key);
-                return filter.getAtomIterator(entry.getValue(), nowInSec);
+                return filter.getUnfilteredRowIterator(entry.getValue(), nowInSec);
             }
         };
     }
@@ -361,7 +360,7 @@ public class Memtable
 
                     if (!partition.isEmpty())
                     {
-                        try (AtomIterator iter = partition.atomIterator(nowInSec))
+                        try (UnfilteredRowIterator iter = partition.unfilteredIterator(nowInSec))
                         {
                             writer.append(iter);
                         }
@@ -391,7 +390,7 @@ public class Memtable
 
         public SSTableWriter createFlushWriter(String filename,
                                                PartitionColumns columns,
-                                               AtomStats stats)
+                                               RowStats stats)
         {
             MetadataCollector sstableMetadataCollector = new MetadataCollector(cfs.metadata.comparator).replayPosition(context);
             return SSTableWriter.create(Descriptor.fromFilename(filename),
@@ -444,20 +443,20 @@ public class Memtable
 
     private static class StatsCollector
     {
-        private final AtomicReference<AtomStats> stats = new AtomicReference<>(AtomStats.NO_STATS);
+        private final AtomicReference<RowStats> stats = new AtomicReference<>(RowStats.NO_STATS);
 
-        public void update(AtomStats newStats)
+        public void update(RowStats newStats)
         {
             while (true)
             {
-                AtomStats current = stats.get();
-                AtomStats updated = current.mergeWith(newStats);
+                RowStats current = stats.get();
+                RowStats updated = current.mergeWith(newStats);
                 if (stats.compareAndSet(current, updated))
                     return;
             }
         }
 
-        public AtomStats get()
+        public RowStats get()
         {
             return stats.get();
         }

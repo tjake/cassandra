@@ -24,12 +24,12 @@ import java.util.*;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.cql3.CQLTester;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.metrics.ClearableHistogram;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -57,7 +57,7 @@ public class KeyspaceTest extends CQLTester
             PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
             SlicePartitionFilter filter = new SlicePartitionFilter(columns, slices, false);
             SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, 0);
-            try (DataIterator iterator = command.executeLocally())
+            try (PartitionIterator iterator = command.executeLocally())
             {
                 assertFalse(iterator.hasNext());
             }
@@ -65,7 +65,7 @@ public class KeyspaceTest extends CQLTester
             // slice with nothing in between the bounds
             filter = slices(cfs, 1, 1, false);
             command = singlePartitionSlice(cfs, "0", filter, null);
-            try (DataIterator iterator = command.executeLocally())
+            try (PartitionIterator iterator = command.executeLocally())
             {
                 assertFalse(iterator.hasNext());
             }
@@ -75,7 +75,7 @@ public class KeyspaceTest extends CQLTester
             clusterings.add(new SimpleClustering(ByteBufferUtil.bytes(1)));
             NamesPartitionFilter namesFilter = new NamesPartitionFilter(cfs.metadata.partitionColumns(), clusterings, false);
             SinglePartitionNamesCommand namesCommand = new SinglePartitionNamesCommand(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, Util.dk("0"), namesFilter);
-            try (DataIterator iterator = namesCommand.executeLocally())
+            try (PartitionIterator iterator = namesCommand.executeLocally())
             {
                 assertFalse(iterator.hasNext());
             }
@@ -101,7 +101,7 @@ public class KeyspaceTest extends CQLTester
             PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
             SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
             SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, 1);
-            try (DataIterator iterator = command.executeLocally())
+            try (PartitionIterator iterator = command.executeLocally())
             {
                 try (RowIterator rowIterator = iterator.next())
                 {
@@ -119,7 +119,7 @@ public class KeyspaceTest extends CQLTester
                 NamesPartitionFilter namesFilter = new NamesPartitionFilter(cfs.metadata.partitionColumns(), clusterings, false);
                 SinglePartitionNamesCommand namesCommand = new SinglePartitionNamesCommand(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, Util.dk("0"), namesFilter);
 
-                try (DataIterator iterator = namesCommand.executeLocally())
+                try (PartitionIterator iterator = namesCommand.executeLocally())
                 {
                     try (RowIterator rowIterator = iterator.next())
                     {
@@ -135,7 +135,7 @@ public class KeyspaceTest extends CQLTester
             {
                 filter = slices(cfs, i, i, false);
                 command = singlePartitionSlice(cfs, "0", filter, null);
-                try (DataIterator iterator = command.executeLocally())
+                try (PartitionIterator iterator = command.executeLocally())
                 {
                     try (RowIterator rowIterator = iterator.next())
                     {
@@ -156,7 +156,7 @@ public class KeyspaceTest extends CQLTester
         PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
         SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
         SinglePartitionSliceCommand command = singlePartitionSlice(cfs, key, filter, null);
-        try (DataIterator iterator = command.executeLocally())
+        try (PartitionIterator iterator = command.executeLocally())
         {
             assertFalse(iterator.hasNext());
         }
@@ -197,7 +197,7 @@ public class KeyspaceTest extends CQLTester
         SlicePartitionFilter filter = new SlicePartitionFilter(columns, slices, reversed);
         SinglePartitionSliceCommand command = singlePartitionSlice(cfs, key, filter, limit);
 
-        try (DataIterator iterator = command.executeLocally())
+        try (PartitionIterator iterator = command.executeLocally())
         {
             try (RowIterator rowIterator = iterator.next())
             {
@@ -270,7 +270,7 @@ public class KeyspaceTest extends CQLTester
             PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
             SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
             SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, null);
-            try (DataIterator iterator = command.executeLocally())
+            try (PartitionIterator iterator = command.executeLocally())
             {
                 try (RowIterator rowIterator = iterator.next())
                 {
@@ -284,7 +284,7 @@ public class KeyspaceTest extends CQLTester
 
     private static void assertRowsInResult(ColumnFamilyStore cfs, SinglePartitionReadCommand command, int ... columnValues)
     {
-        try (DataIterator iterator = command.executeLocally())
+        try (PartitionIterator iterator = command.executeLocally())
         {
             if (columnValues.length == 0)
             {

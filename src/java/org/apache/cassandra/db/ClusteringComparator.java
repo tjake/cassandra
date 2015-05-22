@@ -25,9 +25,6 @@ import java.util.Objects;
 
 import com.google.common.base.Joiner;
 
-import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.atoms.Atom;
-import org.apache.cassandra.db.atoms.Row;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.utils.ByteBufferUtil;
 

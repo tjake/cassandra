@@ -40,7 +40,7 @@ import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.Slice.Bound;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.compaction.AbstractCompactionTask;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.*;
@@ -70,10 +70,10 @@ public class Util
 
     public static class OnlyRow implements AutoCloseable
     {
-        private final DataIterator iterator;
+        private final PartitionIterator iterator;
         public final Row row;
 
-        public OnlyRow(DataIterator iter)
+        public OnlyRow(PartitionIterator iter)
         {
             iterator = iter;
             while (iterator.hasNext())
@@ -223,11 +223,11 @@ public class Util
         return bb;
     }
 
-    public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs)
+    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs)
     {
         return getRangeSlice(cfs, null);
     }
-    public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
+    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
     {
         ColumnFilter filter = ColumnFilter.create();
         if (superColumn != null)
@@ -237,7 +237,7 @@ public class Util
 
         return command.executeLocally(cfs);
     }
-    public static DataIterator getRangeSlice(ColumnFamilyStore cfs,
+    public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs,
                                              ByteBuffer startKey,
                                              ByteBuffer endKey,
                                              ByteBuffer superColumn,
@@ -380,42 +380,42 @@ public class Util
     }
 
     @SuppressWarnings("rawtypes")
-    public static AtomIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
+    public static UnfilteredRowIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
     {
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);
-        return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
     @SuppressWarnings("rawtypes")
-    public static AtomIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
+    public static UnfilteredRowIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
     {
         SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), Slices.ALL, false);
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.cqlLimits(limit), key, filter);
-        return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
     @SuppressWarnings("rawtypes")
-    public static AtomIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
+    public static UnfilteredRowIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
     {
         Slices.Builder sb = new Slices.Builder(cfs.getComparator());
         SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), sb.build(), false);
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, key, filter);
-        return PartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
+        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(cfs), cmd);
     }
 
     public static ArrayBackedPartition materializePartition(ColumnFamilyStore cfs, DecoratedKey key)
     {
-        try (AtomIterator iter = readFullPartition(cfs, key))
+        try (UnfilteredRowIterator iter = readFullPartition(cfs, key))
         {
-            return ReadPartition.create(iter);
+            return FilteredPartition.create(iter);
         }
     }
 
-    public static AtomIterator apply(Mutation mutation)
+    public static UnfilteredRowIterator apply(Mutation mutation)
     {
         mutation.apply();
         assert mutation.getPartitionUpdates().size() == 1;
-        return mutation.getPartitionUpdates().iterator().next().atomIterator();
+        return mutation.getPartitionUpdates().iterator().next().unfilteredIterator();
     }
 
     public static Row getSingleRow(ColumnFamilyStore cfs, DecoratedKey dk)
@@ -423,9 +423,9 @@ public class Util
         return materializePartition(cfs, dk).lastRow();
     }
 
-    public static void consume(AtomIterator iter)
+    public static void consume(UnfilteredRowIterator iter)
     {
-        try (AtomIterator iterator = iter)
+        try (UnfilteredRowIterator iterator = iter)
         {
             while (iter.hasNext())
                 iter.next();

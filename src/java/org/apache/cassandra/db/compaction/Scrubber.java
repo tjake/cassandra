@@ -26,7 +26,7 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
 
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -128,9 +128,9 @@ public class Scrubber implements Closeable
         this.nextRowPositionFromIndex = 0;
     }
 
-    private AtomIterator withValidation(AtomIterator iter, String filename)
+    private UnfilteredRowIterator withValidation(UnfilteredRowIterator iter, String filename)
     {
-        return checkData ? AtomIterators.withValidation(iter, filename) : iter;
+        return checkData ? UnfilteredRowIterators.withValidation(iter, filename) : iter;
     }
 
     public void scrub()
@@ -209,15 +209,15 @@ public class Scrubber implements Closeable
                     if (dataSize != dataSizeFromIndex)
                         outputHandler.warn(String.format("Data file row size %d different from index file row size %d", dataSize, dataSizeFromIndex));
 
-                    try (AtomIterator atoms = withValidation(new SSTableIdentityIterator(sstable, dataFile, key, nowInSec), dataFile.getPath()))
+                    try (UnfilteredRowIterator iterator = withValidation(new SSTableIdentityIterator(sstable, dataFile, key, nowInSec), dataFile.getPath()))
                     {
                         if (prevKey != null && prevKey.compareTo(key) > 0)
                         {
-                            saveOutOfOrderRow(prevKey, key, atoms);
+                            saveOutOfOrderRow(prevKey, key, iterator);
                             continue;
                         }
 
-                        if (writer.tryAppend(atoms) == null)
+                        if (writer.tryAppend(iterator) == null)
                             emptyRows++;
                         else
                             goodRows++;
@@ -240,15 +240,15 @@ public class Scrubber implements Closeable
                         {
                             dataFile.seek(dataStartFromIndex);
 
-                            try (AtomIterator atoms = withValidation(new SSTableIdentityIterator(sstable, dataFile, key, nowInSec), dataFile.getPath()))
+                            try (UnfilteredRowIterator iterator = withValidation(new SSTableIdentityIterator(sstable, dataFile, key, nowInSec), dataFile.getPath()))
                             {
                                 if (prevKey != null && prevKey.compareTo(key) > 0)
                                 {
-                                    saveOutOfOrderRow(prevKey, key, atoms);
+                                    saveOutOfOrderRow(prevKey, key, iterator);
                                     continue;
                                 }
 
-                                if (writer.tryAppend(atoms) == null)
+                                if (writer.tryAppend(iterator) == null)
                                     emptyRows++;
                                 else
                                     goodRows++;
@@ -285,7 +285,7 @@ public class Scrubber implements Closeable
                 try (SSTableWriter inOrderWriter = CompactionManager.createWriter(cfs, destination, expectedBloomFilterSize, repairedAt, sstable);)
                 {
                     for (Partition partition : outOfOrder)
-                        inOrderWriter.append(partition.atomIterator(nowInSec));
+                        inOrderWriter.append(partition.unfilteredIterator(nowInSec));
                     newInOrderSstable = inOrderWriter.finish(-1, sstable.maxDataAge, true);
                 }
                 if (!isOffline)
@@ -364,11 +364,11 @@ public class Scrubber implements Closeable
         }
     }
 
-    private void saveOutOfOrderRow(DecoratedKey prevKey, DecoratedKey key, AtomIterator atoms)
+    private void saveOutOfOrderRow(DecoratedKey prevKey, DecoratedKey key, UnfilteredRowIterator iterator)
     {
         // TODO bitch if the row is too large?  if it is there's not much we can do ...
         outputHandler.warn(String.format("Out of order row detected (%s found after %s)", key, prevKey));
-        outOfOrder.add(ArrayBackedPartition.create(atoms));
+        outOfOrder.add(ArrayBackedPartition.create(iterator));
     }
 
     public SSTableReader getNewSSTable()

@@ -25,7 +25,7 @@ import java.util.*;
 
 import org.apache.cassandra.cache.IMeasurableMemory;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -318,11 +318,11 @@ public interface ClusteringPrefix extends Aliasable<ClusteringPrefix>, IMeasurab
 
         public void prepare(int flags) throws IOException
         {
-            assert !AtomSerializer.isStatic(flags) : "Flags = " + flags;
-            this.nextIsRow = AtomSerializer.kind(flags) == Atom.Kind.ROW;
+            assert !UnfilteredSerializer.isStatic(flags) : "Flags = " + flags;
+            this.nextIsRow = UnfilteredSerializer.kind(flags) == Unfiltered.Kind.ROW;
             this.nextSize = nextIsRow ? comparator.size() : in.readUnsignedShort();
             this.nextHeader = serializer.readHeader(nextSize, in);
-            this.nextKind = nextIsRow ? Kind.CLUSTERING : AtomSerializer.boundKind(flags);
+            this.nextKind = nextIsRow ? Kind.CLUSTERING : UnfilteredSerializer.boundKind(flags);
             this.deserializedSize = 0;
         }
 

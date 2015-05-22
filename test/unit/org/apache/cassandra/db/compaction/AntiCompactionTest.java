@@ -33,7 +33,6 @@ import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.RateLimiter;
 import junit.framework.Assert;
 
-import org.apache.cassandra.db.atoms.Atom;
 import org.junit.BeforeClass;
 import org.junit.After;
 import org.junit.Test;
@@ -41,8 +40,8 @@ import org.junit.Test;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.AtomStats;
+import org.apache.cassandra.db.rows.RowStats;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.dht.ByteOrderedPartitioner.BytesToken;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -105,7 +104,7 @@ public class AntiCompactionTest
             {
                 while (scanner.hasNext())
                 {
-                    AtomIterator row = scanner.next();
+                    UnfilteredRowIterator row = scanner.next();
                     if (sstable.isRepaired())
                     {
                         assertTrue(range.contains(row.partitionKey().getToken()));
@@ -157,12 +156,12 @@ public class AntiCompactionTest
                 .add("val", "value1")
                 .build()
                 .applyUnsafe();
-        AtomIterator atoms = Util.readFullPartition(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF), dk);
+        UnfilteredRowIterator atoms = Util.readFullPartition(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF), dk);
 
         File dir = cfs.directories.getDirectoryForNewSSTables();
         String filename = cfs.getTempSSTablePath(dir);
 
-        try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfm, cfm.partitionColumns(), AtomStats.NO_STATS, true)))
+        try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfm, cfm.partitionColumns(), RowStats.NO_STATS, true)))
         {
             for (int i = 0; i < count * 5; i++)
                 writer.append(atoms);
@@ -227,7 +226,7 @@ public class AntiCompactionTest
             ISSTableScanner scanner = sstable.getScanner((RateLimiter) null, FBUtilities.nowInSeconds());
             while (scanner.hasNext())
             {
-                AtomIterator row = scanner.next();
+                UnfilteredRowIterator row = scanner.next();
                 if (sstable.isRepaired())
                 {
                     assertTrue(range.contains(row.partitionKey().getToken()));

@@ -20,11 +20,8 @@ package org.apache.cassandra.db;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
-import java.util.*;
 
-import com.google.common.collect.AbstractIterator;
-
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
@@ -38,36 +35,36 @@ public abstract class ReadResponse
     public static final IVersionedSerializer<ReadResponse> serializer = new Serializer();
     public static final IVersionedSerializer<ReadResponse> legacyRangeSliceReplySerializer = new LegacyRangeSliceReplySerializer();
 
-    public static ReadResponse createDataResponse(PartitionIterator data)
+    public static ReadResponse createDataResponse(UnfilteredPartitionIterator data)
     {
-        try (PartitionIterator iter = data)
+        try (UnfilteredPartitionIterator iter = data)
         {
             return new DataResponse(data);
         }
     }
 
-    public static ReadResponse createDigestResponse(PartitionIterator data)
+    public static ReadResponse createDigestResponse(UnfilteredPartitionIterator data)
     {
-        try (PartitionIterator iter = data)
+        try (UnfilteredPartitionIterator iter = data)
         {
             return new DigestResponse(makeDigest(data));
         }
     }
 
-    public static ReadResponse createLocalDataResponse(PartitionIterator data)
+    public static ReadResponse createLocalDataResponse(UnfilteredPartitionIterator data)
     {
         // We don't consume the data ourselves so we shouldn't close it.
         return new LocalDataResponse(data);
     }
 
-    public abstract PartitionIterator makeIterator();
+    public abstract UnfilteredPartitionIterator makeIterator();
     public abstract ByteBuffer digest();
     public abstract boolean isDigestQuery();
 
-    protected static ByteBuffer makeDigest(PartitionIterator iterator)
+    protected static ByteBuffer makeDigest(UnfilteredPartitionIterator iterator)
     {
         MessageDigest digest = FBUtilities.threadLocalMD5Digest();
-        PartitionIterators.digest(iterator, digest);
+        UnfilteredPartitionIterators.digest(iterator, digest);
         return ByteBuffer.wrap(digest.digest());
     }
 
@@ -81,7 +78,7 @@ public abstract class ReadResponse
             this.digest = digest;
         }
 
-        public PartitionIterator makeIterator()
+        public UnfilteredPartitionIterator makeIterator()
         {
             throw new UnsupportedOperationException();
         }
@@ -109,12 +106,12 @@ public abstract class ReadResponse
             this.flag = SerializationHelper.Flag.FROM_REMOTE;
         }
 
-        private DataResponse(PartitionIterator iter)
+        private DataResponse(UnfilteredPartitionIterator iter)
         {
             DataOutputBuffer buffer = new DataOutputBuffer();
             try
             {
-                PartitionIterators.serializerForIntraNode().serialize(iter, buffer, MessagingService.current_version);
+                UnfilteredPartitionIterators.serializerForIntraNode().serialize(iter, buffer, MessagingService.current_version);
                 this.data = buffer.buffer();
                 this.flag = SerializationHelper.Flag.LOCAL;
             }
@@ -125,12 +122,12 @@ public abstract class ReadResponse
             }
         }
 
-        public PartitionIterator makeIterator()
+        public UnfilteredPartitionIterator makeIterator()
         {
             try
             {
                 DataInput in = new DataInputStream(ByteBufferUtil.inputStream(data));
-                return PartitionIterators.serializerForIntraNode().deserialize(in, MessagingService.current_version, flag);
+                return UnfilteredPartitionIterators.serializerForIntraNode().deserialize(in, MessagingService.current_version, flag);
             }
             catch (IOException e)
             {
@@ -141,7 +138,7 @@ public abstract class ReadResponse
 
         public ByteBuffer digest()
         {
-            try (PartitionIterator iterator = makeIterator())
+            try (UnfilteredPartitionIterator iterator = makeIterator())
             {
                 return makeDigest(iterator);
             }
@@ -155,15 +152,15 @@ public abstract class ReadResponse
 
     private static class LocalDataResponse extends ReadResponse
     {
-        private final PartitionIterator iterator;
+        private final UnfilteredPartitionIterator iterator;
         private boolean returned;
 
-        private LocalDataResponse(PartitionIterator iterator)
+        private LocalDataResponse(UnfilteredPartitionIterator iterator)
         {
             this.iterator = iterator;
         }
 
-        public PartitionIterator makeIterator()
+        public UnfilteredPartitionIterator makeIterator()
         {
             if (returned)
                 throw new IllegalStateException();

@@ -19,9 +19,7 @@ package org.apache.cassandra.io.sstable;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.BlockingQueue;
@@ -34,16 +32,9 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.LivenessInfo;
-import org.apache.cassandra.db.TypeSizes;
-import org.apache.cassandra.db.atoms.AtomIterator;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.CellPath;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.marshal.CompositeType;
+import org.apache.cassandra.db.rows.CellPath;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.io.sstable.format.SSTableWriter;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
@@ -255,7 +246,7 @@ class SSTableSimpleUnsortedWriter extends SSTableSimpleWriter
                         for (Map.Entry<DecoratedKey, PartitionUpdate> entry : b.entrySet())
                         {
                             if (!entry.getValue().isEmpty())
-                                writer.append(entry.getValue().atomIterator());
+                                writer.append(entry.getValue().unfilteredIterator());
                             else if (!first)
                                 throw new AssertionError("Empty partition");
                             first = false;

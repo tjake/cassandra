@@ -17,13 +17,12 @@
  */
 package org.apache.cassandra.service.pager;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestValidationException;
@@ -116,19 +115,19 @@ public class MultiPartitionPager implements QueryPager
         return true;
     }
 
-    public DataIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public PartitionIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
     {
         int toQuery = Math.min(remaining, pageSize);
         PagersIterator iter = new PagersIterator(toQuery);
-        CountingDataIterator countingIter = new CountingDataIterator(iter, limit.forPaging(toQuery));
+        CountingPartitionIterator countingIter = new CountingPartitionIterator(iter, limit.forPaging(toQuery));
         iter.setCounter(countingIter.counter());
         return countingIter;
     }
 
-    private class PagersIterator extends AbstractIterator<RowIterator> implements DataIterator
+    private class PagersIterator extends AbstractIterator<RowIterator> implements PartitionIterator
     {
         private final int pageSize;
-        private DataIterator result;
+        private PartitionIterator result;
         private DataLimits.Counter counter;
 
         public PagersIterator(int pageSize)

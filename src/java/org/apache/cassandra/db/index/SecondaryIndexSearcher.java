@@ -25,15 +25,13 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.filter.ColumnFilter;
-import org.apache.cassandra.db.partitions.DataIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.dht.AbstractBounds;
-import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.utils.FBUtilities;
@@ -64,7 +62,7 @@ public abstract class SecondaryIndexSearcher
         return highestSelectivityPredicate(command.columnFilter(), false);
     }
 
-    public PartitionIterator search(ReadCommand command)
+    public UnfilteredPartitionIterator search(ReadCommand command)
     {
         ColumnFilter.Expression primary = highestSelectivityPredicate(command.columnFilter(), true);
         assert primary != null;
@@ -84,7 +82,7 @@ public abstract class SecondaryIndexSearcher
         final OpOrder.Group indexOp = index.getIndexCfs().readOrdering.start();
         try
         {
-            AtomIterator indexIter = new WrappingAtomIterator(queryIndex(index, indexKey, command))
+            UnfilteredRowIterator indexIter = new WrappingUnfilteredRowIterator(queryIndex(index, indexKey, command))
             {
                 @Override
                 public void close()
@@ -102,7 +100,7 @@ public abstract class SecondaryIndexSearcher
 
             try
             {
-                return new WrappingPartitionIterator(queryDataFromIndex(index, indexKey, AtomIterators.asRowIterator(indexIter), command, writeOp))
+                return new WrappingUnfilteredPartitionIterator(queryDataFromIndex(index, indexKey, UnfilteredRowIterators.filter(indexIter), command, writeOp))
                 {
                     @Override
                     public void close()
@@ -134,7 +132,7 @@ public abstract class SecondaryIndexSearcher
         }
     }
 
-    private AtomIterator queryIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, ReadCommand command)
+    private UnfilteredRowIterator queryIndex(AbstractSimplePerColumnSecondaryIndex index, DecoratedKey indexKey, ReadCommand command)
     {
         PartitionFilter filter = makeIndexFilter(index, command);
         return SinglePartitionReadCommand.create(index.getIndexCfs().metadata, command.nowInSec(), indexKey, filter)
@@ -218,7 +216,7 @@ public abstract class SecondaryIndexSearcher
         }
     }
 
-    protected abstract PartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index,
+    protected abstract UnfilteredPartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index,
                                                             DecoratedKey indexKey,
                                                             RowIterator indexHits,
                                                             ReadCommand command,
@@ -285,7 +283,7 @@ public abstract class SecondaryIndexSearcher
      * @param result The index query results to be post-processed
      * @return The post-processed results
      */
-    public DataIterator postReconciliationProcessing(ColumnFilter filter, DataIterator result)
+    public PartitionIterator postReconciliationProcessing(ColumnFilter filter, PartitionIterator result)
     {
         return result;
     }

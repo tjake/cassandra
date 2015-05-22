@@ -18,17 +18,14 @@
 package org.apache.cassandra.db;
 
 import java.nio.ByteBuffer;
-import java.util.*;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.cql3.statements.SelectStatement;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ListType;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.service.StorageService;
@@ -303,8 +300,8 @@ public class RowUpdateBuilder
         return update.metadata().getColumnDefinition(new ColumnIdentifier(name, true));
     }
 
-    public AtomIterator atomIterator()
+    public UnfilteredRowIterator unfilteredIterator()
     {
-        return update.atomIterator();
+        return update.unfilteredIterator();
     }
 }

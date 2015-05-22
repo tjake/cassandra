@@ -21,9 +21,7 @@ package org.apache.cassandra.service;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.google.common.base.Preconditions;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -31,24 +29,17 @@ import org.junit.runner.RunWith;
 import org.apache.cassandra.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.Cell;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
-import org.apache.cassandra.db.filter.NamesPartitionFilter;
 import org.apache.cassandra.db.filter.SlicePartitionFilter;
-import org.apache.cassandra.db.marshal.CompositeType;
-import org.apache.cassandra.db.partitions.DataIterator;
-import org.apache.cassandra.db.partitions.ReadPartition;
-import org.apache.cassandra.dht.AbstractBounds;
+import org.apache.cassandra.db.partitions.FilteredPartition;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.service.pager.QueryPagers;
-import org.apache.cassandra.thrift.ColumnSlice;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -123,13 +114,13 @@ public class QueryPagerTest
         return Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD);
     }
 
-    private static List<ReadPartition> assertSize(DataIterator partitions, int expectedSize)
+    private static List<FilteredPartition> assertSize(PartitionIterator partitions, int expectedSize)
     {
         StringBuilder sb = new StringBuilder();
-        List<ReadPartition> partitionList = new ArrayList<>();
+        List<FilteredPartition> partitionList = new ArrayList<>();
         for (RowIterator rowIterator : Util.once(partitions))
         {
-            ReadPartition partition = ReadPartition.create(rowIterator);
+            FilteredPartition partition = FilteredPartition.create(rowIterator);
             rowIterator.close();
             sb.append(partition);
             partitionList.add(partition);
@@ -197,7 +188,7 @@ public class QueryPagerTest
         return builder.build();
     }
 
-    private static void assertRow(ReadPartition r, String key, String... names)
+    private static void assertRow(FilteredPartition r, String key, String... names)
     {
         ByteBuffer[] bbs = new ByteBuffer[names.length];
         for (int i = 0; i < names.length; i++)
@@ -205,7 +196,7 @@ public class QueryPagerTest
         assertRow(r, key, bbs);
     }
 
-    private static void assertRow(ReadPartition partition, String key, ByteBuffer... names)
+    private static void assertRow(FilteredPartition partition, String key, ByteBuffer... names)
     {
         assertEquals(key, string(partition.partitionKey().getKey()));
         assertFalse(partition.isEmpty());
@@ -223,9 +214,9 @@ public class QueryPagerTest
         QueryPager pager = namesQuery("k0", "c1", "c5", "c7", "c8").getLocalPager();
 
         assertFalse(pager.isExhausted());
-        DataIterator page = pager.fetchPage(5);
+        PartitionIterator page = pager.fetchPage(5);
 
-        List<ReadPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = assertSize(page, 1);
         assertRow(partition.get(0), "k0", "c1", "c5", "c7", "c8");
 
         assertTrue(pager.isExhausted());
@@ -236,11 +227,11 @@ public class QueryPagerTest
     {
         QueryPager pager = sliceQuery("k0", "c1", "c8", 10).getLocalPager();
 
-        DataIterator page;
+        PartitionIterator page;
 
         assertFalse(pager.isExhausted());
         page = pager.fetchPage(3);
-        List<ReadPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = assertSize(page, 1);
         assertRow(partition.get(0), "k0", "c1", "c2", "c3");
 
         assertFalse(pager.isExhausted());
@@ -261,11 +252,11 @@ public class QueryPagerTest
     {
         QueryPager pager = sliceQuery("k0", "c1", "c8", true, 10).getLocalPager();
 
-        DataIterator page;
+        PartitionIterator page;
 
         assertFalse(pager.isExhausted());
         page = pager.fetchPage(3);
-        List<ReadPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = assertSize(page, 1);
         assertRow(partition.get(0), "k0", "c6", "c7", "c8");
 
         assertFalse(pager.isExhausted());
@@ -290,11 +281,11 @@ public class QueryPagerTest
             add(sliceQuery("k4", "c3", "c5", 10));
         }}, DataLimits.NONE).getLocalPager();
 
-        DataIterator page;
+        PartitionIterator page;
 
         assertFalse(pager.isExhausted());
         page = pager.fetchPage(3);
-        List<ReadPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = assertSize(page, 1);
         assertRow(partition.get(0), "k1", "c2", "c3", "c4");
 
         assertFalse(pager.isExhausted());
@@ -316,11 +307,11 @@ public class QueryPagerTest
     {
         QueryPager pager = rangeNamesQuery("k0", "k5", 100, "c1", "c4", "c8").getLocalPager();
 
-        DataIterator page;
+        PartitionIterator page;
 
         assertFalse(pager.isExhausted());
         page = pager.fetchPage(3 * 3);
-        List<ReadPartition> partitions = assertSize(page, 3);
+        List<FilteredPartition> partitions = assertSize(page, 3);
         for (int i = 1; i <= 3; i++)
             assertRow(partitions.get(i-1), "k" + i, "c1", "c4", "c8");
 
@@ -338,11 +329,11 @@ public class QueryPagerTest
     {
         QueryPager pager = rangeSliceQuery("k1", "k5", 100, "c1", "c7").getLocalPager();
 
-        DataIterator page;
+        PartitionIterator page;
 
         assertFalse(pager.isExhausted());
         page = pager.fetchPage(5);
-        List<ReadPartition> partitions = assertSize(page, 1);
+        List<FilteredPartition> partitions = assertSize(page, 1);
         assertRow(partitions.get(0), "k2", "c1", "c2", "c3", "c4", "c5");
 
         assertFalse(pager.isExhausted());
@@ -395,8 +386,8 @@ public class QueryPagerTest
 
         for (int i = 0; i < 5; i++)
         {
-            DataIterator page = pager.fetchPage(1);
-            List<ReadPartition> partitions = assertSize(page, 1);
+            PartitionIterator page = pager.fetchPage(1);
+            List<FilteredPartition> partitions = assertSize(page, 1);
             // The only live cell we should have each time is the row marker
             assertRow(partitions.get(0), "k0", "c" + i);
         }

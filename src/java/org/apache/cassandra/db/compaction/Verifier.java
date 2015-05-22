@@ -18,9 +18,9 @@
 package org.apache.cassandra.db.compaction;
 
 import com.google.common.base.Throwables;
-import com.google.common.collect.Sets;
+
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.AtomIterator;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
@@ -33,7 +33,6 @@ import org.apache.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.OutputHandler;
 
 import java.io.Closeable;
@@ -41,7 +40,6 @@ import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
 
 public class Verifier implements Closeable
 {
@@ -103,7 +101,7 @@ public class Verifier implements Closeable
             }
             else
             {
-                outputHandler.output("Data digest missing, assuming extended verification of disk atoms");
+                outputHandler.output("Data digest missing, assuming extended verification of disk values");
                 extended = true;
             }
         }
@@ -120,7 +118,7 @@ public class Verifier implements Closeable
         if ( !extended )
             return;
 
-        outputHandler.output("Extended Verify requested, proceeding to inspect atoms");
+        outputHandler.output("Extended Verify requested, proceeding to inspect values");
 
 
         try
@@ -186,7 +184,7 @@ public class Verifier implements Closeable
                         markAndThrow();
 
                     //mimic the scrub read path
-                    try (AtomIterator atoms = new SSTableIdentityIterator(sstable, dataFile, key, FBUtilities.nowInSeconds()))
+                    try (UnfilteredRowIterator iterator = new SSTableIdentityIterator(sstable, dataFile, key, FBUtilities.nowInSeconds()))
                     {
                     }
 

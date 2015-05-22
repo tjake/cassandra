@@ -20,11 +20,10 @@ package org.apache.cassandra.db.compaction;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
-import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.utils.CloseableIterator;
 
-public abstract class AbstractCompactionIterable extends CompactionInfo.Holder implements PartitionIterator
+public abstract class AbstractCompactionIterable extends CompactionInfo.Holder implements UnfilteredPartitionIterator
 {
     protected final OperationType type;
     protected final CompactionController controller;

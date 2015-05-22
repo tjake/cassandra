@@ -26,7 +26,7 @@ import com.google.common.collect.UnmodifiableIterator;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.ColumnsSelection;
 import org.apache.cassandra.utils.SearchIterator;
 
@@ -72,8 +72,8 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
     // live timestamp needs to be recomputed since new values may have expired.
     protected long[] maxLiveTimestamps;
 
-    // Stats over the atoms stored in this partition.
-    private final AtomStats.Collector statsCollector = new AtomStats.Collector();
+    // Stats over the rows stored in this partition.
+    private final RowStats.Collector statsCollector = new RowStats.Collector();
 
     // The maximum timestamp for any data contained in this partition.
     protected long maxTimestamp = Long.MIN_VALUE;
@@ -189,7 +189,7 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
         return staticRow == null ? Rows.EMPTY_STATIC_ROW : staticRow;
     }
 
-    public AtomStats stats()
+    public RowStats stats()
     {
         return statsCollector.get();
     }
@@ -356,34 +356,34 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
         };
     }
 
-    public AtomIterator atomIterator()
+    public UnfilteredRowIterator unfilteredIterator()
     {
-        return atomIterator(nowInSec());
+        return unfilteredIterator(nowInSec());
     }
 
-    public AtomIterator atomIterator(int nowInSec)
+    public UnfilteredRowIterator unfilteredIterator(int nowInSec)
     {
-        return atomIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
+        return unfilteredIterator(ColumnsSelection.withoutSubselection(columns()), Slices.ALL, false, nowInSec);
     }
 
-    public AtomIterator atomIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
+    public UnfilteredRowIterator unfilteredIterator(ColumnsSelection columns, Slices slices, boolean reversed, int nowInSec)
     {
-        return slices.makeSliceIterator(sliceableAtomIterator(columns, reversed, nowInSec));
+        return slices.makeSliceIterator(sliceableUnfilteredIterator(columns, reversed, nowInSec));
     }
 
-    protected SliceableAtomIterator sliceableAtomIterator()
+    protected SliceableUnfilteredRowIterator sliceableUnfilteredIterator()
     {
-        return sliceableAtomIterator(ColumnsSelection.withoutSubselection(columns()), false, nowInSec());
+        return sliceableUnfilteredIterator(ColumnsSelection.withoutSubselection(columns()), false, nowInSec());
     }
 
-    protected SliceableAtomIterator sliceableAtomIterator(final ColumnsSelection selection, final boolean reversed, final int nowInSec)
+    protected SliceableUnfilteredRowIterator sliceableUnfilteredIterator(final ColumnsSelection selection, final boolean reversed, final int nowInSec)
     {
         return new AbstractSliceableIterator(this, selection.columns(), nowInSec, reversed)
         {
             private final RowIterator rowIterator = createRowIterator(selection, nowInSec, reversed);
             private RowAndTombstoneMergeIterator mergeIterator = new RowAndTombstoneMergeIterator(metadata.comparator, reversed);
 
-            protected Atom computeNext()
+            protected Unfiltered computeNext()
             {
                 if (!mergeIterator.isSet())
                     mergeIterator.setTo(rowIterator, deletionInfo.rangeIterator(reversed));
@@ -391,7 +391,7 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
                 return mergeIterator.hasNext() ? mergeIterator.next() : endOfData();
             }
 
-            public Iterator<Atom> slice(Slice slice)
+            public Iterator<Unfiltered> slice(Slice slice)
             {
                 return mergeIterator.setTo(rowIterator.slice(slice), deletionInfo.rangeIterator(slice, reversed));
             }
@@ -646,7 +646,7 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
             return clustering;
         }
 
-        public LivenessInfo partitionKeyLivenessInfo()
+        public LivenessInfo primaryKeyLivenessInfo()
         {
             return liveness;
         }
@@ -671,7 +671,7 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
         }
     };
 
-    private static abstract class AbstractSliceableIterator extends AbstractAtomIterator implements SliceableAtomIterator
+    private static abstract class AbstractSliceableIterator extends AbstractUnfilteredRowIterator implements SliceableUnfilteredRowIterator
     {
         private AbstractSliceableIterator(AbstractPartitionData data, PartitionColumns columns, int nowInSec, boolean isReverseOrder)
         {

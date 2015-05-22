@@ -39,7 +39,7 @@ import org.apache.cassandra.config.*;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.statements.ParsedStatement;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.filter.*;
@@ -83,7 +83,7 @@ public class CassandraServer implements Cassandra.Iface
         return ThriftSessionManager.instance.currentSession();
     }
 
-    protected DataIterator read(List<SinglePartitionReadCommand<?>> commands, org.apache.cassandra.db.ConsistencyLevel consistency_level, ClientState cState)
+    protected PartitionIterator read(List<SinglePartitionReadCommand<?>> commands, org.apache.cassandra.db.ConsistencyLevel consistency_level, ClientState cState)
     throws org.apache.cassandra.exceptions.InvalidRequestException, UnavailableException, TimedOutException
     {
         try
@@ -258,7 +258,7 @@ public class CassandraServer implements Cassandra.Iface
     private Map<ByteBuffer, List<ColumnOrSuperColumn>> getSlice(List<SinglePartitionReadCommand<?>> commands, boolean subColumnsOnly, int cellLimit, org.apache.cassandra.db.ConsistencyLevel consistency_level, ClientState cState)
     throws org.apache.cassandra.exceptions.InvalidRequestException, UnavailableException, TimedOutException
     {
-        try (DataIterator results = read(commands, consistency_level, cState))
+        try (PartitionIterator results = read(commands, consistency_level, cState))
         {
             Map<ByteBuffer, List<ColumnOrSuperColumn>> columnFamiliesMap = new HashMap<ByteBuffer, List<ColumnOrSuperColumn>>();
             while (results.hasNext())
@@ -582,7 +582,7 @@ public class CassandraServer implements Cassandra.Iface
             DecoratedKey dk = StorageService.getPartitioner().decorateKey(key);
             SinglePartitionReadCommand<?> command = SinglePartitionReadCommand.create(true, metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, dk, filter);
 
-            RowIterator result = DataIterators.getOnlyElement(read(Arrays.<SinglePartitionReadCommand<?>>asList(command), consistencyLevel, cState), command);
+            RowIterator result = PartitionIterators.getOnlyElement(read(Arrays.<SinglePartitionReadCommand<?>>asList(command), consistencyLevel, cState), command);
             if (!result.hasNext())
                 throw new NotFoundException();
 
@@ -870,9 +870,9 @@ public class CassandraServer implements Cassandra.Iface
 
             PartitionUpdate partitionUpdates = RowIterators.toUpdate(LegacyLayout.toRowIterator(metadata, dk, toLegacyCells(metadata, updates, nowInSec).iterator(), nowInSec));
 
-            ReadPartition partitionExpected = null;
+            FilteredPartition partitionExpected = null;
             if (!expected.isEmpty())
-                partitionExpected = ReadPartition.create(LegacyLayout.toRowIterator(metadata, dk, toLegacyCells(metadata, expected, nowInSec).iterator(), nowInSec));
+                partitionExpected = FilteredPartition.create(LegacyLayout.toRowIterator(metadata, dk, toLegacyCells(metadata, expected, nowInSec).iterator(), nowInSec));
 
             schedule(DatabaseDescriptor.getWriteRpcTimeout());
             RowIterator result = StorageProxy.cas(cState.getKeyspace(),
@@ -1066,7 +1066,7 @@ public class CassandraServer implements Cassandra.Iface
                     }
                 }
 
-                PartitionUpdate update = AtomIterators.toUpdate(LegacyLayout.toAtomIterator(metadata, dk, delInfo, cells.iterator(), nowInSec));
+                PartitionUpdate update = UnfilteredRowIterators.toUpdate(LegacyLayout.toUnfilteredRowIterator(metadata, dk, delInfo, cells.iterator(), nowInSec));
 
                 org.apache.cassandra.db.Mutation mutation;
                 if (metadata.isCounter())
@@ -1440,7 +1440,7 @@ public class CassandraServer implements Cassandra.Iface
             }
             int nowInSec = FBUtilities.nowInSeconds();
             schedule(DatabaseDescriptor.getRangeRpcTimeout());
-            DataIterator results = null;
+            PartitionIterator results = null;
             try
             {
                 PartitionFilter filter = toInternalFilter(metadata, column_parent, predicate);
@@ -1525,7 +1525,7 @@ public class CassandraServer implements Cassandra.Iface
             if (range.row_filter != null && !range.row_filter.isEmpty())
                 throw new InvalidRequestException("Cross-row paging is not supported along with index clauses");
 
-            DataIterator results = null;
+            PartitionIterator results = null;
             int nowInSec = FBUtilities.nowInSeconds();
             schedule(DatabaseDescriptor.getRangeRpcTimeout());
             try
@@ -1568,9 +1568,9 @@ public class CassandraServer implements Cassandra.Iface
         }
     }
 
-    private List<KeySlice> thriftifyKeySlices(DataIterator results, ColumnParent column_parent, int cellLimit)
+    private List<KeySlice> thriftifyKeySlices(PartitionIterator results, ColumnParent column_parent, int cellLimit)
     {
-        try (DataIterator iter = results)
+        try (PartitionIterator iter = results)
         {
             List<KeySlice> keySlices = new ArrayList<KeySlice>();
             while (iter.hasNext())
@@ -1628,7 +1628,7 @@ public class CassandraServer implements Cassandra.Iface
                                                                           ThriftConversion.columnFilterFromThrift(metadata, index_clause.expressions),
                                                                           limits,
                                                                           new DataRange(bounds, filter));
-            DataIterator results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
+            PartitionIterator results = StorageProxy.getRangeSlice(cmd, consistencyLevel);
             return thriftifyKeySlices(results, column_parent, limits.perPartitionCount());
         }
         catch (RequestValidationException e)
@@ -2407,10 +2407,10 @@ public class CassandraServer implements Cassandra.Iface
         private final CFMetaData metadata;
         private final DecoratedKey key;
 
-        private final ReadPartition expected;
+        private final FilteredPartition expected;
         private final PartitionUpdate updates;
 
-        private ThriftCASRequest(ReadPartition expected, PartitionUpdate updates)
+        private ThriftCASRequest(FilteredPartition expected, PartitionUpdate updates)
         {
             this.metadata = updates.metadata();
             this.key = updates.partitionKey();
@@ -2439,7 +2439,7 @@ public class CassandraServer implements Cassandra.Iface
             return SinglePartitionReadCommand.create(true, metadata, nowInSec, ColumnFilter.NONE, DataLimits.NONE, key, filter);
         }
 
-        public boolean appliesTo(ReadPartition current)
+        public boolean appliesTo(FilteredPartition current)
         {
             if (expected == null || expected.isEmpty())
                 return current.isEmpty();
@@ -2463,7 +2463,7 @@ public class CassandraServer implements Cassandra.Iface
             return true;
         }
 
-        public PartitionUpdate makeUpdates(ReadPartition current)
+        public PartitionUpdate makeUpdates(FilteredPartition current)
         {
             return updates;
         }

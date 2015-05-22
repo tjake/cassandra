@@ -35,10 +35,10 @@ import static org.junit.Assert.assertTrue;
 import org.apache.cassandra.*;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.atoms.Row;
-import org.apache.cassandra.db.atoms.RowIterator;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.db.partitions.DataIterator;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -79,7 +79,7 @@ public class PartitionRangeReadTest
                 .clustering("cc2")
                 .add("val", "asdf").build().applyUnsafe();
 
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
              .setClusteringLowerBound(true, ByteBufferUtil.bytes("cc1"))
              .setClusteringUpperBound(true, ByteBufferUtil.bytes("cc2"))
              .executeLocally())
@@ -120,7 +120,7 @@ public class PartitionRangeReadTest
         new RowUpdateBuilder(cfs.metadata, 10, key).clustering("c").add("val", "val2").build().applyUnsafe();
 
         // Test fetching the cell by name returns the first cell
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
              .executeLocally())
         {
             assertTrue(iter.next().next().getCell(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"))).value().equals(ByteBufferUtil.bytes("val1")));
@@ -158,7 +158,7 @@ public class PartitionRangeReadTest
         cfs.forceBlockingFlush();
 
         // fetch by the first column name; we should get the second version of the column value
-        try (DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
+        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
              .addClustering(new BigInteger(new byte[]{1}))
              .executeLocally())
         {
@@ -170,7 +170,7 @@ public class PartitionRangeReadTest
         }
 
         // fetch by the second column name; we should get the second version of the column value
-        try (DataIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
+        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
              .addClustering(new BigInteger(new byte[]{0, 0, 1}))
              .executeLocally())
         {
@@ -204,7 +204,7 @@ public class PartitionRangeReadTest
         ColumnDefinition cDef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
 
         // Start and end inclusive
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
              .setRangeType(PartitionRangeReadBuilder.RangeType.Inclusive)
              .executeLocally())
@@ -216,7 +216,7 @@ public class PartitionRangeReadTest
         }
 
         // Start and end excluded
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
              .setRangeType(PartitionRangeReadBuilder.RangeType.Exclusive)
              .executeLocally())
@@ -228,7 +228,7 @@ public class PartitionRangeReadTest
         }
 
         // Start excluded, end included
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
              .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
              .executeLocally())
@@ -240,7 +240,7 @@ public class PartitionRangeReadTest
         }
 
         // Start included, end excluded
-        try (DataIterator iter = new PartitionRangeReadBuilder(cfs)
+        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
              .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
              .setRangeType(PartitionRangeReadBuilder.RangeType.ReverseRange)
              .executeLocally())

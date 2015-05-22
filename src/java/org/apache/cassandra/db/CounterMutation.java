@@ -19,7 +19,6 @@ package org.apache.cassandra.db;
 
 import java.io.DataInput;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -31,9 +30,8 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
 import com.google.common.util.concurrent.Striped;
 
-import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.context.CounterContext;
@@ -249,9 +247,9 @@ public class CounterMutation implements IMutation
         NamesPartitionFilter filter = new NamesPartitionFilter(builder.build(), names, false);
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, nowInSec, key(), filter);
         PeekingIterator<PartitionUpdate.CounterMark> markIter = Iterators.peekingIterator(marks.iterator());
-        try (AtomIterator partition = cmd.queryMemtableAndDisk(cfs))
+        try (UnfilteredRowIterator partition = cmd.queryMemtableAndDisk(cfs))
         {
-            RowIterator rowIter = AtomIterators.asRowIterator(partition);
+            RowIterator rowIter = UnfilteredRowIterators.filter(partition);
 
             updateForRow(markIter, rowIter.staticRow(), cfs);
 

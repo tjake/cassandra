@@ -21,13 +21,11 @@ import java.io.IOException;
 import java.util.*;
 
 import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.Ordering;
 import com.google.common.collect.Iterators;
 import com.google.common.util.concurrent.RateLimiter;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.atoms.*;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.dht.AbstractBounds;
@@ -62,7 +60,7 @@ public class BigTableScanner implements ISSTableScanner
     private final int nowInSec;
     private final boolean isForThrift;
 
-    protected PartitionIterator iterator;
+    protected UnfilteredPartitionIterator iterator;
 
     // Full scan of the sstables
     public static ISSTableScanner getScanner(SSTableReader sstable, RateLimiter limiter, int nowInSec)
@@ -233,7 +231,7 @@ public class BigTableScanner implements ISSTableScanner
         return iterator.hasNext();
     }
 
-    public AtomIterator next()
+    public UnfilteredRowIterator next()
     {
         if (iterator == null)
             iterator = createIterator();
@@ -245,12 +243,12 @@ public class BigTableScanner implements ISSTableScanner
         throw new UnsupportedOperationException();
     }
 
-    private PartitionIterator createIterator()
+    private UnfilteredPartitionIterator createIterator()
     {
         return new KeyScanningIterator();
     }
 
-    protected class KeyScanningIterator extends AbstractIterator<AtomIterator> implements PartitionIterator
+    protected class KeyScanningIterator extends AbstractIterator<UnfilteredRowIterator> implements UnfilteredPartitionIterator
     {
         private DecoratedKey nextKey;
         private RowIndexEntry nextEntry;
@@ -262,7 +260,7 @@ public class BigTableScanner implements ISSTableScanner
             return isForThrift;
         }
 
-        protected AtomIterator computeNext()
+        protected UnfilteredRowIterator computeNext()
         {
             try
             {
@@ -314,9 +312,9 @@ public class BigTableScanner implements ISSTableScanner
                  * file unless we're explicitely asked to. This is important
                  * for PartitionRangeReadCommand#checkCacheFilter.
                  */
-                return new LazilyInitializedAtomIterator(currentKey)
+                return new LazilyInitializedUnfilteredRowIterator(currentKey)
                 {
-                    protected AtomIterator initializeIterator()
+                    protected UnfilteredRowIterator initializeIterator()
                     {
                         try
                         {
@@ -361,7 +359,7 @@ public class BigTableScanner implements ISSTableScanner
                ")";
     }
 
-    public static class EmptySSTableScanner extends AbstractPartitionIterator implements ISSTableScanner
+    public static class EmptySSTableScanner extends AbstractUnfilteredPartitionIterator implements ISSTableScanner
     {
         private final String filename;
 
@@ -395,7 +393,7 @@ public class BigTableScanner implements ISSTableScanner
             return false;
         }
 
-        public AtomIterator next()
+        public UnfilteredRowIterator next()
         {
             return null;
         }
