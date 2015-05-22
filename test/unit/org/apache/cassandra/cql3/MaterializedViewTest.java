@@ -31,11 +31,13 @@ import org.junit.Test;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import junit.framework.Assert;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.serializers.SimpleDateSerializer;
 import org.apache.cassandra.serializers.TimeSerializer;
 import org.apache.cassandra.service.EmbeddedCassandraService;
@@ -239,12 +241,16 @@ public class MaterializedViewTest extends CQLTester
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, ""));
 
-        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"\""), row(0, "ascii text"));
+        try
+        {
+            execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"\"");
+            Assert.fail();
+        }
+        catch (InvalidRequestException e)
+        {
 
-        executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"abcd\"");
-        assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "abcd"));
+        }
 
-        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"abcd\""), row(0, "ascii text"));
 
         executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"some \\\" text\"");
         assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "some \" text"));
@@ -254,18 +260,29 @@ public class MaterializedViewTest extends CQLTester
 
         assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"\\u2013\""), row(0, "ascii text"));
 
+        executeNet(protocolVersion, "INSERT INTO %s (k, textval) VALUES (?, fromJson(?))", 0, "\"abcd\"");
+        assertRows(execute("SELECT k, textval FROM %s WHERE k = ?", 0), row(0, "abcd"));
+
+        assertRows(execute("SELECT k, asciival from mv_textval WHERE textval = fromJson(?)", "\"abcd\""), row(0, "ascii text"));
+
 
         // ================ time ================
         executeNet(protocolVersion, "INSERT INTO %s (k, timeval) VALUES (?, fromJson(?))", 0, "\"07:35:07.000111222\"");
         assertRows(execute("SELECT k, timeval FROM %s WHERE k = ?", 0), row(0, TimeSerializer.timeStringToLong("07:35:07.000111222")));
 
+        assertRows(execute("SELECT k, asciival from mv_timeval WHERE timeval = fromJson(?)", "\"07:35:07.000111222\""), row(0, "ascii text"));
 
         // ================ timestamp ================
         executeNet(protocolVersion, "INSERT INTO %s (k, timestampval) VALUES (?, fromJson(?))", 0, "123123123123");
         assertRows(execute("SELECT k, timestampval FROM %s WHERE k = ?", 0), row(0, new Date(123123123123L)));
 
+        assertRows(execute("SELECT k, asciival from mv_timestampval WHERE timestampval = fromJson(?)", "123123123123"), row(0, "ascii text"));
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, timestampval) VALUES (?, fromJson(?))", 0, "\"2014-01-01\"");
         assertRows(execute("SELECT k, timestampval FROM %s WHERE k = ?", 0), row(0, new SimpleDateFormat("y-M-d").parse("2014-01-01")));
+
+        assertRows(execute("SELECT k, asciival from mv_timestampval WHERE timestampval = fromJson(?)", "\"2014-01-01\""), row(0, "ascii text"));
 
 
         // ================ timeuuid ================
@@ -276,6 +293,8 @@ public class MaterializedViewTest extends CQLTester
         assertRows(execute("SELECT k, timeuuidval FROM %s WHERE k = ?", 0), row(0, UUID.fromString("6bddc89a-5644-11e4-97fc-56847afe9799")));
 
 
+        assertRows(execute("SELECT k, asciival from mv_timeuuidval WHERE timeuuidval = fromJson(?)", "\"6BDDC89A-5644-11E4-97FC-56847AFE9799\""), row(0, "ascii text"));
+
         // ================ uuidval ================
         executeNet(protocolVersion, "INSERT INTO %s (k, uuidval) VALUES (?, fromJson(?))", 0, "\"6bddc89a-5644-11e4-97fc-56847afe9799\"");
         assertRows(execute("SELECT k, uuidval FROM %s WHERE k = ?", 0), row(0, UUID.fromString("6bddc89a-5644-11e4-97fc-56847afe9799")));
@@ -283,23 +302,35 @@ public class MaterializedViewTest extends CQLTester
         executeNet(protocolVersion, "INSERT INTO %s (k, uuidval) VALUES (?, fromJson(?))", 0, "\"6BDDC89A-5644-11E4-97FC-56847AFE9799\"");
         assertRows(execute("SELECT k, uuidval FROM %s WHERE k = ?", 0), row(0, UUID.fromString("6bddc89a-5644-11e4-97fc-56847afe9799")));
 
+        assertRows(execute("SELECT k, asciival from mv_uuidval WHERE uuidval = fromJson(?)", "\"6BDDC89A-5644-11E4-97FC-56847AFE9799\""), row(0, "ascii text"));
+
 
         // ================ varint ================
         executeNet(protocolVersion, "INSERT INTO %s (k, varintval) VALUES (?, fromJson(?))", 0, "123123123123");
         assertRows(execute("SELECT k, varintval FROM %s WHERE k = ?", 0), row(0, new BigInteger("123123123123")));
 
+        assertRows(execute("SELECT k, asciival from mv_varintval WHERE varintval = fromJson(?)", "123123123123"), row(0, "ascii text"));
+
+
         // accept strings for numbers that cannot be represented as longs
         executeNet(protocolVersion, "INSERT INTO %s (k, varintval) VALUES (?, fromJson(?))", 0, "\"1234567890123456789012345678901234567890\"");
         assertRows(execute("SELECT k, varintval FROM %s WHERE k = ?", 0), row(0, new BigInteger("1234567890123456789012345678901234567890")));
+
+        assertRows(execute("SELECT k, asciival from mv_varintval WHERE varintval = fromJson(?)", "\"1234567890123456789012345678901234567890\""), row(0, "ascii text"));
 
 
         // ================ lists ================
         executeNet(protocolVersion, "INSERT INTO %s (k, listval) VALUES (?, fromJson(?))", 0, "[1, 2, 3]");
         assertRows(execute("SELECT k, listval FROM %s WHERE k = ?", 0), row(0, list(1, 2, 3)));
 
+        assertRows(execute("SELECT k, listval from mv_textval WHERE textval = fromJson(?)", "\"abcd\""), row(0, list(1,2,3)));
+
+
+
         executeNet(protocolVersion, "INSERT INTO %s (k, listval) VALUES (?, fromJson(?))", 0, "[]");
         assertRows(execute("SELECT k, listval FROM %s WHERE k = ?", 0), row(0, null));
 
+        assertRows(execute("SELECT k, listval from mv_textval WHERE textval = fromJson(?)", "\"abcd\""), row(0, null));
 
         // frozen
         executeNet(protocolVersion, "INSERT INTO %s (k, frozenlistval) VALUES (?, fromJson(?))", 0, "[1, 2, 3]");
