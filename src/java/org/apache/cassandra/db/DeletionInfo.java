@@ -270,39 +270,4 @@ public class DeletionInfo implements IMeasurableMemory
     {
         return EMPTY_SIZE + partitionDeletion.unsharedHeapSize() + (ranges == null ? 0 : ranges.unsharedHeapSize());
     }
-
-    // TODO: we shouldn't need that except for backwards compatibility so move to LegacyLayout
-    //public static class Serializer implements IVersionedSerializer<DeletionInfo>
-    //{
-    //    private final RangeTombstoneList.Serializer rtlSerializer;
-
-    //    public Serializer(LegacyLayout layout)
-    //    {
-    //        this.rtlSerializer = new RangeTombstoneList.Serializer(layout);
-    //    }
-
-    //    public void serialize(DeletionInfo info, DataOutputPlus out, int version) throws IOException
-    //    {
-    //        DeletionTime.serializer.serialize(info.topLevel, out);
-    //        rtlSerializer.serialize(info.ranges, out, version);
-    //    }
-
-    //    public DeletionInfo deserialize(DataInput in, int version) throws IOException
-    //    {
-    //        DeletionTime topLevel = DeletionTime.serializer.deserialize(in);
-    //        RangeTombstoneList ranges = rtlSerializer.deserialize(in, version);
-    //        return new DeletionInfo(topLevel, ranges);
-    //    }
-
-    //    public long serializedSize(DeletionInfo info, TypeSizes typeSizes, int version)
-    //    {
-    //        long size = DeletionTime.serializer.serializedSize(info.topLevel, typeSizes);
-    //        return size + rtlSerializer.serializedSize(info.ranges, typeSizes, version);
-    //    }
-
-    //    public long serializedSize(DeletionInfo info, int version)
-    //    {
-    //        return serializedSize(info, TypeSizes.NATIVE, version);
-    //    }
-    //}
 }

@@ -182,10 +182,6 @@ public class Mutation implements IMutation
      */
     public void apply()
     {
-        // TODO: remove if it's not useful
-        //for (PartitionUpdate upd : modifications.values())
-        //    upd.freeze();
-
         Keyspace ks = Keyspace.open(keyspaceName);
         ks.apply(this, ks.metadata.durableWrites);
     }

@@ -60,10 +60,8 @@ public abstract class RowIterators
 
     public static void digest(RowIterator iterator, MessageDigest digest)
     {
-        // TODO: we're not computing digest the same way that old nodes. This
-        // means we'll have digest mismatches during upgrade. Is this ok? Computing
-        // digest as before will be a tad complex (you'd have to reconstruct the
-        // cell names etc...)
+        // TODO: we're not computing digest the same way that old nodes so we'll need
+        // to pass the version we're computing the digest for and deal with that.
         digest.update(iterator.partitionKey().getKey().duplicate());
         iterator.columns().digest(digest);
         FBUtilities.updateWithBoolean(digest, iterator.isReverseOrder());
