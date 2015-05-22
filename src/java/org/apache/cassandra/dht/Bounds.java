@@ -20,7 +20,7 @@ package org.apache.cassandra.dht;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.cassandra.db.RowPosition;
+import org.apache.cassandra.db.PartitionPosition;
 import org.apache.cassandra.utils.Pair;
 
 /**
@@ -115,9 +115,9 @@ public class Bounds<T extends RingPosition<T>> extends AbstractBounds<T>
     /**
      * Compute a bounds of keys corresponding to a given bounds of token.
      */
-    public static Bounds<RowPosition> makeRowBounds(Token left, Token right)
+    public static Bounds<PartitionPosition> makeRowBounds(Token left, Token right)
     {
-        return new Bounds<RowPosition>(left.minKeyBound(), right.maxKeyBound());
+        return new Bounds<PartitionPosition>(left.minKeyBound(), right.maxKeyBound());
     }
 
     public AbstractBounds<T> withNewRight(T newRight)

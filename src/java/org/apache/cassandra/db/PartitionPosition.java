@@ -22,13 +22,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.dht.*;
-import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
-// TODO: rename to PartitionPosition
-public interface RowPosition extends RingPosition<RowPosition>
+public interface PartitionPosition extends RingPosition<PartitionPosition>
 {
     public static enum Kind
     {
@@ -46,7 +44,7 @@ public interface RowPosition extends RingPosition<RowPosition>
 
     public static final class ForKey
     {
-        public static RowPosition get(ByteBuffer key, IPartitioner p)
+        public static PartitionPosition get(ByteBuffer key, IPartitioner p)
         {
             return key == null || key.remaining() == 0 ? p.getMinimumToken().minKeyBound() : p.decorateKey(key);
         }
@@ -57,7 +55,7 @@ public interface RowPosition extends RingPosition<RowPosition>
     public Kind kind();
     public boolean isMinimum();
 
-    public static class RowPositionSerializer implements IPartitionerDependentSerializer<RowPosition>
+    public static class RowPositionSerializer implements IPartitionerDependentSerializer<PartitionPosition>
     {
         /*
          * We need to be able to serialize both Token.KeyBound and
@@ -70,7 +68,7 @@ public interface RowPosition extends RingPosition<RowPosition>
          * token is recreated on the other side). In the other cases, we then
          * serialize the token.
          */
-        public void serialize(RowPosition pos, DataOutputPlus out, int version) throws IOException
+        public void serialize(PartitionPosition pos, DataOutputPlus out, int version) throws IOException
         {
             Kind kind = pos.kind();
             out.writeByte(kind.ordinal());
@@ -80,7 +78,7 @@ public interface RowPosition extends RingPosition<RowPosition>
                 Token.serializer.serialize(pos.getToken(), out, version);
         }
 
-        public RowPosition deserialize(DataInput in, IPartitioner p, int version) throws IOException
+        public PartitionPosition deserialize(DataInput in, IPartitioner p, int version) throws IOException
         {
             Kind kind = Kind.fromOrdinal(in.readByte());
             if (kind == Kind.ROW_KEY)
@@ -95,7 +93,7 @@ public interface RowPosition extends RingPosition<RowPosition>
             }
         }
 
-        public long serializedSize(RowPosition pos, int version)
+        public long serializedSize(PartitionPosition pos, int version)
         {
             Kind kind = pos.kind();
             int size = 1; // 1 byte for enum

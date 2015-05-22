@@ -1189,7 +1189,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         Set<SSTableReader> results = null;
         for (SSTableReader sstable : sstables)
         {
-            Set<SSTableReader> overlaps = ImmutableSet.copyOf(tree.search(Interval.<RowPosition, SSTableReader>create(sstable.first, sstable.last)));
+            Set<SSTableReader> overlaps = ImmutableSet.copyOf(tree.search(Interval.<PartitionPosition, SSTableReader>create(sstable.first, sstable.last)));
             results = results == null ? overlaps : Sets.union(results, overlaps).immutableCopy();
         }
         results = Sets.difference(results, ImmutableSet.copyOf(sstables));
@@ -1484,7 +1484,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * @return a ViewFragment containing the sstables and memtables that may need to be merged
      * for rows within @param rowBounds, inclusive, according to the interval tree.
      */
-    public Function<DataTracker.View, List<SSTableReader>> viewFilter(final AbstractBounds<RowPosition> rowBounds)
+    public Function<DataTracker.View, List<SSTableReader>> viewFilter(final AbstractBounds<PartitionPosition> rowBounds)
     {
         return new Function<DataTracker.View, List<SSTableReader>>()
         {

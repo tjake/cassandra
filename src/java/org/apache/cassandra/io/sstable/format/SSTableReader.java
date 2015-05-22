@@ -1134,7 +1134,7 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
      * Gets the position in the index file to start scanning to find the given key (at most indexInterval keys away,
      * modulo downsampling of the index summary). Always returns a value >= 0
      */
-    public long getIndexScanPosition(RowPosition key)
+    public long getIndexScanPosition(PartitionPosition key)
     {
         if (openReason == OpenReason.MOVED_START && key.compareTo(first) < 0)
             key = first;
@@ -1283,8 +1283,8 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
 
         for (Range<Token> range : Range.normalize(ranges))
         {
-            RowPosition leftPosition = range.left.maxKeyBound();
-            RowPosition rightPosition = range.right.maxKeyBound();
+            PartitionPosition leftPosition = range.left.maxKeyBound();
+            PartitionPosition rightPosition = range.right.maxKeyBound();
 
             int left = summary.binarySearch(leftPosition);
             if (left < 0)
@@ -1378,9 +1378,9 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
         {
             assert !range.isWrapAround() || range.right.isMinimum();
             // truncate the range so it at most covers the sstable
-            AbstractBounds<RowPosition> bounds = Range.makeRowRange(range);
-            RowPosition leftBound = bounds.left.compareTo(first) > 0 ? bounds.left : first.getToken().minKeyBound();
-            RowPosition rightBound = bounds.right.isMinimum() ? last.getToken().maxKeyBound() : bounds.right;
+            AbstractBounds<PartitionPosition> bounds = Range.makeRowRange(range);
+            PartitionPosition leftBound = bounds.left.compareTo(first) > 0 ? bounds.left : first.getToken().minKeyBound();
+            PartitionPosition rightBound = bounds.right.isMinimum() ? last.getToken().maxKeyBound() : bounds.right;
 
             if (leftBound.compareTo(last) > 0 || rightBound.compareTo(first) < 0)
                 continue;
@@ -1451,14 +1451,14 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
 
     /**
      * Get position updating key cache and stats.
-     * @see #getPosition(org.apache.cassandra.db.RowPosition, SSTableReader.Operator, boolean)
+     * @see #getPosition(PartitionPosition, SSTableReader.Operator, boolean)
      */
-    public RowIndexEntry getPosition(RowPosition key, Operator op)
+    public RowIndexEntry getPosition(PartitionPosition key, Operator op)
     {
         return getPosition(key, op, true, false);
     }
 
-    public RowIndexEntry getPosition(RowPosition key, Operator op, boolean updateCacheAndStats)
+    public RowIndexEntry getPosition(PartitionPosition key, Operator op, boolean updateCacheAndStats)
     {
         return getPosition(key, op, updateCacheAndStats, false);
     }
@@ -1469,7 +1469,7 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
      * @param updateCacheAndStats true if updating stats and cache
      * @return The index entry corresponding to the key, or null if the key is not present
      */
-    protected abstract RowIndexEntry getPosition(RowPosition key, Operator op, boolean updateCacheAndStats, boolean permitMatchPastLast);
+    protected abstract RowIndexEntry getPosition(PartitionPosition key, Operator op, boolean updateCacheAndStats, boolean permitMatchPastLast);
 
     public abstract SliceableUnfilteredRowIterator iterator(DecoratedKey key, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift);
     public abstract SliceableUnfilteredRowIterator iterator(FileDataInput file, DecoratedKey key, RowIndexEntry indexEntry, ColumnsSelection selectedColumns, boolean reversed, int nowInSec, boolean isForThrift);
@@ -1477,7 +1477,7 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
     /**
      * Finds and returns the first key beyond a given token in this SSTable or null if no such key exists.
      */
-    public DecoratedKey firstKeyBeyond(RowPosition token)
+    public DecoratedKey firstKeyBeyond(PartitionPosition token)
     {
         if (token.compareTo(first) < 0)
             return first;

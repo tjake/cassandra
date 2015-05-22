@@ -387,7 +387,7 @@ public class PartitionRangeReadTest
 //        DecoratedKey kb = Util.dk("b");
 //        DecoratedKey kc = Util.dk("c");
 //
-//        RowPosition min = Util.rp("");
+//        PartitionPosition min = Util.rp("");
 //
 //        putColsStandard(cfs, ka, cols[0], cols[1], cols[2], cols[3]);
 //        putColsStandard(cfs, kb, cols[0], cols[1], cols[2]);
@@ -411,7 +411,7 @@ public class PartitionRangeReadTest
 //
 //        sp.getSlice_range().setStart(ByteBufferUtil.getArray(ByteBufferUtil.bytes("c2")));
 //        filter = ThriftValidation.asIFilter(sp, cfs.metadata, null);
-//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<RowPosition>(ka, min), filter, null, 3, true, true, System.currentTimeMillis()));
+//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<PartitionPosition>(ka, min), filter, null, 3, true, true, System.currentTimeMillis()));
 //        assert rows.size() == 2 : "Expected 2 rows, got " + toString(rows);
 //        Iterator<Row> iter = rows.iterator();
 //        row1 = iter.next();
@@ -421,14 +421,14 @@ public class PartitionRangeReadTest
 //
 //        sp.getSlice_range().setStart(ByteBufferUtil.getArray(ByteBufferUtil.bytes("c0")));
 //        filter = ThriftValidation.asIFilter(sp, cfs.metadata, null);
-//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<RowPosition>(row2.key, min), filter, null, 3, true, true, System.currentTimeMillis()));
+//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<PartitionPosition>(row2.key, min), filter, null, 3, true, true, System.currentTimeMillis()));
 //        assert rows.size() == 1 : "Expected 1 row, got " + toString(rows);
 //        row = rows.iterator().next();
 //        assertColumnNames(row, "c0", "c1", "c2");
 //
 //        sp.getSlice_range().setStart(ByteBufferUtil.getArray(ByteBufferUtil.bytes("c2")));
 //        filter = ThriftValidation.asIFilter(sp, cfs.metadata, null);
-//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<RowPosition>(row.key, min), filter, null, 3, true, true, System.currentTimeMillis()));
+//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<PartitionPosition>(row.key, min), filter, null, 3, true, true, System.currentTimeMillis()));
 //        assert rows.size() == 2 : "Expected 2 rows, got " + toString(rows);
 //        iter = rows.iterator();
 //        row1 = iter.next();
@@ -441,7 +441,7 @@ public class PartitionRangeReadTest
 //                                                   cellname("c2"),
 //                                                   false,
 //                                                   0);
-//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<RowPosition>(ka, kc), sf, cellname("c2"), cellname("c1"), null, 2, true, System.currentTimeMillis()));
+//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<PartitionPosition>(ka, kc), sf, cellname("c2"), cellname("c1"), null, 2, true, System.currentTimeMillis()));
 //        assert rows.size() == 2 : "Expected 2 rows, got " + toString(rows);
 //        iter = rows.iterator();
 //        row1 = iter.next();
@@ -449,7 +449,7 @@ public class PartitionRangeReadTest
 //        assertColumnNames(row1, "c2");
 //        assertColumnNames(row2, "c1");
 //
-//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<RowPosition>(kb, kc), sf, cellname("c1"), cellname("c1"), null, 10, true, System.currentTimeMillis()));
+//        rows = cfs.getRangeSlice(cfs.makeExtendedFilter(new Bounds<PartitionPosition>(kb, kc), sf, cellname("c1"), cellname("c1"), null, 10, true, System.currentTimeMillis()));
 //        assert rows.size() == 2 : "Expected 2 rows, got " + toString(rows);
 //        iter = rows.iterator();
 //        row1 = iter.next();

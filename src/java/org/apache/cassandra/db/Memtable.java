@@ -75,10 +75,10 @@ public class Memtable
         }
     }
 
-    // We index the memtable by RowPosition only for the purpose of being able
+    // We index the memtable by PartitionPosition only for the purpose of being able
     // to select key range using Token.KeyBound. However put() ensures that we
     // actually only store DecoratedKey.
-    private final ConcurrentNavigableMap<RowPosition, AtomicBTreePartition> partitions = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<PartitionPosition, AtomicBTreePartition> partitions = new ConcurrentSkipListMap<>();
     public final ColumnFamilyStore cfs;
     private final long creationTime = System.currentTimeMillis();
     private final long creationNano = System.nanoTime();
@@ -234,7 +234,7 @@ public class Memtable
 
     public UnfilteredPartitionIterator makePartitionIterator(final DataRange dataRange, final int nowInSec, final boolean isForThrift)
     {
-        AbstractBounds<RowPosition> keyRange = dataRange.keyRange();
+        AbstractBounds<PartitionPosition> keyRange = dataRange.keyRange();
 
         boolean startIsMin = keyRange.left.isMinimum();
         boolean stopIsMin = keyRange.right.isMinimum();
@@ -242,7 +242,7 @@ public class Memtable
         boolean isBound = keyRange instanceof Bounds;
         boolean includeStart = isBound || keyRange instanceof IncludingExcludingBounds;
         boolean includeStop = isBound || keyRange instanceof Range;
-        Map<RowPosition, AtomicBTreePartition> subMap;
+        Map<PartitionPosition, AtomicBTreePartition> subMap;
         if (startIsMin)
             subMap = stopIsMin ? partitions : partitions.headMap(keyRange.right, includeStop);
         else
@@ -250,7 +250,7 @@ public class Memtable
                    ? partitions.tailMap(keyRange.left, includeStart)
                    : partitions.subMap(keyRange.left, includeStart, keyRange.right, includeStop);
 
-        final Iterator<Map.Entry<RowPosition, AtomicBTreePartition>> iter = subMap.entrySet().iterator();
+        final Iterator<Map.Entry<PartitionPosition, AtomicBTreePartition>> iter = subMap.entrySet().iterator();
 
         return new AbstractUnfilteredPartitionIterator()
         {
@@ -266,7 +266,7 @@ public class Memtable
 
             public UnfilteredRowIterator next()
             {
-                Map.Entry<RowPosition, AtomicBTreePartition> entry = iter.next();
+                Map.Entry<PartitionPosition, AtomicBTreePartition> entry = iter.next();
                 // Actual stored key should be true DecoratedKey
                 assert entry.getKey() instanceof DecoratedKey;
                 DecoratedKey key = (DecoratedKey)entry.getKey();
@@ -298,7 +298,7 @@ public class Memtable
             this.context = context;
 
             long keySize = 0;
-            for (RowPosition key : partitions.keySet())
+            for (PartitionPosition key : partitions.keySet())
             {
                 //  make sure we don't write non-sensical keys
                 assert key instanceof DecoratedKey;
@@ -409,7 +409,7 @@ public class Memtable
         final OpOrder.Group group = new OpOrder().start();
         int rowOverhead;
         MemtableAllocator allocator = MEMORY_POOL.newAllocator();
-        ConcurrentNavigableMap<RowPosition, Object> partitions = new ConcurrentSkipListMap<>();
+        ConcurrentNavigableMap<PartitionPosition, Object> partitions = new ConcurrentSkipListMap<>();
         final Object val = new Object();
         for (int i = 0 ; i < count ; i++)
             partitions.put(allocator.clone(new BufferDecoratedKey(new LongToken(i), ByteBufferUtil.EMPTY_BYTE_BUFFER), group), val);

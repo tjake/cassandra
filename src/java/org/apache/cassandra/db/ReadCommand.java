@@ -607,7 +607,7 @@ public abstract class ReadCommand implements ReadQuery
             //                                        ByteBufferUtil.readWithShortLength(in));
             //             rowFilter.add(expr);
             //         }
-            //         AbstractBounds<RowPosition> range = AbstractBounds.serializer.deserialize(in, version).toRowBounds();
+            //         AbstractBounds<PartitionPosition> range = AbstractBounds.serializer.deserialize(in, version).toRowBounds();
             // 
             //         int maxResults = in.readInt();
             //         boolean countCQL3Rows = in.readBoolean();
@@ -698,7 +698,7 @@ public abstract class ReadCommand implements ReadQuery
             //        String columnFamily = in.readUTF();
             //        long timestamp = in.readLong();
 
-            //        AbstractBounds<RowPosition> keyRange = AbstractBounds.serializer.deserialize(in, version).toRowBounds();
+            //        AbstractBounds<PartitionPosition> keyRange = AbstractBounds.serializer.deserialize(in, version).toRowBounds();
 
             //        CFMetaData metadata = Schema.instance.getCFMetaData(keyspace, columnFamily);
 

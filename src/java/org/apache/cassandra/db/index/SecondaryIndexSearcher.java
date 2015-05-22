@@ -167,7 +167,7 @@ public abstract class SecondaryIndexSearcher
         else
         {
             DataRange dataRange = ((PartitionRangeReadCommand)command).dataRange();
-            AbstractBounds<RowPosition> range = dataRange.keyRange();
+            AbstractBounds<PartitionPosition> range = dataRange.keyRange();
 
             Slice slice = Slice.ALL;
 

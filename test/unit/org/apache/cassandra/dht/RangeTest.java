@@ -25,7 +25,7 @@ import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 
-import org.apache.cassandra.db.RowPosition;
+import org.apache.cassandra.db.PartitionPosition;
 import org.apache.cassandra.dht.ByteOrderedPartitioner.BytesToken;
 import org.apache.cassandra.dht.RandomPartitioner.BigIntegerToken;
 
@@ -478,7 +478,7 @@ public class RangeTest
     @Test
     public void testNormalizeNoop()
     {
-        List<Range<RowPosition>> l;
+        List<Range<PartitionPosition>> l;
 
         l = asList(range("1", "3"), range("4", "5"));
         assertNormalize(l, l);
@@ -487,7 +487,7 @@ public class RangeTest
     @Test
     public void testNormalizeSimpleOverlap()
     {
-        List<Range<RowPosition>> input, expected;
+        List<Range<PartitionPosition>> input, expected;
 
         input = asList(range("1", "4"), range("3", "5"));
         expected = asList(range("1", "5"));
@@ -501,7 +501,7 @@ public class RangeTest
     @Test
     public void testNormalizeSort()
     {
-        List<Range<RowPosition>> input, expected;
+        List<Range<PartitionPosition>> input, expected;
 
         input = asList(range("4", "5"), range("1", "3"));
         expected = asList(range("1", "3"), range("4", "5"));
@@ -511,7 +511,7 @@ public class RangeTest
     @Test
     public void testNormalizeUnwrap()
     {
-        List<Range<RowPosition>> input, expected;
+        List<Range<PartitionPosition>> input, expected;
 
         input = asList(range("9", "2"));
         expected = asList(range("", "2"), range("9", ""));
@@ -521,7 +521,7 @@ public class RangeTest
     @Test
     public void testNormalizeComplex()
     {
-        List<Range<RowPosition>> input, expected;
+        List<Range<PartitionPosition>> input, expected;
 
         input = asList(range("8", "2"), range("7", "9"), range("4", "5"));
         expected = asList(range("", "2"), range("4", "5"), range("7", ""));

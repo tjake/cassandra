@@ -1590,11 +1590,11 @@ public class StorageProxy implements StorageProxyMBean
 
     private static class RangeForQuery
     {
-        public final AbstractBounds<RowPosition> range;
+        public final AbstractBounds<PartitionPosition> range;
         public final List<InetAddress> liveEndpoints;
         public final List<InetAddress> filteredEndpoints;
 
-        public RangeForQuery(AbstractBounds<RowPosition> range, List<InetAddress> liveEndpoints, List<InetAddress> filteredEndpoints)
+        public RangeForQuery(AbstractBounds<PartitionPosition> range, List<InetAddress> liveEndpoints, List<InetAddress> filteredEndpoints)
         {
             this.range = range;
             this.liveEndpoints = liveEndpoints;
@@ -1606,7 +1606,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         private final Keyspace keyspace;
         private final ConsistencyLevel consistency;
-        private final Iterator<? extends AbstractBounds<RowPosition>> ranges;
+        private final Iterator<? extends AbstractBounds<PartitionPosition>> ranges;
         private final int rangeCount;
 
         public RangeIterator(PartitionRangeReadCommand command, Keyspace keyspace, ConsistencyLevel consistency)
@@ -1614,7 +1614,7 @@ public class StorageProxy implements StorageProxyMBean
             this.keyspace = keyspace;
             this.consistency = consistency;
 
-            List<? extends AbstractBounds<RowPosition>> l = keyspace.getReplicationStrategy() instanceof LocalStrategy
+            List<? extends AbstractBounds<PartitionPosition>> l = keyspace.getReplicationStrategy() instanceof LocalStrategy
                                                           ? command.dataRange().keyRange().unwrap()
                                                           : getRestrictedRanges(command.dataRange().keyRange());
             this.ranges = l.iterator();
@@ -1631,7 +1631,7 @@ public class StorageProxy implements StorageProxyMBean
             if (!ranges.hasNext())
                 return endOfData();
 
-            AbstractBounds<RowPosition> range = ranges.next();
+            AbstractBounds<PartitionPosition> range = ranges.next();
             List<InetAddress> liveEndpoints = getLiveSortedEndpoints(keyspace, range.right);
             return new RangeForQuery(range,
                                      liveEndpoints,

@@ -35,8 +35,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DataRange;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.Mutation;
-import org.apache.cassandra.db.RowPosition;
+import org.apache.cassandra.db.PartitionPosition;
 import org.apache.cassandra.db.RowUpdateBuilder;
 import org.apache.cassandra.db.Slices;
 import org.apache.cassandra.db.filter.SlicePartitionFilter;
@@ -99,9 +98,9 @@ public class SSTableScannerTest
         }
         else
         {
-            for (RowPosition s : starts(start, inclusiveStart))
+            for (PartitionPosition s : starts(start, inclusiveStart))
             {
-                for (RowPosition e : ends(end, inclusiveEnd))
+                for (PartitionPosition e : ends(end, inclusiveEnd))
                 {
                     if (end < start && e.compareTo(s) > 0)
                         continue;
@@ -114,12 +113,12 @@ public class SSTableScannerTest
         return ranges;
     }
 
-    private static Iterable<RowPosition> starts(int key, boolean inclusive)
+    private static Iterable<PartitionPosition> starts(int key, boolean inclusive)
     {
         return Arrays.asList(min(key), max(key - 1), dk(inclusive ? key : key - 1));
     }
 
-    private static Iterable<RowPosition> ends(int key, boolean inclusive)
+    private static Iterable<PartitionPosition> ends(int key, boolean inclusive)
     {
         return Arrays.asList(max(key), min(key + 1), dk(inclusive ? key : key + 1));
     }
@@ -134,17 +133,17 @@ public class SSTableScannerTest
         return key == Integer.MIN_VALUE ? ByteOrderedPartitioner.MINIMUM : new ByteOrderedPartitioner.BytesToken(toKey(key).getBytes());
     }
 
-    private static RowPosition min(int key)
+    private static PartitionPosition min(int key)
     {
         return token(key).minKeyBound();
     }
 
-    private static RowPosition max(int key)
+    private static PartitionPosition max(int key)
     {
         return token(key).maxKeyBound();
     }
 
-    private static DataRange dataRange(CFMetaData metadata, RowPosition start, boolean startInclusive, RowPosition end, boolean endInclusive)
+    private static DataRange dataRange(CFMetaData metadata, PartitionPosition start, boolean startInclusive, PartitionPosition end, boolean endInclusive)
     {
         Slices.Builder sb = new Slices.Builder(metadata.comparator);
         SlicePartitionFilter filter = new SlicePartitionFilter(metadata.partitionColumns(), sb.build(), false);

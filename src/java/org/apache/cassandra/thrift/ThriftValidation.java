@@ -28,9 +28,6 @@ import org.apache.cassandra.cql3.Attributes;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.ColumnToCollectionType;
-import org.apache.cassandra.db.marshal.UTF8Type;
-import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.serializers.MarshalException;
@@ -530,8 +527,8 @@ public class ThriftValidation
         else if (range.start_key != null && range.end_token != null)
         {
             // start_token/end_token can wrap, but key/token should not
-            RowPosition stop = p.getTokenFactory().fromString(range.end_token).maxKeyBound();
-            if (RowPosition.ForKey.get(range.start_key, p).compareTo(stop) > 0 && !stop.isMinimum())
+            PartitionPosition stop = p.getTokenFactory().fromString(range.end_token).maxKeyBound();
+            if (PartitionPosition.ForKey.get(range.start_key, p).compareTo(stop) > 0 && !stop.isMinimum())
                 throw new org.apache.cassandra.exceptions.InvalidRequestException("Start key's token sorts after end token");
         }
 

@@ -129,22 +129,22 @@ public class PartitionRangeReadBuilder extends AbstractReadCommandBuilder
             }
             else
             {
-                AbstractBounds<RowPosition> bounds = null;
+                AbstractBounds<PartitionPosition> bounds = null;
                 DecoratedKey s = Util.dk(startKey);
                 DecoratedKey e = Util.dk(endKey);
                 switch (rangeType)
                 {
                     case Inclusive:
-                        bounds = new Bounds<RowPosition>(s, e);
+                        bounds = new Bounds<PartitionPosition>(s, e);
                         break;
                     case Exclusive:
-                        bounds = new ExcludingBounds<RowPosition>(s, e);
+                        bounds = new ExcludingBounds<PartitionPosition>(s, e);
                         break;
                     case Range:
-                        bounds = new Range<RowPosition>(s, e);
+                        bounds = new Range<PartitionPosition>(s, e);
                         break;
                     case ReverseRange:
-                        bounds = new IncludingExcludingBounds<RowPosition>(s, e);
+                        bounds = new IncludingExcludingBounds<PartitionPosition>(s, e);
                         break;
                 }
                 dr = new DataRange(bounds, filter);

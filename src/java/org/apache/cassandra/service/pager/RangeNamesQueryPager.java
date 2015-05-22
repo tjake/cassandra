@@ -73,18 +73,18 @@ public class RangeNamesQueryPager extends AbstractQueryPager
         lastReturnedKey = key;
     }
 
-    private AbstractBounds<RowPosition> makeExcludingKeyBounds(RowPosition lastReturnedKey)
+    private AbstractBounds<PartitionPosition> makeExcludingKeyBounds(PartitionPosition lastReturnedKey)
     {
         // We return a range that always exclude lastReturnedKey, since we've already
         // returned it.
-        AbstractBounds<RowPosition> bounds = command.dataRange().keyRange();
+        AbstractBounds<PartitionPosition> bounds = command.dataRange().keyRange();
         if (bounds instanceof Range || bounds instanceof Bounds)
         {
-            return new Range<RowPosition>(lastReturnedKey, bounds.right);
+            return new Range<PartitionPosition>(lastReturnedKey, bounds.right);
         }
         else
         {
-            return new ExcludingBounds<RowPosition>(lastReturnedKey, bounds.right);
+            return new ExcludingBounds<PartitionPosition>(lastReturnedKey, bounds.right);
         }
     }
 }

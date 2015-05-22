@@ -102,7 +102,7 @@ public class PartitionRangeReadCommand extends ReadCommand
         return dataRange.isNamesQuery();
     }
 
-    public PartitionRangeReadCommand forSubRange(AbstractBounds<RowPosition> range)
+    public PartitionRangeReadCommand forSubRange(AbstractBounds<PartitionPosition> range)
     {
         return new PartitionRangeReadCommand(isDigestQuery(), isForThrift(), metadata(), nowInSec(), columnFilter(), limits(), dataRange().forSubRange(range));
     }

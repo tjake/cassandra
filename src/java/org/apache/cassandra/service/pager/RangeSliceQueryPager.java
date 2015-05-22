@@ -77,7 +77,7 @@ public class RangeSliceQueryPager extends AbstractQueryPager
         {
             // We want to include the last returned key only if we haven't achieved our per-partition limit, otherwise, don't bother.
             boolean includeLastKey = remainingInPartition() > 0;
-            AbstractBounds<RowPosition> bounds = makeKeyBounds(lastReturnedKey, includeLastKey);
+            AbstractBounds<PartitionPosition> bounds = makeKeyBounds(lastReturnedKey, includeLastKey);
             if (includeLastKey)
             {
                 range = command.dataRange().forPaging(bounds, command.metadata().comparator, lastReturnedClustering, false);
@@ -108,20 +108,20 @@ public class RangeSliceQueryPager extends AbstractQueryPager
         }
     }
 
-    private AbstractBounds<RowPosition> makeKeyBounds(RowPosition lastReturnedKey, boolean includeLastKey)
+    private AbstractBounds<PartitionPosition> makeKeyBounds(PartitionPosition lastReturnedKey, boolean includeLastKey)
     {
-        AbstractBounds<RowPosition> bounds = command.dataRange().keyRange();
+        AbstractBounds<PartitionPosition> bounds = command.dataRange().keyRange();
         if (bounds instanceof Range || bounds instanceof Bounds)
         {
             return includeLastKey
-                 ? new Bounds<RowPosition>(lastReturnedKey, bounds.right)
-                 : new Range<RowPosition>(lastReturnedKey, bounds.right);
+                 ? new Bounds<PartitionPosition>(lastReturnedKey, bounds.right)
+                 : new Range<PartitionPosition>(lastReturnedKey, bounds.right);
         }
         else
         {
             return includeLastKey
-                 ? new IncludingExcludingBounds<RowPosition>(lastReturnedKey, bounds.right)
-                 : new ExcludingBounds<RowPosition>(lastReturnedKey, bounds.right);
+                 ? new IncludingExcludingBounds<PartitionPosition>(lastReturnedKey, bounds.right)
+                 : new ExcludingBounds<PartitionPosition>(lastReturnedKey, bounds.right);
         }
     }
 }

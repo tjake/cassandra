@@ -1423,7 +1423,7 @@ public class CassandraServer implements Cassandra.Iface
             consistencyLevel.validateForRead(keyspace);
 
             IPartitioner p = StorageService.getPartitioner();
-            AbstractBounds<RowPosition> bounds;
+            AbstractBounds<PartitionPosition> bounds;
             if (range.start_key == null)
             {
                 Token.TokenFactory tokenFactory = p.getTokenFactory();
@@ -1433,10 +1433,10 @@ public class CassandraServer implements Cassandra.Iface
             }
             else
             {
-                RowPosition end = range.end_key == null
+                PartitionPosition end = range.end_key == null
                                 ? p.getTokenFactory().fromString(range.end_token).maxKeyBound()
-                                : RowPosition.ForKey.get(range.end_key, p);
-                bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(range.start_key, p), end);
+                                : PartitionPosition.ForKey.get(range.end_key, p);
+                bounds = new Bounds<PartitionPosition>(PartitionPosition.ForKey.get(range.start_key, p), end);
             }
             int nowInSec = FBUtilities.nowInSeconds();
             schedule(DatabaseDescriptor.getRangeRpcTimeout());
@@ -1505,7 +1505,7 @@ public class CassandraServer implements Cassandra.Iface
             consistencyLevel.validateForRead(keyspace);
 
             IPartitioner p = StorageService.getPartitioner();
-            AbstractBounds<RowPosition> bounds;
+            AbstractBounds<PartitionPosition> bounds;
             if (range.start_key == null)
             {
                 // (token, key) is unsupported, assume (token, token)
@@ -1516,10 +1516,10 @@ public class CassandraServer implements Cassandra.Iface
             }
             else
             {
-                RowPosition end = range.end_key == null
+                PartitionPosition end = range.end_key == null
                                 ? p.getTokenFactory().fromString(range.end_token).maxKeyBound()
-                                : RowPosition.ForKey.get(range.end_key, p);
-                bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(range.start_key, p), end);
+                                : PartitionPosition.ForKey.get(range.end_key, p);
+                bounds = new Bounds<PartitionPosition>(PartitionPosition.ForKey.get(range.start_key, p), end);
             }
 
             if (range.row_filter != null && !range.row_filter.isEmpty())
@@ -1615,7 +1615,7 @@ public class CassandraServer implements Cassandra.Iface
             consistencyLevel.validateForRead(keyspace);
 
             IPartitioner p = StorageService.getPartitioner();
-            AbstractBounds<RowPosition> bounds = new Bounds<RowPosition>(RowPosition.ForKey.get(index_clause.start_key, p),
+            AbstractBounds<PartitionPosition> bounds = new Bounds<PartitionPosition>(PartitionPosition.ForKey.get(index_clause.start_key, p),
                                                                          p.getMinimumToken().minKeyBound());
 
             int nowInSec = FBUtilities.nowInSeconds();

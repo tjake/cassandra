@@ -376,7 +376,7 @@ public final class StatementRestrictions
      * @return the partition key bounds
      * @throws InvalidRequestException if the query is invalid
      */
-    public AbstractBounds<RowPosition> getPartitionKeyBounds(QueryOptions options) throws InvalidRequestException
+    public AbstractBounds<PartitionPosition> getPartitionKeyBounds(QueryOptions options) throws InvalidRequestException
     {
         IPartitioner p = StorageService.getPartitioner();
 
@@ -388,14 +388,14 @@ public final class StatementRestrictions
         return getPartitionKeyBounds(p, options);
     }
 
-    private AbstractBounds<RowPosition> getPartitionKeyBounds(IPartitioner p,
+    private AbstractBounds<PartitionPosition> getPartitionKeyBounds(IPartitioner p,
                                                               QueryOptions options) throws InvalidRequestException
     {
         ByteBuffer startKeyBytes = getPartitionKeyBound(Bound.START, options);
         ByteBuffer finishKeyBytes = getPartitionKeyBound(Bound.END, options);
 
-        RowPosition startKey = RowPosition.ForKey.get(startKeyBytes, p);
-        RowPosition finishKey = RowPosition.ForKey.get(finishKeyBytes, p);
+        PartitionPosition startKey = PartitionPosition.ForKey.get(startKeyBytes, p);
+        PartitionPosition finishKey = PartitionPosition.ForKey.get(finishKeyBytes, p);
 
         if (startKey.compareTo(finishKey) > 0 && !finishKey.isMinimum())
             return null;
@@ -412,7 +412,7 @@ public final class StatementRestrictions
                 : new ExcludingBounds<>(startKey, finishKey);
     }
 
-    private AbstractBounds<RowPosition> getPartitionKeyBoundsForTokenRestrictions(IPartitioner p,
+    private AbstractBounds<PartitionPosition> getPartitionKeyBoundsForTokenRestrictions(IPartitioner p,
                                                                                   QueryOptions options)
                                                                                           throws InvalidRequestException
     {
@@ -437,8 +437,8 @@ public final class StatementRestrictions
                 && (cmp > 0 || (cmp == 0 && (!includeStart || !includeEnd))))
             return null;
 
-        RowPosition start = includeStart ? startToken.minKeyBound() : startToken.maxKeyBound();
-        RowPosition end = includeEnd ? endToken.maxKeyBound() : endToken.minKeyBound();
+        PartitionPosition start = includeStart ? startToken.minKeyBound() : startToken.maxKeyBound();
+        PartitionPosition end = includeEnd ? endToken.maxKeyBound() : endToken.minKeyBound();
 
         return new Range<>(start, end);
     }

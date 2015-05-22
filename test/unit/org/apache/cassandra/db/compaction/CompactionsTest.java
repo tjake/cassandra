@@ -174,7 +174,7 @@ public class CompactionsTest
 
         // check that the shadowed column is gone
         SSTableReader sstable = cfs.getSSTables().iterator().next();
-        AbstractBounds<RowPosition> bounds = new Bounds<RowPosition>(key, sstable.partitioner.getMinimumToken().maxKeyBound());
+        AbstractBounds<PartitionPosition> bounds = new Bounds<PartitionPosition>(key, sstable.partitioner.getMinimumToken().maxKeyBound());
         ISSTableScanner scanner = sstable.getScanner(FBUtilities.nowInSeconds());
         UnfilteredRowIterator ai = scanner.next();
         assertTrue(ai.next() instanceof RangeTombstone);

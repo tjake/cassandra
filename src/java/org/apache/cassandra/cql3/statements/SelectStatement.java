@@ -310,7 +310,7 @@ public class SelectStatement implements CQLStatement
         ColumnFilter columnFilter = getColumnFilter(options);
         // The LIMIT provided by the user is the number of CQL row he wants returned.
         // We want to have getRangeSlice to count the number of columns, not the number of keys.
-        AbstractBounds<RowPosition> keyBounds = restrictions.getPartitionKeyBounds(options);
+        AbstractBounds<PartitionPosition> keyBounds = restrictions.getPartitionKeyBounds(options);
         return keyBounds == null
              ? ReadQuery.EMPTY
              : new PartitionRangeReadCommand(cfm, nowInSec, columnFilter, limit, new DataRange(keyBounds, partitionFilter));

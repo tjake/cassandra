@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
-import org.apache.cassandra.db.RowPosition;
+import org.apache.cassandra.db.PartitionPosition;
 import org.apache.cassandra.utils.AlwaysPresentFilter;
 
 import org.apache.cassandra.utils.OverlapIterator;
@@ -42,7 +42,7 @@ public class CompactionController implements AutoCloseable
 
     public final ColumnFamilyStore cfs;
     private Refs<SSTableReader> overlappingSSTables;
-    private OverlapIterator<RowPosition, SSTableReader> overlapIterator;
+    private OverlapIterator<PartitionPosition, SSTableReader> overlapIterator;
     private final Iterable<SSTableReader> compacting;
 
     public final int gcBefore;

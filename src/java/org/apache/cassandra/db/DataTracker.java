@@ -570,11 +570,11 @@ public class DataTracker
         return new SSTableIntervalTree(buildIntervals(sstables));
     }
 
-    public static List<Interval<RowPosition, SSTableReader>> buildIntervals(Iterable<SSTableReader> sstables)
+    public static List<Interval<PartitionPosition, SSTableReader>> buildIntervals(Iterable<SSTableReader> sstables)
     {
-        List<Interval<RowPosition, SSTableReader>> intervals = new ArrayList<>(Iterables.size(sstables));
+        List<Interval<PartitionPosition, SSTableReader>> intervals = new ArrayList<>(Iterables.size(sstables));
         for (SSTableReader sstable : sstables)
-            intervals.add(Interval.<RowPosition, SSTableReader>create(sstable.first, sstable.last, sstable));
+            intervals.add(Interval.<PartitionPosition, SSTableReader>create(sstable.first, sstable.last, sstable));
         return intervals;
     }
 
@@ -583,11 +583,11 @@ public class DataTracker
         return getView().compacting;
     }
 
-    public static class SSTableIntervalTree extends IntervalTree<RowPosition, SSTableReader, Interval<RowPosition, SSTableReader>>
+    public static class SSTableIntervalTree extends IntervalTree<PartitionPosition, SSTableReader, Interval<PartitionPosition, SSTableReader>>
     {
         private static final SSTableIntervalTree EMPTY = new SSTableIntervalTree(null);
 
-        private SSTableIntervalTree(Collection<Interval<RowPosition, SSTableReader>> intervals)
+        private SSTableIntervalTree(Collection<Interval<PartitionPosition, SSTableReader>> intervals)
         {
             super(intervals);
         }
@@ -782,12 +782,12 @@ public class DataTracker
             return String.format("View(pending_count=%d, sstables=%s, compacting=%s)", liveMemtables.size() + flushingMemtables.size() - 1, sstables, compacting);
         }
 
-        public List<SSTableReader> sstablesInBounds(AbstractBounds<RowPosition> rowBounds)
+        public List<SSTableReader> sstablesInBounds(AbstractBounds<PartitionPosition> rowBounds)
         {
             if (intervalTree.isEmpty())
                 return Collections.emptyList();
-            RowPosition stopInTree = rowBounds.right.isMinimum() ? intervalTree.max() : rowBounds.right;
-            return intervalTree.search(Interval.<RowPosition, SSTableReader>create(rowBounds.left, stopInTree));
+            PartitionPosition stopInTree = rowBounds.right.isMinimum() ? intervalTree.max() : rowBounds.right;
+            return intervalTree.search(Interval.<PartitionPosition, SSTableReader>create(rowBounds.left, stopInTree));
         }
     }
 }

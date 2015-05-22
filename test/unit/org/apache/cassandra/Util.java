@@ -108,14 +108,14 @@ public class Util
         return StorageService.getPartitioner().decorateKey(key);
     }
 
-    public static RowPosition rp(String key)
+    public static PartitionPosition rp(String key)
     {
         return rp(key, StorageService.getPartitioner());
     }
 
-    public static RowPosition rp(String key, IPartitioner partitioner)
+    public static PartitionPosition rp(String key, IPartitioner partitioner)
     {
-        return RowPosition.ForKey.get(ByteBufferUtil.bytes(key), partitioner);
+        return PartitionPosition.ForKey.get(ByteBufferUtil.bytes(key), partitioner);
     }
 
     public static Cell getRegularCell(CFMetaData metadata, Row row, String name)
@@ -166,12 +166,12 @@ public class Util
     }
 
 
-    public static Range<RowPosition> range(String left, String right)
+    public static Range<PartitionPosition> range(String left, String right)
     {
         return new Range<>(rp(left), rp(right));
     }
 
-    public static Range<RowPosition> range(IPartitioner p, String left, String right)
+    public static Range<PartitionPosition> range(IPartitioner p, String left, String right)
     {
         return new Range<>(rp(left, p), rp(right, p));
     }
@@ -191,9 +191,9 @@ public class Util
     }
 
     /*
-    public static Bounds<RowPosition> bounds(String left, String right)
+    public static Bounds<PartitionPosition> bounds(String left, String right)
     {
-        return new Bounds<RowPosition>(rp(left), rp(right));
+        return new Bounds<PartitionPosition>(rp(left), rp(right));
     }
 
     public static void addMutation(Mutation rm, String columnFamilyName, String superColumnName, long columnName, String value, long timestamp)

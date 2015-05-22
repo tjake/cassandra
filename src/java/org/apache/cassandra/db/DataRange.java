@@ -19,9 +19,6 @@ package org.apache.cassandra.db;
 import java.io.DataInput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -46,7 +43,7 @@ public class DataRange
 {
     public static final Serializer serializer = new Serializer();
 
-    private final AbstractBounds<RowPosition> keyRange;
+    private final AbstractBounds<PartitionPosition> keyRange;
     protected final PartitionFilter partitionFilter;
 
     /**
@@ -56,7 +53,7 @@ public class DataRange
      * @param range the range over partition keys to use.
      * @param partitionFilter the partition filter to use.
      */
-    public DataRange(AbstractBounds<RowPosition> range, PartitionFilter partitionFilter)
+    public DataRange(AbstractBounds<PartitionPosition> range, PartitionFilter partitionFilter)
     {
         this.keyRange = range;
         this.partitionFilter = partitionFilter;
@@ -96,7 +93,7 @@ public class DataRange
      *
      * @return the newly create {@code DataRange}.
      */
-    public static DataRange forKeyRange(CFMetaData metadata, Range<RowPosition> keyRange)
+    public static DataRange forKeyRange(CFMetaData metadata, Range<PartitionPosition> keyRange)
     {
         return new DataRange(keyRange, new SlicePartitionFilter(metadata.partitionColumns(), Slices.ALL, false));
     }
@@ -120,7 +117,7 @@ public class DataRange
      *
      * @return the range of partition key queried by this {@code DataRange}.
      */
-    public AbstractBounds<RowPosition> keyRange()
+    public AbstractBounds<PartitionPosition> keyRange()
     {
         return keyRange;
     }
@@ -130,7 +127,7 @@ public class DataRange
      *
      * @return the start of the partition key range queried by this {@code DataRange}.
      */
-    public RowPosition startKey()
+    public PartitionPosition startKey()
     {
         return keyRange.left;
     }
@@ -140,7 +137,7 @@ public class DataRange
      *
      * @return the end of the partition key range queried by this {@code DataRange}.
      */
-    public RowPosition stopKey()
+    public PartitionPosition stopKey()
     {
         return keyRange.right;
     }
@@ -181,7 +178,7 @@ public class DataRange
      *
      * @return whether the provided ring position is covered by this {@code DataRange}.
      */
-    public boolean contains(RowPosition pos)
+    public boolean contains(PartitionPosition pos)
     {
         return keyRange.contains(pos);
     }
@@ -224,7 +221,7 @@ public class DataRange
      *
      * @return a new {@code DataRange} suitable for paging {@code this} range given the {@code lastRetuned} result of the previous page.
      */
-    public DataRange forPaging(AbstractBounds<RowPosition> range, ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
+    public DataRange forPaging(AbstractBounds<PartitionPosition> range, ClusteringComparator comparator, Clustering lastReturned, boolean inclusive)
     {
         return new Paging(range, partitionFilter, comparator, lastReturned, inclusive);
     }
@@ -238,7 +235,7 @@ public class DataRange
      *
      * @return a new {@code DataRange} using {@code range} as partition key range and the partition filter filter from {@code this}.
      */
-    public DataRange forSubRange(AbstractBounds<RowPosition> range)
+    public DataRange forSubRange(AbstractBounds<PartitionPosition> range)
     {
         return new DataRange(range, partitionFilter);
     }
@@ -275,7 +272,7 @@ public class DataRange
         return sb.toString();
     }
 
-    private void appendClause(RowPosition pos, StringBuilder sb, CFMetaData metadata, boolean isStart, boolean isInclusive)
+    private void appendClause(PartitionPosition pos, StringBuilder sb, CFMetaData metadata, boolean isStart, boolean isInclusive)
     {
         sb.append("token(");
         sb.append(ColumnDefinition.toCQLString(metadata.partitionKeyColumns()));
@@ -329,7 +326,7 @@ public class DataRange
         private final Clustering lastReturned;
         private final boolean inclusive;
 
-        private Paging(AbstractBounds<RowPosition> range,
+        private Paging(AbstractBounds<PartitionPosition> range,
                        PartitionFilter filter,
                        ClusteringComparator comparator,
                        Clustering lastReturned,
@@ -356,7 +353,7 @@ public class DataRange
         }
 
         @Override
-        public DataRange forSubRange(AbstractBounds<RowPosition> range)
+        public DataRange forSubRange(AbstractBounds<PartitionPosition> range)
         {
             // This is called for subrange of the initial range. So either it's the beginning of the initial range,
             // and we need to preserver lastReturned, or it's not, and we don't care about it anymore.
@@ -389,7 +386,7 @@ public class DataRange
 
         public DataRange deserialize(DataInput in, int version, CFMetaData metadata) throws IOException
         {
-            AbstractBounds<RowPosition> range = AbstractBounds.rowPositionSerializer.deserialize(in, MessagingService.globalPartitioner(), version);
+            AbstractBounds<PartitionPosition> range = AbstractBounds.rowPositionSerializer.deserialize(in, MessagingService.globalPartitioner(), version);
             PartitionFilter filter = PartitionFilter.serializer.deserialize(in, version, metadata);
             if (in.readBoolean())
             {
