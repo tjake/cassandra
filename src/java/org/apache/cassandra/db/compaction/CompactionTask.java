@@ -159,7 +159,7 @@ public class CompactionTask extends AbstractCompactionTask
             // to both ifile and dfile and SSTR will throw deletion errors on Windows if it tries to delete before scanner is closed.
             // See CASSANDRA-8019 and CASSANDRA-8399
             try (AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(actuallyCompact);
-                 CompactionIterable ci = new CompactionIterable(compactionType, scanners.scanners, controller, sstableFormat))
+                 CompactionIterator ci = new CompactionIterator(compactionType, scanners.scanners, controller, sstableFormat))
             {
                 if (collector != null)
                     collector.beginCompaction(ci);

@@ -781,7 +781,7 @@ public class CompactionManager implements CompactionManagerMBean
         try (SSTableRewriter writer = new SSTableRewriter(cfs, oldSSTable, sstable.maxDataAge, false);
              ISSTableScanner scanner = cleanupStrategy.getScanner(sstable, getRateLimiter());
              CompactionController controller = new CompactionController(cfs, Collections.singleton(sstable), getDefaultGcBefore(cfs));
-             CompactionIterable ci = new CompactionIterable(OperationType.CLEANUP, Collections.singletonList(scanner), controller, DatabaseDescriptor.getSSTableFormat(), metrics))
+             CompactionIterator ci = new CompactionIterator(OperationType.CLEANUP, Collections.singletonList(scanner), controller, DatabaseDescriptor.getSSTableFormat(), metrics))
         {
             writer.switchWriter(createWriter(cfs, compactionFileLocation, expectedBloomFilterSize, sstable.getSSTableMetadata().repairedAt, sstable));
 
@@ -1032,7 +1032,7 @@ public class CompactionManager implements CompactionManagerMBean
 
             long start = System.nanoTime();
             try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables, validator.desc.range, FBUtilities.nowInSeconds());
-                 CompactionIterable ci = new ValidationCompactionIterable(cfs, scanners.scanners, gcBefore, metrics))
+                 CompactionIterator ci = new ValidationCompactionIterator(cfs, scanners.scanners, gcBefore, metrics))
             {
                 try
                 {
@@ -1140,7 +1140,7 @@ public class CompactionManager implements CompactionManagerMBean
              SSTableRewriter unRepairedSSTableWriter = new SSTableRewriter(cfs, sstableAsSet, groupMaxDataAge, false);
              AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(anticompactionGroup);
              CompactionController controller = new CompactionController(cfs, sstableAsSet, CFMetaData.DEFAULT_GC_GRACE_SECONDS);
-             CompactionIterable ci = new CompactionIterable(OperationType.ANTICOMPACTION, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), metrics))
+             CompactionIterator ci = new CompactionIterator(OperationType.ANTICOMPACTION, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), metrics))
         {
             int expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(anticompactionGroup)));
 
@@ -1260,9 +1260,9 @@ public class CompactionManager implements CompactionManagerMBean
         return cfs.isIndex() ? nowInSec : cfs.gcBefore(nowInSec);
     }
 
-    private static class ValidationCompactionIterable extends CompactionIterable
+    private static class ValidationCompactionIterator extends CompactionIterator
     {
-        public ValidationCompactionIterable(ColumnFamilyStore cfs, List<ISSTableScanner> scanners, int gcBefore, CompactionMetrics metrics)
+        public ValidationCompactionIterator(ColumnFamilyStore cfs, List<ISSTableScanner> scanners, int gcBefore, CompactionMetrics metrics)
         {
             super(OperationType.VALIDATION, scanners, new ValidationCompactionController(cfs, gcBefore), DatabaseDescriptor.getSSTableFormat(), metrics);
         }

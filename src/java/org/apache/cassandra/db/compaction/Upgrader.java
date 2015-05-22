@@ -20,7 +20,6 @@ package org.apache.cassandra.db.compaction;
 import java.io.File;
 import java.util.*;
 
-import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -91,7 +90,7 @@ public class Upgrader
 
         try (SSTableRewriter writer = new SSTableRewriter(cfs, toUpgrade, CompactionTask.getMaxDataAge(toUpgrade), true);
              AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(toUpgrade);
-             CompactionIterable iter = new CompactionIterable(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat()))
+             CompactionIterator iter = new CompactionIterator(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat()))
         {
             writer.switchWriter(createCompactionWriter(sstable.getSSTableMetadata().repairedAt));
             while (iter.hasNext())
