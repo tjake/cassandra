@@ -526,10 +526,6 @@ public abstract class ColumnFamily implements Iterable<Cell>, IRowCacheEntry
             serializer.serialize(this, out, MessagingService.current_version);
             return ByteBuffer.wrap(out.getData(), 0, out.getLength());
         }
-        catch (IOException e)
-        {
-            throw new AssertionError(); // cannot happen.
-        }
     }
 
 

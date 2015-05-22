@@ -205,13 +205,12 @@ public class Scrubber implements Closeable
                         continue;
                     }
 
-                    try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms)))
-                    {
-                        if (writer.tryAppend(compactedRow) == null)
-                            emptyRows++;
-                        else
-                            goodRows++;
-                    }
+                    @SuppressWarnings("resource")
+                    AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms));
+                    if (writer.tryAppend(compactedRow) == null)
+                        emptyRows++;
+                    else
+                        goodRows++;
 
                     prevKey = key;
                 }
@@ -237,13 +236,12 @@ public class Scrubber implements Closeable
                                 continue;
                             }
 
-                            try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms)))
-                            {
-                                if (writer.tryAppend(compactedRow) == null)
-                                    emptyRows++;
-                                else
-                                    goodRows++;
-                            }
+                            @SuppressWarnings("resource")
+                            AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(atoms));
+                            if (writer.tryAppend(compactedRow) == null)
+                                emptyRows++;
+                            else
+                                goodRows++;
 
                             prevKey = key;
                         }

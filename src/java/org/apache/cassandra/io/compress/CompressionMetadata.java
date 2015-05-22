@@ -164,33 +164,29 @@ public class CompressionMetadata
      *
      * @return collection of the chunk offsets.
      */
-    @SuppressWarnings("resource")
     private Memory readChunkOffsets(DataInput input)
     {
-        Memory offsets = null;
+        final int chunkCount;
         try
         {
-            int chunkCount = input.readInt();
+            chunkCount = input.readInt();
             if (chunkCount <= 0)
                 throw new IOException("Compressed file with 0 chunks encountered: " + input);
+        }
+        catch (IOException e)
+        {
+            throw new FSReadError(e, indexFilePath);
+        }
 
-            offsets = Memory.allocate(chunkCount * 8L);
+        @SuppressWarnings("resource")
+        Memory offsets = Memory.allocate(chunkCount * 8L);
+        int i = 0;
+        try
+        {
 
-            for (int i = 0; i < chunkCount; i++)
+            for (i = 0; i < chunkCount; i++)
             {
-                try
-                {
-                    offsets.setLong(i * 8L, input.readLong());
-                }
-                catch (EOFException e)
-                {
-                    if (offsets != null)
-                        offsets.close();
-
-                    String msg = String.format("Corrupted Index File %s: read %d but expected %d chunks.",
-                                               indexFilePath, i, chunkCount);
-                    throw new CorruptSSTableException(new IOException(msg, e), indexFilePath);
-                }
+                offsets.setLong(i * 8L, input.readLong());
             }
 
             return offsets;
@@ -200,6 +196,12 @@ public class CompressionMetadata
             if (offsets != null)
                 offsets.close();
 
+            if (e instanceof EOFException)
+            {
+                String msg = String.format("Corrupted Index File %s: read %d but expected %d chunks.",
+                                           indexFilePath, i, chunkCount);
+                throw new CorruptSSTableException(new IOException(msg, e), indexFilePath);
+            }
             throw new FSReadError(e, indexFilePath);
         }
     }

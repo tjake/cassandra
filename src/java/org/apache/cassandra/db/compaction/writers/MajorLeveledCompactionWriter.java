@@ -62,6 +62,7 @@ public class MajorLeveledCompactionWriter extends CompactionAwareWriter
         if (skipAncestors)
             logger.warn("Many sstables involved in compaction, skipping storing ancestor information to avoid running out of memory");
 
+        @SuppressWarnings("resource")
         SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
                                                     keysPerSSTable,
                                                     minRepairedAt,

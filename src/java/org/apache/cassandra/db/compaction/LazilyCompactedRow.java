@@ -39,6 +39,7 @@ import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.SequentialWriter;
 import org.apache.cassandra.utils.MergeIterator;
 import org.apache.cassandra.utils.StreamingHistogram;
+import org.apache.cassandra.utils.Throwables;
 
 /**
  * LazilyCompactedRow only computes the row bloom filter and column index in memory
@@ -190,6 +191,7 @@ public class LazilyCompactedRow extends AbstractCompactedRow
 
     public void close()
     {
+        Throwable accumulate = null;
         for (OnDiskAtomIterator row : rows)
         {
             try
@@ -198,10 +200,11 @@ public class LazilyCompactedRow extends AbstractCompactedRow
             }
             catch (IOException e)
             {
-                throw new RuntimeException(e);
+                accumulate = Throwables.merge(accumulate, e);
             }
         }
         closed = true;
+        Throwables.maybeFail(accumulate);
     }
 
     protected class Reducer extends MergeIterator.Reducer<OnDiskAtom, OnDiskAtom>

@@ -1996,9 +1996,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
                     // skipping outside of assigned range
                     if (!range.contains(key))
-                    {
                         continue;
-                    }
 
                     if (logger.isTraceEnabled())
                         logger.trace("scanned {}", metadata.getKeyValidator().getString(key.getKey()));

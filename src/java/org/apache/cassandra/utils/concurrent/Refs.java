@@ -68,7 +68,6 @@ public final class Refs<T extends RefCounted<T>> extends AbstractCollection<T> i
     /**
      * @param referenced the object we have a Ref to
      */
-    @SuppressWarnings("resource")
     public void release(T referenced)
     {
         Ref ref = references.remove(referenced);
@@ -82,7 +81,6 @@ public final class Refs<T extends RefCounted<T>> extends AbstractCollection<T> i
      * @param referenced the object we retain a Ref to
      * @return return true if we held a reference to the object, and false otherwise
      */
-    @SuppressWarnings("resource")
     public boolean releaseIfHolds(T referenced)
     {
         Ref ref = references.remove(referenced);
@@ -91,11 +89,16 @@ public final class Refs<T extends RefCounted<T>> extends AbstractCollection<T> i
         return ref != null;
     }
 
+    public void relaseAllExcept(Collection<T> keep)
+    {
+        Collection<T> release = new ArrayList<>(references.keySet());
+        release.retainAll(keep);
+        release(release);
+    }
     /**
      * Release a retained Ref to all of the provided objects; if any is not held, an exception will be thrown
      * @param release
      */
-    @SuppressWarnings("resource")
     public void release(Collection<T> release)
     {
         List<Ref<T>> refs = new ArrayList<>();
@@ -140,7 +143,6 @@ public final class Refs<T extends RefCounted<T>> extends AbstractCollection<T> i
      * @param t object to acquire a reference to
      * @return true iff success
      */
-    @SuppressWarnings("resource")
     public boolean tryRef(T t)
     {
         Ref<T> ref = t.tryRef();
@@ -183,7 +185,6 @@ public final class Refs<T extends RefCounted<T>> extends AbstractCollection<T> i
     /**
      * Acquire a reference to all of the provided objects, or none
      */
-    @SuppressWarnings("resource")
     public static <T extends RefCounted<T>> Refs<T> tryRef(Iterable<T> reference)
     {
         HashMap<T, Ref<T>> refs = new HashMap<>();

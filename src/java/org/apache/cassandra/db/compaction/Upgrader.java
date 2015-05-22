@@ -90,10 +90,9 @@ public class Upgrader
             writer.switchWriter(createCompactionWriter(sstable.getSSTableMetadata().repairedAt));
             while (iter.hasNext())
             {
-                try (AbstractCompactedRow row = iter.next())
-                {
-                    writer.append(row);
-                }
+                @SuppressWarnings("resource")
+                AbstractCompactedRow row = iter.next();
+                writer.append(row);
             }
 
             writer.finish();
@@ -101,7 +100,7 @@ public class Upgrader
         }
         catch (Exception e)
         {
-            throw new RuntimeException(e);
+            Throwables.propagate(e);
         }
         finally
         {

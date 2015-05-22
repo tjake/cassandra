@@ -84,6 +84,7 @@ public class SplittingSizeTieredCompactionWriter extends CompactionAwareWriter
         File sstableDirectory = cfs.directories.getLocationForDisk(getWriteDirectory(Math.round(totalSize * ratios[currentRatioIndex])));
         long currentPartitionsToWrite = Math.round(estimatedTotalKeys * ratios[currentRatioIndex]);
         currentBytesToWrite = Math.round(totalSize * ratios[currentRatioIndex]);
+        @SuppressWarnings("resource")
         SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
                                                                             currentPartitionsToWrite,
                                                                             minRepairedAt,
@@ -96,7 +97,6 @@ public class SplittingSizeTieredCompactionWriter extends CompactionAwareWriter
     }
 
     @Override
-    @SuppressWarnings("resource")
     public boolean append(AbstractCompactedRow row)
     {
         RowIndexEntry rie = sstableWriter.append(row);
@@ -106,6 +106,7 @@ public class SplittingSizeTieredCompactionWriter extends CompactionAwareWriter
             currentBytesToWrite = Math.round(totalSize * ratios[currentRatioIndex]);
             long currentPartitionsToWrite = Math.round(ratios[currentRatioIndex] * estimatedTotalKeys);
             File sstableDirectory = cfs.directories.getLocationForDisk(getWriteDirectory(Math.round(totalSize * ratios[currentRatioIndex])));
+            @SuppressWarnings("resource")
             SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
                                                                                 currentPartitionsToWrite,
                                                                                 minRepairedAt,

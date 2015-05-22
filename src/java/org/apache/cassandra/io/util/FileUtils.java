@@ -214,17 +214,6 @@ public class FileUtils
         }
     }
 
-    public static Closeable quietCloseable(final Closeable c)
-    {
-        return new Closeable()
-        {
-            public void close()
-            {
-                closeQuietly(c);
-            }
-        };
-    }
-
     public static void closeQuietly(Closeable c)
     {
         try

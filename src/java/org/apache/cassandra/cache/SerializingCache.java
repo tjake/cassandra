@@ -263,11 +263,10 @@ public class SerializingCache<K, V> implements ICache<K, V>
 
     public void remove(K key)
     {
-        try (RefCountedMemory mem = map.remove(key))
-        {
-            if (mem != null)
-                mem.unreference();
-        }
+        @SuppressWarnings("resource")
+        RefCountedMemory mem = map.remove(key);
+        if (mem != null)
+            mem.unreference();
     }
 
     public Iterator<K> keyIterator()

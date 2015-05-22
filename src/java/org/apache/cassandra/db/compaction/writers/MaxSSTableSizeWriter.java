@@ -51,6 +51,7 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
         estimatedTotalKeys = SSTableReader.getApproximateKeyCount(nonExpiredSSTables);
         estimatedSSTables = Math.max(1, estimatedTotalKeys / maxSSTableSize);
         File sstableDirectory = cfs.directories.getLocationForDisk(getWriteDirectory(expectedWriteSize));
+        @SuppressWarnings("resource")
         SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
                                                     estimatedTotalKeys / estimatedSSTables,
                                                     minRepairedAt,
@@ -61,13 +62,13 @@ public class MaxSSTableSizeWriter extends CompactionAwareWriter
     }
 
     @Override
-    @SuppressWarnings("resource")
     public boolean append(AbstractCompactedRow row)
     {
         RowIndexEntry rie = sstableWriter.append(row);
         if (sstableWriter.currentWriter().getOnDiskFilePointer() > maxSSTableSize)
         {
             File sstableDirectory = cfs.directories.getLocationForDisk(getWriteDirectory(expectedWriteSize));
+            @SuppressWarnings("resource")
             SSTableWriter writer = SSTableWriter.create(Descriptor.fromFilename(cfs.getTempSSTablePath(sstableDirectory)),
                                                                 estimatedTotalKeys / estimatedSSTables,
                                                                 minRepairedAt,

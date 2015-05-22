@@ -42,6 +42,7 @@ import javax.management.openmbean.OpenDataException;
 import javax.management.openmbean.TabularData;
 
 import com.google.common.base.Predicate;
+import com.google.common.base.Throwables;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.*;
 import org.slf4j.Logger;
@@ -800,16 +801,14 @@ public class CompactionManager implements CompactionManagerMBean
                 if (ci.isStopRequested())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                try (SSTableIdentityIterator row = cleanupStrategy.cleanup((SSTableIdentityIterator) scanner.next()))
-                {
-                    if (row == null)
-                        continue;
-                    try (AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(row)))
-                    {
-                        if (writer.append(compactedRow) != null)
-                            totalkeysWritten++;
-                    }
-                }
+                @SuppressWarnings("resource")
+                SSTableIdentityIterator row = cleanupStrategy.cleanup((SSTableIdentityIterator) scanner.next());
+                if (row == null)
+                    continue;
+                @SuppressWarnings("resource")
+                AbstractCompactedRow compactedRow = new LazilyCompactedRow(controller, Collections.singletonList(row));
+                if (writer.append(compactedRow) != null)
+                    totalkeysWritten++;
             }
 
             // flush to ensure we don't lose the tombstones on a restart, since they are not commitlog'd
@@ -1017,6 +1016,7 @@ public class CompactionManager implements CompactionManagerMBean
 
                 buildMerkleTree(cfs, sstables, validator, gcBefore);
 
+                // review comment: should this be in a try/finally? it was previously
                 cfs.clearSnapshot(snapshotName);
             }
         }
@@ -1027,8 +1027,8 @@ public class CompactionManager implements CompactionManagerMBean
             ActiveRepairService.ParentRepairSession prs = ActiveRepairService.instance.getParentRepairSession(validator.desc.parentSessionId);
             try (ColumnFamilyStore.RefViewFragment sstableCandidates = cfs.selectAndReference(prs.isIncremental ? ColumnFamilyStore.UNREPAIRED_SSTABLES : ColumnFamilyStore.CANONICAL_SSTABLES))
             {
+                Refs<SSTableReader> refs = sstableCandidates.refs;
                 Set<SSTableReader> sstablesToValidate = new HashSet<>();
-
                 for (SSTableReader sstable : sstableCandidates.sstables)
                 {
                     if (new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(Collections.singletonList(validator.desc.range)))
@@ -1045,23 +1045,16 @@ public class CompactionManager implements CompactionManagerMBean
                     throw new RuntimeException("Cannot start multiple repair sessions over the same sstables");
                 }
 
-                try (Refs<SSTableReader> sstables = Refs.tryRef(sstablesToValidate))
-                {
-                    if (sstables == null)
-                    {
-                        logger.error("Could not reference sstables");
-                        throw new RuntimeException("Could not reference sstables");
-                    }
-                    prs.addSSTables(cfs.metadata.cfId, sstablesToValidate);
+                refs.relaseAllExcept(sstablesToValidate);
+                prs.addSSTables(cfs.metadata.cfId, sstablesToValidate);
 
-                    if (validator.gcBefore > 0)
-                        gcBefore = validator.gcBefore;
-                    else
-                        gcBefore = getDefaultGcBefore(cfs);
+                if (validator.gcBefore > 0)
+                    gcBefore = validator.gcBefore;
+                else
+                    gcBefore = getDefaultGcBefore(cfs);
 
 
-                    buildMerkleTree(cfs, sstables, validator, gcBefore);
-                }
+                buildMerkleTree(cfs, refs, validator, gcBefore);
             }
         }
     }
@@ -1083,32 +1076,28 @@ public class CompactionManager implements CompactionManagerMBean
         try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables, validator.desc.range))
         {
             CompactionIterable ci = new ValidationCompactionIterable(cfs, scanners.scanners, gcBefore);
-            try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator())
+            metrics.beginCompaction(ci);
+            try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator();)
             {
-                metrics.beginCompaction(ci);
-                try
+                // validate the CF as we iterate over it
+                validator.prepare(cfs, tree);
+                while (iter.hasNext())
                 {
-                    // validate the CF as we iterate over it
-                    validator.prepare(cfs, tree);
-                    while (iter.hasNext())
-                    {
-                        if (ci.isStopRequested())
-                            throw new CompactionInterruptedException(ci.getCompactionInfo());
-                        try (AbstractCompactedRow row = iter.next())
-                        {
-                            validator.add(row);
-                        }
-                    }
-                    validator.complete();
+                    if (ci.isStopRequested())
+                        throw new CompactionInterruptedException(ci.getCompactionInfo());
+                    @SuppressWarnings("resource")
+                    AbstractCompactedRow row = iter.next();
+                    validator.add(row);
                 }
-                finally
-                {
-                    metrics.finishCompaction(ci);
-                }
+                validator.complete();
             }
             catch (Exception e)
             {
-                throw new RuntimeException(e);
+                Throwables.propagate(e);
+            }
+            finally
+            {
+                metrics.finishCompaction(ci);
             }
         }
 
@@ -1199,38 +1188,32 @@ public class CompactionManager implements CompactionManagerMBean
             unRepairedSSTableWriter.switchWriter(CompactionManager.createWriterForAntiCompaction(cfs, destination, expectedBloomFilterSize, ActiveRepairService.UNREPAIRED_SSTABLE, sstableAsSet));
 
             CompactionIterable ci = new CompactionIterable(OperationType.ANTICOMPACTION, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), UUIDGen.getTimeUUID());
-            try (CloseableIterator<AbstractCompactedRow> iter = ci.iterator())
+            metrics.beginCompaction(ci);
+            try
             {
-                metrics.beginCompaction(ci);
-                try
+                @SuppressWarnings("resource")
+                CloseableIterator<AbstractCompactedRow> iter = ci.iterator();
+                while (iter.hasNext())
                 {
-                    while (iter.hasNext())
+                    @SuppressWarnings("resource")
+                    AbstractCompactedRow row = iter.next();
+                    // if current range from sstable is repaired, save it into the new repaired sstable
+                    if (Range.isInRanges(row.key.getToken(), ranges))
                     {
-                        try (AbstractCompactedRow row = iter.next())
-                        {
-                            // if current range from sstable is repaired, save it into the new repaired sstable
-                            if (Range.isInRanges(row.key.getToken(), ranges))
-                            {
-                                repairedSSTableWriter.append(row);
-                                repairedKeyCount++;
-                            }
-                            // otherwise save into the new 'non-repaired' table
-                            else
-                            {
-                                unRepairedSSTableWriter.append(row);
-                                unrepairedKeyCount++;
-                            }
-                        }
+                        repairedSSTableWriter.append(row);
+                        repairedKeyCount++;
+                    }
+                    // otherwise save into the new 'non-repaired' table
+                    else
+                    {
+                        unRepairedSSTableWriter.append(row);
+                        unrepairedKeyCount++;
                     }
                 }
-                finally
-                {
-                    metrics.finishCompaction(ci);
-                }
             }
-            catch (Exception e)
+            finally
             {
-                throw new RuntimeException(e);
+                metrics.finishCompaction(ci);
             }
 
             List<SSTableReader> anticompactedSSTables = new ArrayList<>();
