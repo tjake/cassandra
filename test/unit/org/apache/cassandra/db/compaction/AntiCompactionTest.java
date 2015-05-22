@@ -162,11 +162,12 @@ public class AntiCompactionTest
         File dir = cfs.directories.getDirectoryForNewSSTables();
         String filename = cfs.getTempSSTablePath(dir);
 
-        SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfm, cfm.partitionColumns(), AtomStats.NO_STATS, true));
-
-        for (int i = 0; i < count * 5; i++)
-            writer.append(atoms);
-        return writer.closeAndOpenReader();
+        try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfm, cfm.partitionColumns(), AtomStats.NO_STATS, true)))
+        {
+            for (int i = 0; i < count * 5; i++)
+                writer.append(atoms);
+            return writer.finish(true);
+        }
     }
 
     public void generateSStable(ColumnFamilyStore store, String Suffix)

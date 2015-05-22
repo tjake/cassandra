@@ -177,7 +177,10 @@ public class CompressedSequentialWriterTest extends SequentialWriterTest
 
         private TestableCSW(File file, File offsetsFile) throws IOException
         {
-            this(file, offsetsFile, new CompressedSequentialWriter(file, offsetsFile.getPath(), new CompressionParameters(LZ4Compressor.instance, BUFFER_SIZE, new HashMap<String, String>()), new MetadataCollector(CellNames.fromAbstractType(UTF8Type.instance, false))));
+            this(file, offsetsFile, new CompressedSequentialWriter(file,
+                                                                   offsetsFile.getPath(),
+                                                                   new CompressionParameters(LZ4Compressor.instance, BUFFER_SIZE, new HashMap<String, String>()),
+                                                                   new MetadataCollector(new ClusteringComparator(UTF8Type.instance))));
         }
 
         private TestableCSW(File file, File offsetsFile, CompressedSequentialWriter sw) throws IOException

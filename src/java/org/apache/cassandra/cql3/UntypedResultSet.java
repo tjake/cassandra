@@ -236,7 +236,7 @@ public abstract class UntypedResultSet implements Iterable<UntypedResultSet.Row>
                 {
                     Iterator<Cell> cells = row.getCells(def);
                     if (cells != null)
-                        data.put(def.name.toString(), ((CollectionType)def.type).serializeForNativeProtocol(cells, Server.VERSION_3));
+                        data.put(def.name.toString(), ((CollectionType)def.type).serializeForNativeProtocol(def, cells, Server.VERSION_3));
                 }
                 else
                 {

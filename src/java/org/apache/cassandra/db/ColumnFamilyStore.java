@@ -1413,9 +1413,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return (filter.isHeadFilter() && limits.hasEnoughLiveData(cached, nowInSec)) || filter.isFullyCoveredBy(cached);
     }
 
-    public int gcBefore(long now)
+    public int gcBefore(int nowInSec)
     {
-        return (int) (now / 1000) - metadata.getGcGraceSeconds();
+        return nowInSec - metadata.getGcGraceSeconds();
     }
 
     public Set<SSTableReader> getUnrepairedSSTables()

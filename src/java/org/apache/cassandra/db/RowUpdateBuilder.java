@@ -35,7 +35,7 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.*;
 
 /**
- * Convenience object to create updates.
+ * Convenience object to create single row updates.
  *
  * This is meant for system table update, when performance is not of the utmost importance.
  */
@@ -123,6 +123,11 @@ public class RowUpdateBuilder
     public RowUpdateBuilder(CFMetaData metadata, long timestamp, int ttl, Mutation mutation)
     {
         this(getOrAdd(metadata, mutation, FBUtilities.nowInSeconds()), timestamp, ttl, mutation);
+    }
+
+    public RowUpdateBuilder(PartitionUpdate update, long timestamp, int ttl)
+    {
+        this(update, timestamp, ttl, null);
     }
 
     // This must be called before any addition or deletion if used.

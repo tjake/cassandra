@@ -92,14 +92,17 @@ public class CQLSSTableWriterTest
 
         SSTableLoader loader = new SSTableLoader(dataDir, new SSTableLoader.Client()
         {
+            private String keyspace;
+
             public void init(String keyspace)
             {
+                this.keyspace = keyspace;
                 for (Range<Token> range : StorageService.instance.getLocalRanges("cql_keyspace"))
                     addRangeForEndpoint(range, FBUtilities.getBroadcastAddress());
                 setPartitioner(StorageService.getPartitioner());
             }
 
-            public CFMetaData getCFMetaData(String keyspace, String cfName)
+            public CFMetaData getTableMetadata(String cfName)
             {
                 return Schema.instance.getCFMetaData(keyspace, cfName);
             }
@@ -250,14 +253,17 @@ public class CQLSSTableWriterTest
 
         SSTableLoader loader = new SSTableLoader(dataDir, new SSTableLoader.Client()
         {
+            private String keyspace;
+
             public void init(String keyspace)
             {
+                this.keyspace = keyspace;
                 for (Range<Token> range : StorageService.instance.getLocalRanges(KS))
                     addRangeForEndpoint(range, FBUtilities.getBroadcastAddress());
                 setPartitioner(StorageService.getPartitioner());
             }
 
-            public CFMetaData getCFMetaData(String keyspace, String cfName)
+            public CFMetaData getTableMetadata(String cfName)
             {
                 return Schema.instance.getCFMetaData(keyspace, cfName);
             }

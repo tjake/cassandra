@@ -155,7 +155,7 @@ class SSTableSimpleUnsortedWriter extends SSTableSimpleWriter
     {
         sync();
         put(SENTINEL);
-       try
+        try
         {
             diskWriter.join();
         }
@@ -163,6 +163,7 @@ class SSTableSimpleUnsortedWriter extends SSTableSimpleWriter
         {
             throw new RuntimeException(e);
         }
+        checkForWriterException();
     }
 
     protected void sync() throws IOException
@@ -240,8 +241,6 @@ class SSTableSimpleUnsortedWriter extends SSTableSimpleWriter
 
         public void run()
         {
-            SSTableWriter writer = null;
-
             while (true)
             {
                 try
@@ -250,29 +249,28 @@ class SSTableSimpleUnsortedWriter extends SSTableSimpleWriter
                     if (b == SENTINEL)
                         return;
 
-                    writer = createWriter();
-                    boolean first = true;
-                    for (Map.Entry<DecoratedKey, PartitionUpdate> entry : b.entrySet())
+                    try (SSTableWriter writer = createWriter())
                     {
-                        if (!entry.getValue().isEmpty())
-                            writer.append(entry.getValue().atomIterator());
-                        else if (!first)
-                            throw new AssertionError("Empty partition");
-                        first = false;
+                        boolean first = true;
+                        for (Map.Entry<DecoratedKey, PartitionUpdate> entry : b.entrySet())
+                        {
+                            if (!entry.getValue().isEmpty())
+                                writer.append(entry.getValue().atomIterator());
+                            else if (!first)
+                                throw new AssertionError("Empty partition");
+                            first = false;
+                        }
+                        writer.finish(false);
                     }
-                    writer.close();
                 }
                 catch (Throwable e)
                 {
                     JVMStabilityInspector.inspectThrowable(e);
-                    if (writer != null)
-                        writer.abort();
                     // Keep only the first exception
                     if (exception == null)
-                      exception = e;
+                        exception = e;
                 }
             }
-
         }
     }
 }

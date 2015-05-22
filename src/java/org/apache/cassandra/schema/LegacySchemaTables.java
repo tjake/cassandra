@@ -1166,7 +1166,7 @@ public class LegacySchemaTables
         return kind.toString().toLowerCase();
     }
 
-    private static ColumnDefinition.Kind deserializeKind(String kind)
+    public static ColumnDefinition.Kind deserializeKind(String kind)
     {
         if (kind.equalsIgnoreCase("clustering_key"))
             return ColumnDefinition.Kind.CLUSTERING_COLUMN;

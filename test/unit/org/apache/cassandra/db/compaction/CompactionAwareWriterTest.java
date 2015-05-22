@@ -41,6 +41,7 @@ import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.FBUtilities;
 import static org.junit.Assert.assertEquals;
 
 public class CompactionAwareWriterTest extends CQLTester
@@ -144,18 +145,15 @@ public class CompactionAwareWriterTest extends CQLTester
             });
             for (SSTableReader sstable : sortedSSTables)
             {
-                assertEquals(expectedSize, sstable.onDiskLength(), 10000);
+                // we dont create smaller files than this, everything will be in the last file
+                if (expectedSize > SplittingSizeTieredCompactionWriter.DEFAULT_SMALLEST_SSTABLE_BYTES)
+                    assertEquals(expectedSize, sstable.onDiskLength(), expectedSize / 100); // allow 1% diff in estimated vs actual size
                 expectedSize /= 2;
             }
             assertEquals(rowCount, rows);
         }
         finally
         {
-            // we dont create smaller files than this, everything will be in the last file
-            if (expectedSize > SplittingSizeTieredCompactionWriter.DEFAULT_SMALLEST_SSTABLE_BYTES)
-                assertEquals(expectedSize, sstable.onDiskLength(), expectedSize / 100); // allow 1% diff in estimated vs actual size
-            expectedSize /= 2;
-
             cfs.truncateBlocking();
         }
     }
@@ -200,7 +198,7 @@ public class CompactionAwareWriterTest extends CQLTester
         assert sstables.size() == 1;
         int rowsWritten = 0;
         try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
-             CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(System.currentTimeMillis()));
+             CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
              CompactionIterable ci = new CompactionIterable(OperationType.COMPACTION, scanners.scanners, controller, SSTableFormat.Type.BIG))
         {
             while (ci.hasNext())

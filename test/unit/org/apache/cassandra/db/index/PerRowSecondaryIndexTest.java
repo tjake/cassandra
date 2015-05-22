@@ -266,6 +266,12 @@ public class PerRowSecondaryIndexTest
         }
 
         @Override
+        public void validate(DecoratedKey partitionKey) throws InvalidRequestException
+        {
+
+        }
+
+        @Override
         public void validate(Clustering clustering) throws InvalidRequestException
         {
 

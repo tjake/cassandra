@@ -352,7 +352,7 @@ public class Util
 
     public static void compact(ColumnFamilyStore cfs, Collection<SSTableReader> sstables)
     {
-        int gcBefore = cfs.gcBefore(System.currentTimeMillis());
+        int gcBefore = cfs.gcBefore(FBUtilities.nowInSeconds());
         AbstractCompactionTask task = cfs.getCompactionStrategy().getUserDefinedTask(sstables, gcBefore);
         task.execute(null);
     }

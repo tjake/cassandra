@@ -29,6 +29,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.atoms.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
@@ -266,8 +267,9 @@ public class PartitionRangeReadCommand extends ReadCommand
      */
     public DataIterator postReconciliationProcessing(DataIterator result)
     {
-        SecondaryIndexSearcher searcher = getIndexSearcher();
-        return searcher == null ? result : searcher.postReconciliationProcessing(result);
+        ColumnFamilyStore cfs = Keyspace.open(metadata().ksName).getColumnFamilyStore(metadata().cfName);
+        SecondaryIndexSearcher searcher = getIndexSearcher(cfs);
+        return searcher == null ? result : searcher.postReconciliationProcessing(columnFilter(), result);
     }
 
     @Override

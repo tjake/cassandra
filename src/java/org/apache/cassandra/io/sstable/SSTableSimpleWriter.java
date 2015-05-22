@@ -179,12 +179,12 @@ class SSTableSimpleWriter
         {
             if (currentKey != null)
                 writePartition(update);
-            getOrCreateWriter().close();
+            if (writer_ != null)
+                writer_.finish(false);
         }
-        catch (FSError e)
+        catch (Throwable t)
         {
-            getOrCreateWriter().abort();
-            throw e;
+            throw Throwables.propagate(writer_ == null ? t : writer_.abort(t));
         }
     }
 

@@ -225,6 +225,9 @@ public class RandomAccessReader extends AbstractDataInput implements FileDataInp
 
     public void deallocate()
     {
+        if (buffer == null)
+            return;
+
         bufferOffset += buffer.position();
         FileUtils.clean(buffer);
 

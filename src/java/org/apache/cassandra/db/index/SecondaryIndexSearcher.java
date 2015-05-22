@@ -272,7 +272,7 @@ public abstract class SecondaryIndexSearcher
                 Tracing.trace("No applicable indexes found");
             else if (Tracing.isTracing())
                 // pay for an additional threadlocal get() rather than build the strings unnecessarily
-                Tracing.trace("Candidate index mean cardinalities are {}. Scanning with {}.", FBUtilities.toString(candidates), indexManager.getIndexForColumn(best.column).getIndexName());
+                Tracing.trace("Candidate index mean cardinalities are {}. Scanning with {}.", FBUtilities.toString(candidates), indexManager.getIndexForColumn(best.column()).getIndexName());
         }
         return best;
     }

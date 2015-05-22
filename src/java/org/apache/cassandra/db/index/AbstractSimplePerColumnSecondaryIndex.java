@@ -214,7 +214,7 @@ public abstract class AbstractSimplePerColumnSecondaryIndex extends PerColumnSec
     public void validate(DecoratedKey partitionKey) throws InvalidRequestException
     {
         if (columnDef.kind == ColumnDefinition.Kind.PARTITION_KEY)
-            validateIndexedValue(getIndexedValue(partitionKey, null, null, null));
+            validateIndexedValue(getIndexedValue(partitionKey.getKey(), null, null, null));
     }
 
     public void validate(Clustering clustering) throws InvalidRequestException

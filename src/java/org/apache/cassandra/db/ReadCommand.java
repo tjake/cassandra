@@ -246,7 +246,7 @@ public abstract class ReadCommand implements ReadQuery
             return ReadResponse.createDataResponse(iter);
     }
 
-    protected SecondaryIndexSearcher getIndexSearcher()
+    protected SecondaryIndexSearcher getIndexSearcher(ColumnFamilyStore cfs)
     {
         return cfs.indexManager.getBestIndexSearcherFor(this);
     }
@@ -260,14 +260,14 @@ public abstract class ReadCommand implements ReadQuery
      */
     public PartitionIterator executeLocally(ColumnFamilyStore cfs)
     {
-        SecondaryIndexSearcher searcher = getIndexSearcher();
+        SecondaryIndexSearcher searcher = getIndexSearcher(cfs);
         PartitionIterator resultIterator = searcher == null
                                          ? queryStorage(cfs)
                                          : searcher.search(this);
 
         try
         {
-            resultIterator = withMetricsRecording(resultIterator, cfs.metric);
+            resultIterator = withMetricsRecording(withoutExpiredTombstones(resultIterator, cfs), cfs.metric);
 
             // TODO: we should push the dropping of columns down the layers because
             // 1) it'll be more efficient
@@ -393,6 +393,57 @@ public abstract class ReadCommand implements ReadQuery
     }
 
     protected abstract void appendCQLWhereClause(StringBuilder sb);
+
+    // Skip expired tombstones. We do this because it's safe to do (post-merge of the memtable and sstable at least), it
+    // can save us some bandwith, and avoid making us throw a TombstoneOverwhelmingException for expired tombstones (which
+    // are to some extend an artefact of compaction lagging behind and hence counting them is somewhat unintuitive).
+    protected PartitionIterator withoutExpiredTombstones(PartitionIterator iterator, ColumnFamilyStore cfs)
+    {
+        final int gcBefore = cfs.gcBefore(nowInSec());
+        return new AbstractFilteringIterator(iterator)
+        {
+            protected FilteringRow makeRowFilter()
+            {
+                return new FilteringRow()
+                {
+                    @Override
+                    protected boolean include(LivenessInfo info)
+                    {
+                        return !info.hasLocalDeletionTime() || !info.isPurgeable(Long.MAX_VALUE, gcBefore);
+                    }
+
+                    @Override
+                    protected boolean include(DeletionTime dt)
+                    {
+                        return includeDelTime(dt);
+                    }
+
+                    @Override
+                    protected boolean include(ColumnDefinition c, DeletionTime dt)
+                    {
+                        return includeDelTime(dt);
+                    }
+                };
+            }
+
+            private boolean includeDelTime(DeletionTime dt)
+            {
+                return dt.isLive() || !dt.isPurgeable(Long.MAX_VALUE, gcBefore);
+            }
+
+            @Override
+            protected boolean includePartitionDeletion(DeletionTime dt)
+            {
+                return includeDelTime(dt);
+            }
+
+            @Override
+            protected boolean includeRangeTombstoneMarker(RangeTombstoneMarker marker)
+            {
+                return includeDelTime(marker.deletionTime());
+            }
+        };
+    }
 
     /**
      * Recreate the CQL string corresponding to this query.

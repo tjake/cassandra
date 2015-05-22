@@ -260,7 +260,7 @@ public class StreamingTransferTest
         ArrayList<StreamSession.SSTableStreamingSections> details = new ArrayList<>();
         for (SSTableReader sstable : sstables)
         {
-            details.add(new StreamSession.SSTableStreamingSections(sstable, sstables.get(sstable),
+            details.add(new StreamSession.SSTableStreamingSections(sstables.get(sstable),
                                                                    sstable.getPositionsForRanges(ranges),
                                                                    sstable.estimatedKeysForRanges(ranges), sstable.getSSTableMetadata().repairedAt));
         }
@@ -381,6 +381,58 @@ public class StreamingTransferTest
     }
 
     /*
+    @Test
+    public void testTransferTableCounter() throws Exception
+    {
+        final Keyspace keyspace = Keyspace.open(KEYSPACE1);
+        final ColumnFamilyStore cfs = keyspace.getColumnFamilyStore("Counter1");
+        final CounterContext cc = new CounterContext();
+
+        final Map<String, ColumnFamily> cleanedEntries = new HashMap<>();
+
+        List<String> keys = createAndTransfer(cfs, new Mutator()
+        {
+            // Creates a new SSTable per key: all will be merged before streaming.
+            public void mutate(String key, String col, long timestamp) throws Exception
+            {
+                Map<String, ColumnFamily> entries = new HashMap<>();
+                ColumnFamily cf = ArrayBackedSortedColumns.factory.create(cfs.metadata);
+                ColumnFamily cfCleaned = ArrayBackedSortedColumns.factory.create(cfs.metadata);
+                CounterContext.ContextState state = CounterContext.ContextState.allocate(0, 1, 3);
+                state.writeLocal(CounterId.fromInt(2), 9L, 3L);
+                state.writeRemote(CounterId.fromInt(4), 4L, 2L);
+                state.writeRemote(CounterId.fromInt(6), 3L, 3L);
+                state.writeRemote(CounterId.fromInt(8), 2L, 4L);
+                cf.addColumn(new BufferCounterCell(cellname(col), state.context, timestamp));
+                cfCleaned.addColumn(new BufferCounterCell(cellname(col), cc.clearAllLocal(state.context), timestamp));
+
+                entries.put(key, cf);
+                cleanedEntries.put(key, cfCleaned);
+                cfs.addSSTable(SSTableUtils.prepare()
+                    .ks(keyspace.getName())
+                    .cf(cfs.name)
+                    .generation(0)
+                    .write(entries));
+            }
+        }, true);
+
+        // filter pre-cleaned entries locally, and ensure that the end result is equal
+        cleanedEntries.keySet().retainAll(keys);
+        SSTableReader cleaned = SSTableUtils.prepare()
+            .ks(keyspace.getName())
+            .cf(cfs.name)
+            .generation(0)
+            .write(cleanedEntries);
+        SSTableReader streamed = cfs.getSSTables().iterator().next();
+        SSTableUtils.assertContentEquals(cleaned, streamed);
+
+        // Retransfer the file, making sure it is now idempotent (see CASSANDRA-3481)
+        cfs.clearUnsafe();
+        transferSSTables(streamed);
+        SSTableReader restreamed = cfs.getSSTables().iterator().next();
+        SSTableUtils.assertContentEquals(streamed, restreamed);
+    }
+
     @Test
     public void testTransferTableMultiple() throws Exception
     {
@@ -508,7 +560,7 @@ public class StreamingTransferTest
         assertEquals(1, cfs.getSSTables().size());
         assertEquals(7, Util.getRangeSlice(cfs).size());
     }
-*/
+    */
     public interface Mutator
     {
         public void mutate(String key, String col, long timestamp) throws Exception;

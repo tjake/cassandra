@@ -314,30 +314,29 @@ public class BatchStatement implements CQLStatement
             {
                 logger.warn(format, tableNames, size, warnThreshold, size - warnThreshold, "");
             }
-            ClientWarn.warn(MessageFormatter.arrayFormat(format, new Object[] {ksCfPairs, size, warnThreshold, size - warnThreshold, ""}).getMessage());
+            ClientWarn.warn(MessageFormatter.arrayFormat(format, new Object[] {tableNames, size, warnThreshold, size - warnThreshold, ""}).getMessage());
         }
     }
 
-    private void verifyBatchType(Collection<? extends IMutation> mutations)
+    private void verifyBatchType(Iterable<PartitionUpdate> updates)
     {
-        if (type != Type.LOGGED && mutations.size() > 1)
+        if (type != Type.LOGGED && !Iterables.isEmpty(updates))
         {
-            Set<String> ksCfPairs = new HashSet<>();
-            Set<ByteBuffer> keySet = new HashSet<>();
+            Set<DecoratedKey> keySet = new HashSet<>();
+            Set<String> tableNames = new HashSet<>();
 
-            for (IMutation im : mutations)
+            for (PartitionUpdate update : updates)
             {
-                keySet.add(im.key());
-                for (ColumnFamily cf : im.getColumnFamilies())
-                    ksCfPairs.add(String.format("%s.%s", cf.metadata().ksName, cf.metadata().cfName));
+                keySet.add(update.partitionKey());
+                tableNames.add(String.format("%s.%s", update.metadata().ksName, update.metadata().cfName));
             }
 
             NoSpamLogger.log(logger, NoSpamLogger.Level.WARN, 1, TimeUnit.MINUTES, unloggedBatchWarning,
                              keySet.size(), keySet.size() == 1 ? "" : "s",
-                             ksCfPairs.size() == 1 ? "" : "s", ksCfPairs);
+                             tableNames.size() == 1 ? "" : "s", tableNames);
 
             ClientWarn.warn(MessageFormatter.arrayFormat(unloggedBatchWarning, new Object[]{keySet.size(), keySet.size() == 1 ? "" : "s",
-                                                    ksCfPairs.size() == 1 ? "" : "s", ksCfPairs}).getMessage());
+                                                    tableNames.size() == 1 ? "" : "s", tableNames}).getMessage());
 
         }
     }
@@ -369,8 +368,8 @@ public class BatchStatement implements CQLStatement
 
     private void executeWithoutConditions(Collection<? extends IMutation> mutations, ConsistencyLevel cl) throws RequestExecutionException, RequestValidationException
     {
-        // Extract each collection of cfs from it's IMutation and then lazily concatenate all of them into a single Iterable.
-        Iterable<PartitionUpdate> cfs = Iterables.concat(Iterables.transform(mutations, new Function<IMutation, Collection<PartitionUpdate>>()
+        // Extract each collection of updates from it's IMutation and then lazily concatenate all of them into a single Iterable.
+        Iterable<PartitionUpdate> updates = Iterables.concat(Iterables.transform(mutations, new Function<IMutation, Collection<PartitionUpdate>>()
         {
             public Collection<PartitionUpdate> apply(IMutation im)
             {
@@ -378,8 +377,8 @@ public class BatchStatement implements CQLStatement
             }
         }));
 
-        verifyBatchSize(cfs);
-        verifyBatchType(mutations);
+        verifyBatchSize(updates);
+        verifyBatchType(updates);
 
         boolean mutateAtomic = (type == Type.LOGGED && mutations.size() > 1);
         StorageProxy.mutateWithTriggers(mutations, cl, mutateAtomic);
