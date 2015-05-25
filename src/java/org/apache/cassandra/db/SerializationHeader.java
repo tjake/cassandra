@@ -320,6 +320,11 @@ public class SerializationHeader
                 ColumnDefinition column = metadata.getColumnDefinition(name);
                 if (column == null)
                 {
+                    // TODO: this imply we don't read data for a column we don't yet know about, which imply this is theoretically
+                    // racy with column addition. Currently, it is up to the user to not write data before the schema has propagated
+                    // and this is far from being the only place that has such problem in practice. This doesn't mean we shouldn't
+                    // improve this.
+
                     // If we don't find the definition, it could be we have data for a dropped column, and we shouldn't
                     // fail deserialization because of that. So we grab a "fake" ColumnDefinition that ensure proper
                     // deserialization. The column will be ignore later on anyway.
