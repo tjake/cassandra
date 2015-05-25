@@ -474,12 +474,12 @@ public abstract class UnfilteredRowIterators
     {
         CFMetaData metadata = iterator.metadata();
         logger.info("[{}] Logging iterator on {}.{}, partition key={}, reversed={}, deletion={}",
-                    new Object[]{ id,
-                                  metadata.ksName,
-                                  metadata.cfName,
-                                  metadata.getKeyValidator().getString(iterator.partitionKey().getKey()),
-                                  iterator.isReverseOrder(),
-                                  iterator.partitionLevelDeletion().markedForDeleteAt()});
+                    id,
+                    metadata.ksName,
+                    metadata.cfName,
+                    metadata.getKeyValidator().getString(iterator.partitionKey().getKey()),
+                    iterator.isReverseOrder(),
+                    iterator.partitionLevelDeletion().markedForDeleteAt());
 
         return new WrappingUnfilteredRowIterator(iterator)
         {

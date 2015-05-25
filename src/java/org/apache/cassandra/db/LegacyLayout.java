@@ -36,7 +36,9 @@ import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.io.util.DataOutputPlus;
+import org.apache.cassandra.thrift.ColumnDef;
 import org.apache.cassandra.utils.*;
+import org.apache.hadoop.io.serializer.Serialization;
 
 /**
  * Functions to deal with the old format.
@@ -267,7 +269,8 @@ public abstract class LegacyLayout
                                                                 Iterator<LegacyCell> cells,
                                                                 int nowInSec)
     {
-        return toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.from(delInfo), cells, false, nowInSec);
+        SerializationHelper helper = new SerializationHelper(0, SerializationHelper.Flag.LOCAL, nowInSec);
+        return toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.from(delInfo), cells, false, helper);
     }
 
     // For deserializing old wire format
@@ -276,7 +279,7 @@ public abstract class LegacyLayout
                                                                            LegacyDeletionInfo delInfo,
                                                                            Iterator<LegacyCell> cells,
                                                                            boolean reversed,
-                                                                           int nowInSec)
+                                                                           SerializationHelper helper)
     {
         // If the table is a static compact, the "column_metadata" are now internally encoded as
         // static. This has already been recognized by decodeCellName, but it means the cells
@@ -292,7 +295,7 @@ public abstract class LegacyLayout
             cells = l.iterator();
         }
 
-        return toUnfilteredRowIterator(metadata, key, delInfo, cells, reversed, nowInSec);
+        return toUnfilteredRowIterator(metadata, key, delInfo, cells, reversed, helper);
     }
 
     private static UnfilteredRowIterator toUnfilteredRowIterator(CFMetaData metadata,
@@ -300,15 +303,15 @@ public abstract class LegacyLayout
                                                                  LegacyDeletionInfo delInfo,
                                                                  Iterator<LegacyCell> cells,
                                                                  boolean reversed,
-                                                                 int nowInSec)
+                                                                 SerializationHelper helper)
     {
         // Check if we have some static
         PeekingIterator<LegacyCell> iter = Iterators.peekingIterator(cells);
         Row staticRow = iter.hasNext() && iter.peek().name.clustering == Clustering.STATIC_CLUSTERING
-                      ? getNextRow(CellGrouper.staticGrouper(metadata, nowInSec), iter)
+                      ? getNextRow(CellGrouper.staticGrouper(metadata, helper), iter)
                       : Rows.EMPTY_STATIC_ROW;
 
-        Iterator<Row> rows = convertToRows(new CellGrouper(metadata, nowInSec), iter, delInfo);
+        Iterator<Row> rows = convertToRows(new CellGrouper(metadata, helper), iter, delInfo);
         Iterator<RangeTombstone> ranges = delInfo.deletionInfo.rangeIterator(reversed);
         final Iterator<Unfiltered> atoms = new RowAndTombstoneMergeIterator(metadata.comparator, reversed)
                                      .setTo(rows, ranges);
@@ -320,7 +323,7 @@ public abstract class LegacyLayout
                                         staticRow,
                                         reversed,
                                         RowStats.NO_STATS,
-                                        nowInSec)
+                                        helper.nowInSec)
         {
             protected Unfiltered computeNext()
             {
@@ -507,7 +510,8 @@ public abstract class LegacyLayout
                                             final Iterator<LegacyCell> cells,
                                             final int nowInSec)
     {
-        return UnfilteredRowIterators.filter(toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.live(), cells, false, nowInSec));
+        SerializationHelper helper = new SerializationHelper(0, SerializationHelper.Flag.LOCAL, nowInSec);
+        return UnfilteredRowIterators.filter(toUnfilteredRowIterator(metadata, key, LegacyDeletionInfo.live(), cells, false, helper));
     }
 
     private static LivenessInfo livenessInfo(CFMetaData metadata, LegacyCell cell)
@@ -733,30 +737,32 @@ public abstract class LegacyLayout
         public final CFMetaData metadata;
         private final ReusableRow row;
         private final boolean isStatic;
+        private final SerializationHelper helper;
         private Row.Writer writer;
         private Clustering clustering;
 
         private LegacyRangeTombstone rowDeletion;
         private LegacyRangeTombstone collectionDeletion;
 
-        public CellGrouper(CFMetaData metadata, int nowInSec)
+        public CellGrouper(CFMetaData metadata, SerializationHelper helper)
         {
-            this(metadata, nowInSec, false);
+            this(metadata, helper, false);
         }
 
-        private CellGrouper(CFMetaData metadata, int nowInSec, boolean isStatic)
+        private CellGrouper(CFMetaData metadata, SerializationHelper helper, boolean isStatic)
         {
             this.metadata = metadata;
             this.isStatic = isStatic;
-            this.row = isStatic ? null : new ReusableRow(metadata.clusteringColumns().size(), metadata.partitionColumns().regulars, nowInSec, metadata.isCounter());
+            this.helper = helper;
+            this.row = isStatic ? null : new ReusableRow(metadata.clusteringColumns().size(), metadata.partitionColumns().regulars, helper.nowInSec, metadata.isCounter());
 
             if (isStatic)
-                this.writer = StaticRow.builder(metadata.partitionColumns().statics, nowInSec, metadata.isCounter());
+                this.writer = StaticRow.builder(metadata.partitionColumns().statics, helper.nowInSec, metadata.isCounter());
         }
 
-        public static CellGrouper staticGrouper(CFMetaData metadata, int nowInSec)
+        public static CellGrouper staticGrouper(CFMetaData metadata, SerializationHelper helper)
         {
-            return new CellGrouper(metadata, nowInSec, true);
+            return new CellGrouper(metadata, helper, true);
         }
 
         public void reset()
@@ -797,19 +803,41 @@ public abstract class LegacyLayout
             if (rowDeletion != null && rowDeletion.deletionTime.deletes(cell.timestamp))
                 return true;
 
-            if (cell.name.column == null)
+            LivenessInfo info = livenessInfo(metadata, cell);
+
+            ColumnDefinition column = cell.name.column;
+            if (column == null)
             {
                 // It's the row marker
                 assert !cell.value.hasRemaining();
-                writer.writePartitionKeyLivenessInfo(livenessInfo(metadata, cell));
+                helper.writePartitionKeyLivenessInfo(writer, info.timestamp(), info.ttl(), info.localDeletionTime());
             }
             else
             {
-                if (collectionDeletion != null && collectionDeletion.start.collectionName.name.equals(cell.name.column.name) && collectionDeletion.deletionTime.deletes(cell.timestamp))
+                if (collectionDeletion != null && collectionDeletion.start.collectionName.name.equals(column.name) && collectionDeletion.deletionTime.deletes(cell.timestamp))
                     return true;
 
-                CellPath path = cell.name.collectionElement == null ? null : CellPath.create(cell.name.collectionElement);
-                writer.writeCell(cell.name.column, cell.isCounter(), cell.value, livenessInfo(metadata, cell), path);
+                if (helper.includes(column))
+                {
+                    CellPath path = null;
+                    if (column.isComplex())
+                    {
+                        // Recalling startOfComplexColumn for every cell is a big inefficient, but it's ok in practice
+                        // and it's simpler. And since 1) this only matter for super column selection in thrift in
+                        // practice and 2) is only used during upgrade, it's probably worth keeping things simple.
+                        helper.startOfComplexColumn(column);
+                        path = cell.name.collectionElement == null ? null : CellPath.create(cell.name.collectionElement);
+                    }
+                    helper.writeCell(writer, column, cell.isCounter(), cell.value, info.timestamp(), info.localDeletionTime(), info.ttl(), path);
+                    if (column.isComplex())
+                    {
+                        helper.endOfComplexColumn(column);
+                    }
+                }
+                else
+                {
+                    helper.updateForSkippedCell(info.timestamp(), info.localDeletionTime());
+                }
             }
             return true;
         }

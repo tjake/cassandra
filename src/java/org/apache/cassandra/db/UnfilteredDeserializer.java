@@ -52,11 +52,11 @@ public abstract class UnfilteredDeserializer
     }
 
     public static UnfilteredDeserializer create(CFMetaData metadata,
-                                          DataInput in,
-                                          SerializationHeader header,
-                                          SerializationHelper helper,
-                                          DeletionTime partitionDeletion,
-                                          boolean readAllAsDynamic)
+                                                DataInput in,
+                                                SerializationHeader header,
+                                                SerializationHelper helper,
+                                                DeletionTime partitionDeletion,
+                                                boolean readAllAsDynamic)
     {
         if (helper.version >= MessagingService.VERSION_30)
             return new CurrentDeserializer(metadata, in, header, helper);
@@ -244,7 +244,7 @@ public abstract class UnfilteredDeserializer
         {
             super(metadata, in, helper);
             this.readAllAsDynamic = readAllAsDynamic;
-            this.grouper = new LegacyLayout.CellGrouper(metadata, helper.nowInSec);
+            this.grouper = new LegacyLayout.CellGrouper(metadata, helper);
             this.tombstoneTracker = new LegacyLayout.TombstoneTracker(metadata, partitionDeletion);
         }
 
@@ -386,7 +386,7 @@ public abstract class UnfilteredDeserializer
             }
 
             LegacyLayout.CellGrouper grouper = nextAtom.isStatic()
-                                             ? LegacyLayout.CellGrouper.staticGrouper(metadata, helper.nowInSec)
+                                             ? LegacyLayout.CellGrouper.staticGrouper(metadata, helper)
                                              : this.grouper;
 
             grouper.reset();

@@ -646,7 +646,8 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
                 LegacyLayout.LegacyDeletionInfo info = LegacyLayout.LegacyDeletionInfo.serializer.deserialize(metadata, in, version);
                 int size = in.readInt();
                 Iterator<LegacyLayout.LegacyCell> cells = LegacyLayout.deserializeCells(metadata, in, flag, size);
-                UnfilteredRowIterator iterator = LegacyLayout.onWireCellstoUnfilteredRowIterator(metadata, key, info, cells, false, FBUtilities.nowInSeconds());
+                SerializationHelper helper = new SerializationHelper(version, flag, FBUtilities.nowInSeconds());
+                UnfilteredRowIterator iterator = LegacyLayout.onWireCellstoUnfilteredRowIterator(metadata, key, info, cells, false, helper);
                 return UnfilteredRowIterators.toUpdate(iterator);
             }
 

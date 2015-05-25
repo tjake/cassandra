@@ -162,7 +162,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
     {
         int maxRows = partitionFilter().maxQueried(false);
         if (result == null)
-            return ArrayBackedPartition.create(iter, maxRows);
+            return ArrayBackedPartition.create(UnfilteredRowIterators.loggingIterator(iter, "result", true), maxRows);
 
         UnfilteredRowIterator merged = UnfilteredRowIterators.merge(Arrays.asList(iter, result.unfilteredIterator(queriedColumns(), Slices.ALL, false, nowInSec())));
         return ArrayBackedPartition.create(merged, maxRows);
@@ -197,7 +197,6 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
                 break;
 
             Row row = searchIter.next(clustering);
-            // TODO: if we allow static in NamesPartitionFilter, we should update this!!
             if (row == null || !canRemoveRow(row, columns.regulars, sstableTimestamp))
                 continue;
 

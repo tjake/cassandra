@@ -22,6 +22,9 @@ import java.util.*;
 
 import com.google.common.collect.UnmodifiableIterator;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.utils.ObjectSizes;
@@ -37,6 +40,8 @@ import org.apache.cassandra.utils.ObjectSizes;
  */
 public class RowDataBlock
 {
+    private static final Logger logger = LoggerFactory.getLogger(RowDataBlock.class);
+
     private static final long EMPTY_SIZE = ObjectSizes.measure(new RowDataBlock(Columns.NONE, 0, false, false));
 
     // We distinguish 2 sub-objects: SimpleRowDataBlock that contains the data for the simple columns only,
