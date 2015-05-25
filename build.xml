@@ -1095,12 +1095,12 @@
      </classpath>
 	 <compilerarg value="-XDignore.symbol.file"/>
      <src path="${test.unit.src}"/>
-      <!--
      <src path="${test.long.src}"/>
      <src path="${test.burn.src}"/>
+      <!--
      <src path="${test.pig.src}"/>
-     <src path="${test.microbench.src}"/>
       -->
+     <src path="${test.microbench.src}"/>
     </javac>
 
     <!-- Non-java resources needed by the test suite -->
@@ -1130,7 +1130,7 @@
       <echo message="running @{suitename} tests"/>
       <mkdir dir="${build.test.dir}/cassandra"/>
       <mkdir dir="${build.test.dir}/output"/>
-      <junit fork="on" forkmode="@{forkmode}" failureproperty="testfailed" maxmemory="1024m" timeout="@{timeout}">
+      <junit fork="on" forkmode="@{forkmode}" showoutput="true" failureproperty="testfailed" maxmemory="1024m" timeout="@{timeout}">
         <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}"/>
         <formatter type="xml" usefile="true"/>
         <formatter type="brief" usefile="false"/>

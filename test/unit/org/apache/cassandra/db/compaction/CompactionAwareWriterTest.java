@@ -48,7 +48,7 @@ public class CompactionAwareWriterTest extends CQLTester
     {
         // Disabling durable write since we don't care
         schemaChange("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE + " WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND durable_writes=false");
-        schemaChange(String.format("CREATE TABLE %s.%s (k int, v blob, PRIMARY KEY (k, v))", KEYSPACE, TABLE));
+        schemaChange(String.format("CREATE TABLE %s.%s (k int, t int, v blob, PRIMARY KEY (k, t))", KEYSPACE, TABLE));
     }
 
     @AfterClass
@@ -162,10 +162,9 @@ public class CompactionAwareWriterTest extends CQLTester
             populate(rowCount);
             Set<SSTableReader> sstables = new HashSet<>(cfs.getSSTables());
             long beforeSize = sstables.iterator().next().onDiskLength();
-            int sstableCount = (int)beforeSize/100;
-            CompactionAwareWriter writer = new MajorLeveledCompactionWriter(cfs, sstables, sstables, sstableCount, false, OperationType.COMPACTION);
+            int sstableSize = (int)beforeSize/targetSSTableCount;
+            CompactionAwareWriter writer = new MajorLeveledCompactionWriter(cfs, sstables, sstables, sstableSize, false, OperationType.COMPACTION);
             int rows = compact(cfs, sstables, writer);
-            validateData(cfs, rowCount);
             assertEquals(targetSSTableCount, cfs.getSSTables().size());
             int [] levelCounts = new int[5];
             assertEquals(rowCount, rows);
@@ -178,6 +177,7 @@ public class CompactionAwareWriterTest extends CQLTester
             assertEquals(targetSSTableCount - 10, levelCounts[2]); // note that if we want more levels, fix this
             for (int i = 3; i < levelCounts.length; i++)
                 assertEquals(0, levelCounts[i]);
+            validateData(cfs, rowCount);
         }
         finally
         {
@@ -212,7 +212,7 @@ public class CompactionAwareWriterTest extends CQLTester
 
         for (int i = 0; i < count; i++)
             for (int j = 0; j < ROW_PER_PARTITION; j++)
-                execute(String.format("INSERT INTO %s.%s(k, v) VALUES (?, ?)", KEYSPACE, TABLE), i, b);
+                execute(String.format("INSERT INTO %s.%s(k, t, v) VALUES (?, ?, ?)", KEYSPACE, TABLE), i, j, b);
 
         ColumnFamilyStore cfs = getColumnFamilyStore();
         cfs.forceBlockingFlush();
@@ -239,7 +239,7 @@ public class CompactionAwareWriterTest extends CQLTester
             for (int j = 0; j < ROW_PER_PARTITION; j++)
                 expected[j] = row(i, j);
 
-            assertRows(execute(String.format("SELECT * FROM %s.%s WHERE k = :i", KEYSPACE, TABLE), i), expected);
+            assertRows(execute(String.format("SELECT k, t FROM %s.%s WHERE k = :i", KEYSPACE, TABLE), i), expected);
         }
     }
 }

@@ -43,22 +43,26 @@ public class IndexedValuesValidationTest extends CQLTester
         failInsert("INSERT INTO %s (a, b, c) VALUES (0, 0, ?)", ByteBuffer.allocate(TOO_BIG));
     }
 
-    @Test
-    public void testIndexOnClusteringColumnInsertPartitionKeyAndClusteringsOver64k() throws Throwable
-    {
-        createTable("CREATE TABLE %s(a blob, b blob, c blob, d int, PRIMARY KEY (a, b, c))");
-        createIndex("CREATE INDEX ON %s(b)");
+    // TODO: this is not a valid limitation post-8099 (or shouldn't be at least), we never write the size
+    // of a clustering, so it's not limited to 64k anymore (individual elements are however still limited).
+    // We should thus remove this test, but maybe by first adding a more thorough test that check everything
+    // works correctly if the clustering is more than 64K
+    //@Test
+    //public void testIndexOnClusteringColumnInsertPartitionKeyAndClusteringsOver64k() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s(a blob, b blob, c blob, d int, PRIMARY KEY (a, b, c))");
+    //    createIndex("CREATE INDEX ON %s(b)");
 
-        // CompositeIndexOnClusteringKey creates index entries composed of the
-        // PK plus all of the non-indexed clustering columns from the primary row
-        // so we should reject where len(a) + len(c) > 65560 as this will form the
-        // total clustering in the index table
-        ByteBuffer a = ByteBuffer.allocate(100);
-        ByteBuffer b = ByteBuffer.allocate(10);
-        ByteBuffer c = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 99);
+    //    // CompositeIndexOnClusteringKey creates index entries composed of the
+    //    // PK plus all of the non-indexed clustering columns from the primary row
+    //    // so we should reject where len(a) + len(c) > 65560 as this will form the
+    //    // total clustering in the index table
+    //    ByteBuffer a = ByteBuffer.allocate(100);
+    //    ByteBuffer b = ByteBuffer.allocate(10);
+    //    ByteBuffer c = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 99);
 
-        failInsert("INSERT INTO %s (a, b, c, d) VALUES (?, ?, ?, 0)", a, b, c);
-    }
+    //    failInsert("INSERT INTO %s (a, b, c, d) VALUES (?, ?, ?, 0)", a, b, c);
+    //}
 
     @Test
     public void testCompactTableWithValueOver64k() throws Throwable
@@ -68,39 +72,41 @@ public class IndexedValuesValidationTest extends CQLTester
         failInsert("INSERT INTO %s (a, b) VALUES (0, ?)", ByteBuffer.allocate(TOO_BIG));
     }
 
-    @Test
-    public void testIndexOnCollectionValueInsertPartitionKeyAndCollectionKeyOver64k() throws Throwable
-    {
-        createTable("CREATE TABLE %s(a blob , b map<blob, int>, PRIMARY KEY (a))");
-        createIndex("CREATE INDEX ON %s(b)");
+    // TODO: this is not a valid limitation post-8099, see above.
+    //@Test
+    //public void testIndexOnCollectionValueInsertPartitionKeyAndCollectionKeyOver64k() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s(a blob , b map<blob, int>, PRIMARY KEY (a))");
+    //    createIndex("CREATE INDEX ON %s(b)");
 
-        // A collection key > 64k by itself will be rejected from
-        // the primary table.
-        // To test index validation we need to ensure that
-        // len(b) < 64k, but len(a) + len(b) > 64k as that will
-        // form the clustering in the index table
-        ByteBuffer a = ByteBuffer.allocate(100);
-        ByteBuffer b = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 100);
+    //    // A collection key > 64k by itself will be rejected from
+    //    // the primary table.
+    //    // To test index validation we need to ensure that
+    //    // len(b) < 64k, but len(a) + len(b) > 64k as that will
+    //    // form the clustering in the index table
+    //    ByteBuffer a = ByteBuffer.allocate(100);
+    //    ByteBuffer b = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 100);
 
-        failInsert("UPDATE %s SET b[?] = 0 WHERE a = ?", b, a);
-    }
+    //    failInsert("UPDATE %s SET b[?] = 0 WHERE a = ?", b, a);
+    //}
 
-    @Test
-    public void testIndexOnCollectionKeyInsertPartitionKeyAndClusteringOver64k() throws Throwable
-    {
-        createTable("CREATE TABLE %s(a blob, b blob, c map<blob, int>, PRIMARY KEY (a, b))");
-        createIndex("CREATE INDEX ON %s(KEYS(c))");
+    // TODO: this is not a valid limitation post-8099, see above.
+    //@Test
+    //public void testIndexOnCollectionKeyInsertPartitionKeyAndClusteringOver64k() throws Throwable
+    //{
+    //    createTable("CREATE TABLE %s(a blob, b blob, c map<blob, int>, PRIMARY KEY (a, b))");
+    //    createIndex("CREATE INDEX ON %s(KEYS(c))");
 
-        // Basically the same as the case with non-collection clustering
-        // CompositeIndexOnCollectionKeyy creates index entries composed of the
-        // PK plus all of the clustering columns from the primary row, except the
-        // collection element - which becomes the partition key in the index table
-        ByteBuffer a = ByteBuffer.allocate(100);
-        ByteBuffer b = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 100);
-        ByteBuffer c = ByteBuffer.allocate(10);
+    //    // Basically the same as the case with non-collection clustering
+    //    // CompositeIndexOnCollectionKeyy creates index entries composed of the
+    //    // PK plus all of the clustering columns from the primary row, except the
+    //    // collection element - which becomes the partition key in the index table
+    //    ByteBuffer a = ByteBuffer.allocate(100);
+    //    ByteBuffer b = ByteBuffer.allocate(FBUtilities.MAX_UNSIGNED_SHORT - 100);
+    //    ByteBuffer c = ByteBuffer.allocate(10);
 
-        failInsert("UPDATE %s SET c[?] = 0 WHERE a = ? and b = ?", c, a, b);
-    }
+    //    failInsert("UPDATE %s SET c[?] = 0 WHERE a = ? and b = ?", c, a, b);
+    //}
 
     @Test
     public void testIndexOnPartitionKeyInsertValueOver64k() throws Throwable

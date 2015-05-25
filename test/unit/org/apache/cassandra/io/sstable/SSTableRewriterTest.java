@@ -172,7 +172,7 @@ public class SSTableRewriterTest extends SchemaLoader
         cfs.addSSTable(s);
         Set<SSTableReader> sstables = new HashSet<>(cfs.getSSTables());
         assertEquals(1, sstables.size());
-        SSTableRewriter.overrideOpenInterval(10000000);
+        SSTableRewriter.overrideOpenInterval(1000000);
         boolean checked = false;
         try (SSTableRewriter writer = new SSTableRewriter(cfs, sstables, 1000, false);
              AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
@@ -184,7 +184,7 @@ public class SSTableRewriterTest extends SchemaLoader
             {
                 UnfilteredRowIterator row = ci.next();
                 writer.append(row);
-                if (!checked && writer.currentWriter().getFilePointer() > 15000000)
+                if (!checked && writer.currentWriter().getFilePointer() > 1500000)
                 {
                     checked = true;
                     for (SSTableReader sstable : cfs.getSSTables())
@@ -516,7 +516,7 @@ public class SSTableRewriterTest extends SchemaLoader
         cfs.addSSTable(s);
 
         Set<SSTableReader> compacting = Sets.newHashSet(s);
-        SSTableRewriter.overrideOpenInterval(10000000);
+        SSTableRewriter.overrideOpenInterval(1000000);
 
         int files = 1;
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
@@ -528,7 +528,7 @@ public class SSTableRewriterTest extends SchemaLoader
             while(ci.hasNext())
             {
                 rewriter.append(ci.next());
-                if (rewriter.currentWriter().getFilePointer() > 25000000)
+                if (rewriter.currentWriter().getFilePointer() > 2500000)
                 {
                     rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
                     files++;
@@ -702,7 +702,7 @@ public class SSTableRewriterTest extends SchemaLoader
              CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
-            while (scanner.hasNext())
+            while (ci.hasNext())
             {
                 rewriter.append(ci.next());
                 if (rewriter.currentWriter().getOnDiskFilePointer() > 25000000)

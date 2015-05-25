@@ -399,9 +399,14 @@ public class SchemaLoader
 
     public static CFMetaData standardCFMD(String ksName, String cfName, int columnCount, AbstractType<?> keyType, AbstractType<?> valType)
     {
+        return standardCFMD(ksName, cfName, columnCount, keyType, valType, AsciiType.instance);
+    }
+
+    public static CFMetaData standardCFMD(String ksName, String cfName, int columnCount, AbstractType<?> keyType, AbstractType<?> valType, AbstractType<?> clusteringType)
+    {
         CFMetaData.Builder builder = CFMetaData.Builder.create(ksName, cfName)
                 .addPartitionKey("key", keyType)
-                .addClusteringColumn("name", AsciiType.instance)
+                .addClusteringColumn("name", clusteringType)
                 .addRegularColumn("val", valType);
 
         for (int i = 0; i < columnCount; i++)

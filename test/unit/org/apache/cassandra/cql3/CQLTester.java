@@ -151,7 +151,6 @@ public abstract class CQLTester
             public void uncaughtException(Thread t, Throwable e)
             {
                 logger.error("Fatal exception in thread " + t, e);
-                System.exit(5); //If we don't exit the test hangs
             }
         });
 
