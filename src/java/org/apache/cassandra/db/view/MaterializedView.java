@@ -514,7 +514,7 @@ public class MaterializedView
 
             //Fetch missing info
             if (!columnsNeeded.isEmpty())
-                query(key, Collections.singletonList(mu), cl);
+                query(key, DeletionInfo.live(), Collections.singletonList(mu), cl);
 
 
             //Build modified RT mutation
@@ -524,24 +524,20 @@ public class MaterializedView
 
             Mutation mutation = new Mutation(metadata.ksName, targetKey);
 
-            CBuilder minBuilder = viewCfs.getComparator().prefixBuilder();
-            CBuilder maxBuilder = viewCfs.getComparator().prefixBuilder();
-
+            CBuilder builder = viewCfs.getComparator().prefixBuilder();
 
             for (int i = 0; i < clusteringKeys.size(); i++)
             {
                 ColumnDefinition cdef = clusteringKeys.get(i);
-                minBuilder.add(cdef.isPartitionKey() ? key : clusterings.get(cdef));
-                maxBuilder.add(cdef.isPartitionKey() ? key : clusterings.get(cdef));
+                builder.add(mu.targetValue(cdef));
             }
 
-            /*for (int i = clusteringSize; i < tombstone.min.size(); i++)
-                minBuilder.add(tombstone.min.get(i));
+            Composite range = viewCfs.getComparator().create(builder.build(), collectionDef);
 
-            for (int i = clusteringSize; i < tombstone.max.size(); i++)
-                maxBuilder.add(tombstone.max.get(i));*/
-
-            mutation.deleteRange(viewCfs.getColumnFamilyName(),minBuilder.build().start() ,maxBuilder.build().end(), tombstone.timestamp());
+            mutation.addOrGet(viewCfs.getColumnFamilyName())
+            .addAtom(new RangeTombstone(range.start(),
+                                        range.end(),
+                                        tombstone.timestamp(), tombstone.getLocalDeletionTime()));
 
             return mutation;
         }
@@ -667,7 +663,7 @@ public class MaterializedView
         return new ColumnSlice(built.start(), built.end());
     }
 
-    private void query(ByteBuffer key, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency)
+    private void query(ByteBuffer key, DeletionInfo deletionInfo, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency)
     {
         ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
         Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
@@ -696,6 +692,9 @@ public class MaterializedView
 
             for (Cell cell : cf.getSortedColumns())
             {
+                if (deletionInfo.isDeleted(cell))
+                    continue;
+
                 Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
                 for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
                 {
@@ -752,7 +751,7 @@ public class MaterializedView
     {
         createViewCfsAndSelectors();
 
-        if (!cf.deletionInfo().hasRanges() && cf.deletionInfo().getTopLevelDeletion().markedForDeleteAt == Long.MIN_VALUE && !cfModifiesSelectedColumn(cf))
+        if (!cf.deletionInfo().isLive() && !cfModifiesSelectedColumn(cf))
         {
             return null;
         }
@@ -761,7 +760,7 @@ public class MaterializedView
 
         // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
-            query(key, mutationUnits, consistency);
+            query(key, cf.deletionInfo(), mutationUnits, consistency);
 
         Collection<Mutation> mutations = null;
 
