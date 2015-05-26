@@ -27,6 +27,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
+import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -53,16 +54,20 @@ import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
+import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
+import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ColumnToCollectionType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.thrift.ColumnDef;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedView
 {
@@ -463,26 +468,126 @@ public class MaterializedView
         return Collections.singleton(mutation);
     }
 
+    private Mutation getCollectionRangeTombstone(ByteBuffer key, RangeTombstone tombstone, ConsistencyLevel cl)
+    {
+        CFMetaData metadata = baseCfs.metadata;
+        int clusteringSize = metadata.clusteringColumns().size();
+
+        //In the case of a tombstoned collection we have a shortcut.
+        //Since collections can't be part of clustering we can simply tombstone the whole thing
+        if (tombstone.min.size() > clusteringSize && tombstone.max.size() > clusteringSize &&
+            ByteBufferUtil.compareUnsigned(tombstone.min.get(clusteringSize),
+                                           tombstone.max.get(clusteringSize)) == 0)
+        {
+            ColumnDefinition collectionDef = metadata.getColumnDefinition(tombstone.min.get(clusteringSize));
+
+            if (collectionDef == null || !collectionDef.type.isCollection())
+                return null;
+
+            Map<ColumnIdentifier, ByteBuffer> clusterings = new HashMap<>(clusteringSize);
+            for (int i = 0; i < clusteringSize; i++)
+            {
+                //we can't handle RT across clustering keys
+                assert ByteBufferUtil.compareUnsigned(tombstone.min.get(i), tombstone.max.get(i)) == 0;
+
+                ColumnDefinition cdef = metadata.clusteringColumns().get(i);
+                clusterings.put(cdef.name, tombstone.min.get(i));
+            }
+
+
+            List<ColumnDefinition> columnsNeeded = new ArrayList<>(clusteringSize);
+            for (ColumnDefinition cdef : clusteringKeys)
+            {
+                if (cdef.isPartitionKey())
+                    continue;
+
+                ByteBuffer b = clusterings.get(cdef.name);
+                if (b == null)
+                    columnsNeeded.add(cdef);
+            }
+
+            MutationUnit mu = new MutationUnit(baseCfs, key, clusterings);
+
+            //Incase we need a diff partition key
+            if (clusterings.get(target) == null)
+                columnsNeeded.add(target);
+
+            //Fetch missing info
+            if (!columnsNeeded.isEmpty())
+                query(key, Collections.singletonList(mu), cl);
+
+
+            //Build modified RT mutation
+            ByteBuffer targetKey = mu.targetValue(target);
+            if (targetKey == null)
+                return null; //Fixme: need a empty mutation type
+
+            Mutation mutation = new Mutation(metadata.ksName, targetKey);
+
+            CBuilder minBuilder = viewCfs.getComparator().prefixBuilder();
+            CBuilder maxBuilder = viewCfs.getComparator().prefixBuilder();
+
+
+            for (int i = 0; i < clusteringKeys.size(); i++)
+            {
+                ColumnDefinition cdef = clusteringKeys.get(i);
+                minBuilder.add(cdef.isPartitionKey() ? key : clusterings.get(cdef));
+                maxBuilder.add(cdef.isPartitionKey() ? key : clusterings.get(cdef));
+            }
+
+            /*for (int i = clusteringSize; i < tombstone.min.size(); i++)
+                minBuilder.add(tombstone.min.get(i));
+
+            for (int i = clusteringSize; i < tombstone.max.size(); i++)
+                maxBuilder.add(tombstone.max.get(i));*/
+
+            mutation.deleteRange(viewCfs.getColumnFamilyName(),minBuilder.build().start() ,maxBuilder.build().end(), tombstone.timestamp());
+
+            return mutation;
+        }
+
+        return null;
+    }
+
+
+
     private Collection<Mutation> createForDeletionInfo(ByteBuffer key, ColumnFamily columnFamily, ConsistencyLevel consistency)
     {
         DeletionInfo deletionInfo = columnFamily.deletionInfo();
         if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
         {
+
+            Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+            List<Mutation> mutations = new ArrayList<>();
+
             IDiskAtomFilter filter;
             long timestamp;
             if (deletionInfo.hasRanges())
             {
-                ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
+                List<ColumnSlice> slices = new ArrayList<>(deletionInfo.rangeCount());
                 Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
                 int i = 0;
                 timestamp = Long.MIN_VALUE;
                 while (tombstones.hasNext())
                 {
                     RangeTombstone tombstone = tombstones.next();
-                    slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
-                    timestamp = Math.max(timestamp, tombstone.timestamp());
+
+                    Mutation m = getCollectionRangeTombstone(key, tombstone, consistency);
+                    if (m != null)
+                    {
+                        mutations.add(m);
+                    }
+                    else
+                    {
+                        slices.add(new ColumnSlice(tombstone.min, tombstone.max));
+                        timestamp = Math.max(timestamp, tombstone.timestamp());
+                    }
                 }
-                filter = new SliceQueryFilter(slices, false, 100);
+
+                if (slices.isEmpty())
+                    return mutations;
+
+                filter = new SliceQueryFilter(slices.toArray(new ColumnSlice[]{}), false, 100);
             }
             else
             {
@@ -496,7 +601,7 @@ public class MaterializedView
                                                                                             timestamp,
                                                                                             filter)), consistency);
 
-            Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+
             for (Row row : rows)
             {
                 ColumnFamily cf = row.cf;
@@ -520,6 +625,7 @@ public class MaterializedView
                     }
                     else
                     {
+                        mutationUnit.addColumnValue(cell);
                         mutationUnits.put(mutationUnit, mutationUnit);
                     }
                 }
@@ -527,7 +633,7 @@ public class MaterializedView
 
             if (!mutationUnits.isEmpty())
             {
-                List<Mutation> mutations = new ArrayList<>();
+
                 for (MutationUnit mutationUnit : mutationUnits.values())
                 {
                     ByteBuffer value = mutationUnit.targetValue(target);
