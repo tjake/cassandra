@@ -271,16 +271,18 @@ public class CompactionManager implements CompactionManagerMBean
                     return AllSSTableOpStatus.ABORTED;
                 }
 
-                final LifecycleTransaction txn = compacting.split(singleton(sstable));
-                futures.add(executor.submit(new Callable<Object>()
+                try (final LifecycleTransaction txn = compacting.split(singleton(sstable)))
                 {
-                    @Override
-                    public Object call() throws Exception
+                    futures.add(executor.submit(new Callable<Object>()
                     {
-                        operation.execute(txn);
-                        return this;
-                    }
-                }));
+                        @Override
+                        public Object call() throws Exception
+                        {
+                            operation.execute(txn);
+                            return this;
+                        }
+                    }));
+                }
             }
 
             assert compacting.originals().isEmpty();
@@ -402,6 +404,7 @@ public class CompactionManager implements CompactionManagerMBean
         }, OperationType.CLEANUP);
     }
 
+    @SuppressWarnings("resource")
     public ListenableFuture<?> submitAntiCompaction(final ColumnFamilyStore cfs,
                                           final Collection<Range<Token>> ranges,
                                           final Refs<SSTableReader> sstables,

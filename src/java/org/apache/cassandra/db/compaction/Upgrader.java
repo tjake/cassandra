@@ -20,6 +20,8 @@ package org.apache.cassandra.db.compaction;
 import java.io.File;
 import java.util.*;
 
+import com.google.common.base.Throwables;
+
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;

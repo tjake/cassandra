@@ -169,11 +169,9 @@ public class CompactionTask extends AbstractCompactionTask
                     if (!controller.cfs.getCompactionStrategy().isActive)
                         throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                try (CompactionAwareWriter writer = getCompactionAwareWriter(cfs, transaction, actuallyCompact))
-                {
-                    estimatedKeys = writer.estimatedKeys();
-                    while (iter.hasNext())
+                    try (CompactionAwareWriter writer = getCompactionAwareWriter(cfs, transaction, actuallyCompact))
                     {
+
                         estimatedKeys = writer.estimatedKeys();
                         while (iter.hasNext())
                         {
@@ -207,30 +205,30 @@ public class CompactionTask extends AbstractCompactionTask
                             collector.finishCompaction(ci);
                     }
                 }
-            }
 
-            // log a bunch of statistics about the result and save to system table compaction_history
-            long dTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            long startsize = SSTableReader.getTotalBytes(transaction.originals());
-            long endsize = SSTableReader.getTotalBytes(newSStables);
-            double ratio = (double) endsize / (double) startsize;
+                // log a bunch of statistics about the result and save to system table compaction_history
+                long dTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                long startsize = SSTableReader.getTotalBytes(transaction.originals());
+                long endsize = SSTableReader.getTotalBytes(newSStables);
+                double ratio = (double) endsize / (double) startsize;
 
-            StringBuilder newSSTableNames = new StringBuilder();
-            for (SSTableReader reader : newSStables)
-                newSSTableNames.append(reader.descriptor.baseFilename()).append(",");
+                StringBuilder newSSTableNames = new StringBuilder();
+                for (SSTableReader reader : transaction.current())
+                    newSSTableNames.append(reader.descriptor.baseFilename()).append(",");
 
-            double mbps = dTime > 0 ? (double) endsize / (1024 * 1024) / ((double) dTime / 1000) : 0;
-            long totalSourceRows = 0;
-            String mergeSummary = updateCompactionHistory(cfs.keyspace.getName(), cfs.getColumnFamilyName(), ci, startsize, endsize);
-            logger.info(String.format("Compacted (%s) %d sstables to [%s] to level=%d.  %,d bytes to %,d (~%d%% of original) in %,dms = %fMB/s.  %,d total partitions merged to %,d.  Partition merge counts were {%s}",
-                                      taskIdLoggerMsg, transaction.originals().size(), newSSTableNames.toString(), getLevel(), startsize, endsize, (int) (ratio * 100), dTime, mbps, totalSourceRows, totalKeysWritten, mergeSummary));
-            logger.debug(String.format("CF Total Bytes Compacted: %,d", CompactionTask.addToTotalBytesCompacted(endsize)));
-            logger.debug("Actual #keys: {}, Estimated #keys:{}, Err%: {}", totalKeysWritten, estimatedKeys, ((double)(totalKeysWritten - estimatedKeys)/totalKeysWritten));
+                double mbps = dTime > 0 ? (double) endsize / (1024 * 1024) / ((double) dTime / 1000) : 0;
+                long totalSourceRows = 0;
+                String mergeSummary = updateCompactionHistory(cfs.keyspace.getName(), cfs.getColumnFamilyName(), ci, startsize, endsize);
+                logger.info(String.format("Compacted (%s) %d sstables to [%s] to level=%d.  %,d bytes to %,d (~%d%% of original) in %,dms = %fMB/s.  %,d total partitions merged to %,d.  Partition merge counts were {%s}",
+                                          taskIdLoggerMsg, transaction.originals().size(), newSSTableNames.toString(), getLevel(), startsize, endsize, (int) (ratio * 100), dTime, mbps, totalSourceRows, totalKeysWritten, mergeSummary));
+                logger.debug(String.format("CF Total Bytes Compacted: %,d", CompactionTask.addToTotalBytesCompacted(endsize)));
+                logger.debug("Actual #keys: {}, Estimated #keys:{}, Err%: {}", totalKeysWritten, estimatedKeys, ((double) (totalKeysWritten - estimatedKeys) / totalKeysWritten));
 
-            if (offline)
-            {
-                for (SSTableReader reader : newSStables)
-                    reader.selfRef().release();
+                if (offline)
+                {
+                    for (SSTableReader reader : newSStables)
+                        reader.selfRef().release();
+                }
             }
         }
     }
