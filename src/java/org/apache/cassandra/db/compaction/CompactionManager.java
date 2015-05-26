@@ -245,6 +245,7 @@ public class CompactionManager implements CompactionManagerMBean
         }
     }
 
+    @SuppressWarnings("resource")
     private AllSSTableOpStatus parallelAllSSTableOperation(final ColumnFamilyStore cfs, final OneSSTableOperation operation, OperationType operationType) throws ExecutionException, InterruptedException
     {
         try (LifecycleTransaction compacting = cfs.markAllCompacting(operationType);)
@@ -271,18 +272,16 @@ public class CompactionManager implements CompactionManagerMBean
                     return AllSSTableOpStatus.ABORTED;
                 }
 
-                try (final LifecycleTransaction txn = compacting.split(singleton(sstable)))
+                final LifecycleTransaction txn = compacting.split(singleton(sstable));
+                futures.add(executor.submit(new Callable<Object>()
                 {
-                    futures.add(executor.submit(new Callable<Object>()
+                    @Override
+                    public Object call() throws Exception
                     {
-                        @Override
-                        public Object call() throws Exception
-                        {
-                            operation.execute(txn);
-                            return this;
-                        }
-                    }));
-                }
+                        operation.execute(txn);
+                        return this;
+                    }
+                }));
             }
 
             assert compacting.originals().isEmpty();
