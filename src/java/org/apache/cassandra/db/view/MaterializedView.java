@@ -751,7 +751,7 @@ public class MaterializedView
     {
         createViewCfsAndSelectors();
 
-        if (!cf.deletionInfo().isLive() && !cfModifiesSelectedColumn(cf))
+        if (cf.deletionInfo().isLive() && !cfModifiesSelectedColumn(cf))
         {
             return null;
         }
