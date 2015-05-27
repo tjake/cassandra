@@ -73,11 +73,108 @@ public class MaterializedView
     // new mutation values
     private static class MutationUnit
     {
-        private final ColumnFamilyStore baseCfs;
+        public static final Resolver oldValueIfUpdated = new Resolver()
+        {
+            public Cell resolve(Iterable<MUCell> cells)
+            {
+                Iterator<MUCell> iterator = cells.iterator();
+                if (!iterator.hasNext())
+                    return null;
+
+                MUCell initial = iterator.next();
+                if (initial.isNew)
+                    return null;
+                if (!iterator.hasNext())
+                    return initial.cell;
+
+                MUCell value = initial;
+                while (iterator.hasNext())
+                    value = value.reconcile(iterator.next());
+
+                return ByteBufferUtil.compareUnsigned(initial.cell.value(), value.cell.value()) != 0 ? initial.cell : null;
+            }
+        };
+
+        public static final Resolver newValueIfUpdated = new Resolver()
+        {
+            public Cell resolve(Iterable<MUCell> cells)
+            {
+                Iterator<MUCell> iterator = cells.iterator();
+                if (!iterator.hasNext())
+                    return null;
+                MUCell initial = iterator.next();
+                if (!iterator.hasNext())
+                    return initial.cell;
+
+                MUCell value = initial;
+                while (iterator.hasNext())
+                    value = value.reconcile(iterator.next());
+
+                return value.isNew && ByteBufferUtil.compareUnsigned(initial.cell.value(), value.cell.value()) != 0
+                       ? value.cell
+                       : null;
+            }
+        };
+
+        public static final Resolver earliest = new Resolver()
+        {
+            public Cell resolve(Iterable<MUCell> cells)
+            {
+                Iterator<MUCell> iterator = cells.iterator();
+                if (!iterator.hasNext())
+                    return null;
+                return iterator.next().cell;
+            }
+        };
+
+        public static final Resolver latest = new Resolver()
+        {
+            public Cell resolve(Iterable<MUCell> cells)
+            {
+                Iterator<MUCell> iterator = cells.iterator();
+                if (!iterator.hasNext())
+                    return null;
+                Cell value = iterator.next().cell;
+                while (iterator.hasNext())
+                    value = value.reconcile(iterator.next().cell);
+
+                return value;
+            }
+        };
+
+        private interface PrivateResolver
+        {
+            Cell resolve(Iterable<MUCell> cells);
+        }
+
+        private static class MUCell
+        {
+            public final Cell cell;
+            public final boolean isNew;
+
+            private MUCell(Cell cell, boolean isNew)
+            {
+                this.cell = cell;
+                this.isNew = isNew;
+            }
+
+            public MUCell reconcile(MUCell cell)
+            {
+                Cell reconciled = this.cell.reconcile(cell.cell);
+                if (reconciled == this.cell) return this;
+                else return cell;
+            }
+        }
+
+        public interface Resolver extends PrivateResolver
+        {
+        }
+
+        final ColumnFamilyStore baseCfs;
         private final ByteBuffer partitionKey;
         private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
-        private final Map<ColumnIdentifier, Map<CellName, SortedMap<Long, Cell>>> columnValues = new HashMap<>();
-        private int ttl = Integer.MIN_VALUE;
+        private final Map<ColumnIdentifier, Map<CellName, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
+        public int ttl;
 
         MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
         {
@@ -108,108 +205,66 @@ public class MaterializedView
             return result;
         }
 
-        public void addColumnValue(Cell cell)
+        public void addColumnValue(Cell cell, boolean isNew)
         {
             CellName cellName = cell.name();
             ColumnIdentifier identifier = cellName.cql3ColumnName(baseCfs.metadata);
             if (!columnValues.containsKey(identifier))
-                columnValues.put(identifier, new HashMap<CellName, SortedMap<Long, Cell>>());
-            Map<CellName, SortedMap<Long, Cell>> innerMap = columnValues.get(identifier);
+                columnValues.put(identifier, new HashMap<>());
+            Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
             if (!innerMap.containsKey(cellName))
-                innerMap.put(cellName, new TreeMap<Long, Cell>());
-
+                innerMap.put(cellName, new TreeMap<>());
             if (cell instanceof ExpiringCell)
-                ttl = Math.max(((ExpiringCell)cell).getTimeToLive(), ttl);
-
-            innerMap.get(cellName).put(cell.timestamp(), cell);
+                ttl = Math.max(((ExpiringCell) cell).getTimeToLive(), ttl);
+            innerMap.get(cellName).put(cell.timestamp(), new MUCell(cell, isNew));
         }
 
-        public Collection<Cell> oldValueIfUpdated(ColumnIdentifier columnIdentifier)
+        // The Definition here is actually the *base table* definition
+        public ByteBuffer clusteringValue(ColumnDefinition definition, Resolver resolver)
         {
-            if (!columnValues.containsKey(columnIdentifier))
-                return Collections.emptyList();
+            ColumnDefinition baseDefinition = definition.cfName.equals(baseCfs.name)
+                                              ? definition
+                                              : baseCfs.metadata.getColumnDefinition(definition.name);
 
-            Map<CellName, SortedMap<Long, Cell>> cellNames = columnValues.get(columnIdentifier);
-            List<Cell> values = new ArrayList<>();
-            for (SortedMap<Long, Cell> cells: cellNames.values())
+            if (baseDefinition.isPartitionKey())
             {
-                if (cells.size() < 2)
-                    continue;
-
-                Cell initial = cells.get(cells.firstKey());
-                Cell value = initial;
-                for (Cell cell: cells.values())
-                    value = value.reconcile(cell);
-
-                if (initial.value().compareTo(value.value()) != 0)
-                    values.add(initial);
-            }
-            return values;
-        }
-
-        public Collection<Cell> newValueIfUpdated(ColumnIdentifier columnIdentifier)
-        {
-            if (!columnValues.containsKey(columnIdentifier))
-                return Collections.emptyList();
-
-            Map<CellName, SortedMap<Long, Cell>> cellNames = columnValues.get(columnIdentifier);
-            List<Cell> values = new ArrayList<>();
-            for (SortedMap<Long, Cell> cells: cellNames.values())
-            {
-                Cell initial = cells.get(cells.firstKey());
-                Cell value = initial;
-                for (Cell cell: cells.values())
-                    value = value.reconcile(cell);
-
-                if (cells.size() == 1 || initial.value().compareTo(value.value()) != 0)
-                    values.add(value);
-            }
-            return values;
-        }
-
-        public ByteBuffer targetValue(ColumnDefinition definition)
-        {
-            if (definition.isPartitionKey())
-            {
-                if (definition.isOnAllComponents())
+                if (baseDefinition.isOnAllComponents())
                     return partitionKey;
                 else
                 {
                     CompositeType keyComparator = (CompositeType) baseCfs.metadata.getKeyValidator();
                     ByteBuffer[] components = keyComparator.split(partitionKey);
-                    return components[definition.position()];
+                    return components[baseDefinition.position()];
                 }
             }
             else
             {
-                ColumnIdentifier columnIdentifier = definition.name;
+                ColumnIdentifier columnIdentifier = baseDefinition.name;
 
                 if (clusteringColumns.containsKey(columnIdentifier))
                     return clusteringColumns.get(columnIdentifier);
 
-                Collection<Cell> val = value(columnIdentifier);
+                Collection<Cell> val = values(columnIdentifier, resolver);
                 if (val != null && val.size() == 1)
                     return Iterables.getOnlyElement(val).value();
             }
             return null;
         }
 
-        public Collection<Cell> value(ColumnIdentifier identifier)
+        public Collection<Cell> values(ColumnIdentifier identifier, Resolver resolver)
         {
-            if (!columnValues.containsKey(identifier))
+            Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
+            if (innerMap == null)
                 return Collections.emptyList();
 
-            Map<CellName, SortedMap<Long, Cell>> cellNames = columnValues.get(identifier);
-            List<Cell> values = new ArrayList<>();
-            for (SortedMap<Long, Cell> cells: cellNames.values())
+            Collection<Cell> value = new ArrayList<>();
+            for (SortedMap<Long, MUCell> cells: innerMap.values())
             {
-                Cell value = cells.get(cells.firstKey());
-                for (Cell cell: cells.values())
-                    value = value.reconcile(cell);
-
-                values.add(value);
+                Cell cell = resolver.resolve(cells.values());
+                if (cell != null)
+                    value.add(cell);
             }
-            return values;
+            return value;
         }
     }
 
@@ -244,7 +299,7 @@ public class MaterializedView
             return mutationUnits.values().spliterator();
         }
 
-        public void addUnit(ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns, Cell cell)
+        public void addUnit(ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns, Cell cell, boolean isNew)
         {
             MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
             if (mutationUnits.containsKey(mutationUnit))
@@ -255,7 +310,7 @@ public class MaterializedView
             {
                 mutationUnits.put(mutationUnit, mutationUnit);
             }
-            mutationUnit.addColumnValue(cell);
+            mutationUnit.addColumnValue(cell, isNew);
         }
 
         public int size()
@@ -401,7 +456,7 @@ public class MaterializedView
             return true;
 
         // Otherwise, see if the *new* values are updated
-        return !mutationUnit.oldValueIfUpdated(target.name).isEmpty();
+        return !mutationUnit.values(target.name, MutationUnit.oldValueIfUpdated).isEmpty();
     }
 
     private Mutation createTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp)
@@ -416,7 +471,7 @@ public class MaterializedView
             CBuilder builder = cellNameType.prefixBuilder();
             for (ColumnDefinition definition: clusteringKeys)
             {
-                ByteBuffer column = mutationUnit.targetValue(definition);
+                ByteBuffer column = mutationUnit.clusteringValue(definition, MutationUnit.earliest);
                 assert column != null : "Clustering Columns should never be null in a mutation";
                 builder = builder.add(column);
             }
@@ -427,7 +482,7 @@ public class MaterializedView
         else
         {
             assert clusteringKeys.size() == 1;
-            ByteBuffer column = mutationUnit.targetValue(clusteringKeys.get(0));
+            ByteBuffer column = mutationUnit.clusteringValue(clusteringKeys.get(0), MutationUnit.earliest);
             assert column != null : "Clustering Columns should never be null in a mutation";
             CellName cellName = cellNameType.cellFromByteBuffer(column);
             viewCf.addTombstone(cellName, 0, timestamp);
@@ -446,7 +501,7 @@ public class MaterializedView
         if (!modifiesTarget(mutationUnit))
             return null;
 
-        Mutation mutation = createTombstone(mutationUnit, Iterables.getOnlyElement(mutationUnit.oldValueIfUpdated(target.name)).value(), timestamp);
+        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(target, MutationUnit.earliest), timestamp);
         if (mutation != null)
             return Collections.singleton(mutation);
         return null;
@@ -454,7 +509,8 @@ public class MaterializedView
 
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        ByteBuffer partitionKey = mutationUnit.targetValue(target);
+        ByteBuffer partitionKey = mutationUnit.clusteringValue(target, MutationUnit.latest);
+        MutationUnit.Resolver resolver = tombstonesGenerated ? MutationUnit.latest : MutationUnit.newValueIfUpdated;
 
         if (partitionKey == null)
         {
@@ -466,7 +522,7 @@ public class MaterializedView
 
         for (int i = 0; i < clusteringColumns.length; i++)
         {
-            ByteBuffer column = mutationUnit.targetValue(clusteringKeys.get(i));
+            ByteBuffer column = mutationUnit.clusteringValue(clusteringKeys.get(i), MutationUnit.latest);
             assert column != null : "Clustering Columns should never be null in a mutation";
             clusteringColumns[i] = column;
         }
@@ -489,14 +545,11 @@ public class MaterializedView
         }
         CFRowAdder rowAdder = new RowAdder(viewCf, composite, timestamp, mutationUnit.ttl);
 
-        for (int i = 0; i < regularColumns.size(); i++)
+        for (ColumnDefinition def : regularColumns)
         {
-            ColumnDefinition def = this.regularColumns.get(i);
-            Collection<Cell> cells = tombstonesGenerated
-                                     ? mutationUnit.value(def.name)
-                                     : mutationUnit.newValueIfUpdated(def.name);
+            Collection<Cell> cells = mutationUnit.values(def.name, resolver);
 
-            for (Cell cell: cells)
+            for (Cell cell : cells)
             {
                 if (cell.name().isCollectionCell())
                     rowAdder.addCollectionEntry(def.name.toString(), cell.name().collectionElement(), cell.isLive() ? cell.value() : null);
@@ -508,9 +561,7 @@ public class MaterializedView
         for (int i = 0; i < staticColumns.size(); i++)
         {
             ColumnDefinition def = this.staticColumns.get(i);
-            Collection<Cell> cells = tombstonesGenerated
-                                     ? mutationUnit.value(def.name)
-                                     : mutationUnit.newValueIfUpdated(def.name);
+            Collection<Cell> cells = mutationUnit.values(def.name, resolver);
 
             for (Cell cell: cells)
             {
@@ -574,7 +625,7 @@ public class MaterializedView
 
 
             //Build modified RT mutation
-            ByteBuffer targetKey = mu.targetValue(target);
+            ByteBuffer targetKey = mu.clusteringValue(target, MutationUnit.earliest);
             if (targetKey == null)
                 return null; //Fixme: need a empty mutation type
 
@@ -585,7 +636,7 @@ public class MaterializedView
             for (int i = 0; i < clusteringKeys.size(); i++)
             {
                 ColumnDefinition cdef = clusteringKeys.get(i);
-                builder.add(mu.targetValue(cdef));
+                builder.add(mu.clusteringValue(cdef, MutationUnit.earliest));
             }
 
             Composite range = viewCfs.getComparator().create(builder.build(), collectionDef);
@@ -669,13 +720,13 @@ public class MaterializedView
                         clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                     }
 
-                    mutationUnits.addUnit(key, clusteringColumns, cell);
+                    mutationUnits.addUnit(key, clusteringColumns, cell, false);
                 }
             }
 
             for (MutationUnit mutationUnit : mutationUnits)
             {
-                ByteBuffer value = mutationUnit.targetValue(target);
+                ByteBuffer value = mutationUnit.clusteringValue(target, MutationUnit.earliest);
                 if (value != null)
                 {
                     Mutation mutation = createTombstone(mutationUnit, value, timestamp);
@@ -744,7 +795,7 @@ public class MaterializedView
                     clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                 }
 
-                mutationUnits.addUnit(key, clusteringColumns, cell);
+                mutationUnits.addUnit(key, clusteringColumns, cell, false);
             }
         }
     }
@@ -762,8 +813,7 @@ public class MaterializedView
                 clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
             }
 
-
-            mutationUnits.addUnit(key, clusteringColumns, cell);
+            mutationUnits.addUnit(key, clusteringColumns, cell, true);
         }
 
         return mutationUnits;
