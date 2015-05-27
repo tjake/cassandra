@@ -77,7 +77,7 @@ public class MaterializedView
         private final ByteBuffer partitionKey;
         private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
         private final Map<ColumnIdentifier, Map<CellName, SortedMap<Long, Cell>>> columnValues = new HashMap<>();
-        private int ttl = 0;
+        private int ttl = Integer.MIN_VALUE;
 
         MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
         {
@@ -117,6 +117,10 @@ public class MaterializedView
             Map<CellName, SortedMap<Long, Cell>> innerMap = columnValues.get(identifier);
             if (!innerMap.containsKey(cellName))
                 innerMap.put(cellName, new TreeMap<Long, Cell>());
+
+            if (cell instanceof ExpiringCell)
+                ttl = Math.max(((ExpiringCell)cell).getTimeToLive(), ttl);
+
             innerMap.get(cellName).put(cell.timestamp(), cell);
         }
 
