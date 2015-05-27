@@ -82,10 +82,8 @@ public class MaterializedView
                     return null;
 
                 MUCell initial = iterator.next();
-                if (initial.isNew)
+                if (initial.isNew || !iterator.hasNext())
                     return null;
-                if (!iterator.hasNext())
-                    return initial.cell;
 
                 MUCell value = initial;
                 while (iterator.hasNext())
@@ -501,7 +499,7 @@ public class MaterializedView
         if (!modifiesTarget(mutationUnit))
             return null;
 
-        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(target, MutationUnit.earliest), timestamp);
+        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(target, MutationUnit.oldValueIfUpdated), timestamp);
         if (mutation != null)
             return Collections.singleton(mutation);
         return null;
@@ -642,9 +640,9 @@ public class MaterializedView
             Composite range = viewCfs.getComparator().create(builder.build(), collectionDef);
 
             mutation.addOrGet(viewCfs.getColumnFamilyName())
-            .addAtom(new RangeTombstone(range.start(),
-                                        range.end(),
-                                        tombstone.timestamp(), tombstone.getLocalDeletionTime()));
+                    .addAtom(new RangeTombstone(range.start(),
+                                                range.end(),
+                                                tombstone.timestamp(), tombstone.getLocalDeletionTime()));
 
             return mutation;
         }
