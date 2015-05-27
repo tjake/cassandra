@@ -446,9 +446,9 @@ public class MaterializedView
             for (Cell cell: cells)
             {
                 if (cell.name().isCollectionCell())
-                    rowAdder.addCollectionEntry(def.name.toString(), cell.name().collectionElement(), cell.value());
+                    rowAdder.addCollectionEntry(def.name.toString(), cell.name().collectionElement(), cell.isLive() ? cell.value() : null);
                 else
-                    rowAdder.add(def.name.toString(), cell.value());
+                    rowAdder.add(def.name.toString(), cell.isLive() ? cell.value() : null);
             }
         }
 
