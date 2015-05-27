@@ -160,7 +160,7 @@ public class MaterializedView
                     value = value.reconcile(cell);
 
                 if (cells.size() == 1 || initial.value().compareTo(value.value()) != 0)
-                    values.add(initial);
+                    values.add(value);
             }
             return values;
         }
@@ -710,6 +710,7 @@ public class MaterializedView
                 else
                 {
                     mapMutationUnits.put(mutationUnit, mutationUnit);
+                    mutationUnit.addColumnValue(cell);
                 }
             }
         }
