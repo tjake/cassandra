@@ -27,9 +27,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
-import java.util.SortedSet;
+import java.util.Spliterator;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import com.google.common.collect.Iterables;
 
@@ -54,19 +55,16 @@ import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
 import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.CellNames;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.filter.IDiskAtomFilter;
-import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ColumnToCollectionType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
-import org.apache.cassandra.thrift.ColumnDef;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedView
@@ -208,6 +206,57 @@ public class MaterializedView
                 values.add(value);
             }
             return values;
+        }
+    }
+
+    private static class MutationUnitSet implements Iterable<MutationUnit>
+    {
+        private final ColumnFamilyStore baseCfs;
+        private final Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+
+        MutationUnitSet(ColumnFamilyStore baseCfs)
+        {
+            this.baseCfs = baseCfs;
+        }
+
+        MutationUnitSet(MutationUnit single)
+        {
+            this(single.baseCfs);
+            mutationUnits.put(single, single);
+        }
+
+        public Iterator<MutationUnit> iterator()
+        {
+            return mutationUnits.values().iterator();
+        }
+
+        public void forEach(Consumer<? super MutationUnit> action)
+        {
+            mutationUnits.values().forEach(action);
+        }
+
+        public Spliterator<MutationUnit> spliterator()
+        {
+            return mutationUnits.values().spliterator();
+        }
+
+        public void addUnit(ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns, Cell cell)
+        {
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
+            if (mutationUnits.containsKey(mutationUnit))
+            {
+                mutationUnit = mutationUnits.get(mutationUnit);
+            }
+            else
+            {
+                mutationUnits.put(mutationUnit, mutationUnit);
+            }
+            mutationUnit.addColumnValue(cell);
+        }
+
+        public int size()
+        {
+            return mutationUnits.size();
         }
     }
 
@@ -517,7 +566,7 @@ public class MaterializedView
 
             //Fetch missing info
             if (!columnsNeeded.isEmpty())
-                query(key, DeletionInfo.live(), Collections.singletonList(mu), cl);
+                query(key, DeletionInfo.live(), new MutationUnitSet(mu), cl);
 
 
             //Build modified RT mutation
@@ -556,7 +605,7 @@ public class MaterializedView
         if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
         {
 
-            Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+            MutationUnitSet mutationUnits = new MutationUnitSet(baseCfs);
             List<Mutation> mutations = new ArrayList<>();
 
             IDiskAtomFilter filter;
@@ -616,36 +665,25 @@ public class MaterializedView
                         clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                     }
 
-                    MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
-                    if (mutationUnits.containsKey(mutationUnit))
-                    {
-                        MutationUnit previous = mutationUnits.get(mutationUnit);
-                        previous.addColumnValue(cell);
-                    }
-                    else
-                    {
-                        mutationUnit.addColumnValue(cell);
-                        mutationUnits.put(mutationUnit, mutationUnit);
-                    }
+                    mutationUnits.addUnit(key, clusteringColumns, cell);
                 }
             }
 
-            if (!mutationUnits.isEmpty())
+            for (MutationUnit mutationUnit : mutationUnits)
             {
-
-                for (MutationUnit mutationUnit : mutationUnits.values())
+                ByteBuffer value = mutationUnit.targetValue(target);
+                if (value != null)
                 {
-                    ByteBuffer value = mutationUnit.targetValue(target);
-                    if (value != null)
-                    {
-                        Mutation mutation = createTombstone(mutationUnit, value, timestamp);
-                        if (mutation != null)
-                            mutations.add(mutation);
-                    }
+                    Mutation mutation = createTombstone(mutationUnit, value, timestamp);
+                    if (mutation != null)
+                        mutations.add(mutation);
                 }
-                return mutations;
             }
+
+            if (!mutations.isEmpty())
+                return mutations;
         }
+
         return null;
     }
 
@@ -666,16 +704,14 @@ public class MaterializedView
         return new ColumnSlice(built.start(), built.end());
     }
 
-    private void query(ByteBuffer key, DeletionInfo deletionInfo, Collection<MutationUnit> mutationUnits, ConsistencyLevel consistency)
+    private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnitSet mutationUnits, ConsistencyLevel consistency)
     {
         ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
         Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
-        Map<MutationUnit, MutationUnit> mapMutationUnits = new HashMap<>();
         for (int i = 0; i < slices.length; i++)
         {
             MutationUnit next = mutationUnitIterator.next();
             slices[i] = getColumnSlice(next);
-            mapMutationUnits.put(next, next);
         }
 
         SliceQueryFilter queryFilter = new SliceQueryFilter(slices, false, 100);
@@ -704,24 +740,15 @@ public class MaterializedView
                     clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
                 }
 
-                MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
-                if (mapMutationUnits.containsKey(mutationUnit))
-                {
-                    MutationUnit previous = mapMutationUnits.get(mutationUnit);
-                    previous.addColumnValue(cell);
-                }
-                else
-                {
-                    mapMutationUnits.put(mutationUnit, mutationUnit);
-                    mutationUnit.addColumnValue(cell);
-                }
+                mutationUnits.addUnit(key, clusteringColumns, cell);
             }
         }
     }
 
-    private Collection<MutationUnit> separateMutationUnits(ByteBuffer key, ColumnFamily cf)
+    private MutationUnitSet separateMutationUnits(ByteBuffer key, ColumnFamily cf)
     {
-        Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+        MutationUnitSet mutationUnits = new MutationUnitSet(baseCfs);
+
         // For each cell name, we need to grab the clustering columns
         for (Cell cell: cf.getSortedColumns())
         {
@@ -731,24 +758,11 @@ public class MaterializedView
                 clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
             }
 
-            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
-            if (cell instanceof ExpiringCell)
-            {
-                mutationUnit.ttl = ((ExpiringCell)cell).getTimeToLive();
-            }
 
-            if (mutationUnits.containsKey(mutationUnit))
-            {
-                mutationUnit = mutationUnits.get(mutationUnit);
-            }
-            else
-            {
-                mutationUnits.put(mutationUnit, mutationUnit);
-            }
-            mutationUnit.addColumnValue(cell);
+            mutationUnits.addUnit(key, clusteringColumns, cell);
         }
 
-        return mutationUnits.values();
+        return mutationUnits;
     }
 
     public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency, boolean isBuilding)
@@ -760,7 +774,7 @@ public class MaterializedView
             return null;
         }
 
-        Collection<MutationUnit> mutationUnits = separateMutationUnits(key, cf);
+        MutationUnitSet mutationUnits = separateMutationUnits(key, cf);
 
         // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
