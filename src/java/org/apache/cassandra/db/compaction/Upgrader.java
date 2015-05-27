@@ -90,7 +90,7 @@ public class Upgrader
 
         try (SSTableRewriter writer = new SSTableRewriter(cfs, toUpgrade, CompactionTask.getMaxDataAge(toUpgrade), true);
              AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(toUpgrade);
-             CompactionIterator iter = new CompactionIterator(compactionType, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat()))
+             CompactionIterator iter = new CompactionIterator(compactionType, scanners.scanners, controller))
         {
             writer.switchWriter(createCompactionWriter(sstable.getSSTableMetadata().repairedAt));
             while (iter.hasNext())

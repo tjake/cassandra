@@ -149,8 +149,6 @@ public class CompactionTask extends AbstractCompactionTask
         {
             Set<SSTableReader> actuallyCompact = Sets.difference(sstables, controller.getFullyExpiredSSTables());
 
-            SSTableFormat.Type sstableFormat = getFormatType(sstables);
-
             List<SSTableReader> newSStables;
 
             long[] mergedRowCounts;
@@ -159,7 +157,7 @@ public class CompactionTask extends AbstractCompactionTask
             // to both ifile and dfile and SSTR will throw deletion errors on Windows if it tries to delete before scanner is closed.
             // See CASSANDRA-8019 and CASSANDRA-8399
             try (AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(actuallyCompact);
-                 CompactionIterator ci = new CompactionIterator(compactionType, scanners.scanners, controller, sstableFormat))
+                 CompactionIterator ci = new CompactionIterator(compactionType, scanners.scanners, controller))
             {
                 if (collector != null)
                     collector.beginCompaction(ci);
@@ -301,14 +299,5 @@ public class CompactionTask extends AbstractCompactionTask
                 max = sstable.maxDataAge;
         }
         return max;
-    }
-
-    public static SSTableFormat.Type getFormatType(Collection<SSTableReader> sstables)
-    {
-        if (sstables.isEmpty() || !SSTableFormat.enableSSTableDevelopmentTestMode)
-            return DatabaseDescriptor.getSSTableFormat();
-
-        //Allows us to test compaction of non-default formats
-        return sstables.iterator().next().descriptor.formatType;
     }
 }

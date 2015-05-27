@@ -18,8 +18,6 @@
 package org.apache.cassandra.db.compaction;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
@@ -30,6 +28,22 @@ import org.apache.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.metrics.CompactionMetrics;
 
+/**
+ * Merge multiple iterators over the content of sstable into a "compacted" iterator.
+ * <p>
+ * On top of the actual merging the source iterators, this class:
+ * <ul>
+ *   <li>purge gc-able tombstones if possible (see PurgingPartitionIterator below).</li>
+ *   <li>update 2ndary indexes if necessary (as we don't read-before-write on index updates, index entries are
+ *       not deleted on deletion of the base table data, which is ok because we'll fix index inconsistency
+ *       on reads. This however mean that potentially obsolete index entries could be kept a long time for
+ *       data that is not read often, so compaction "pro-actively" fix such index entries. This is mainly
+ *       an optimization).</li>
+ *   <li>invalidate cached partitions that are empty post-compaction. This avoids keeping partitions with
+ *       only purgable tombstones in the row cache.</li>
+ *   <li>keep tracks of the compaction progress.</li>
+ * </ul>
+ */
 public class CompactionIterator extends CompactionInfo.Holder implements UnfilteredPartitionIterator
 {
     private static final long UNFILTERED_TO_UPDATE_PROGRESS = 100;
@@ -44,19 +58,20 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
      * array index represents (number of merged rows - 1), so index 0 is counter for no merge (1 row),
      * index 1 is counter for 2 rows merged, and so on.
      */
-    private final AtomicLong[] mergeCounters;
+    private final long[] mergeCounters;
 
     private final UnfilteredPartitionIterator mergedIterator;
-    private final AtomicInteger merged = new AtomicInteger();
-    private final SSTableFormat format;
     private final CompactionMetrics metrics;
 
-    public CompactionIterator(OperationType type, List<ISSTableScanner> scanners, CompactionController controller, SSTableFormat.Type formatType)
+    // The number of row/RT merged by the iterator
+    private int merged;
+
+    public CompactionIterator(OperationType type, List<ISSTableScanner> scanners, CompactionController controller)
     {
-        this(type, scanners, controller, formatType, null);
+        this(type, scanners, controller, null);
     }
 
-    public CompactionIterator(OperationType type, List<ISSTableScanner> scanners, CompactionController controller, SSTableFormat.Type formatType, CompactionMetrics metrics)
+    public CompactionIterator(OperationType type, List<ISSTableScanner> scanners, CompactionController controller, CompactionMetrics metrics)
     {
         this.controller = controller;
         this.type = type;
@@ -67,11 +82,8 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
         for (ISSTableScanner scanner : scanners)
             bytes += scanner.getLengthInBytes();
         this.totalBytes = bytes;
-        mergeCounters = new AtomicLong[scanners.size()];
-        for (int i = 0; i < mergeCounters.length; i++)
-            mergeCounters[i] = new AtomicLong();
+        this.mergeCounters = new long[scanners.size()];
 
-        this.format = formatType.info;
         this.mergedIterator = scanners.isEmpty()
                             ? UnfilteredPartitionIterators.EMPTY
                             : new PurgingPartitionIterator(UnfilteredPartitionIterators.merge(scanners, listener()), controller);
@@ -95,18 +107,15 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
                                   totalBytes);
     }
 
-    protected void updateCounterFor(int rows)
+    private void updateCounterFor(int rows)
     {
         assert rows > 0 && rows - 1 < mergeCounters.length;
-        mergeCounters[rows - 1].incrementAndGet();
+        mergeCounters[rows - 1] += 1;
     }
 
     public long[] getMergedRowCounts()
     {
-        long[] counters = new long[mergeCounters.length];
-        for (int i = 0; i < counters.length; i++)
-            counters[i] = mergeCounters[i].get();
-        return counters;
+        return mergeCounters;
     }
 
     private UnfilteredPartitionIterators.MergeListener listener()
@@ -168,14 +177,14 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
 
                     public void onRowDone()
                     {
-                        int merged = CompactionIterator.this.merged.incrementAndGet();
+                        int merged = ++CompactionIterator.this.merged;
                         if (merged % UNFILTERED_TO_UPDATE_PROGRESS == 0)
                             updateBytesRead();
                     }
 
                     public void onMergedRangeTombstoneMarkers(Slice.Bound bound, DeletionTime mergedDeletion, RangeTombstoneMarker[] versions)
                     {
-                        int merged = CompactionIterator.this.merged.incrementAndGet();
+                        int merged = ++CompactionIterator.this.merged;
                         if (merged % UNFILTERED_TO_UPDATE_PROGRESS == 0)
                             updateBytesRead();
                     }
@@ -233,7 +242,7 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
         return this.getCompactionInfo().toString();
     }
 
-    private static class PurgingPartitionIterator extends FilteringPartitionIterator
+    private class PurgingPartitionIterator extends FilteringPartitionIterator
     {
         private final CompactionController controller;
 
@@ -274,7 +283,8 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
         @Override
         protected void onEmpty(DecoratedKey key)
         {
-            controller.cfs.invalidateCachedPartition(key);
+            if (type == OperationType.COMPACTION)
+                controller.cfs.invalidateCachedPartition(key);
         }
 
         private boolean includeDelTime(DeletionTime dt)

@@ -781,7 +781,7 @@ public class CompactionManager implements CompactionManagerMBean
         try (SSTableRewriter writer = new SSTableRewriter(cfs, oldSSTable, sstable.maxDataAge, false);
              ISSTableScanner scanner = cleanupStrategy.getScanner(sstable, getRateLimiter());
              CompactionController controller = new CompactionController(cfs, Collections.singleton(sstable), getDefaultGcBefore(cfs));
-             CompactionIterator ci = new CompactionIterator(OperationType.CLEANUP, Collections.singletonList(scanner), controller, DatabaseDescriptor.getSSTableFormat(), metrics))
+             CompactionIterator ci = new CompactionIterator(OperationType.CLEANUP, Collections.singletonList(scanner), controller, metrics))
         {
             writer.switchWriter(createWriter(cfs, compactionFileLocation, expectedBloomFilterSize, sstable.getSSTableMetadata().repairedAt, sstable));
 
@@ -790,13 +790,15 @@ public class CompactionManager implements CompactionManagerMBean
                 if (ci.isStopRequested())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                UnfilteredRowIterator partition = ci.next();
-                partition = cleanupStrategy.cleanup(partition);
-                if (partition == null)
-                    continue;
+                try (UnfilteredRowIterator partition = ci.next())
+                {
+                    UnfilteredRowIterator notCleaned = cleanupStrategy.cleanup(partition);
+                    if (notCleaned == null)
+                        continue;
 
-                if (writer.append(partition) != null)
-                    totalkeysWritten++;
+                    if (writer.append(notCleaned) != null)
+                        totalkeysWritten++;
+                }
             }
 
             // flush to ensure we don't lose the tombstones on a restart, since they are not commitlog'd
@@ -890,7 +892,7 @@ public class CompactionManager implements CompactionManagerMBean
                 cfs.invalidateCachedPartition(partition.partitionKey());
 
                 // acquire memtable lock here because secondary index deletion may cause a race. See CASSANDRA-3712
-                try (UnfilteredRowIterator iter = partition; OpOrder.Group opGroup = cfs.keyspace.writeOrder.start())
+                try (OpOrder.Group opGroup = cfs.keyspace.writeOrder.start())
                 {
                     cfs.indexManager.deleteFromIndexes(partition, opGroup);
                 }
@@ -1140,7 +1142,7 @@ public class CompactionManager implements CompactionManagerMBean
              SSTableRewriter unRepairedSSTableWriter = new SSTableRewriter(cfs, sstableAsSet, groupMaxDataAge, false);
              AbstractCompactionStrategy.ScannerList scanners = strategy.getScanners(anticompactionGroup);
              CompactionController controller = new CompactionController(cfs, sstableAsSet, CFMetaData.DEFAULT_GC_GRACE_SECONDS);
-             CompactionIterator ci = new CompactionIterator(OperationType.ANTICOMPACTION, scanners.scanners, controller, DatabaseDescriptor.getSSTableFormat(), metrics))
+             CompactionIterator ci = new CompactionIterator(OperationType.ANTICOMPACTION, scanners.scanners, controller, metrics))
         {
             int expectedBloomFilterSize = Math.max(cfs.metadata.getMinIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(anticompactionGroup)));
 
@@ -1264,7 +1266,7 @@ public class CompactionManager implements CompactionManagerMBean
     {
         public ValidationCompactionIterator(ColumnFamilyStore cfs, List<ISSTableScanner> scanners, int gcBefore, CompactionMetrics metrics)
         {
-            super(OperationType.VALIDATION, scanners, new ValidationCompactionController(cfs, gcBefore), DatabaseDescriptor.getSSTableFormat(), metrics);
+            super(OperationType.VALIDATION, scanners, new ValidationCompactionController(cfs, gcBefore), metrics);
         }
     }
 

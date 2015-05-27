@@ -191,7 +191,7 @@ public class CompactionAwareWriterTest extends CQLTester
         int rowsWritten = 0;
         try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
              CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller))
         {
             while (ci.hasNext())
             {

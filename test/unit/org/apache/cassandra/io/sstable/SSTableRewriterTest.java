@@ -112,7 +112,7 @@ public class SSTableRewriterTest extends SchemaLoader
         SSTableRewriter writer = new SSTableRewriter(cfs, sstables, 1000, false);
         try (AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
              CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller))
         {
             writer.switchWriter(getWriter(cfs, sstables.iterator().next().descriptor.directory));
             while(ci.hasNext())
@@ -144,7 +144,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter writer = new SSTableRewriter(cfs, sstables, 1000, false);
              AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
              CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller))
         {
             writer.switchWriter(getWriter(cfs, sstables.iterator().next().descriptor.directory));
             while (ci.hasNext())
@@ -177,7 +177,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter writer = new SSTableRewriter(cfs, sstables, 1000, false);
              AbstractCompactionStrategy.ScannerList scanners = cfs.getCompactionStrategy().getScanners(sstables);
              CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller))
         {
             writer.switchWriter(getWriter(cfs, sstables.iterator().next().descriptor.directory));
             while (ci.hasNext())
@@ -301,7 +301,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
 
@@ -354,7 +354,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
 
@@ -391,7 +391,7 @@ public class SSTableRewriterTest extends SchemaLoader
         {
             public void run(ISSTableScanner scanner, CompactionController controller, SSTableReader sstable, ColumnFamilyStore cfs, SSTableRewriter rewriter)
             {
-                try (CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+                try (CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
                 {
                     int files = 1;
                     while (ci.hasNext())
@@ -417,7 +417,7 @@ public class SSTableRewriterTest extends SchemaLoader
         {
             public void run(ISSTableScanner scanner, CompactionController controller, SSTableReader sstable, ColumnFamilyStore cfs, SSTableRewriter rewriter)
             {
-                try (CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+                try (CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
                 {
                     int files = 1;
                     while (ci.hasNext())
@@ -448,7 +448,7 @@ public class SSTableRewriterTest extends SchemaLoader
         {
             public void run(ISSTableScanner scanner, CompactionController controller, SSTableReader sstable, ColumnFamilyStore cfs, SSTableRewriter rewriter)
             {
-                try(CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+                try(CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
                 {
                     int files = 1;
                     while (ci.hasNext())
@@ -522,7 +522,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
             while(ci.hasNext())
@@ -569,7 +569,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
             while(ci.hasNext())
@@ -612,7 +612,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
             while(ci.hasNext())
@@ -699,7 +699,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, offline);
              ISSTableScanner scanner = compacting.iterator().next().getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
             while (ci.hasNext())
@@ -786,7 +786,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter rewriter = new SSTableRewriter(cfs, compacting, 1000, false);
              ISSTableScanner scanner = compacting.iterator().next().getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, compacting, 0);
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             rewriter.switchWriter(getWriter(cfs, s.descriptor.directory));
             while (ci.hasNext())
@@ -830,7 +830,7 @@ public class SSTableRewriterTest extends SchemaLoader
         try (SSTableRewriter writer = new SSTableRewriter(cfs, sstables, 1000, false);
              ISSTableScanner scanner = s.getScanner(FBUtilities.nowInSeconds());
              CompactionController controller = new CompactionController(cfs, sstables, cfs.gcBefore(FBUtilities.nowInSeconds()));
-             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller, SSTableFormat.Type.BIG))
+             CompactionIterator ci = new CompactionIterator(OperationType.COMPACTION, Collections.singletonList(scanner), controller))
         {
             writer.switchWriter(getWriter(cfs, sstables.iterator().next().descriptor.directory));
             while (ci.hasNext())
