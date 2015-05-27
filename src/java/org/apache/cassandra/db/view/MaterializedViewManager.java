@@ -133,7 +133,8 @@ public class MaterializedViewManager
     public void pushReplicaMutations(ByteBuffer key, ColumnFamily cf)
     throws WriteTimeoutException
     {
-        // TODO - When we are replaying the commitlog, we haven't yet joined the ring, so we can't push new mutations
+        // This happens when we are replaying from commitlog. In that case, we have already sent this commit off to the
+        // view node.
         if (!StorageService.instance.isJoined()) return;
 
         List<Mutation> mutations = null;

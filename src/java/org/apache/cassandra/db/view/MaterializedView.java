@@ -325,6 +325,9 @@ public class MaterializedView
         if (includeAll)
             return true;
 
+        if (!cf.deletionInfo().isLive())
+            return true;
+
         for (CellName cellName : cf.getColumnNames())
         {
             if (targetSelector.selects(cellName))
