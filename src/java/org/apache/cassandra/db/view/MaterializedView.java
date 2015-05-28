@@ -278,31 +278,13 @@ public class MaterializedView
             return null;
         }
 
-        ByteBuffer[] clusteringColumns = new ByteBuffer[clusteringKeys.size()];
-
-        for (int i = 0; i < clusteringColumns.length; i++)
-        {
-            ByteBuffer column = mutationUnit.clusteringValue(clusteringKeys.get(i), MutationUnit.latest);
-            assert column != null : "Clustering Columns should never be null in a mutation";
-            clusteringColumns[i] = column;
-        }
-
         Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
         ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
-        CellNameType cellNameType = viewCfs.getComparator();
-        Composite composite;
-        if (cellNameType.isCompound())
-        {
-            CBuilder builder = cellNameType.prefixBuilder();
-            for (ByteBuffer prefix : clusteringColumns)
-                builder = builder.add(prefix);
-            composite = builder.build();
-        }
-        else
-        {
-            assert clusteringColumns.length == 1;
-            composite = cellNameType.make(clusteringColumns[0]);
-        }
+
+        Composite composite = mutationUnit.viewComposite(viewCfs.metadata.comparator,
+                                                         clusteringSelectors,
+                                                         resolver);
+
         CFRowAdder rowAdder = new RowAdder(viewCf, composite, timestamp, mutationUnit.ttl);
 
         for (ColumnDefinition def : regularColumns)

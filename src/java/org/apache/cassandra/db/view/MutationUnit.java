@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.Spliterator;
@@ -40,6 +41,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ExpiringCell;
 import org.apache.cassandra.db.composites.CBuilder;
 import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.composites.CellNameType;
 import org.apache.cassandra.db.composites.Composite;
 import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -115,6 +117,22 @@ public class MutationUnit
             return value;
         }
     };
+
+    public Composite viewComposite(CellNameType comparator, List<MaterializedViewSelector> clusteringSelectors, Resolver resolver)
+    {
+        if (comparator.isCompound())
+        {
+            CBuilder builder = comparator.prefixBuilder();
+            for (MaterializedViewSelector selector : clusteringSelectors)
+                builder.add(clusteringValue(selector.columnDefinition, resolver));
+            return builder.build();
+        }
+        else
+        {
+            assert clusteringSelectors.size() == 1;
+            return comparator.make(clusteringValue(Iterables.getOnlyElement(clusteringSelectors).columnDefinition, resolver));
+        }
+    }
 
     private interface PrivateResolver
     {
