@@ -117,15 +117,7 @@ public class MaterializedViewManager
         ColumnDefinition targetCd = baseCfs.metadata.getColumnDefinition(definition.target);
         assert targetCd != null;
 
-        Collection<ColumnDefinition> includedDefs = new ArrayList<>();
-        for (ColumnIdentifier identifier : definition.included)
-        {
-            ColumnDefinition cfDef = baseCfs.metadata.getColumnDefinition(identifier);
-            assert cfDef != null;
-            includedDefs.add(cfDef);
-        }
-
-        MaterializedView view = new MaterializedView(definition, targetCd, includedDefs, baseCfs);
+        MaterializedView view = new MaterializedView(definition, targetCd, baseCfs);
 
         viewsByName.put(definition.viewName, view);
     }

@@ -76,8 +76,6 @@ public class MaterializedView
     public final String name;
 
     private ColumnDefinition target;
-    private boolean includeAll;
-    private Collection<ColumnDefinition> included;
     private List<ColumnDefinition> clusteringKeys;
     private List<ColumnDefinition> regularColumns;
     private List<ColumnDefinition> staticColumns;
@@ -93,15 +91,12 @@ public class MaterializedView
 
     public MaterializedView(MaterializedViewDefinition definition,
                             ColumnDefinition target,
-                            Collection<ColumnDefinition> included,
                             ColumnFamilyStore baseCfs)
     {
         this.definition = definition;
         this.name = this.definition.viewName;
 
         this.target = target;
-        this.included = included;
-        this.includeAll = included.isEmpty();
         this.baseCfs = baseCfs;
 
         clusteringSelectors = new ArrayList<>();
@@ -143,21 +138,41 @@ public class MaterializedView
             }
         }
 
-        for (ColumnDefinition column: baseCfs.metadata.regularColumns())
+        if (definition.included.isEmpty())
         {
-            if (column != target && (includeAll || included.contains(column)))
+            for (ColumnDefinition column: baseCfs.metadata.regularColumns())
             {
-                regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                regularColumns.add(column);
+                if (column != target)
+                {
+                    regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
+                    regularColumns.add(column);
+                }
+            }
+
+            for (ColumnDefinition column: baseCfs.metadata.staticColumns())
+            {
+                if (column != target)
+                {
+                    staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
+                    staticColumns.add(column);
+                }
             }
         }
-
-        for (ColumnDefinition column: baseCfs.metadata.staticColumns())
+        else
         {
-            if (column != target && (includeAll || included.contains(column)))
+            for (ColumnIdentifier identifier : definition.included)
             {
-                staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                staticColumns.add(column);
+                ColumnDefinition column = baseCfs.metadata.getColumnDefinition(identifier);
+                if (column.isStatic())
+                {
+                    staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
+                    staticColumns.add(column);
+                }
+                else
+                {
+                    regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
+                    regularColumns.add(column);
+                }
             }
         }
 
@@ -175,7 +190,7 @@ public class MaterializedView
         createViewCfsAndSelectors();
 
         // If we are including all of the columns, then any non-empty column family will need to be selected
-        if (includeAll)
+        if (definition.included.isEmpty())
             return true;
 
         if (!cf.deletionInfo().isLive())
