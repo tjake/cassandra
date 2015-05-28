@@ -31,6 +31,7 @@ import org.junit.Test;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 import junit.framework.Assert;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.config.CFMetaData;
@@ -51,6 +52,46 @@ public class MaterializedViewTest extends CQLTester
     public static void startup()
     {
         requireNetwork();
+    }
+
+    @Test
+    public void testCounters() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "name text PRIMARY KEY, " +
+                    "count counter)");
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+        try
+        {
+            executeNet(protocolVersion, "CREATE MATERIALIZED VIEW " + keyspace() + ".mv_count AS SELECT * FROM %s PRIMARY KEY (count,name)");
+            Assert.fail("Should no be able to create MV on counter table");
+        }
+        catch (InvalidQueryException q)
+        {
+            //good
+        }
+    }
+
+    @Test
+    public void testStatics() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "name text, " +
+                    "key   text, " +
+                    "fixed int static, " +
+                    "value text, " +
+                    "PRIMARY KEY(name,key))");
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+
+        executeNet(protocolVersion, "CREATE MATERIALIZED VIEW " + keyspace() + ".mv_static AS SELECT * FROM %s PRIMARY KEY (fixed,name)");
+        Assert.fail("Should no be able to create MV on counter table");
+
     }
 
     @Test
@@ -564,6 +605,6 @@ public class MaterializedViewTest extends CQLTester
 
         assertRows(execute("SELECT k, textval FROM mv_udtval WHERE udtval = fromJson(?)", "{\"a\": 1, \"b\": \"6bddc89a-5644-11e4-97fc-56847afe9799\"}"),
                    row(0, "abcd"));
-        
+
     }
 }
