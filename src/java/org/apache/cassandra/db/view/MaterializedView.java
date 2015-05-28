@@ -26,11 +26,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
-import java.util.Spliterator;
-import java.util.TreeMap;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 import com.google.common.collect.Iterables;
 
@@ -45,7 +41,6 @@ import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DeletionInfo;
-import org.apache.cassandra.db.ExpiringCell;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.ReadCommand;
@@ -63,259 +58,11 @@ import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ColumnToCollectionType;
-import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedView
 {
-    // This is a class that allows comparisons based on partition key and clustering columns, and resolves existing and
-    // new mutation values
-    private static class MutationUnit
-    {
-        public static final Resolver oldValueIfUpdated = new Resolver()
-        {
-            public Cell resolve(Iterable<MUCell> cells)
-            {
-                Iterator<MUCell> iterator = cells.iterator();
-                if (!iterator.hasNext())
-                    return null;
-
-                MUCell initial = iterator.next();
-                if (initial.isNew || !iterator.hasNext())
-                    return null;
-
-                MUCell value = initial;
-                while (iterator.hasNext())
-                    value = value.reconcile(iterator.next());
-
-                return ByteBufferUtil.compareUnsigned(initial.cell.value(), value.cell.value()) != 0 ? initial.cell : null;
-            }
-        };
-
-        public static final Resolver newValueIfUpdated = new Resolver()
-        {
-            public Cell resolve(Iterable<MUCell> cells)
-            {
-                Iterator<MUCell> iterator = cells.iterator();
-                if (!iterator.hasNext())
-                    return null;
-                MUCell initial = iterator.next();
-                if (!iterator.hasNext())
-                    return initial.cell;
-
-                MUCell value = initial;
-                while (iterator.hasNext())
-                    value = value.reconcile(iterator.next());
-
-                return value.isNew && ByteBufferUtil.compareUnsigned(initial.cell.value(), value.cell.value()) != 0
-                       ? value.cell
-                       : null;
-            }
-        };
-
-        public static final Resolver earliest = new Resolver()
-        {
-            public Cell resolve(Iterable<MUCell> cells)
-            {
-                Iterator<MUCell> iterator = cells.iterator();
-                if (!iterator.hasNext())
-                    return null;
-                return iterator.next().cell;
-            }
-        };
-
-        public static final Resolver latest = new Resolver()
-        {
-            public Cell resolve(Iterable<MUCell> cells)
-            {
-                Iterator<MUCell> iterator = cells.iterator();
-                if (!iterator.hasNext())
-                    return null;
-                Cell value = iterator.next().cell;
-                while (iterator.hasNext())
-                    value = value.reconcile(iterator.next().cell);
-
-                return value;
-            }
-        };
-
-        private interface PrivateResolver
-        {
-            Cell resolve(Iterable<MUCell> cells);
-        }
-
-        private static class MUCell
-        {
-            public final Cell cell;
-            public final boolean isNew;
-
-            private MUCell(Cell cell, boolean isNew)
-            {
-                this.cell = cell;
-                this.isNew = isNew;
-            }
-
-            public MUCell reconcile(MUCell cell)
-            {
-                Cell reconciled = this.cell.reconcile(cell.cell);
-                if (reconciled == this.cell) return this;
-                else return cell;
-            }
-        }
-
-        public interface Resolver extends PrivateResolver
-        {
-        }
-
-        final ColumnFamilyStore baseCfs;
-        private final ByteBuffer partitionKey;
-        private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
-        private final Map<ColumnIdentifier, Map<CellName, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
-        public int ttl;
-
-        MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
-        {
-            this.baseCfs = baseCfs;
-            this.partitionKey = key;
-            this.clusteringColumns = clusteringColumns;
-        }
-
-        @Override
-        public boolean equals(Object o)
-        {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            MutationUnit that = (MutationUnit) o;
-
-            if (!clusteringColumns.equals(that.clusteringColumns)) return false;
-            if (!partitionKey.equals(that.partitionKey)) return false;
-
-            return true;
-        }
-
-        @Override
-        public int hashCode()
-        {
-            int result = partitionKey.hashCode();
-            result = 31 * result + clusteringColumns.hashCode();
-            return result;
-        }
-
-        public void addColumnValue(Cell cell, boolean isNew)
-        {
-            CellName cellName = cell.name();
-            ColumnIdentifier identifier = cellName.cql3ColumnName(baseCfs.metadata);
-            if (!columnValues.containsKey(identifier))
-                columnValues.put(identifier, new HashMap<>());
-            Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
-            if (!innerMap.containsKey(cellName))
-                innerMap.put(cellName, new TreeMap<>());
-            if (cell instanceof ExpiringCell)
-                ttl = Math.max(((ExpiringCell) cell).getTimeToLive(), ttl);
-            innerMap.get(cellName).put(cell.timestamp(), new MUCell(cell, isNew));
-        }
-
-        // The Definition here is actually the *base table* definition
-        public ByteBuffer clusteringValue(ColumnDefinition definition, Resolver resolver)
-        {
-            ColumnDefinition baseDefinition = definition.cfName.equals(baseCfs.name)
-                                              ? definition
-                                              : baseCfs.metadata.getColumnDefinition(definition.name);
-
-            if (baseDefinition.isPartitionKey())
-            {
-                if (baseDefinition.isOnAllComponents())
-                    return partitionKey;
-                else
-                {
-                    CompositeType keyComparator = (CompositeType) baseCfs.metadata.getKeyValidator();
-                    ByteBuffer[] components = keyComparator.split(partitionKey);
-                    return components[baseDefinition.position()];
-                }
-            }
-            else
-            {
-                ColumnIdentifier columnIdentifier = baseDefinition.name;
-
-                if (clusteringColumns.containsKey(columnIdentifier))
-                    return clusteringColumns.get(columnIdentifier);
-
-                Collection<Cell> val = values(columnIdentifier, resolver);
-                if (val != null && val.size() == 1)
-                    return Iterables.getOnlyElement(val).value();
-            }
-            return null;
-        }
-
-        public Collection<Cell> values(ColumnIdentifier identifier, Resolver resolver)
-        {
-            Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
-            if (innerMap == null)
-                return Collections.emptyList();
-
-            Collection<Cell> value = new ArrayList<>();
-            for (SortedMap<Long, MUCell> cells: innerMap.values())
-            {
-                Cell cell = resolver.resolve(cells.values());
-                if (cell != null)
-                    value.add(cell);
-            }
-            return value;
-        }
-    }
-
-    private static class MutationUnitSet implements Iterable<MutationUnit>
-    {
-        private final ColumnFamilyStore baseCfs;
-        private final Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
-
-        MutationUnitSet(ColumnFamilyStore baseCfs)
-        {
-            this.baseCfs = baseCfs;
-        }
-
-        MutationUnitSet(MutationUnit single)
-        {
-            this(single.baseCfs);
-            mutationUnits.put(single, single);
-        }
-
-        public Iterator<MutationUnit> iterator()
-        {
-            return mutationUnits.values().iterator();
-        }
-
-        public void forEach(Consumer<? super MutationUnit> action)
-        {
-            mutationUnits.values().forEach(action);
-        }
-
-        public Spliterator<MutationUnit> spliterator()
-        {
-            return mutationUnits.values().spliterator();
-        }
-
-        public void addUnit(ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns, Cell cell, boolean isNew)
-        {
-            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
-            if (mutationUnits.containsKey(mutationUnit))
-            {
-                mutationUnit = mutationUnits.get(mutationUnit);
-            }
-            else
-            {
-                mutationUnits.put(mutationUnit, mutationUnit);
-            }
-            mutationUnit.addColumnValue(cell, isNew);
-        }
-
-        public int size()
-        {
-            return mutationUnits.size();
-        }
-    }
 
     private static class RowAdder extends CFRowAdder
     {
@@ -619,7 +366,7 @@ public class MaterializedView
 
             //Fetch missing info
             if (!columnsNeeded.isEmpty())
-                query(key, DeletionInfo.live(), new MutationUnitSet(mu), cl);
+                query(key, DeletionInfo.live(), new MutationUnit.Set(mu), cl);
 
 
             //Build modified RT mutation
@@ -658,7 +405,7 @@ public class MaterializedView
         if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
         {
 
-            MutationUnitSet mutationUnits = new MutationUnitSet(baseCfs);
+            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
             List<Mutation> mutations = new ArrayList<>();
 
             IDiskAtomFilter filter;
@@ -740,32 +487,12 @@ public class MaterializedView
         return null;
     }
 
-    private ColumnSlice getColumnSlice(MutationUnit mutationUnit)
-    {
-        CBuilder builder = baseCfs.getComparator().prefixBuilder();
-        CFMetaData cfmd = baseCfs.metadata;
-        ByteBuffer[] buffers = new ByteBuffer[mutationUnit.clusteringColumns.size()];
-        for (Map.Entry<ColumnIdentifier, ByteBuffer> buffer: mutationUnit.clusteringColumns.entrySet())
-        {
-            buffers[cfmd.getColumnDefinition(buffer.getKey()).position()] = buffer.getValue();
-        }
-
-        for (ByteBuffer byteBuffer: buffers)
-            builder = builder.add(byteBuffer);
-
-        Composite built = builder.build();
-        return new ColumnSlice(built.start(), built.end());
-    }
-
-    private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnitSet mutationUnits, ConsistencyLevel consistency)
+    private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnit.Set mutationUnits, ConsistencyLevel consistency)
     {
         ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
         Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
         for (int i = 0; i < slices.length; i++)
-        {
-            MutationUnit next = mutationUnitIterator.next();
-            slices[i] = getColumnSlice(next);
-        }
+            slices[i] = mutationUnitIterator.next().getBaseColumnSlice();
 
         SliceQueryFilter queryFilter = new SliceQueryFilter(slices, false, 100);
 
@@ -798,9 +525,9 @@ public class MaterializedView
         }
     }
 
-    private MutationUnitSet separateMutationUnits(ByteBuffer key, ColumnFamily cf)
+    private MutationUnit.Set separateMutationUnits(ByteBuffer key, ColumnFamily cf)
     {
-        MutationUnitSet mutationUnits = new MutationUnitSet(baseCfs);
+        MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
 
         // For each cell name, we need to grab the clustering columns
         for (Cell cell: cf.getSortedColumns())
@@ -826,7 +553,7 @@ public class MaterializedView
             return null;
         }
 
-        MutationUnitSet mutationUnits = separateMutationUnits(key, cf);
+        MutationUnit.Set mutationUnits = separateMutationUnits(key, cf);
 
         // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
