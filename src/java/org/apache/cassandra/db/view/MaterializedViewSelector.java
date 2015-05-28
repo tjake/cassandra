@@ -20,6 +20,7 @@ package org.apache.cassandra.db.view;
 import java.nio.ByteBuffer;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
@@ -33,29 +34,31 @@ public abstract class MaterializedViewSelector
         this.columnDefinition = columnDefinition;
     }
 
-    public static MaterializedViewSelector create(ColumnFamilyStore baseCfs, ColumnDefinition cfDef)
+    public static MaterializedViewSelector create(ColumnFamilyStore baseCfs, ColumnIdentifier identifier)
     {
-        if (cfDef.type.isCollection() && cfDef.type.isMultiCell())
+        ColumnDefinition definition = baseCfs.metadata.getColumnDefinition(identifier);
+
+        if (definition.type.isCollection() && definition.type.isMultiCell())
         {
-            switch (((CollectionType)cfDef.type).kind)
+            switch (((CollectionType)definition.type).kind)
             {
                 case LIST:
-                    return new MaterializedViewSelectorOnList(cfDef);
+                    return new MaterializedViewSelectorOnList(definition);
                 case SET:
-                    return new MaterializedViewSelectorOnSet(cfDef);
+                    return new MaterializedViewSelectorOnSet(definition);
                 case MAP:
-                    return new MaterializedViewSelectorOnMap(cfDef);
+                    return new MaterializedViewSelectorOnMap(definition);
             }
         }
 
-        switch (cfDef.kind)
+        switch (definition.kind)
         {
             case CLUSTERING_COLUMN:
-                return new MaterializedViewSelectorOnClusteringColumn(cfDef);
+                return new MaterializedViewSelectorOnClusteringColumn(definition);
             case REGULAR:
-                return new MaterializedViewSelectorOnRegularColumn(baseCfs, cfDef);
+                return new MaterializedViewSelectorOnRegularColumn(baseCfs, definition);
             case PARTITION_KEY:
-                return new MaterializedViewSelectorOnPartitionKey(baseCfs, cfDef);
+                return new MaterializedViewSelectorOnPartitionKey(baseCfs, definition);
         }
         throw new AssertionError();
     }

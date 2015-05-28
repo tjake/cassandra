@@ -124,13 +124,13 @@ public class MutationUnit
         {
             CBuilder builder = comparator.prefixBuilder();
             for (MaterializedViewSelector selector : clusteringSelectors)
-                builder.add(clusteringValue(selector.columnDefinition, resolver));
+                builder.add(clusteringValue(selector, resolver));
             return builder.build();
         }
         else
         {
             assert clusteringSelectors.size() == 1;
-            return comparator.make(clusteringValue(Iterables.getOnlyElement(clusteringSelectors).columnDefinition, resolver));
+            return comparator.make(clusteringValue(Iterables.getOnlyElement(clusteringSelectors), resolver));
         }
     }
 
@@ -212,8 +212,9 @@ public class MutationUnit
     }
 
     // The Definition here is actually the *base table* definition
-    public ByteBuffer clusteringValue(ColumnDefinition definition, Resolver resolver)
+    public ByteBuffer clusteringValue(MaterializedViewSelector selector, Resolver resolver)
     {
+        ColumnDefinition definition = selector.columnDefinition;
         ColumnDefinition baseDefinition = definition.cfName.equals(baseCfs.name)
                                           ? definition
                                           : baseCfs.metadata.getColumnDefinition(definition.name);
