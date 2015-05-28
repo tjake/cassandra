@@ -35,7 +35,7 @@ public class MaterializedViewSelectorOnRegularColumn extends MaterializedViewSel
         this.baseCfs = baseCfs;
     }
 
-    public boolean canGenerateTombstones()
+    public boolean isBasePrimaryKey()
     {
         return true;
     }
@@ -46,9 +46,4 @@ public class MaterializedViewSelectorOnRegularColumn extends MaterializedViewSel
         return name.size() > columnDefinition.position()
                 && comp.compare(name.get(columnDefinition.position()), columnDefinition.name.bytes) == 0;
     }
-
-    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        return cf.getColumn(cellName).value();
-    }
-
 }

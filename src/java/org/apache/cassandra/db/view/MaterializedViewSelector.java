@@ -64,17 +64,9 @@ public abstract class MaterializedViewSelector
     }
 
     /**
-     * Depending on whether this column can overwrite the values of a different
-     * @return True if a check for tombstones needs to be done, false otherwise
+     * @return True if this is part of the base's primary key, false otherwise.
      */
-    public abstract boolean canGenerateTombstones();
+    public abstract boolean isBasePrimaryKey();
 
     public abstract boolean selects(CellName cellName);
-
-    public abstract ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf);
-
-    public ByteBuffer value(ByteBuffer key)
-    {
-        throw new AssertionError("Cannot create a value from partition key");
-    }
 }

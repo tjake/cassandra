@@ -30,7 +30,7 @@ public class MaterializedViewSelectorOnSet extends MaterializedViewSelector
         super(columnDefinition);
     }
 
-    public boolean canGenerateTombstones()
+    public boolean isBasePrimaryKey()
     {
         return false;
     }
@@ -39,9 +39,4 @@ public class MaterializedViewSelectorOnSet extends MaterializedViewSelector
     {
         return false;
     }
-
-    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        return null;
-    }
-
 }

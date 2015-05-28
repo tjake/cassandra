@@ -75,35 +75,24 @@ public class MaterializedView
     private final MaterializedViewDefinition definition;
     public final String name;
 
-    private ColumnDefinition target;
-    private List<ColumnDefinition> regularColumns;
-    private List<ColumnDefinition> staticColumns;
-
     private MaterializedViewSelector targetSelector;
-    private List<MaterializedViewSelector> clusteringSelectors;
-    private List<MaterializedViewSelector> regularSelectors;
-    private List<MaterializedViewSelector> staticSelectors;
+    private final List<MaterializedViewSelector> clusteringSelectors;
+    private final List<MaterializedViewSelector> includedSelectors;
 
     ColumnFamilyStore baseCfs;
     public ColumnFamilyStore viewCfs;
     MaterializedViewBuilder builder;
 
     public MaterializedView(MaterializedViewDefinition definition,
-                            ColumnDefinition target,
                             ColumnFamilyStore baseCfs)
     {
         this.definition = definition;
         this.name = this.definition.viewName;
 
-        this.target = target;
         this.baseCfs = baseCfs;
 
         clusteringSelectors = new ArrayList<>();
-        regularSelectors = new ArrayList<>();
-        staticSelectors = new ArrayList<>();
-
-        regularColumns = new ArrayList<>();
-        staticColumns = new ArrayList<>();
+        includedSelectors = new ArrayList<>();
     }
 
     private synchronized void createViewCfsAndSelectors()
@@ -139,37 +128,14 @@ public class MaterializedView
             {
                 ColumnIdentifier column = definition.name;
                 if (column != target)
-                {
-                    regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                    regularColumns.add(definition);
-                }
-            }
-
-            for (ColumnDefinition definition: baseCfs.metadata.staticColumns())
-            {
-                ColumnIdentifier column = definition.name;
-                if (column != target)
-                {
-                    staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                    staticColumns.add(definition);
-                }
+                    includedSelectors.add(MaterializedViewSelector.create(baseCfs, column));
             }
         }
         else
         {
             for (ColumnIdentifier column : definition.included)
             {
-                ColumnDefinition definition = baseCfs.metadata.getColumnDefinition(column);
-                if (definition.isStatic())
-                {
-                    staticSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                    staticColumns.add(definition);
-                }
-                else
-                {
-                    regularSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-                    regularColumns.add(definition);
-                }
+                includedSelectors.add(MaterializedViewSelector.create(baseCfs, column));
             }
         }
 
@@ -197,23 +163,13 @@ public class MaterializedView
         {
             if (targetSelector.selects(cellName))
                 return true;
-            for (MaterializedViewSelector column: Iterables.concat(clusteringSelectors, regularSelectors, staticSelectors))
+            for (MaterializedViewSelector column: Iterables.concat(clusteringSelectors, includedSelectors))
             {
                 if (column.selects(cellName))
                     return true;
             }
         }
         return false;
-    }
-
-    private boolean modifiesTarget(MutationUnit mutationUnit)
-    {
-        // these will always be specified
-        if (target.isPrimaryKeyColumn() || target.isClusteringColumn())
-            return true;
-
-        // Otherwise, see if the *new* values are updated
-        return !mutationUnit.values(target.name, MutationUnit.oldValueIfUpdated).isEmpty();
     }
 
     private Mutation createTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp)
@@ -244,11 +200,11 @@ public class MaterializedView
     private Collection<Mutation> createTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
-        if (!targetSelector.canGenerateTombstones())
+        if (!targetSelector.isBasePrimaryKey())
             return null;
 
         // Make sure that target is actually modified
-        if (!modifiesTarget(mutationUnit))
+        if (mutationUnit.values(targetSelector, MutationUnit.oldValueIfUpdated).isEmpty())
             return null;
 
         Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(targetSelector, MutationUnit.oldValueIfUpdated), timestamp);
@@ -260,13 +216,13 @@ public class MaterializedView
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
         ByteBuffer partitionKey = mutationUnit.clusteringValue(targetSelector, MutationUnit.latest);
-        MutationUnit.Resolver resolver = tombstonesGenerated ? MutationUnit.latest : MutationUnit.newValueIfUpdated;
-
         if (partitionKey == null)
         {
             // Not having a partition key means we aren't updating anything
             return null;
         }
+
+        MutationUnit.Resolver resolver = tombstonesGenerated ? MutationUnit.latest : MutationUnit.newValueIfUpdated;
 
         Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
         ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
@@ -277,30 +233,16 @@ public class MaterializedView
 
         CFRowAdder rowAdder = new RowAdder(viewCf, composite, timestamp, mutationUnit.ttl);
 
-        for (ColumnDefinition def : regularColumns)
+        for (MaterializedViewSelector selector: includedSelectors)
         {
-            Collection<Cell> cells = mutationUnit.values(def.name, resolver);
+            Collection<Cell> cells = mutationUnit.values(selector, resolver);
 
             for (Cell cell : cells)
             {
                 if (cell.name().isCollectionCell())
-                    rowAdder.addCollectionEntry(def.name.toString(), cell.name().collectionElement(), cell.isLive() ? cell.value() : null);
+                    rowAdder.addCollectionEntry(selector.columnDefinition.name.toString(), cell.name().collectionElement(), cell.isLive() ? cell.value() : null);
                 else
-                    rowAdder.add(def.name.toString(), cell.isLive() ? cell.value() : null);
-            }
-        }
-
-        for (int i = 0; i < staticColumns.size(); i++)
-        {
-            ColumnDefinition def = this.staticColumns.get(i);
-            Collection<Cell> cells = mutationUnit.values(def.name, resolver);
-
-            for (Cell cell: cells)
-            {
-                if (cell.name().isCollectionCell())
-                    rowAdder.addCollectionEntry(def.name.toString(), cell.name().collectionElement(), cell.value());
-                else
-                    rowAdder.add(def.name.toString(), cell.value());
+                    rowAdder.add(selector.columnDefinition.name.toString(), cell.isLive() ? cell.value() : null);
             }
         }
 
@@ -334,26 +276,23 @@ public class MaterializedView
             }
 
 
-            List<ColumnDefinition> columnsNeeded = new ArrayList<>(clusteringSize);
+            boolean queryNeeded = false;
             for (MaterializedViewSelector selector : clusteringSelectors)
             {
                 ColumnDefinition definition = selector.columnDefinition;
                 if (baseCfs.metadata.getColumnDefinition(definition.name).isPartitionKey())
                     continue;
 
-                ByteBuffer b = clusterings.get(definition.name);
-                if (b == null)
-                    columnsNeeded.add(definition);
+                queryNeeded = queryNeeded || !clusterings.containsKey(definition.name);
             }
 
             MutationUnit mu = new MutationUnit(baseCfs, key, clusterings);
 
             //Incase we need a diff partition key
-            if (clusterings.get(target) == null)
-                columnsNeeded.add(target);
+            queryNeeded = queryNeeded || !clusterings.containsKey(targetSelector.columnDefinition.name);
 
             //Fetch missing info
-            if (!columnsNeeded.isEmpty())
+            if (queryNeeded)
                 query(key, DeletionInfo.live(), new MutationUnit.Set(mu), cl);
 
 
@@ -397,7 +336,7 @@ public class MaterializedView
             long timestamp;
             if (deletionInfo.hasRanges())
             {
-                List<ColumnSlice> slices = new ArrayList<>(deletionInfo.rangeCount());
+                ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
                 Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
                 int i = 0;
                 timestamp = Long.MIN_VALUE;
@@ -412,15 +351,15 @@ public class MaterializedView
                     }
                     else
                     {
-                        slices.add(new ColumnSlice(tombstone.min, tombstone.max));
+                        slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
                         timestamp = Math.max(timestamp, tombstone.timestamp());
                     }
                 }
 
-                if (slices.isEmpty())
+                if (i == 0)
                     return mutations;
 
-                filter = new SliceQueryFilter(slices.toArray(new ColumnSlice[]{}), false, 100);
+                filter = new SliceQueryFilter(slices, false, 100);
             }
             else
             {

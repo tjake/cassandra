@@ -237,16 +237,16 @@ public class MutationUnit
             if (clusteringColumns.containsKey(columnIdentifier))
                 return clusteringColumns.get(columnIdentifier);
 
-            Collection<Cell> val = values(columnIdentifier, resolver);
+            Collection<Cell> val = values(selector, resolver);
             if (val != null && val.size() == 1)
                 return Iterables.getOnlyElement(val).value();
         }
         return null;
     }
 
-    public Collection<Cell> values(ColumnIdentifier identifier, Resolver resolver)
+    public Collection<Cell> values(MaterializedViewSelector selector, Resolver resolver)
     {
-        Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
+        Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(selector.columnDefinition.name);
         if (innerMap == null)
             return Collections.emptyList();
 

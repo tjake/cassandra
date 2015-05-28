@@ -35,7 +35,7 @@ public class MaterializedViewSelectorOnPartitionKey extends MaterializedViewSele
         this.baseCfs = baseCfs;
     }
 
-    public boolean canGenerateTombstones()
+    public boolean isBasePrimaryKey()
     {
         return false;
     }
@@ -43,19 +43,5 @@ public class MaterializedViewSelectorOnPartitionKey extends MaterializedViewSele
     public boolean selects(CellName cellName)
     {
         return false;
-    }
-
-    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        throw new AssertionError("PartitionKey cannot produce value from a CellName");
-    }
-
-    public ByteBuffer value(ByteBuffer key)
-    {
-        if (columnDefinition.isOnAllComponents())
-            return key;
-
-        CompositeType keyComparator = (CompositeType)baseCfs.metadata.getKeyValidator();
-        ByteBuffer[] components = keyComparator.split(key);
-        return components[columnDefinition.position()];
     }
 }

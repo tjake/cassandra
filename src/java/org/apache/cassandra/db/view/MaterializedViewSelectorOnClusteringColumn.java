@@ -30,7 +30,7 @@ public class MaterializedViewSelectorOnClusteringColumn extends MaterializedView
         super(columnDefinition);
     }
 
-    public boolean canGenerateTombstones()
+    public boolean isBasePrimaryKey()
     {
         return false;
     }
@@ -39,9 +39,4 @@ public class MaterializedViewSelectorOnClusteringColumn extends MaterializedView
     {
         return true;
     }
-
-    public ByteBuffer value(CellName cellName, ByteBuffer key, ColumnFamily cf) {
-        return cellName.get(columnDefinition.position());
-    }
-
 }
