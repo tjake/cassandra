@@ -128,7 +128,7 @@ public class RecoveryManagerTest
         for (int i = 0; i < 10; ++i)
         {
             new CounterMutation(new RowUpdateBuilder(cfs.metadata, 1L, 0, "key")
-                .clustering("cc").add("val", 1L)
+                .clustering("cc").add("val", CounterContext.instance().createLocal(1L))
                 .build(), ConsistencyLevel.ALL).apply();
         }
 
@@ -136,7 +136,6 @@ public class RecoveryManagerTest
 
         int replayed = CommitLog.instance.resetUnsafe(false);
 
-        // TODO: Failing. DeSerialization for counter is failing on replay.
         ColumnDefinition counterCol = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
         try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
              .addClustering("cc")
@@ -163,7 +162,7 @@ public class RecoveryManagerTest
                 .clustering("cc")
                 .add("val", Integer.toString(i))
                 .build()
-                .applyUnsafe();
+                .apply();
         }
 
         // Sanity check row count prior to clear and replay
@@ -177,7 +176,6 @@ public class RecoveryManagerTest
         keyspace1.getColumnFamilyStore("Standard1").clearUnsafe();
         CommitLog.instance.resetUnsafe(false);
 
-        // TODO: Failing. Nothing's getting replayed.
         try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);
@@ -208,7 +206,7 @@ public class RecoveryManagerTest
                 .clustering("cc")
                 .add("val", Integer.toString(i))
                 .build()
-                .applyUnsafe();
+                .apply();
         }
 
         // Sanity check row count prior to clear and replay
@@ -222,7 +220,6 @@ public class RecoveryManagerTest
         keyspace1.getColumnFamilyStore("Standard1").clearUnsafe();
         CommitLog.instance.resetUnsafe(false);
 
-        // TODO: Fix this. Nothing's getting replayed
         try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeLocally())
         {
             rowCount = Iterators.size(iter);

@@ -320,7 +320,7 @@ public class BatchStatement implements CQLStatement
 
     private void verifyBatchType(Iterable<PartitionUpdate> updates)
     {
-        if (type != Type.LOGGED && !Iterables.isEmpty(updates))
+        if (type != Type.LOGGED && Iterables.size(updates) > 1)
         {
             Set<DecoratedKey> keySet = new HashSet<>();
             Set<String> tableNames = new HashSet<>();

@@ -113,7 +113,7 @@ public abstract class AbstractCell implements Cell
             return String.format("[%s=%d ts=%d]", column().name, CounterContext.instance().total(value()), livenessInfo().timestamp());
 
         AbstractType<?> type = column().type;
-        if (type instanceof CollectionType)
+        if (type instanceof CollectionType && type.isMultiCell())
         {
             CollectionType ct = (CollectionType)type;
             return String.format("[%s[%s]=%s info=%s]",

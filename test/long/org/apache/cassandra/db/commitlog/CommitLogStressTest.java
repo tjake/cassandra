@@ -46,6 +46,7 @@ import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
+import org.apache.cassandra.UpdateBuilder;
 import org.apache.cassandra.config.Config.CommitLogSync;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.ParameterizedClass;
@@ -56,6 +57,7 @@ import org.apache.cassandra.db.rows.Cell;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.SerializationHelper;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.io.util.FastByteArrayInputStream;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -374,20 +376,18 @@ public class CommitLogStressTest
                     rl.acquire();
                 ByteBuffer key = randomBytes(16, tlr);
 
-                RowUpdateBuilder builder = new RowUpdateBuilder(Schema.instance.getCFMetaData("Keyspace1", "Standard1"), FBUtilities.timestampMicros(), Util.dk(key));
-
-                Mutation mutation = null;
+                UpdateBuilder builder = UpdateBuilder.create(Schema.instance.getCFMetaData("Keyspace1", "Standard1"), Util.dk(key));
                 for (int ii = 0; ii < numCells; ii++)
                 {
                     int sz = randomSize ? tlr.nextInt(cellSize) : cellSize;
                     ByteBuffer bytes = randomBytes(sz, tlr);
-                    mutation = builder.clustering("name" + ii).add("val", bytes).build();
+                    builder.newRow("name" + ii).add("val", bytes);
                     hash = hash(hash, bytes);
                     ++cells;
                     dataSize += sz;
                 }
 
-                rp = commitLog.add(mutation);
+                rp = commitLog.add(new Mutation(builder.build()));
                 counter.incrementAndGet();
             }
         }
@@ -438,17 +438,14 @@ public class CommitLogStressTest
 
                 while (rowIterator.hasNext())
                 {
-                    Iterator<Cell> cellIterator = rowIterator.next().iterator();
+                    Row row = rowIterator.next();
+                    if (!(UTF8Type.instance.compose(row.clustering().get(0)).startsWith("name")))
+                        continue;
 
-                    while (cellIterator.hasNext())
+                    for (Cell cell : row)
                     {
-                        Cell c = cellIterator.next();
-
-                        if (new String(c.column().name.bytes.array(), StandardCharsets.UTF_8).startsWith("name"))
-                        {
-                            hash = hash(hash, c.value());
-                            ++cells;
-                        }
+                        hash = hash(hash, cell.value());
+                        ++cells;
                     }
                 }
             }

@@ -31,11 +31,13 @@ import org.junit.Test;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.rows.SliceableUnfilteredRowIterator;
 import org.apache.cassandra.db.filter.ColumnsSelection;
+import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -68,10 +70,17 @@ public class LegacySSTableTest
     public static void defineSchema() throws ConfigurationException
     {
         SchemaLoader.prepareServer();
+
+        CFMetaData metadata = CFMetaData.Builder.createDense(KSNAME, CFNAME, false, false)
+                                                .addPartitionKey("key", BytesType.instance)
+                                                .addClusteringColumn("column", BytesType.instance)
+                                                .addRegularColumn("value", BytesType.instance)
+                                                .build();
+
         SchemaLoader.createKeyspace(KSNAME,
                                     SimpleStrategy.class,
                                     KSMetaData.optsWithRF(1),
-                                    SchemaLoader.standardCFMD(KSNAME, CFNAME));
+                                    metadata);
         beforeClass();
     }
 
@@ -185,7 +194,7 @@ public class LegacySSTableTest
 
                 ByteBuffer key = bytes(keystring);
 
-                SliceableUnfilteredRowIterator iter = reader.iterator(Util.dk(key), ColumnsSelection.builder().add(cfs.metadata.getColumnDefinition(bytes("name"))).build(), false, FBUtilities.nowInSeconds(), false);
+                SliceableUnfilteredRowIterator iter = reader.iterator(Util.dk(key), ColumnsSelection.withoutSubselection(cfs.metadata.partitionColumns()), false, FBUtilities.nowInSeconds(), false);
 
                 // check not deleted (CASSANDRA-6527)
                 assert iter.partitionLevelDeletion().equals(DeletionInfo.live());
