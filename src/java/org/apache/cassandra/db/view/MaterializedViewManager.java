@@ -156,8 +156,24 @@ public class MaterializedViewManager
     public static Lock acquireLockFor(ByteBuffer key)
     {
         Lock lock = LOCKS.get(key);
-        lock.lock();
-        return lock;
+        try
+        {
+            long timeout = TimeUnit.NANOSECONDS.convert(DatabaseDescriptor.getWriteRpcTimeout(), TimeUnit.MILLISECONDS);
+            long startTime = System.nanoTime();
+            while (!lock.tryLock(1, TimeUnit.MILLISECONDS))
+            {
+                if (System.nanoTime() - startTime > timeout)
+                {
+                    throw new InterruptedException();
+                }
+            }
+            return lock;
+        }
+        catch (InterruptedException e)
+        {
+            logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(key));
+            throw new InvalidRequestException("Could not obtain lock for " + ByteBufferUtil.bytesToHex(key));
+        }
     }
 
     public static boolean touchesSelectedColumn(Collection<? extends IMutation> mutations)
