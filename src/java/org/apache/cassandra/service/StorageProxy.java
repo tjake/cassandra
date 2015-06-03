@@ -633,45 +633,55 @@ public class StorageProxy implements StorageProxyMBean
      *
      * @param mutations the mutations to be applied across the replicas
      */
-    public static void mutateGI(ByteBuffer dataKey, Collection<? extends IMutation> mutations)
+    public static void mutateMV(ByteBuffer dataKey, Collection<Mutation> mutations)
     throws UnavailableException, OverloadedException, WriteTimeoutException
     {
         Tracing.trace("Determining replicas for mutation");
         final String localDataCenter = DatabaseDescriptor.getEndpointSnitch().getDatacenter(FBUtilities.getBroadcastAddress());
 
         long startTime = System.nanoTime();
-        List<AbstractWriteResponseHandler> responseHandlers = new ArrayList<>(mutations.size());
+        List<WriteResponseHandlerWrapper> wrappers = new ArrayList<WriteResponseHandlerWrapper>(mutations.size());
 
         try
         {
             Token dataToken = StorageService.getPartitioner().getToken(dataKey);
 
-            for (IMutation mutation : mutations)
-            {
-                assert !(mutation instanceof CounterMutation) : "mutateGI should not be called with CounterMutations";
-                WriteType wt = mutations.size() <= 1 ? WriteType.SIMPLE : WriteType.UNLOGGED_BATCH;
-                String keyspaceName = mutation.getKeyspaceName();
-                AbstractReplicationStrategy rs = Keyspace.open(keyspaceName).getReplicationStrategy();
+            ConsistencyLevel consistencyLevel = ConsistencyLevel.ONE;
 
+            final Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, consistencyLevel);
+            final UUID batchUUID = UUIDGen.getTimeUUID();
+            BatchlogResponseHandler.BatchlogCleanup cleanup = new BatchlogResponseHandler.BatchlogCleanup(mutations.size(),
+                                                                                                          new BatchlogResponseHandler.BatchlogCleanupCallback()
+                                                                                                          {
+                                                                                                              public void invoke()
+                                                                                                              {
+                                                                                                                  asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
+                                                                                                              }
+                                                                                                          });
+
+            // add a handler for each mutation - includes checking availability, but doesn't initiate any writes, yet
+            for (Mutation mutation : mutations)
+            {
+                String keyspaceName = mutation.getKeyspaceName();
                 Token tk = StorageService.getPartitioner().getToken(mutation.key());
                 List<InetAddress> naturalEndpoints = Lists.newArrayList(MaterializedViewUtils.getIndexNaturalEndpoint(keyspaceName, dataToken, tk));
-                Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
 
-                AbstractWriteResponseHandler responseHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, ConsistencyLevel.ONE, null, wt);
-
-                // exit early if we can't fulfill the CL at this time
-                responseHandler.assureSufficientLiveNodes();
-
-                // Consistency Level doesn't matter
-                standardWritePerformer.apply(mutation, Iterables.concat(naturalEndpoints, pendingEndpoints), responseHandler, localDataCenter, ConsistencyLevel.ONE);
-                responseHandlers.add(responseHandler);
+                WriteResponseHandlerWrapper wrapper = wrapBatchResponseHandler(mutation,
+                                                                               consistencyLevel,
+                                                                               consistencyLevel,
+                                                                               naturalEndpoints,
+                                                                               WriteType.BATCH,
+                                                                               cleanup);
+                // exit early if we can't fulfill the CL at this time.
+                wrapper.handler.assureSufficientLiveNodes();
+                wrappers.add(wrapper);
             }
 
-            // wait for writes.  throws TimeoutException if necessary
-            for (AbstractWriteResponseHandler responseHandler : responseHandlers)
-            {
-                responseHandler.get();
-            }
+            // write to the batchlog
+            syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
+
+            // now actually perform the writes and wait for them to complete
+            syncWriteBatchedMutations(wrappers, localDataCenter);
         }
         catch (WriteTimeoutException ex)
         {
@@ -925,6 +935,24 @@ public class StorageProxy implements StorageProxyMBean
         String keyspaceName = mutation.getKeyspaceName();
         Token tk = StorageService.getPartitioner().getToken(mutation.key());
         List<InetAddress> naturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, tk);
+        Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
+        AbstractWriteResponseHandler<IMutation> writeHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, consistency_level, null, writeType);
+        BatchlogResponseHandler<IMutation> batchHandler = new BatchlogResponseHandler<>(writeHandler, batchConsistencyLevel.blockFor(keyspace), cleanup);
+        return new WriteResponseHandlerWrapper(batchHandler, mutation);
+    }
+
+    // same as above except does not initiate writes (but does perform availability checks).
+    private static WriteResponseHandlerWrapper wrapBatchResponseHandler(Mutation mutation,
+                                                                        ConsistencyLevel consistency_level,
+                                                                        ConsistencyLevel batchConsistencyLevel,
+                                                                        List<InetAddress> naturalEndpoints,
+                                                                        WriteType writeType,
+                                                                        BatchlogResponseHandler.BatchlogCleanup cleanup)
+    {
+        Keyspace keyspace = Keyspace.open(mutation.getKeyspaceName());
+        AbstractReplicationStrategy rs = keyspace.getReplicationStrategy();
+        String keyspaceName = mutation.getKeyspaceName();
+        Token tk = StorageService.getPartitioner().getToken(mutation.key());
         Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
         AbstractWriteResponseHandler<IMutation> writeHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, consistency_level, null, writeType);
         BatchlogResponseHandler<IMutation> batchHandler = new BatchlogResponseHandler<>(writeHandler, batchConsistencyLevel.blockFor(keyspace), cleanup);

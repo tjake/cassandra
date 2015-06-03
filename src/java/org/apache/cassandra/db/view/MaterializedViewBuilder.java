@@ -78,7 +78,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
                 {
                     try
                     {
-                        StorageProxy.mutateGI(key.getKey(), mutations);
+                        StorageProxy.mutateMV(key.getKey(), mutations);
                         break;
                     }
                     catch (WriteTimeoutException ex)

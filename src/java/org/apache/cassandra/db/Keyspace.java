@@ -37,11 +37,15 @@ import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.exceptions.OverloadedException;
+import org.apache.cassandra.exceptions.UnavailableException;
+import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.metrics.KeyspaceMetrics;
 
@@ -396,11 +400,22 @@ public class Keyspace
                 Lock lock = null;
                 try
                 {
-                    if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
+                    try
                     {
-                        Tracing.trace("Create materialized view mutations from replica");
-                        lock = cfs.materializedViewManager.acquireLockFor(mutation.key());
-                        cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
+                        if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
+                        {
+                            Tracing.trace("Create materialized view mutations from replica");
+                            lock = cfs.materializedViewManager.acquireLockFor(mutation.key());
+                            cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
+                        }
+                    }
+                    catch (UnavailableException|WriteTimeoutException|OverloadedException e)
+                    {
+                        //
+                    }
+                    catch (Exception e)
+                    {
+                        JVMStabilityInspector.inspectThrowable(e);
                     }
 
                     Tracing.trace("Adding to {} memtable", cf.metadata().cfName);
