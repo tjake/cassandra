@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db.view;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,9 +42,11 @@ import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DeletionInfo;
+import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.ReadCommand;
+import org.apache.cassandra.db.ReadResponse;
 import org.apache.cassandra.db.Row;
 import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
 import org.apache.cassandra.db.compaction.CompactionManager;
@@ -58,8 +61,12 @@ import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ColumnToCollectionType;
+import org.apache.cassandra.exceptions.ReadFailureException;
+import org.apache.cassandra.service.AbstractReadExecutor;
+import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.FBUtilities;
 
 public class MaterializedView
 {
@@ -290,7 +297,16 @@ public class MaterializedView
 
             //Fetch missing info
             if (queryNeeded)
-                query(key, DeletionInfo.live(), new MutationUnit.Set(mu, clusteringSelectors), cl);
+            {
+                try
+                {
+                    query(key, DeletionInfo.live(), new MutationUnit.Set(mu, clusteringSelectors));
+                }
+                catch (DigestMismatchException dme)
+                {
+                    throw new ReadFailureException(ConsistencyLevel.ONE, 0, 1, 1, false);
+                }
+            }
 
 
             //Build modified RT mutation
@@ -400,7 +416,7 @@ public class MaterializedView
         return null;
     }
 
-    private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnit.Set mutationUnits, ConsistencyLevel consistency)
+    private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnit.Set mutationUnits) throws DigestMismatchException
     {
         ColumnSlice[] slices = new ColumnSlice[mutationUnits.size()];
         Iterator<MutationUnit> mutationUnitIterator = mutationUnits.iterator();
@@ -409,26 +425,29 @@ public class MaterializedView
 
         SliceQueryFilter queryFilter = new SliceQueryFilter(slices, false, 100);
 
-        List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
-                                                                                        key,
-                                                                                        baseCfs.metadata.cfName,
-                                                                                        Long.MAX_VALUE,
-                                                                                        queryFilter)), consistency);
+        String ksName = baseCfs.metadata.ksName;
+        ReadCommand command = ReadCommand.create(ksName,
+                                                 key,
+                                                 baseCfs.metadata.cfName,
+                                                 Long.MAX_VALUE,
+                                                 queryFilter);
+        List<InetAddress> targets = Collections.singletonList(FBUtilities.getLocalAddress());
+        AbstractReadExecutor executor = new AbstractReadExecutor.NeverSpeculatingReadExecutor(command, ConsistencyLevel.ONE, targets);
+        executor.executeAsync();
 
-        for (Row row: rows)
+        Row row = executor.get();
+
+        ColumnFamily cf = row.cf;
+
+        if (cf == null)
+            return;
+
+        for (Cell cell : cf.getSortedColumns())
         {
-            ColumnFamily cf = row.cf;
-
-            if (cf == null)
+            if (deletionInfo.isDeleted(cell))
                 continue;
 
-            for (Cell cell : cf.getSortedColumns())
-            {
-                if (deletionInfo.isDeleted(cell))
-                    continue;
-
-                mutationUnits.addUnit(key, cell, false);
-            }
+            mutationUnits.addUnit(key, cell, false);
         }
     }
 
@@ -458,7 +477,16 @@ public class MaterializedView
 
         // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
-            query(key, cf.deletionInfo(), mutationUnits, consistency);
+        {
+            try
+            {
+                query(key, cf.deletionInfo(), mutationUnits);
+            }
+            catch (DigestMismatchException dme)
+            {
+                throw new ReadFailureException(ConsistencyLevel.ONE, 0, 1, 1, false);
+            }
+        }
 
         Collection<Mutation> mutations = null;
 

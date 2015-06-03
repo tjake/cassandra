@@ -194,7 +194,7 @@ public abstract class AbstractReadExecutor
             return new SpeculatingReadExecutor(cfs, command, consistencyLevel, targetReplicas);
     }
 
-    private static class NeverSpeculatingReadExecutor extends AbstractReadExecutor
+    public static class NeverSpeculatingReadExecutor extends AbstractReadExecutor
     {
         public NeverSpeculatingReadExecutor(ReadCommand command, ConsistencyLevel consistencyLevel, List<InetAddress> targetReplicas)
         {
