@@ -409,10 +409,6 @@ public class Keyspace
                             cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
                         }
                     }
-                    catch (UnavailableException|WriteTimeoutException|OverloadedException e)
-                    {
-                        //
-                    }
                     catch (Exception e)
                     {
                         JVMStabilityInspector.inspectThrowable(e);

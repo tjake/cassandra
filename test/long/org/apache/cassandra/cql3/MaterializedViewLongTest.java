@@ -28,6 +28,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.WriteTimeoutException;
 import org.apache.cassandra.db.BatchlogManager;
 import org.apache.cassandra.utils.WrappedRunnable;
@@ -91,9 +92,9 @@ public class MaterializedViewLongTest extends CQLTester
                                            1,
                                            i + writerOffset);
                             }
-                            catch (WriteTimeoutException wte)
+                            catch (NoHostAvailableException|WriteTimeoutException e)
                             {
-                                failedWrites.put(i + writerOffset, wte);
+                                failedWrites.put(i + writerOffset, e);
                             }
                         }
                     }
