@@ -121,7 +121,7 @@ public class StorageProxy implements StorageProxyMBean
             throws OverloadedException
             {
                 assert mutation instanceof Mutation;
-                sendToHintedEndpoints((Mutation) mutation, targets, responseHandler, localDataCenter);
+                sendToHintedEndpoints((Mutation) mutation, targets, responseHandler, localDataCenter, Stage.MUTATION);
             }
         };
 
@@ -640,7 +640,7 @@ public class StorageProxy implements StorageProxyMBean
         final String localDataCenter = DatabaseDescriptor.getEndpointSnitch().getDatacenter(FBUtilities.getBroadcastAddress());
 
         long startTime = System.nanoTime();
-        List<WriteResponseHandlerWrapper> wrappers = new ArrayList<WriteResponseHandlerWrapper>(mutations.size());
+        List<WriteResponseHandlerWrapper> wrappers = new ArrayList<>(mutations.size());
 
         try
         {
@@ -681,7 +681,7 @@ public class StorageProxy implements StorageProxyMBean
             syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
 
             // now actually perform the writes and wait for them to complete
-            syncWriteBatchedMutations(wrappers, localDataCenter);
+            syncWriteBatchedMutations(wrappers, localDataCenter, Stage.MATERIALIZED_VIEW_MUTATION);
         }
         catch (WriteTimeoutException ex)
         {
@@ -789,8 +789,9 @@ public class StorageProxy implements StorageProxyMBean
             // write to the batchlog
             syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
 
+
             // now actually perform the writes and wait for them to complete
-            syncWriteBatchedMutations(wrappers, localDataCenter);
+            syncWriteBatchedMutations(wrappers, localDataCenter, Stage.MUTATION);
         }
         catch (UnavailableException e)
         {
@@ -827,13 +828,13 @@ public class StorageProxy implements StorageProxyMBean
                                                                         WriteType.BATCH_LOG);
 
         MessageOut<Mutation> message = BatchlogManager.getBatchlogMutationFor(mutations, uuid, MessagingService.current_version)
-                                                      .createMessage();
+                                                      .createMessage(MessagingService.Verb.BATCHLOG_MUTATION);
         for (InetAddress target : endpoints)
         {
             int targetVersion = MessagingService.instance().getVersion(target);
             if (target.equals(FBUtilities.getBroadcastAddress()) && OPTIMIZE_LOCAL_REQUESTS)
             {
-                insertLocal(message.payload, handler);
+                insertLocal(Stage.BATCHLOG_MUTATION, message.payload, handler);
             }
             else if (targetVersion == MessagingService.current_version)
             {
@@ -866,19 +867,19 @@ public class StorageProxy implements StorageProxyMBean
         for (InetAddress target : endpoints)
         {
             if (target.equals(FBUtilities.getBroadcastAddress()) && OPTIMIZE_LOCAL_REQUESTS)
-                insertLocal(message.payload, handler);
+                insertLocal(Stage.BATCHLOG_MUTATION, message.payload, handler);
             else
                 MessagingService.instance().sendRR(message, target, handler, false);
         }
     }
 
-    private static void syncWriteBatchedMutations(List<WriteResponseHandlerWrapper> wrappers, String localDataCenter)
+    private static void syncWriteBatchedMutations(List<WriteResponseHandlerWrapper> wrappers, String localDataCenter, Stage stage)
     throws WriteTimeoutException, OverloadedException
     {
         for (WriteResponseHandlerWrapper wrapper : wrappers)
         {
             Iterable<InetAddress> endpoints = Iterables.concat(wrapper.handler.naturalEndpoints, wrapper.handler.pendingEndpoints);
-            sendToHintedEndpoints(wrapper.mutation, endpoints, wrapper.handler, localDataCenter);
+            sendToHintedEndpoints(wrapper.mutation, endpoints, wrapper.handler, localDataCenter, stage);
         }
 
         for (WriteResponseHandlerWrapper wrapper : wrappers)
@@ -1018,7 +1019,8 @@ public class StorageProxy implements StorageProxyMBean
     public static void sendToHintedEndpoints(final Mutation mutation,
                                              Iterable<InetAddress> targets,
                                              AbstractWriteResponseHandler<IMutation> responseHandler,
-                                             String localDataCenter)
+                                             String localDataCenter,
+                                             Stage stage)
     throws OverloadedException
     {
         // extra-datacenter replicas, grouped by dc
@@ -1082,7 +1084,7 @@ public class StorageProxy implements StorageProxyMBean
         }
 
         if (insertLocal)
-            insertLocal(mutation, responseHandler);
+            insertLocal(stage, mutation, responseHandler);
 
         if (dcGroups != null)
         {
@@ -1191,10 +1193,10 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-    private static void insertLocal(final Mutation mutation, final AbstractWriteResponseHandler<IMutation> responseHandler)
+    private static void insertLocal(Stage stage, final Mutation mutation, final AbstractWriteResponseHandler<IMutation> responseHandler)
     {
 
-        StageManager.getStage(Stage.MUTATION).maybeExecuteImmediately(new LocalMutationRunnable()
+        StageManager.getStage(stage).maybeExecuteImmediately(new LocalMutationRunnable()
         {
             public void runMayThrow()
             {
@@ -1325,7 +1327,7 @@ public class StorageProxy implements StorageProxyMBean
                 Set<InetAddress> remotes = Sets.difference(ImmutableSet.copyOf(targets),
                                                            ImmutableSet.of(FBUtilities.getBroadcastAddress()));
                 if (!remotes.isEmpty())
-                    sendToHintedEndpoints(result, remotes, responseHandler, localDataCenter);
+                    sendToHintedEndpoints(result, remotes, responseHandler, localDataCenter, Stage.COUNTER_MUTATION);
             }
         };
     }

@@ -57,8 +57,8 @@ public class MaterializedViewLongTest extends CQLTester
            action = "com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly(org.apache.cassandra.cql3.MaterializedViewLongTest.slowdown, TimeUnit.SECONDS);")
     public void testSlowLockAcquisition() throws Throwable
     {
-        final int writers = 48;
-        final int insertsPerWriter = 25;
+        final int writers = 96;
+        final int insertsPerWriter = 50;
         final Map<Integer, Exception> failedWrites = new ConcurrentHashMap<>();
 
         createTable("CREATE TABLE %s (" +

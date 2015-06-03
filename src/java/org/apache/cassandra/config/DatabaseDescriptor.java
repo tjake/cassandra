@@ -1034,6 +1034,15 @@ public class DatabaseDescriptor
         return conf.concurrent_counter_writes;
     }
 
+    public static int getConcurrentBatchlogWriters()
+    {
+        return conf.concurrent_batchlog_writes;
+    }
+    public static int getConcurrentMaterializedViewWriters()
+    {
+        return conf.concurrent_materialized_view_writes;
+    }
+
     public static int getFlushWriters()
     {
             return conf.memtable_flush_writers;

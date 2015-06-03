@@ -26,6 +26,9 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
@@ -53,6 +56,8 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
     private final MaterializedView view;
     private final UUID compactionId;
     private volatile Token prevToken = null;
+
+    private static final Logger logger = LoggerFactory.getLogger(MaterializedViewBuilder.class);
 
     private volatile boolean isStopped = false;
 
@@ -153,6 +158,9 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
                     lastToken = null;
                 }
             }
+
+            SystemKeyspace.finishMaterializedViewBuildStatus(ksname, viewName);
+
         }
         catch (Exception e)
         {
@@ -166,10 +174,8 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
                                                          },
                                                          5,
                                                          TimeUnit.MINUTES);
-            throw new RuntimeException(e);
+            logger.warn("Materialized View failed to complete, sleeping 5 minutes before restarting", e);
         }
-
-        SystemKeyspace.finishMaterializedViewBuildStatus(ksname, viewName);
     }
 
     public CompactionInfo getCompactionInfo()
