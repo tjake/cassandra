@@ -280,16 +280,20 @@ public class MutationUnit
     static class Set implements Iterable<MutationUnit>
     {
         private final ColumnFamilyStore baseCfs;
+        private final Map<ColumnIdentifier, MaterializedViewSelector> clusteringSelectors;
         private final Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
 
-        Set(ColumnFamilyStore baseCfs)
+        Set(ColumnFamilyStore baseCfs, List<MaterializedViewSelector> clusteringSelectors)
         {
             this.baseCfs = baseCfs;
+            this.clusteringSelectors = new HashMap<>();
+            for (MaterializedViewSelector selector: clusteringSelectors)
+                this.clusteringSelectors.put(selector.columnDefinition.name, selector);
         }
 
-        Set(MutationUnit single)
+        Set(MutationUnit single, List<MaterializedViewSelector> clusteringSelectors)
         {
-            this(single.baseCfs);
+            this(single.baseCfs, clusteringSelectors);
             mutationUnits.put(single, single);
         }
 
@@ -308,8 +312,15 @@ public class MutationUnit
             return mutationUnits.values().spliterator();
         }
 
-        public void addUnit(ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns, Cell cell, boolean isNew)
+        public void addUnit(ByteBuffer key, Cell cell, boolean isNew)
         {
+            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
+            for (ColumnDefinition columnDefinition: baseCfs.metadata.clusteringColumns())
+            {
+                ColumnIdentifier identifier = columnDefinition.name;
+                clusteringColumns.put(identifier, clusteringSelectors.get(identifier).getSingle(key, cell));
+            }
+
             MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
             if (mutationUnits.containsKey(mutationUnit))
             {

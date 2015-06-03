@@ -15,21 +15,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db.view;
 
-import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.db.Cell;
-import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.exceptions.InvalidRequestException;
+package org.apache.cassandra.db.view;
 
 import java.nio.ByteBuffer;
 
-public class MaterializedViewSelectorOnList extends MaterializedViewSelectorOnCollection
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.Cell;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.exceptions.InvalidRequestException;
+
+public abstract class MaterializedViewSelectorOnCollection extends MaterializedViewSelector
 {
-    public MaterializedViewSelectorOnList(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
+    protected MaterializedViewSelectorOnCollection(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
         super(baseCfs, columnDefinition);
+    }
+
+    public boolean isBasePrimaryKey()
+    {
+        return false;
+    }
+
+    public boolean selects(CellName name)
+    {
+        AbstractType<?> comp = baseCfs.metadata.getColumnDefinitionComparator(columnDefinition);
+        return name.size() > columnDefinition.position()
+               && comp.compare(name.get(columnDefinition.position()), columnDefinition.name.bytes) == 0;
+    }
+
+    public ByteBuffer getSingle(ByteBuffer partitionKey, Cell cell)
+    {
+        throw new InvalidRequestException("Cannot get single value from Collection MVS");
     }
 }

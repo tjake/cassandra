@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.db.Cell;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
@@ -29,8 +30,11 @@ import org.apache.cassandra.db.marshal.CollectionType;
 public abstract class MaterializedViewSelector
 {
     public final ColumnDefinition columnDefinition;
-    protected MaterializedViewSelector(ColumnDefinition columnDefinition)
+    protected final ColumnFamilyStore baseCfs;
+
+    protected MaterializedViewSelector(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
+        this.baseCfs = baseCfs;
         this.columnDefinition = columnDefinition;
     }
 
@@ -43,18 +47,18 @@ public abstract class MaterializedViewSelector
             switch (((CollectionType)definition.type).kind)
             {
                 case LIST:
-                    return new MaterializedViewSelectorOnList(definition);
+                    return new MaterializedViewSelectorOnList(baseCfs, definition);
                 case SET:
-                    return new MaterializedViewSelectorOnSet(definition);
+                    return new MaterializedViewSelectorOnSet(baseCfs, definition);
                 case MAP:
-                    return new MaterializedViewSelectorOnMap(definition);
+                    return new MaterializedViewSelectorOnMap(baseCfs, definition);
             }
         }
 
         switch (definition.kind)
         {
             case CLUSTERING_COLUMN:
-                return new MaterializedViewSelectorOnClusteringColumn(definition);
+                return new MaterializedViewSelectorOnClusteringColumn(baseCfs, definition);
             case REGULAR:
                 return new MaterializedViewSelectorOnRegularColumn(baseCfs, definition);
             case PARTITION_KEY:
@@ -69,4 +73,6 @@ public abstract class MaterializedViewSelector
     public abstract boolean isBasePrimaryKey();
 
     public abstract boolean selects(CellName cellName);
+
+    public abstract ByteBuffer getSingle(ByteBuffer partitionKey, Cell cell);
 }

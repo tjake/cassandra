@@ -18,6 +18,7 @@
 package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.Cell;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
@@ -27,12 +28,9 @@ import java.nio.ByteBuffer;
 
 public class MaterializedViewSelectorOnPartitionKey extends MaterializedViewSelector
 {
-    ColumnFamilyStore baseCfs;
-
     public MaterializedViewSelectorOnPartitionKey(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
-        super(columnDefinition);
-        this.baseCfs = baseCfs;
+        super(baseCfs, columnDefinition);
     }
 
     public boolean isBasePrimaryKey()
@@ -43,5 +41,15 @@ public class MaterializedViewSelectorOnPartitionKey extends MaterializedViewSele
     public boolean selects(CellName cellName)
     {
         return false;
+    }
+
+    public ByteBuffer getSingle(ByteBuffer partitionKey, Cell cell)
+    {
+        if (columnDefinition.isOnAllComponents())
+            return partitionKey;
+
+        CompositeType keyComparator = (CompositeType)baseCfs.metadata.getKeyValidator();
+        ByteBuffer[] components = keyComparator.split(partitionKey);
+        return components[columnDefinition.position()];
     }
 }

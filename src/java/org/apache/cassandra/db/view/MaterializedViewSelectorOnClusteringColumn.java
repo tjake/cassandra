@@ -18,16 +18,18 @@
 package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.Cell;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
 
 import java.nio.ByteBuffer;
 
 public class MaterializedViewSelectorOnClusteringColumn extends MaterializedViewSelector
 {
-    public MaterializedViewSelectorOnClusteringColumn(ColumnDefinition columnDefinition)
+    public MaterializedViewSelectorOnClusteringColumn(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
-        super(columnDefinition);
+        super(baseCfs, columnDefinition);
     }
 
     public boolean isBasePrimaryKey()
@@ -38,5 +40,10 @@ public class MaterializedViewSelectorOnClusteringColumn extends MaterializedView
     public boolean selects(CellName cellName)
     {
         return true;
+    }
+
+    public ByteBuffer getSingle(ByteBuffer partitionKey, Cell cell)
+    {
+        return cell.name().get(columnDefinition.position());
     }
 }

@@ -19,24 +19,15 @@ package org.apache.cassandra.db.view;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.composites.CellName;
 
 import java.nio.ByteBuffer;
 
-public class MaterializedViewSelectorOnMap extends MaterializedViewSelector
+public class MaterializedViewSelectorOnMap extends MaterializedViewSelectorOnCollection
 {
-    public MaterializedViewSelectorOnMap(ColumnDefinition columnDefinition)
+    public MaterializedViewSelectorOnMap(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
     {
-        super(columnDefinition);
-    }
-
-    public boolean isBasePrimaryKey()
-    {
-        return false;
-    }
-
-    public boolean selects(CellName cellName)
-    {
-        return false;
+        super(baseCfs, columnDefinition);
     }
 }

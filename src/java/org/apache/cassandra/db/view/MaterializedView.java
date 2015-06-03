@@ -63,10 +63,9 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedView
 {
-
     private static class RowAdder extends CFRowAdder
     {
-        public RowAdder(ColumnFamily cf, Composite prefix, long timestamp, int ttl)
+        RowAdder(ColumnFamily cf, Composite prefix, long timestamp, int ttl)
         {
             super(cf, prefix, timestamp, ttl, true);
         }
@@ -134,9 +133,7 @@ public class MaterializedView
         else
         {
             for (ColumnIdentifier column : definition.included)
-            {
                 includedSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-            }
         }
 
         viewCfs = Schema.instance.getColumnFamilyStoreInstance(viewCfm.cfId);
@@ -203,8 +200,8 @@ public class MaterializedView
         if (!targetSelector.isBasePrimaryKey())
             return null;
 
-        // Make sure that target is actually modified
-        if (mutationUnit.values(targetSelector, MutationUnit.oldValueIfUpdated).isEmpty())
+        // Target must be modified in order for a tombstone to be created
+        if (mutationUnit.clusteringValue(targetSelector, MutationUnit.oldValueIfUpdated) == null)
             return null;
 
         Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(targetSelector, MutationUnit.oldValueIfUpdated), timestamp);
@@ -293,7 +290,7 @@ public class MaterializedView
 
             //Fetch missing info
             if (queryNeeded)
-                query(key, DeletionInfo.live(), new MutationUnit.Set(mu), cl);
+                query(key, DeletionInfo.live(), new MutationUnit.Set(mu, clusteringSelectors), cl);
 
 
             //Build modified RT mutation
@@ -329,7 +326,7 @@ public class MaterializedView
         if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
         {
 
-            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
+            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, clusteringSelectors);
             List<Mutation> mutations = new ArrayList<>();
 
             IDiskAtomFilter filter;
@@ -382,15 +379,7 @@ public class MaterializedView
                     continue;
 
                 for (Cell cell : cf.getSortedColumns())
-                {
-                    Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-                    for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
-                    {
-                        clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
-                    }
-
-                    mutationUnits.addUnit(key, clusteringColumns, cell, false);
-                }
+                    mutationUnits.addUnit(key, cell, false);
             }
 
             for (MutationUnit mutationUnit : mutationUnits)
@@ -438,31 +427,19 @@ public class MaterializedView
                 if (deletionInfo.isDeleted(cell))
                     continue;
 
-                Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-                for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
-                {
-                    clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
-                }
-
-                mutationUnits.addUnit(key, clusteringColumns, cell, false);
+                mutationUnits.addUnit(key, cell, false);
             }
         }
     }
 
     private MutationUnit.Set separateMutationUnits(ByteBuffer key, ColumnFamily cf)
     {
-        MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
+        MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, clusteringSelectors);
 
         // For each cell name, we need to grab the clustering columns
         for (Cell cell: cf.getSortedColumns())
         {
-            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-            for (ColumnDefinition cdef : cf.metadata().clusteringColumns())
-            {
-                clusteringColumns.put(cdef.name, cell.name().get(cdef.position()));
-            }
-
-            mutationUnits.addUnit(key, clusteringColumns, cell, true);
+            mutationUnits.addUnit(key, cell, true);
         }
 
         return mutationUnits;
