@@ -153,9 +153,9 @@ public class MaterializedViewManager
         return viewsByName.values();
     }
 
-    public Lock acquireLockFor(ByteBuffer key)
+    public static Lock acquireLockFor(ByteBuffer key)
     {
-        Lock lock = LOCKS.get(Objects.hashCode(baseCfs.metadata.cfId, key));
+        Lock lock = LOCKS.get(key);
         lock.lock();
         return lock;
     }

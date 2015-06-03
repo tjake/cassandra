@@ -37,6 +37,7 @@ import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.view.MaterializedViewManager;
 import org.apache.cassandra.exceptions.OverloadedException;
 import org.apache.cassandra.exceptions.UnavailableException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
@@ -379,33 +380,35 @@ public class Keyspace
 
         try (OpOrder.Group opGroup = writeOrder.start())
         {
-            // write the mutation to the commitlog and memtables
-            ReplayPosition replayPosition = null;
-            if (writeCommitLog)
+            Lock lock = null;
+            if (MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
             {
-                Tracing.trace("Appending to commitlog");
-                replayPosition = CommitLog.instance.add(mutation);
+                lock = MaterializedViewManager.acquireLockFor(mutation.key());
             }
-
-            DecoratedKey key = StorageService.getPartitioner().decorateKey(mutation.key());
-            for (ColumnFamily cf : mutation.getColumnFamilies())
+            try
             {
-                ColumnFamilyStore cfs = columnFamilyStores.get(cf.id());
-                if (cfs == null)
+                // write the mutation to the commitlog and memtables
+                ReplayPosition replayPosition = null;
+                if (writeCommitLog)
                 {
-                    logger.error("Attempting to mutate non-existant table {}", cf.id());
-                    continue;
+                    Tracing.trace("Appending to commitlog");
+                    replayPosition = CommitLog.instance.add(mutation);
                 }
 
-                Lock lock = null;
-                try
+                DecoratedKey key = StorageService.getPartitioner().decorateKey(mutation.key());
+                for (ColumnFamily cf : mutation.getColumnFamilies())
                 {
+                    ColumnFamilyStore cfs = columnFamilyStores.get(cf.id());
+                    if (cfs == null)
+                    {
+                        logger.error("Attempting to mutate non-existant table {}", cf.id());
+                        continue;
+                    }
                     try
                     {
                         if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
                         {
                             Tracing.trace("Create materialized view mutations from replica");
-                            lock = cfs.materializedViewManager.acquireLockFor(mutation.key());
                             cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
                         }
                     }
@@ -420,11 +423,11 @@ public class Keyspace
                                                             : SecondaryIndexManager.nullUpdater;
                     cfs.apply(key, cf, updater, opGroup, replayPosition);
                 }
-                finally
-                {
-                    if (lock != null)
-                        lock.unlock();
-                }
+            }
+            finally
+            {
+                if (lock != null)
+                    lock.unlock();
             }
         }
     }
