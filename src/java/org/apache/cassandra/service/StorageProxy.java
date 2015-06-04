@@ -92,6 +92,7 @@ public class StorageProxy implements StorageProxyMBean
     private static final ClientRequestMetrics readMetrics = new ClientRequestMetrics("Read");
     private static final ClientRequestMetrics rangeMetrics = new ClientRequestMetrics("RangeSlice");
     private static final ClientRequestMetrics writeMetrics = new ClientRequestMetrics("Write");
+    private static final ClientRequestMetrics mvWriteMetrics = new ClientRequestMetrics("MVWrite");
     private static final CASClientRequestMetrics casWriteMetrics = new CASClientRequestMetrics("CASWrite");
     private static final CASClientRequestMetrics casReadMetrics = new CASClientRequestMetrics("CASRead");
 
@@ -685,25 +686,25 @@ public class StorageProxy implements StorageProxyMBean
         }
         catch (WriteTimeoutException ex)
         {
-            writeMetrics.timeouts.mark();
+            mvWriteMetrics.timeouts.mark();
             Tracing.trace("Write timeout; received {} of {} required replies", ex.received, ex.blockFor);
             throw ex;
         }
         catch (UnavailableException e)
         {
-            writeMetrics.unavailables.mark();
+            mvWriteMetrics.unavailables.mark();
             Tracing.trace("Unavailable");
             throw e;
         }
         catch (OverloadedException e)
         {
-            writeMetrics.unavailables.mark();
+            mvWriteMetrics.unavailables.mark();
             Tracing.trace("Overloaded");
             throw e;
         }
         finally
         {
-            writeMetrics.addNano(System.nanoTime() - startTime);
+            mvWriteMetrics.addNano(System.nanoTime() - startTime);
         }
     }
 
