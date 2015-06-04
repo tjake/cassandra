@@ -378,57 +378,55 @@ public class Keyspace
         if (TEST_FAIL_WRITES && metadata.name.equals(TEST_FAIL_WRITES_KS))
             throw new RuntimeException("Testing write failures");
 
+        Lock lock = null;
+        if (MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
+        {
+            lock = MaterializedViewManager.acquireLockFor(mutation.key());
+        }
+
         try (OpOrder.Group opGroup = writeOrder.start())
         {
-            Lock lock = null;
-            if (MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
+            // write the mutation to the commitlog and memtables
+            ReplayPosition replayPosition = null;
+            if (writeCommitLog)
             {
-                lock = MaterializedViewManager.acquireLockFor(mutation.key());
+                Tracing.trace("Appending to commitlog");
+                replayPosition = CommitLog.instance.add(mutation);
             }
-            try
+
+            DecoratedKey key = StorageService.getPartitioner().decorateKey(mutation.key());
+            for (ColumnFamily cf : mutation.getColumnFamilies())
             {
-                // write the mutation to the commitlog and memtables
-                ReplayPosition replayPosition = null;
-                if (writeCommitLog)
+                ColumnFamilyStore cfs = columnFamilyStores.get(cf.id());
+                if (cfs == null)
                 {
-                    Tracing.trace("Appending to commitlog");
-                    replayPosition = CommitLog.instance.add(mutation);
+                    logger.error("Attempting to mutate non-existant table {}", cf.id());
+                    continue;
+                }
+                try
+                {
+                    if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
+                    {
+                        Tracing.trace("Create materialized view mutations from replica");
+                        cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
+                    }
+                }
+                catch (Exception e)
+                {
+                    JVMStabilityInspector.inspectThrowable(e);
                 }
 
-                DecoratedKey key = StorageService.getPartitioner().decorateKey(mutation.key());
-                for (ColumnFamily cf : mutation.getColumnFamilies())
-                {
-                    ColumnFamilyStore cfs = columnFamilyStores.get(cf.id());
-                    if (cfs == null)
-                    {
-                        logger.error("Attempting to mutate non-existant table {}", cf.id());
-                        continue;
-                    }
-                    try
-                    {
-                        if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
-                        {
-                            Tracing.trace("Create materialized view mutations from replica");
-                            cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        JVMStabilityInspector.inspectThrowable(e);
-                    }
-
-                    Tracing.trace("Adding to {} memtable", cf.metadata().cfName);
-                    SecondaryIndexManager.Updater updater = updateIndexes
-                                                            ? cfs.indexManager.updaterFor(key, cf, opGroup)
-                                                            : SecondaryIndexManager.nullUpdater;
-                    cfs.apply(key, cf, updater, opGroup, replayPosition);
-                }
+                Tracing.trace("Adding to {} memtable", cf.metadata().cfName);
+                SecondaryIndexManager.Updater updater = updateIndexes
+                                                        ? cfs.indexManager.updaterFor(key, cf, opGroup)
+                                                        : SecondaryIndexManager.nullUpdater;
+                cfs.apply(key, cf, updater, opGroup, replayPosition);
             }
-            finally
-            {
-                if (lock != null)
-                    lock.unlock();
-            }
+        }
+        finally
+        {
+            if (lock != null)
+                lock.unlock();
         }
     }
 
