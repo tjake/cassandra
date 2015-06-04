@@ -207,6 +207,8 @@ public final class MessagingService implements MessagingServiceMBean
         put(Verb.INTERNAL_RESPONSE, CallbackDeterminedSerializer.instance);
 
         put(Verb.MUTATION, Mutation.serializer);
+        put(Verb.BATCHLOG_MUTATION, Mutation.serializer);
+        put(Verb.MATERIALIZED_VIEW_MUTATION, Mutation.serializer);
         put(Verb.READ_REPAIR, Mutation.serializer);
         put(Verb.READ, ReadCommand.serializer);
         put(Verb.RANGE_SLICE, RangeSliceCommand.serializer);
@@ -233,6 +235,8 @@ public final class MessagingService implements MessagingServiceMBean
     public static final EnumMap<Verb, IVersionedSerializer<?>> callbackDeserializers = new EnumMap<Verb, IVersionedSerializer<?>>(Verb.class)
     {{
         put(Verb.MUTATION, WriteResponse.serializer);
+        put(Verb.BATCHLOG_MUTATION, WriteResponse.serializer);
+        put(Verb.MATERIALIZED_VIEW_MUTATION, WriteResponse.serializer);
         put(Verb.READ_REPAIR, WriteResponse.serializer);
         put(Verb.COUNTER_MUTATION, WriteResponse.serializer);
         put(Verb.RANGE_SLICE, RangeSliceReply.serializer);
@@ -295,6 +299,8 @@ public final class MessagingService implements MessagingServiceMBean
      */
     public static final EnumSet<Verb> DROPPABLE_VERBS = EnumSet.of(Verb._TRACE,
                                                                    Verb.MUTATION,
+                                                                   Verb.BATCHLOG_MUTATION,
+                                                                   Verb.MATERIALIZED_VIEW_MUTATION,
                                                                    Verb.COUNTER_MUTATION,
                                                                    Verb.READ_REPAIR,
                                                                    Verb.READ,
@@ -596,7 +602,10 @@ public final class MessagingService implements MessagingServiceMBean
                            ConsistencyLevel consistencyLevel,
                            boolean allowHints)
     {
-        assert message.verb == Verb.MUTATION || message.verb == Verb.COUNTER_MUTATION;
+        assert message.verb == Verb.MUTATION
+               || message.verb == Verb.BATCHLOG_MUTATION
+               || message.verb == Verb.MATERIALIZED_VIEW_MUTATION
+               || message.verb == Verb.COUNTER_MUTATION;
         int messageId = nextId();
 
         CallbackInfo previous = callbacks.put(messageId,
