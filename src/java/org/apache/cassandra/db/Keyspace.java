@@ -30,6 +30,8 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.concurrent.Stage;
+import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.ReplayPosition;
@@ -43,9 +45,11 @@ import org.apache.cassandra.exceptions.UnavailableException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
+import org.apache.cassandra.metrics.ThreadPoolMetrics;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.pager.QueryPagers;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.metrics.KeyspaceMetrics;
@@ -373,15 +377,40 @@ public class Keyspace
      * @param writeCommitLog false to disable commitlog append entirely
      * @param updateIndexes  false to disable index updates (used by CollationController "defragmenting")
      */
-    public void apply(Mutation mutation, boolean writeCommitLog, boolean updateIndexes)
+    public void apply(final Mutation mutation, final boolean writeCommitLog, boolean updateIndexes)
     {
         if (TEST_FAIL_WRITES && metadata.name.equals(TEST_FAIL_WRITES_KS))
             throw new RuntimeException("Testing write failures");
 
         Lock lock = null;
-        if (MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
+        if (updateIndexes && MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
         {
             lock = MaterializedViewManager.acquireLockFor(mutation.key());
+
+            if (lock == null)
+            {
+                if ((System.nanoTime() - mutation.createdAt) > DatabaseDescriptor.getWriteRpcTimeout())
+                {
+                    logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(mutation.key()));
+                    throw new WriteTimeoutException(WriteType.MATERIALIZED_VIEW, ConsistencyLevel.LOCAL_ONE, 0, 1);
+                }
+                else
+                {
+                    StageManager.getStage(Stage.MUTATION).execute(new Runnable()
+                    {
+                        public void run()
+                        {
+                            if (writeCommitLog)
+                                mutation.apply();
+                            else
+                                mutation.applyUnsafe();
+                        }
+                    });
+
+                    //Let someone else go
+                    return;
+                }
+            }
         }
 
         try (OpOrder.Group opGroup = writeOrder.start())
@@ -405,7 +434,7 @@ public class Keyspace
                 }
                 try
                 {
-                    if (cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
+                    if (updateIndexes && cfs.materializedViewManager.cfModifiesSelectedColumn(cf))
                     {
                         Tracing.trace("Create materialized view mutations from replica");
                         cfs.materializedViewManager.pushReplicaMutations(mutation.key(), cf);

@@ -32,10 +32,10 @@ import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.WriteTimeoutException;
 import org.apache.cassandra.db.BatchlogManager;
 import org.apache.cassandra.utils.WrappedRunnable;
-import org.jboss.byteman.contrib.bmunit.BMRule;
-import org.jboss.byteman.contrib.bmunit.BMUnitRunner;
+//import org.jboss.byteman.contrib.bmunit.BMRule;
+// import org.jboss.byteman.contrib.bmunit.BMUnitRunner;
 
-@RunWith(BMUnitRunner.class)
+//@RunWith(BMUnitRunner.class)
 public class MaterializedViewLongTest extends CQLTester
 {
     int protocolVersion = 3;
@@ -49,13 +49,13 @@ public class MaterializedViewLongTest extends CQLTester
     }
 
     @Test
-    @BMRule(name = "Pause Lock Acquisition Rule",
+    /*@BMRule(name = "Pause Lock Acquisition Rule",
            targetClass = "org.apache.cassandra.db.view.MaterializedViewManager",
            targetMethod = "acquireLockFor",
            targetLocation = "AT EXIT",
            condition = "TRUE",
            action = "com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly(org.apache.cassandra.cql3.MaterializedViewLongTest.slowdown, TimeUnit.SECONDS);")
-    public void testSlowLockAcquisition() throws Throwable
+    */public void testSlowLockAcquisition() throws Throwable
     {
         final int writers = 96;
         final int insertsPerWriter = 50;

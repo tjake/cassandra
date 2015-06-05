@@ -43,6 +43,7 @@ import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.SystemKeyspace;
+import org.apache.cassandra.db.WriteType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.OverloadedException;
 import org.apache.cassandra.exceptions.UnavailableException;
@@ -53,7 +54,7 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedViewManager
 {
-    private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentCounterWriters() * 1024);
+    private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentWriters() * 1024);
     private static final Logger logger = LoggerFactory.getLogger(MaterializedViewManager.class);
 
     private final ConcurrentNavigableMap<String, MaterializedView> viewsByName;
@@ -156,24 +157,11 @@ public class MaterializedViewManager
     public static Lock acquireLockFor(ByteBuffer key)
     {
         Lock lock = LOCKS.get(key);
-        try
-        {
-            long timeout = TimeUnit.NANOSECONDS.convert(DatabaseDescriptor.getWriteRpcTimeout(), TimeUnit.MILLISECONDS);
-            long startTime = System.nanoTime();
-            while (!lock.tryLock(1, TimeUnit.MILLISECONDS))
-            {
-                if (System.nanoTime() - startTime > timeout)
-                {
-                    throw new InterruptedException();
-                }
-            }
+
+        if (lock.tryLock())
             return lock;
-        }
-        catch (InterruptedException e)
-        {
-            logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(key));
-            throw new InvalidRequestException("Could not obtain lock for " + ByteBufferUtil.bytesToHex(key));
-        }
+
+        return null;
     }
 
     public static boolean touchesSelectedColumn(Collection<? extends IMutation> mutations)

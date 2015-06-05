@@ -299,7 +299,7 @@ public final class MessagingService implements MessagingServiceMBean
      */
     public static final EnumSet<Verb> DROPPABLE_VERBS = EnumSet.of(Verb._TRACE,
                                                                    Verb.MUTATION,
-                                                                   Verb.BATCHLOG_MUTATION,
+                                                                   Verb.BATCHLOG_MUTATION, //FIXME: should this be droppable??
                                                                    Verb.MATERIALIZED_VIEW_MUTATION,
                                                                    Verb.COUNTER_MUTATION,
                                                                    Verb.READ_REPAIR,

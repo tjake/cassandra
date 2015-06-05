@@ -843,8 +843,9 @@ public class StorageProxy implements StorageProxyMBean
             }
             else
             {
+                logger.error("HERE");
                 MessagingService.instance().sendRR(BatchlogManager.getBatchlogMutationFor(mutations, uuid, targetVersion)
-                                                                  .createMessage(),
+                                                                  .createMessage(MessagingService.Verb.BATCHLOG_MUTATION),
                                                    target,
                                                    handler,
                                                    false);
@@ -864,7 +865,7 @@ public class StorageProxy implements StorageProxyMBean
                                                                         WriteType.SIMPLE);
         Mutation mutation = new Mutation(SystemKeyspace.NAME, UUIDType.instance.decompose(uuid));
         mutation.delete(SystemKeyspace.BATCHLOG, FBUtilities.timestampMicros());
-        MessageOut<Mutation> message = mutation.createMessage();
+        MessageOut<Mutation> message = mutation.createMessage(MessagingService.Verb.BATCHLOG_MUTATION);
         for (InetAddress target : endpoints)
         {
             if (target.equals(FBUtilities.getBroadcastAddress()) && OPTIMIZE_LOCAL_REQUESTS)
@@ -1208,7 +1209,8 @@ public class StorageProxy implements StorageProxyMBean
                 }
                 catch (Exception ex)
                 {
-                    logger.error("Failed to apply mutation locally : {}", ex);
+                    if (!(ex instanceof WriteTimeoutException))
+                        logger.error("Failed to apply mutation locally {} : {}", stage, ex);
                     responseHandler.onFailure(FBUtilities.getBroadcastAddress());
                 }
             }
