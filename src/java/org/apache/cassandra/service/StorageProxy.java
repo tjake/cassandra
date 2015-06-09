@@ -651,7 +651,7 @@ public class StorageProxy implements StorageProxyMBean
 
         try
         {
-            Token dataToken = StorageService.getPartitioner().getToken(dataKey);
+            Token baseToken = StorageService.getPartitioner().getToken(dataKey);
 
             ConsistencyLevel consistencyLevel = ConsistencyLevel.ONE;
 
@@ -670,8 +670,8 @@ public class StorageProxy implements StorageProxyMBean
             for (Mutation mutation : mutations)
             {
                 String keyspaceName = mutation.getKeyspaceName();
-                Token tk = StorageService.getPartitioner().getToken(mutation.key());
-                List<InetAddress> naturalEndpoints = Lists.newArrayList(MaterializedViewUtils.getIndexNaturalEndpoint(keyspaceName, dataToken, tk));
+                Token tk = mutation.key().getToken();
+                List<InetAddress> naturalEndpoints = Lists.newArrayList(MaterializedViewUtils.getViewNaturalEndpoint(keyspaceName, baseToken, tk));
 
                 WriteResponseHandlerWrapper wrapper = wrapBatchResponseHandler(mutation,
                                                                                consistencyLevel,
@@ -967,7 +967,7 @@ public class StorageProxy implements StorageProxyMBean
         Keyspace keyspace = Keyspace.open(mutation.getKeyspaceName());
         AbstractReplicationStrategy rs = keyspace.getReplicationStrategy();
         String keyspaceName = mutation.getKeyspaceName();
-        Token tk = StorageService.getPartitioner().getToken(mutation.key());
+        Token tk = mutation.key().getToken();
         Collection<InetAddress> pendingEndpoints = StorageService.instance.getTokenMetadata().pendingEndpointsFor(tk, keyspaceName);
         AbstractWriteResponseHandler<IMutation> writeHandler = rs.getWriteResponseHandler(naturalEndpoints, pendingEndpoints, consistency_level, null, writeType);
         BatchlogResponseHandler<IMutation> batchHandler = new BatchlogResponseHandler<>(writeHandler, batchConsistencyLevel.blockFor(keyspace), cleanup);
@@ -1210,21 +1210,19 @@ public class StorageProxy implements StorageProxyMBean
 
     private static void insertLocal(Stage stage, final Mutation mutation, final AbstractWriteResponseHandler<IMutation> responseHandler)
     {
-
         StageManager.getStage(stage).maybeExecuteImmediately(new LocalMutationRunnable()
         {
             public void runMayThrow()
             {
                 try
                 {
-                    if (!(ex instanceof WriteTimeoutException))
-                        logger.error("Failed to apply mutation locally {} : {}", stage, ex);
                     mutation.apply();
                     responseHandler.response(null);
                 }
                 catch (Exception ex)
                 {
-                    logger.error("Failed to apply mutation locally : {}", ex);
+                    if (!(ex instanceof WriteTimeoutException))
+                        logger.error("Failed to apply mutation locally : {}", ex);
                     responseHandler.onFailure(FBUtilities.getBroadcastAddress());
                 }
             }

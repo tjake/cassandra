@@ -30,44 +30,42 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.google.common.collect.Iterables;
-
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.CFRowAdder;
-import org.apache.cassandra.db.Cell;
+import org.apache.cassandra.db.Clustering;
 import org.apache.cassandra.db.ClusteringComparator;
-import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DeletionInfo;
-import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.db.PartitionRangeReadBuilder;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.ReadCommand;
-import org.apache.cassandra.db.ReadResponse;
-import org.apache.cassandra.db.Row;
-import org.apache.cassandra.db.columniterator.IdentityQueryFilter;
+import org.apache.cassandra.db.RowUpdateBuilder;
+import org.apache.cassandra.db.SinglePartitionNamesReadBuilder;
+import org.apache.cassandra.db.SinglePartitionSliceCommand;
+import org.apache.cassandra.db.SinglePartitionSliceReadBuilder;
+import org.apache.cassandra.db.Slice;
+import org.apache.cassandra.db.Slices;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.composites.CBuilder;
-import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.Composite;
-import org.apache.cassandra.db.composites.CompoundSparseCellNameType;
-import org.apache.cassandra.db.filter.ColumnSlice;
-import org.apache.cassandra.db.filter.IDiskAtomFilter;
-import org.apache.cassandra.db.filter.SliceQueryFilter;
-import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.filter.ColumnFilter;
+import org.apache.cassandra.db.filter.ColumnsSelection;
+import org.apache.cassandra.db.filter.SlicePartitionFilter;
 import org.apache.cassandra.db.marshal.CollectionType;
-import org.apache.cassandra.db.marshal.ColumnToCollectionType;
+import org.apache.cassandra.db.partitions.AbstractPartitionData;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.exceptions.ReadFailureException;
 import org.apache.cassandra.service.AbstractReadExecutor;
 import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.StorageProxy;
+import org.apache.cassandra.service.pager.QueryPager;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -76,70 +74,25 @@ public class MaterializedView
     private final MaterializedViewDefinition definition;
     public final String name;
 
-    private MaterializedViewSelector targetSelector;
-    private final List<MaterializedViewSelector> clusteringSelectors;
-    private final List<MaterializedViewSelector> includedSelectors;
-
-    ColumnFamilyStore baseCfs;
-    public ColumnFamilyStore viewCfs;
+    final ColumnFamilyStore baseCfs;
+    public final ColumnFamilyStore viewCfs;
+    public final ColumnDefinition targetDef;
     MaterializedViewBuilder builder;
 
     public MaterializedView(MaterializedViewDefinition definition,
                             ColumnFamilyStore baseCfs)
     {
         this.definition = definition;
-        this.name = this.definition.viewName;
-
         this.baseCfs = baseCfs;
 
-        clusteringSelectors = new ArrayList<>();
-        includedSelectors = new ArrayList<>();
-    }
-
-    private synchronized void createViewCfsAndSelectors()
-    {
-        if (viewCfs != null)
-            return;
-
-        assert baseCfs != null;
+        name = definition.viewName;
+        targetDef = baseCfs.metadata.getColumnDefinition(definition.target);
 
         CFMetaData viewCfm = getCFMetaData(definition, baseCfs.metadata);
-        targetSelector = MaterializedViewSelector.create(baseCfs, definition.target);
-
-        ColumnIdentifier target = definition.target;
-
-        // All partition and clustering columns are included in the view, whether they are specified in the included columns or not
-        for (ColumnDefinition definition: baseCfs.metadata.partitionKeyColumns())
-        {
-            ColumnIdentifier column = definition.name;
-            if (column != target)
-                clusteringSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-        }
-
-        for (ColumnDefinition definition: baseCfs.metadata.clusteringColumns())
-        {
-            ColumnIdentifier column = definition.name;
-            if (column != target)
-                clusteringSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-        }
-
-        if (definition.included.isEmpty())
-        {
-            for (ColumnDefinition definition: baseCfs.metadata.partitionColumns())
-            {
-                ColumnIdentifier column = definition.name;
-                if (column != target)
-                    includedSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-            }
-        }
-        else
-        {
-            for (ColumnIdentifier column : definition.included)
-                includedSelectors.add(MaterializedViewSelector.create(baseCfs, column));
-        }
-
         viewCfs = Schema.instance.getColumnFamilyStoreInstance(viewCfm.cfId);
     }
+
+
 
     /**
      * Check to see if any value that is part of the view is updated. If so, we possibly need to mutate the view.
@@ -147,9 +100,8 @@ public class MaterializedView
      * @param upd Column family to check for selected values with
      * @return True if any of the selected values are contained in the column family.
      */
-    public boolean cfModifiesSelectedColumn(PartitionUpdate upd)
+    public boolean cfModifiesSelectedColumn(AbstractPartitionData upd)
     {
-        createViewCfsAndSelectors();
 
         // If we are including all of the columns, then any non-empty column family will need to be selected
         if (definition.included.isEmpty())
@@ -158,16 +110,20 @@ public class MaterializedView
         if (!upd.deletionInfo().isLive())
             return true;
 
-        for (CellName cellName : upd.getColumnNames())
+        Iterator<Row> rowIterator = upd.iterator();
+
+        while (rowIterator.hasNext())
         {
-            if (targetSelector.selects(cellName))
-                return true;
-            for (MaterializedViewSelector column: Iterables.concat(clusteringSelectors, includedSelectors))
+            Row row = rowIterator.next();
+
+            Iterator<Cell> cellIterator = row.iterator();
+            while (cellIterator.hasNext())
             {
-                if (column.selects(cellName))
+                if (viewCfs.metadata.getColumnDefinition(cellIterator.next().column().name) != null)
                     return true;
             }
         }
+
         return false;
     }
 
@@ -175,46 +131,39 @@ public class MaterializedView
     {
         // Need to generate a tombstone in this case; there will be only one element because we do not allow Collections
         // for keys of a materialized view.
-        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
-        ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
-        CellNameType cellNameType = viewCfs.getComparator();
-        if (cellNameType.isCompound())
+        int numViewClustering = viewCfs.metadata.clusteringColumns().size();
+
+        Object[] viewClusteringValues = new Object[numViewClustering];
+
+        for (int i = 0; i < numViewClustering; i++)
         {
-            Composite cellName = mutationUnit.viewComposite(cellNameType, clusteringSelectors, MutationUnit.earliest);
-            RangeTombstone rt = new RangeTombstone(cellName.start(), cellName.end(), timestamp, Integer.MAX_VALUE);
-            viewCf.addAtom(rt);
-        }
-        else
-        {
-            assert clusteringSelectors.size() == 1;
-            ByteBuffer column = mutationUnit.clusteringValue(clusteringSelectors.get(0), MutationUnit.earliest);
-            assert column != null : "Clustering Columns should never be null in a mutation";
-            CellName cellName = cellNameType.cellFromByteBuffer(column);
-            viewCf.addTombstone(cellName, 0, timestamp);
+            ColumnDefinition definition = viewCfs.metadata.clusteringColumns().get(i);
+            viewClusteringValues[i] = mutationUnit.clusteringValue(definition, MutationUnit.earliest);
         }
 
-        return mutation;
+        return RowUpdateBuilder.deleteRow(viewCfs.metadata, timestamp, partitionKey, viewClusteringValues);
     }
 
     private Collection<Mutation> createTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
-        if (!targetSelector.isBasePrimaryKey())
+        if (targetDef.isPrimaryKeyColumn())
             return null;
 
         // Target must be modified in order for a tombstone to be created
-        if (mutationUnit.clusteringValue(targetSelector, MutationUnit.oldValueIfUpdated) == null)
+        if (mutationUnit.clusteringValue(targetDef, MutationUnit.oldValueIfUpdated) == null)
             return null;
 
-        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(targetSelector, MutationUnit.oldValueIfUpdated), timestamp);
+        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(targetDef, MutationUnit.oldValueIfUpdated), timestamp);
         if (mutation != null)
             return Collections.singleton(mutation);
+
         return null;
     }
 
     private Collection<Mutation> createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        ByteBuffer partitionKey = mutationUnit.clusteringValue(targetSelector, MutationUnit.latest);
+        ByteBuffer partitionKey = mutationUnit.clusteringValue(targetDef, MutationUnit.latest);
         if (partitionKey == null)
         {
             // Not having a partition key means we aren't updating anything
@@ -223,29 +172,39 @@ public class MaterializedView
 
         MutationUnit.Resolver resolver = tombstonesGenerated ? MutationUnit.latest : MutationUnit.newValueIfUpdated;
 
-        Mutation mutation = new Mutation(viewCfs.metadata.ksName, partitionKey);
-        ColumnFamily viewCf = mutation.addOrGet(viewCfs.metadata);
+        RowUpdateBuilder builder = new RowUpdateBuilder(viewCfs.metadata, timestamp, mutationUnit.ttl, partitionKey);
+        int nowInSec = FBUtilities.nowInSeconds();
 
-        Composite composite = mutationUnit.viewComposite(viewCfs.metadata.comparator,
-                                                         clusteringSelectors,
-                                                         resolver);
-
-        CFRowAdder rowAdder = new RowAdder(viewCf, composite, timestamp, mutationUnit.ttl);
-
-        for (MaterializedViewSelector selector: includedSelectors)
+        for (ColumnDefinition columnDefinition : viewCfs.metadata.allColumns())
         {
-            Collection<Cell> cells = mutationUnit.values(selector, resolver);
+            if (columnDefinition.isPartitionKey())
+                continue;
 
-            for (Cell cell : cells)
+            for (Cell cell : mutationUnit.values(columnDefinition, resolver))
             {
-                if (cell.name().isCollectionCell())
-                    rowAdder.addCollectionEntry(selector.columnDefinition.name.toString(), cell.name().collectionElement(), cell.isLive() ? cell.value() : null);
+                if (columnDefinition.type.isCollection())
+                {
+                    switch (((CollectionType) columnDefinition.type).kind)
+                    {
+                        case MAP:
+                            builder.addMapEntry(columnDefinition.name.toString(), cell.path().get(0), cell.isLive(nowInSec) ? cell.value() : null);
+                            break;
+                        case LIST:
+                            builder.addListEntry(columnDefinition.name.toString(), cell.isLive(nowInSec) ? cell.value() : null);
+                            break;
+                        case SET:
+                            builder.addSetEntry(columnDefinition.name.toString(), cell.isLive(nowInSec) ? cell.value() : null);
+                            break;
+                        default:
+                            throw new IllegalStateException("Unhandled set type: " + ((CollectionType) columnDefinition.type).kind);
+                    }
+                }
                 else
-                    rowAdder.add(selector.columnDefinition.name.toString(), cell.isLive() ? cell.value() : null);
+                {
+                    builder.add(columnDefinition.name.toString(), cell.isLive(nowInSec) ? cell.value() : null);
+                }
             }
         }
-
-        return Collections.singleton(mutation);
     }
 
     private Mutation getCollectionRangeTombstone(ByteBuffer key, RangeTombstone tombstone, ConsistencyLevel cl)
@@ -253,13 +212,15 @@ public class MaterializedView
         CFMetaData metadata = baseCfs.metadata;
         int clusteringSize = metadata.clusteringColumns().size();
 
+        Slice tombSlice = tombstone.deletedSlice();
+
         //In the case of a tombstoned collection we have a shortcut.
         //Since collections can't be part of clustering we can simply tombstone the whole thing
-        if (tombstone.min.size() > clusteringSize && tombstone.max.size() > clusteringSize &&
-            ByteBufferUtil.compareUnsigned(tombstone.min.get(clusteringSize),
-                                           tombstone.max.get(clusteringSize)) == 0)
+        if (tombSlice.start().size() > clusteringSize && tombSlice.end().size() > clusteringSize &&
+            ByteBufferUtil.compareUnsigned(tombSlice.start().get(clusteringSize),
+                                           tombSlice.end().get(clusteringSize)) == 0)
         {
-            ColumnDefinition collectionDef = metadata.getColumnDefinition(tombstone.min.get(clusteringSize));
+            ColumnDefinition collectionDef = metadata.getColumnDefinition(tombstone.deletedSlice().start().get(clusteringSize));
 
             if (collectionDef == null || !collectionDef.type.isCollection())
                 return null;
@@ -268,17 +229,16 @@ public class MaterializedView
             for (int i = 0; i < clusteringSize; i++)
             {
                 //we can't handle RT across clustering keys
-                assert ByteBufferUtil.compareUnsigned(tombstone.min.get(i), tombstone.max.get(i)) == 0;
+                assert ByteBufferUtil.compareUnsigned(tombSlice.start().get(i), tombSlice.end().get(i)) == 0;
 
                 ColumnDefinition cdef = metadata.clusteringColumns().get(i);
-                clusterings.put(cdef.name, tombstone.min.get(i));
+                clusterings.put(cdef.name, tombSlice.start().get(i));
             }
 
 
             boolean queryNeeded = false;
-            for (MaterializedViewSelector selector : clusteringSelectors)
+            for (ColumnDefinition definition : viewCfs.metadata.clusteringColumns())
             {
-                ColumnDefinition definition = selector.columnDefinition;
                 if (baseCfs.metadata.getColumnDefinition(definition.name).isPartitionKey())
                     continue;
 
@@ -288,14 +248,14 @@ public class MaterializedView
             MutationUnit mu = new MutationUnit(baseCfs, key, clusterings);
 
             //Incase we need a diff partition key
-            queryNeeded = queryNeeded || !clusterings.containsKey(targetSelector.columnDefinition.name);
+            queryNeeded = queryNeeded || !clusterings.containsKey(targetDef.name);
 
             //Fetch missing info
             if (queryNeeded)
             {
                 try
                 {
-                    query(key, DeletionInfo.live(), new MutationUnit.Set(mu, clusteringSelectors));
+                    query(key, DeletionInfo.live(), new MutationUnit.Set(mu, viewCfs.metadata.clusteringColumns()));
                 }
                 catch (DigestMismatchException dme)
                 {
@@ -303,27 +263,17 @@ public class MaterializedView
                 }
             }
 
-
             //Build modified RT mutation
-            ByteBuffer targetKey = mu.clusteringValue(targetSelector, MutationUnit.earliest);
+            ByteBuffer targetKey = mu.clusteringValue(targetDef, MutationUnit.earliest);
             if (targetKey == null)
                 return null; //Fixme: need a empty mutation type
 
-            Mutation mutation = new Mutation(metadata.ksName, targetKey);
+            RowUpdateBuilder builder = new RowUpdateBuilder(viewCfs.metadata, tombstone.deletionTime().localDeletionTime(), tombstone.deletionTime().markedForDeleteAt(), targetKey);
+            Clustering clustering = mu.viewClustering(viewCfs.getComparator(), viewCfs.metadata.clusteringColumns(), MutationUnit.earliest);
 
-            CBuilder builder = viewCfs.getComparator().prefixBuilder();
+            builder.addRangeTombstone(Slice.make(viewCfs.getComparator(), clustering, clustering));
 
-            for (MaterializedViewSelector selector : clusteringSelectors)
-                builder.add(mu.clusteringValue(selector, MutationUnit.earliest));
-
-            Composite range = viewCfs.getComparator().create(builder.build(), collectionDef);
-
-            mutation.addOrGet(viewCfs.getColumnFamilyName())
-                    .addAtom(new RangeTombstone(range.start(),
-                                                range.end(),
-                                                tombstone.timestamp(), tombstone.getLocalDeletionTime()));
-
-            return mutation;
+            return builder.build();
         }
 
         return null;
@@ -331,21 +281,21 @@ public class MaterializedView
 
 
 
-    private Collection<Mutation> createForDeletionInfo(ByteBuffer key, ColumnFamily columnFamily, ConsistencyLevel consistency)
+    private Collection<Mutation> createForDeletionInfo(ByteBuffer key, AbstractPartitionData upd, ConsistencyLevel consistency)
     {
-        DeletionInfo deletionInfo = columnFamily.deletionInfo();
-        if (deletionInfo.hasRanges() || deletionInfo.getTopLevelDeletion().markedForDeleteAt != Long.MIN_VALUE)
+        DeletionInfo deletionInfo = upd.deletionInfo();
+        if (deletionInfo.hasRanges() || deletionInfo.getPartitionDeletion().markedForDeleteAt() != Long.MIN_VALUE)
         {
 
-            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, clusteringSelectors);
+            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, viewCfs.metadata.clusteringColumns());
             List<Mutation> mutations = new ArrayList<>();
 
-            IDiskAtomFilter filter;
+            SinglePartitionSliceReadBuilder builder = new SinglePartitionSliceReadBuilder(baseCfs, baseCfs.partitioner.decorateKey(key));
+
             long timestamp;
             if (deletionInfo.hasRanges())
             {
-                ColumnSlice[] slices = new ColumnSlice[deletionInfo.rangeCount()];
-                Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator();
+                Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator(false);
                 int i = 0;
                 timestamp = Long.MIN_VALUE;
                 while (tombstones.hasNext())
@@ -359,43 +309,45 @@ public class MaterializedView
                     }
                     else
                     {
-                        slices[i++] = new ColumnSlice(tombstone.min, tombstone.max);
-                        timestamp = Math.max(timestamp, tombstone.timestamp());
+                        builder.addSlice(tombstone.deletedSlice());
+                        timestamp = Math.max(timestamp, tombstone.deletionTime().markedForDeleteAt());
                     }
                 }
 
                 if (i == 0)
                     return mutations;
-
-                filter = new SliceQueryFilter(slices, false, 100);
             }
             else
             {
-                filter = new IdentityQueryFilter();
-                timestamp = deletionInfo.getTopLevelDeletion().markedForDeleteAt;
+                timestamp = deletionInfo.getPartitionDeletion().markedForDeleteAt();
             }
 
-            List<Row> rows = StorageProxy.read(Collections.singletonList(ReadCommand.create(baseCfs.metadata.ksName,
-                                                                                            key,
-                                                                                            baseCfs.metadata.cfName,
-                                                                                            timestamp,
-                                                                                            filter)), consistency);
+            QueryPager pager = builder.build().getLocalPager();
 
-
-            for (Row row : rows)
+            while (pager.isExhausted())
             {
-                ColumnFamily cf = row.cf;
+                try (PartitionIterator partitionIterator = pager.fetchPage(128))
+                {
+                    if (!partitionIterator.hasNext())
+                        break;
 
-                if (cf == null)
-                    continue;
+                    try (RowIterator rowIterator = partitionIterator.next())
+                    {
+                        while (rowIterator.hasNext())
+                        {
+                            Row row = rowIterator.next();
+                            Iterator<Cell> cellIterator = row.iterator();
 
-                for (Cell cell : cf.getSortedColumns())
-                    mutationUnits.addUnit(key, cell, false);
+                            while (cellIterator.hasNext())
+                                mutationUnits.addUnit(key, row.clustering(), cellIterator.next(), false);
+                        }
+                    }
+                }
             }
-
+            
             for (MutationUnit mutationUnit : mutationUnits)
             {
-                ByteBuffer value = mutationUnit.clusteringValue(targetSelector, MutationUnit.earliest);
+                ByteBuffer value = mutationUnit.clusteringValue(targetDef, MutationUnit.earliest);
                 if (value != null)
                 {
                     Mutation mutation = createTombstone(mutationUnit, value, timestamp);
@@ -446,36 +398,35 @@ public class MaterializedView
         }
     }
 
-    private MutationUnit.Set separateMutationUnits(ByteBuffer key, ColumnFamily cf)
+    private MutationUnit.Set separateMutationUnits(ByteBuffer key, AbstractPartitionData upd)
     {
-        MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, clusteringSelectors);
+        MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs, viewCfs.metadata.clusteringColumns());
 
         // For each cell name, we need to grab the clustering columns
-        for (Cell cell: cf.getSortedColumns())
+        for (Row row : upd.iterator())
         {
-            mutationUnits.addUnit(key, cell, true);
+            //for ()
+            //mutationUnits.addUnit(key,row.clustering(), row., true);
         }
 
         return mutationUnits;
     }
 
-    public Collection<Mutation> createMutations(ByteBuffer key, ColumnFamily cf, ConsistencyLevel consistency, boolean isBuilding)
+    public Collection<Mutation> createMutations(ByteBuffer key, AbstractPartitionData upd, ConsistencyLevel consistency, boolean isBuilding)
     {
-        createViewCfsAndSelectors();
-
-        if (cf.deletionInfo().isLive() && !cfModifiesSelectedColumn(cf))
+        if (upd.deletionInfo().isLive() && !cfModifiesSelectedColumn(upd))
         {
             return null;
         }
 
-        MutationUnit.Set mutationUnits = separateMutationUnits(key, cf);
+        MutationUnit.Set mutationUnits = separateMutationUnits(key, upd);
 
         // If we are building the view, we do not want to add old values; they will always be the same
         if (!isBuilding)
         {
             try
             {
-                query(key, cf.deletionInfo(), mutationUnits);
+                query(key, upd.deletionInfo(), mutationUnits);
             }
             catch (DigestMismatchException dme)
             {
@@ -508,7 +459,7 @@ public class MaterializedView
 
         if (!isBuilding)
         {
-            Collection<Mutation> deletion = createForDeletionInfo(key, cf, consistency);
+            Collection<Mutation> deletion = createForDeletionInfo(key, upd, consistency);
             if (deletion != null && !deletion.isEmpty())
             {
                 if (mutations == null) mutations = new LinkedList<>();
@@ -527,16 +478,12 @@ public class MaterializedView
             this.builder = null;
         }
 
-        createViewCfsAndSelectors();
-
         this.builder = new MaterializedViewBuilder(baseCfs, this);
         CompactionManager.instance.submitMaterializedViewBuilder(builder);
     }
 
     public void reload()
     {
-        createViewCfsAndSelectors();
-
         build();
     }
 

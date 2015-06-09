@@ -38,9 +38,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.apache.cassandra.OrderedJUnit4ClassRunner;
-import org.apache.cassandra.PartitionRangeReadBuilder;
+import org.apache.cassandra.db.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
+import org.apache.cassandra.db.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.cache.CachingOptions;
 import org.apache.cassandra.config.DatabaseDescriptor;

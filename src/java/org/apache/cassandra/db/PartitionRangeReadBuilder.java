@@ -18,7 +18,7 @@
  * under the License.
  *
  */
-package org.apache.cassandra;
+package org.apache.cassandra.db;
 
 import java.nio.ByteBuffer;
 import java.util.SortedSet;
@@ -26,7 +26,6 @@ import java.util.TreeSet;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.Operator;
-import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.NamesPartitionFilter;
 import org.apache.cassandra.db.filter.PartitionFilter;
@@ -135,16 +134,16 @@ public class PartitionRangeReadBuilder extends AbstractReadCommandBuilder
                 switch (rangeType)
                 {
                     case Inclusive:
-                        bounds = new Bounds<PartitionPosition>(s, e);
+                        bounds = new Bounds<>(s, e);
                         break;
                     case Exclusive:
-                        bounds = new ExcludingBounds<PartitionPosition>(s, e);
+                        bounds = new ExcludingBounds<>(s, e);
                         break;
                     case Range:
-                        bounds = new Range<PartitionPosition>(s, e);
+                        bounds = new Range<>(s, e);
                         break;
                     case ReverseRange:
-                        bounds = new IncludingExcludingBounds<PartitionPosition>(s, e);
+                        bounds = new IncludingExcludingBounds<>(s, e);
                         break;
                 }
                 dr = new DataRange(bounds, filter);

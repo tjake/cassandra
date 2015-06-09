@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.marshal.SetType;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.*;
@@ -293,6 +294,16 @@ public class RowUpdateBuilder
         assert c.type instanceof ListType;
         ListType lt = (ListType)c.type;
         writer(c).writeCell(c, false, bb(value, lt.getElementsType()), defaultLiveness, CellPath.create(ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes())));
+        return this;
+    }
+
+    public RowUpdateBuilder addSetEntry(String columnName, Object value)
+    {
+        ColumnDefinition c = getDefinition(columnName);
+        assert c.isStatic() || hasSetClustering : "Cannot set non static column " + c + " since no clustering hasn't been provided";
+        assert c.type instanceof SetType;
+        SetType st = (SetType)c.type;
+        writer(c).writeCell(c, false, null, defaultLiveness, CellPath.create(bb(value, st.getElementsType())));
         return this;
     }
 

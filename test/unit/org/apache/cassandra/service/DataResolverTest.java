@@ -29,7 +29,7 @@ import com.google.common.collect.Iterators;
 import org.junit.*;
 
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
+import org.apache.cassandra.db.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;

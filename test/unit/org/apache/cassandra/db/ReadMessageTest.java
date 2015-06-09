@@ -25,9 +25,7 @@ import java.io.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;

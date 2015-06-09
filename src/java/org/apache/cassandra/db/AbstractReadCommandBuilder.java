@@ -18,14 +18,13 @@
  * under the License.
  *
  */
-package org.apache.cassandra;
+package org.apache.cassandra.db;
 
 import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.Operator;
-import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.filter.*;
@@ -114,9 +113,9 @@ public abstract class AbstractReadCommandBuilder
         return build().executeLocally();
     }
 
-    public Util.OnlyRow getOnlyRow()
+    public OnlyRow getOnlyRow()
     {
-        return new Util.OnlyRow(build().executeLocally());
+        return new OnlyRow(build().executeLocally());
     }
 
     public static List<Row> getRowList(PartitionIterator iter)
@@ -129,6 +128,31 @@ public abstract class AbstractReadCommandBuilder
                 results.add(ri.next());
         }
         return results;
+    }
+
+    public static class OnlyRow implements AutoCloseable
+    {
+        private final PartitionIterator iterator;
+        public final Row row;
+
+        public OnlyRow(PartitionIterator iter)
+        {
+            iterator = iter;
+            while (iterator.hasNext())
+            {
+                RowIterator ri = iterator.next();
+                assert !iterator.hasNext() : "Expected single row result, have more than 1.";
+                row = ri.next();
+                assert !ri.hasNext() : "Expected single row result, have more than 1.";
+                return;
+            }
+            throw new RuntimeException("Attempted to query single row but no results were in result set.");
+        }
+
+        public void close()
+        {
+            iterator.close();
+        }
     }
 
     public abstract ReadCommand build();

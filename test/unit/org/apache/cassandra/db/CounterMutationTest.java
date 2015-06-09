@@ -20,7 +20,6 @@ package org.apache.cassandra.db;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;

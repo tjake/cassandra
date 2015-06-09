@@ -25,10 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
-import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Striped;
 
@@ -51,7 +49,6 @@ import org.apache.cassandra.exceptions.UnavailableException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class MaterializedViewManager
 {
@@ -141,7 +138,7 @@ public class MaterializedViewManager
 
     public boolean cfModifiesSelectedColumn(PartitionUpdate upd)
     {
-        for (MaterializedView view: viewsByName.values())
+        for (MaterializedView view : viewsByName.values())
         {
             if (view.cfModifiesSelectedColumn(upd))
                 return true;
@@ -176,6 +173,7 @@ public class MaterializedViewManager
                     return true;
             }
         }
+
         return false;
     }
 }

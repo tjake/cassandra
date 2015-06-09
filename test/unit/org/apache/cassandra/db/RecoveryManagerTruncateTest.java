@@ -23,7 +23,6 @@ import static org.junit.Assert.assertNull;
 
 import java.io.IOException;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;

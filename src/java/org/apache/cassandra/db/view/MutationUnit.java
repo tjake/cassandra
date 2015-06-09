@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -36,16 +37,14 @@ import com.google.common.collect.Iterables;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
-import org.apache.cassandra.db.Cell;
+import org.apache.cassandra.db.Clustering;
+import org.apache.cassandra.db.ClusteringComparator;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.ExpiringCell;
-import org.apache.cassandra.db.composites.CBuilder;
-import org.apache.cassandra.db.composites.CellName;
-import org.apache.cassandra.db.composites.CellNameType;
-import org.apache.cassandra.db.composites.Composite;
-import org.apache.cassandra.db.filter.ColumnSlice;
 import org.apache.cassandra.db.marshal.CompositeType;
+import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.Cells;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.FBUtilities;
 
 // This is a class that allows comparisons based on partition key and clustering columns, and resolves existing and
 // new mutation values
@@ -112,26 +111,22 @@ public class MutationUnit
                 return null;
             Cell value = iterator.next().cell;
             while (iterator.hasNext())
-                value = value.reconcile(iterator.next().cell);
+                value = Cells.reconcile(value, iterator.next().cell, FBUtilities.nowInSeconds());
 
             return value;
         }
     };
 
-    public Composite viewComposite(CellNameType comparator, List<MaterializedViewSelector> clusteringSelectors, Resolver resolver)
+    public Clustering viewClustering(ClusteringComparator comparator, List<ColumnDefinition> clusteringColumns, Resolver resolver)
     {
-        if (comparator.isCompound())
+        Object[] clusterings = new Object[clusteringColumns.size()];
+
+        for (int i = 0; i < clusteringColumns.size(); i++)
         {
-            CBuilder builder = comparator.prefixBuilder();
-            for (MaterializedViewSelector selector : clusteringSelectors)
-                builder.add(clusteringValue(selector, resolver));
-            return builder.build();
+            clusteringValue(clusteringColumns.get(i), resolver);
         }
-        else
-        {
-            assert clusteringSelectors.size() == 1;
-            return comparator.make(clusteringValue(Iterables.getOnlyElement(clusteringSelectors), resolver));
-        }
+
+        return comparator.make(clusterings);
     }
 
     private interface PrivateResolver
@@ -152,7 +147,7 @@ public class MutationUnit
 
         public MUCell reconcile(MUCell cell)
         {
-            Cell reconciled = this.cell.reconcile(cell.cell);
+            Cell reconciled = Cells.reconcile(this.cell, cell.cell, FBUtilities.nowInSeconds());
             if (reconciled == this.cell) return this;
             else return cell;
         }
@@ -165,7 +160,7 @@ public class MutationUnit
     final ColumnFamilyStore baseCfs;
     private final ByteBuffer partitionKey;
     private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
-    private final Map<ColumnIdentifier, Map<CellName, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
+    private final Map<ColumnIdentifier, Map<Clustering, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
     public int ttl;
 
     MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
@@ -197,24 +192,27 @@ public class MutationUnit
         return result;
     }
 
-    public void addColumnValue(Cell cell, boolean isNew)
+    public void addColumnValue(Clustering clustering, Cell cell, boolean isNew)
     {
-        CellName cellName = cell.name();
-        ColumnIdentifier identifier = cellName.cql3ColumnName(baseCfs.metadata);
+        ColumnIdentifier identifier = cell.column().name;
+
         if (!columnValues.containsKey(identifier))
             columnValues.put(identifier, new HashMap<>());
-        Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
-        if (!innerMap.containsKey(cellName))
-            innerMap.put(cellName, new TreeMap<>());
-        if (cell instanceof ExpiringCell)
-            ttl = Math.max(((ExpiringCell) cell).getTimeToLive(), ttl);
-        innerMap.get(cellName).put(cell.timestamp(), new MUCell(cell, isNew));
+
+        Map<Clustering, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
+
+        if (!innerMap.containsKey(clustering))
+            innerMap.put(clustering, new TreeMap<>());
+
+        if (cell.isExpiring())
+            ttl = Math.max(cell.livenessInfo().ttl(), ttl);
+
+        innerMap.get(clustering).put(cell.livenessInfo().timestamp(), new MUCell(cell, isNew));
     }
 
     // The Definition here is actually the *base table* definition
-    public ByteBuffer clusteringValue(MaterializedViewSelector selector, Resolver resolver)
+    public ByteBuffer clusteringValue(ColumnDefinition definition, Resolver resolver)
     {
-        ColumnDefinition definition = selector.columnDefinition;
         ColumnDefinition baseDefinition = definition.cfName.equals(baseCfs.name)
                                           ? definition
                                           : baseCfs.metadata.getColumnDefinition(definition.name);
@@ -237,16 +235,16 @@ public class MutationUnit
             if (clusteringColumns.containsKey(columnIdentifier))
                 return clusteringColumns.get(columnIdentifier);
 
-            Collection<Cell> val = values(selector, resolver);
+            Collection<Cell> val = values(definition, resolver);
             if (val != null && val.size() == 1)
                 return Iterables.getOnlyElement(val).value();
         }
         return null;
     }
 
-    public Collection<Cell> values(MaterializedViewSelector selector, Resolver resolver)
+    public Collection<Cell> values(ColumnDefinition definition, Resolver resolver)
     {
-        Map<CellName, SortedMap<Long, MUCell>> innerMap = columnValues.get(selector.columnDefinition.name);
+        Map<Clustering, SortedMap<Long, MUCell>> innerMap = columnValues.get(definition.name);
         if (innerMap == null)
             return Collections.emptyList();
 
@@ -260,38 +258,19 @@ public class MutationUnit
         return value;
     }
 
-    public ColumnSlice getBaseColumnSlice()
-    {
-        CBuilder builder = baseCfs.getComparator().prefixBuilder();
-        CFMetaData cfmd = baseCfs.metadata;
-        ByteBuffer[] buffers = new ByteBuffer[clusteringColumns.size()];
-        for (Map.Entry<ColumnIdentifier, ByteBuffer> buffer: clusteringColumns.entrySet())
-        {
-            buffers[cfmd.getColumnDefinition(buffer.getKey()).position()] = buffer.getValue();
-        }
-
-        for (ByteBuffer byteBuffer: buffers)
-            builder = builder.add(byteBuffer);
-
-        Composite built = builder.build();
-        return new ColumnSlice(built.start(), built.end());
-    }
-
     static class Set implements Iterable<MutationUnit>
     {
         private final ColumnFamilyStore baseCfs;
-        private final Map<ColumnIdentifier, MaterializedViewSelector> clusteringSelectors;
+        private final HashSet<ColumnDefinition> clusteringSelectors;
         private final Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
 
-        Set(ColumnFamilyStore baseCfs, List<MaterializedViewSelector> clusteringSelectors)
+        Set(ColumnFamilyStore baseCfs, List<ColumnDefinition> clusteringSelectors)
         {
             this.baseCfs = baseCfs;
-            this.clusteringSelectors = new HashMap<>();
-            for (MaterializedViewSelector selector: clusteringSelectors)
-                this.clusteringSelectors.put(selector.columnDefinition.name, selector);
+            this.clusteringSelectors = new HashSet<>(clusteringSelectors);
         }
 
-        Set(MutationUnit single, List<MaterializedViewSelector> clusteringSelectors)
+        Set(MutationUnit single, List<ColumnDefinition> clusteringSelectors)
         {
             this(single.baseCfs, clusteringSelectors);
             mutationUnits.put(single, single);
@@ -312,13 +291,12 @@ public class MutationUnit
             return mutationUnits.values().spliterator();
         }
 
-        public void addUnit(ByteBuffer key, Cell cell, boolean isNew)
+        public void addUnit(ByteBuffer key, Clustering clustering, Cell cell, boolean isNew)
         {
             Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
             for (ColumnDefinition columnDefinition: baseCfs.metadata.clusteringColumns())
             {
-                ColumnIdentifier identifier = columnDefinition.name;
-                clusteringColumns.put(identifier, clusteringSelectors.get(identifier).getSingle(key, cell));
+                clusteringColumns.put(columnDefinition.name, cell.value());
             }
 
             MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
@@ -330,7 +308,8 @@ public class MutationUnit
             {
                 mutationUnits.put(mutationUnit, mutationUnit);
             }
-            mutationUnit.addColumnValue(cell, isNew);
+
+            mutationUnit.addColumnValue(clustering, cell, isNew);
         }
 
         public int size()

@@ -39,7 +39,6 @@ import java.util.zip.Checksum;
 
 import com.google.common.collect.ImmutableMap;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;

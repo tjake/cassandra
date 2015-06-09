@@ -32,15 +32,15 @@ public final class MaterializedViewUtils
     {
     }
 
-    public static InetAddress getIndexNaturalEndpoint(String keyspaceName, Token dataToken, Token indexToken)
+    public static InetAddress getViewNaturalEndpoint(String keyspaceName, Token baseToken, Token viewToken)
     {
-        List<InetAddress> dataNaturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, dataToken);
-        List<InetAddress> indexNaturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, indexToken);
+        List<InetAddress> baseNaturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, baseToken);
+        List<InetAddress> viewNaturalEndpoints = StorageService.instance.getNaturalEndpoints(keyspaceName, viewToken);
 
-        int dataIdx = dataNaturalEndpoints.indexOf(FBUtilities.getBroadcastAddress());
-        if (dataIdx < 0)
-            throw new RuntimeException("Trying to get the index natural endpoint on a non-data replica");
+        int baseIdx = baseNaturalEndpoints.indexOf(FBUtilities.getBroadcastAddress());
+        if (baseIdx < 0)
+            throw new RuntimeException("Trying to get the view natural endpoint on a non-data replica");
 
-        return indexNaturalEndpoints.get(dataIdx);
+        return viewNaturalEndpoints.get(baseIdx);
     }
 }

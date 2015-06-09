@@ -19,7 +19,6 @@
 package org.apache.cassandra.db.view;
 
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -31,15 +30,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.concurrent.ScheduledExecutors;
-import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.db.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionInfo;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.compaction.OperationType;
+import org.apache.cassandra.db.partitions.FilteredPartition;
+import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
@@ -47,7 +49,8 @@ import org.apache.cassandra.io.sstable.ReducingKeyIterator;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.service.pager.QueryPagers;
+import org.apache.cassandra.service.pager.QueryPager;
+import org.apache.cassandra.utils.NoSpamLogger;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
 
@@ -71,29 +74,36 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
 
     private void buildKey(DecoratedKey key)
     {
-        Iterator<ColumnFamily> columnFamilies = QueryPagers.pageRowLocally(baseCfs, key.getKey(), 5000);
-        while (columnFamilies.hasNext())
-        {
-            ColumnFamily cf = columnFamilies.next();
-            Collection<Mutation> mutations = view.createMutations(key.getKey(), cf, ConsistencyLevel.ONE, true);
+        SinglePartitionNamesReadBuilder builder = new SinglePartitionNamesReadBuilder(baseCfs, key);
 
-            if (mutations != null)
-            {
-                int retries = 3;
-                while (retries > 0)
-                {
-                    try
-                    {
-                        StorageProxy.mutateMV(key.getKey(), mutations);
-                        break;
-                    }
-                    catch (WriteTimeoutException ex)
-                    {
-                        if (--retries == 0)
-                            throw ex;
-                    }
-                }
-            }
+        QueryPager pager = builder.build().getLocalPager();
+
+        while (!pager.isExhausted())
+        {
+           try (PartitionIterator partitionIterator = pager.fetchPage(128))
+           {
+               if (!partitionIterator.hasNext())
+                   return;
+
+               try (RowIterator rowIterator = partitionIterator.next())
+               {
+                   Collection<Mutation> mutations = view.createMutations(key.getKey(), FilteredPartition.create(rowIterator), ConsistencyLevel.ONE, true);
+
+                   if (mutations != null)
+                   {
+                       try
+                       {
+                           StorageProxy.mutateMV(key.getKey(), mutations);
+                           break;
+                       }
+                       catch (WriteTimeoutException ex)
+                       {
+                           NoSpamLogger.getLogger(logger, 1, TimeUnit.MINUTES)
+                                       .warn("Encountered write timeout when building materialized view {}, the entries were stored in the batchlog and will be replayed at another time", view.name);
+                       }
+                   }
+               }
+           }
         }
     }
 
@@ -190,7 +200,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
             if (lastToken == null || range.contains(lastToken))
                 rangesLeft = 0;
         }
-        return new CompactionInfo(baseCfs.metadata, OperationType.VIEW_BUILD, rangesLeft, rangesTotal, "ranges", compactionId);
+        return new CompactionInfo(baseCfs.metadata, OperationType.VIEW_BUILD, rangesLeft, rangesTotal, "ranges");
     }
 
     public void stop()
