@@ -20,6 +20,8 @@ package org.apache.cassandra.db;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.config.MaterializedViewDefinition;
+import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.io.FSError;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.MessageIn;
@@ -38,6 +40,10 @@ public class TruncateVerbHandler implements IVerbHandler<Truncation>
         {
             ColumnFamilyStore cfs = Keyspace.open(t.keyspace).getColumnFamilyStore(t.columnFamily);
             cfs.truncateBlocking();
+            for (MaterializedView materializedView: cfs.materializedViewManager.allViews())
+            {
+                materializedView.viewCfs.truncateBlocking();
+            }
         }
         catch (Exception e)
         {

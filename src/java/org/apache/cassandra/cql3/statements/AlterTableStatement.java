@@ -15,6 +15,53 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+/*
+                cfProps.applyToCFMetadata(cfm);
+                // If there are materialized views, need to apply the modifications to those tables as well.
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
+                {
+                    CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
+                    cfProps.applyToCFMetadata(indexCfm);
+                    if (materializedViewUpdates == null)
+                        materializedViewUpdates = new ArrayList<>();
+                    materializedViewUpdates.add(indexCfm);
+                }
+                    ColumnIdentifier to = entry.getValue().prepare(cfm);
+                    cfm.renameColumn(from, to);
+
+                    // If the materialized view includes a renamed column, it must be renamed in the index table and the definition.
+                    for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
+                    {
+                        if (!mv.selects(from)) continue;
+
+                        CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
+                        ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
+                        ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
+                        indexCfm.renameColumn(indexFrom, indexTo);
+
+                        MaterializedViewDefinition giCopy = mv.copy();
+                        mv.renameColumn(from, to);
+
+                        cfm.replaceMaterializedView(mv);
+
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
+                    }
+        }
+
+        if (materializedViewUpdates != null)
+        {
+            for (CFMetaData mvUpdates : materializedViewUpdates)
+                MigrationManager.announceColumnFamilyUpdate(mvUpdates, false, isLocalOnly);
+        }
+        if (materializedViewDrops != null)
+        {
+            for (CFMetaData mvDrops : materializedViewDrops)
+                MigrationManager.announceColumnFamilyDrop(mvDrops.ksName, mvDrops.cfName, isLocalOnly);
+        }
+ */
 package org.apache.cassandra.cql3.statements;
 
 import java.util.ArrayList;
@@ -24,7 +71,9 @@ import java.util.Map;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
@@ -88,6 +137,9 @@ public class AlterTableStatement extends SchemaAlteringStatement
             def = cfm.getColumnDefinition(columnName);
         }
 
+        List<CFMetaData> materializedViewUpdates = null;
+        List<CFMetaData> materializedViewDrops = null;
+
         switch (oType)
         {
             case ADD:
@@ -142,6 +194,24 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 cfm.addColumnDefinition(isStatic
                                         ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
                                         : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
+
+                // Adding a column to a table which has a SELECT * materialized view requires the column to be
+                // added to the materialized view as well
+                for (MaterializedViewDefinition indexDef: cfm.getMaterializedViews().values())
+                {
+                    if (indexDef.included.isEmpty())
+                    {
+                        CFMetaData indexCfm = MaterializedView.getCFMetaData(indexDef, meta).copy();
+                        componentIndex = indexCfm.comparator.isCompound() ? indexCfm.comparator.clusteringPrefixSize() : null;
+                        indexCfm.addColumnDefinition(isStatic
+                                                     ? ColumnDefinition.staticDef(indexCfm, columnName.bytes, type, componentIndex)
+                                                     : ColumnDefinition.regularDef(indexCfm, columnName.bytes, type, componentIndex));
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
+                    }
+                }
+
                 break;
 
             case ALTER:
@@ -191,6 +261,36 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 }
                 // In any case, we update the column definition
                 cfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
+
+                // We have to alter the schema of the materialized view table as well; it doesn't affect the definition however
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
+                {
+                    if (!mv.selects(columnName)) continue;
+                    // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
+                    CFMetaData indexCfm = MaterializedView.getCFMetaData(mv, meta).copy();
+                    ColumnDefinition indexDef = indexCfm.getColumnDefinition(def.name);
+
+                    // see the above rules about changing types
+                    if (indexDef.isPrimaryKeyColumn())
+                    {
+                        indexCfm.keyValidator(validatorType);
+                        indexCfm.addOrReplaceColumnDefinition(indexDef.withNewType(validatorType));
+                    }
+                    else
+                    {
+                        if (indexDef.isClusteringColumn())
+                        {
+                            indexCfm.comparator = indexCfm.comparator.setSubtype(indexDef.position(), validatorType);
+                        }
+
+                        // When handling collections, need to update collection validator
+                        indexCfm.addOrReplaceColumnDefinition(indexDef.withNewType(validatorType));
+                    }
+
+                    if (materializedViewUpdates == null)
+                        materializedViewUpdates = new ArrayList<>();
+                    materializedViewUpdates.add(indexCfm);
+                }
                 break;
 
             case DROP:
@@ -220,6 +320,54 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         cfm.removeColumnDefinition(toDelete);
                         cfm.recordColumnDrop(toDelete);
                         break;
+                }
+
+                // If a column is dropped which is the target of a materialized view,
+                // then we need to drop the view.
+                // If a column is dropped which was selected into a materialized view,
+                // we need to drop that column from the included materialzied view table
+                // and definition.
+                for (MaterializedViewDefinition mv: cfm.getMaterializedViews().values())
+                {
+                    if (!mv.selects(columnName)) continue;
+
+                    // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
+                    CFMetaData viewCfm = MaterializedView.getCFMetaData(mv, meta).copy();
+                    ColumnDefinition viewTarget = viewCfm.getColumnDefinition(def.name);
+
+                    assert !viewTarget.isClusteringColumn() : "Materialized View clustering columns should be undroppable because they are PRIMARY KEY on data table";
+                    // otherwise, at least a column was dropped, at most the whole global index
+                    if (viewTarget.isPrimaryKeyColumn())
+                    {
+                        // index must be dropped
+                        if (materializedViewDrops == null)
+                            materializedViewDrops = new ArrayList<>();
+                        materializedViewDrops.add(viewCfm);
+                        cfm.removeMaterializedView(mv.viewName);
+                    }
+                    else
+                    {
+                        ColumnIdentifier toDelete = null;
+                        MaterializedViewDefinition copyMv = mv.copy();
+                        for (ColumnIdentifier ci : copyMv.included)
+                        {
+                            if (ci.bytes.compareTo(def.name.bytes) == 0)
+                            {
+                                toDelete = ci;
+                                break;
+                            }
+                        }
+                        copyMv.included.remove(toDelete);
+
+                        cfm.replaceMaterializedView(copyMv);
+
+                        viewCfm.removeColumnDefinition(viewTarget);
+                        viewCfm.recordColumnDrop(viewTarget);
+
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(viewCfm);
+                    }
                 }
                 break;
             case OPTS:

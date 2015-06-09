@@ -561,10 +561,10 @@ public class SelectStatement implements CQLStatement
 
     public static class RawStatement extends CFStatement
     {
-        private final Parameters parameters;
-        private final List<RawSelector> selectClause;
-        private final List<Relation> whereClause;
-        private final Term.Raw limit;
+        public final Parameters parameters;
+        public final List<RawSelector> selectClause;
+        public final List<Relation> whereClause;
+        public final Term.Raw limit;
 
         public RawStatement(CFName cfName, Parameters parameters, List<RawSelector> selectClause, List<Relation> whereClause, Term.Raw limit)
         {

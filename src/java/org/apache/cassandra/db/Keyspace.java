@@ -23,12 +23,15 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.Lock;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.concurrent.Stage;
+import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.commitlog.CommitLog;
@@ -36,11 +39,18 @@ import org.apache.cassandra.db.commitlog.ReplayPosition;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
+import org.apache.cassandra.db.view.MaterializedViewManager;
+import org.apache.cassandra.exceptions.OverloadedException;
+import org.apache.cassandra.exceptions.UnavailableException;
+import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
+import org.apache.cassandra.metrics.ThreadPoolMetrics;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.concurrent.OpOrder;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.metrics.KeyspaceMetrics;
@@ -352,10 +362,41 @@ public class Keyspace
      * @param writeCommitLog false to disable commitlog append entirely
      * @param updateIndexes  false to disable index updates (used by CollationController "defragmenting")
      */
-    public void apply(Mutation mutation, boolean writeCommitLog, boolean updateIndexes)
+    public void apply(final Mutation mutation, final boolean writeCommitLog, boolean updateIndexes)
     {
         if (TEST_FAIL_WRITES && metadata.name.equals(TEST_FAIL_WRITES_KS))
             throw new RuntimeException("Testing write failures");
+
+        Lock lock = null;
+        if (updateIndexes && MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
+        {
+            lock = MaterializedViewManager.acquireLockFor(mutation.key().getKey());
+
+            if (lock == null)
+            {
+                if ((System.nanoTime() - mutation.createdAt) > DatabaseDescriptor.getWriteRpcTimeout())
+                {
+                    logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(mutation.key().getKey()));
+                    throw new WriteTimeoutException(WriteType.MATERIALIZED_VIEW, ConsistencyLevel.LOCAL_ONE, 0, 1);
+                }
+                else
+                {
+                    StageManager.getStage(Stage.MUTATION).execute(new Runnable()
+                    {
+                        public void run()
+                        {
+                            if (writeCommitLog)
+                                mutation.apply();
+                            else
+                                mutation.applyUnsafe();
+                        }
+                    });
+
+                    //Let someone else go
+                    return;
+                }
+            }
+        }
 
         try (OpOrder.Group opGroup = writeOrder.start())
         {
@@ -367,7 +408,7 @@ public class Keyspace
                 replayPosition = CommitLog.instance.add(mutation);
             }
 
-            DecoratedKey key = mutation.key();
+            DecoratedKey partitionKey = mutation.key();
             for (PartitionUpdate upd : mutation.getPartitionUpdates())
             {
                 ColumnFamilyStore cfs = columnFamilyStores.get(upd.metadata().cfId);
@@ -377,12 +418,31 @@ public class Keyspace
                     continue;
                 }
 
+
+                try
+                {
+                    if (updateIndexes && cfs.materializedViewManager.cfModifiesSelectedColumn(upd))
+                    {
+                        Tracing.trace("Create materialized view mutations from replica");
+                        cfs.materializedViewManager.pushReplicaMutations(partitionKey.getKey(), upd);
+                    }
+                }
+                catch (Exception e)
+                {
+                    JVMStabilityInspector.inspectThrowable(e);
+                }
+
                 Tracing.trace("Adding to {} memtable", upd.metadata().cfName);
                 SecondaryIndexManager.Updater updater = updateIndexes
                                                       ? cfs.indexManager.updaterFor(upd, opGroup)
                                                       : SecondaryIndexManager.nullUpdater;
                 cfs.apply(upd, updater, opGroup, replayPosition);
             }
+        }
+        finally
+        {
+            if (lock != null)
+                lock.unlock();
         }
     }
 

@@ -15,15 +15,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.cassandra.db;
 
-public enum WriteType
+package org.apache.cassandra.db.view;
+
+import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.Cell;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.composites.CellName;
+import org.apache.cassandra.exceptions.InvalidRequestException;
+
+import java.nio.ByteBuffer;
+
+public class MaterializedViewSelectorOnList extends MaterializedViewSelectorOnCollection
 {
-    SIMPLE,
-    BATCH,
-    UNLOGGED_BATCH,
-    COUNTER,
-    BATCH_LOG,
-    CAS,
-    MATERIALIZED_VIEW;
+    public MaterializedViewSelectorOnList(ColumnFamilyStore baseCfs, ColumnDefinition columnDefinition)
+    {
+        super(baseCfs, columnDefinition);
+    }
 }
