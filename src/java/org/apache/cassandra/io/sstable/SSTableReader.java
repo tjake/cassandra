@@ -264,10 +264,13 @@ public class SSTableReader extends SSTable implements SelfRefCounted<SSTableRead
             ICardinality cardinality = null;
             for (SSTableReader sstable : sstables)
             {
+                if (sstable.openReason != OpenReason.NORMAL)
+                    continue;
+
                 try
                 {
                     CompactionMetadata metadata = (CompactionMetadata) sstable.descriptor.getMetadataSerializer().deserialize(sstable.descriptor, MetadataType.COMPACTION);
-                    assert metadata != null : sstable.getFilename();
+                    assert metadata != null : sstable.getFilename() +", type=" +sstable.descriptor.type + ", openreason="+sstable.openReason;
                     if (cardinality == null)
                         cardinality = metadata.cardinalityEstimator;
                     else
