@@ -231,43 +231,45 @@ query returns [ParsedStatement stmnt]
 
 cqlStatement returns [ParsedStatement stmt]
     @after{ if (stmt != null) stmt.setBoundVariables(bindVariables); }
-    : st1= selectStatement             { $stmt = st1; }
-    | st2= insertStatement             { $stmt = st2; }
-    | st3= updateStatement             { $stmt = st3; }
-    | st4= batchStatement              { $stmt = st4; }
-    | st5= deleteStatement             { $stmt = st5; }
-    | st6= useStatement                { $stmt = st6; }
-    | st7= truncateStatement           { $stmt = st7; }
-    | st8= createKeyspaceStatement     { $stmt = st8; }
-    | st9= createTableStatement        { $stmt = st9; }
-    | st10=createIndexStatement        { $stmt = st10; }
-    | st11=dropKeyspaceStatement       { $stmt = st11; }
-    | st12=dropTableStatement          { $stmt = st12; }
-    | st13=dropIndexStatement          { $stmt = st13; }
-    | st14=alterTableStatement         { $stmt = st14; }
-    | st15=alterKeyspaceStatement      { $stmt = st15; }
-    | st16=grantPermissionsStatement   { $stmt = st16; }
-    | st17=revokePermissionsStatement  { $stmt = st17; }
-    | st18=listPermissionsStatement    { $stmt = st18; }
-    | st19=createUserStatement         { $stmt = st19; }
-    | st20=alterUserStatement          { $stmt = st20; }
-    | st21=dropUserStatement           { $stmt = st21; }
-    | st22=listUsersStatement          { $stmt = st22; }
-    | st23=createTriggerStatement      { $stmt = st23; }
-    | st24=dropTriggerStatement        { $stmt = st24; }
-    | st25=createTypeStatement         { $stmt = st25; }
-    | st26=alterTypeStatement          { $stmt = st26; }
-    | st27=dropTypeStatement           { $stmt = st27; }
-    | st28=createFunctionStatement     { $stmt = st28; }
-    | st29=dropFunctionStatement       { $stmt = st29; }
-    | st30=createAggregateStatement    { $stmt = st30; }
-    | st31=dropAggregateStatement      { $stmt = st31; }
-    | st32=createRoleStatement         { $stmt = st32; }
-    | st33=alterRoleStatement          { $stmt = st33; }
-    | st34=dropRoleStatement           { $stmt = st34; }
-    | st35=listRolesStatement          { $stmt = st35; }
-    | st36=grantRoleStatement          { $stmt = st36; }
-    | st37=revokeRoleStatement         { $stmt = st37; }
+    : st1= selectStatement                 { $stmt = st1; }
+    | st2= insertStatement                 { $stmt = st2; }
+    | st3= updateStatement                 { $stmt = st3; }
+    | st4= batchStatement                  { $stmt = st4; }
+    | st5= deleteStatement                 { $stmt = st5; }
+    | st6= useStatement                    { $stmt = st6; }
+    | st7= truncateStatement               { $stmt = st7; }
+    | st8= createKeyspaceStatement         { $stmt = st8; }
+    | st9= createTableStatement            { $stmt = st9; }
+    | st10=createIndexStatement            { $stmt = st10; }
+    | st11=dropKeyspaceStatement           { $stmt = st11; }
+    | st12=dropTableStatement              { $stmt = st12; }
+    | st13=dropIndexStatement              { $stmt = st13; }
+    | st14=alterTableStatement             { $stmt = st14; }
+    | st15=alterKeyspaceStatement          { $stmt = st15; }
+    | st16=grantPermissionsStatement       { $stmt = st16; }
+    | st17=revokePermissionsStatement      { $stmt = st17; }
+    | st18=listPermissionsStatement        { $stmt = st18; }
+    | st19=createUserStatement             { $stmt = st19; }
+    | st20=alterUserStatement              { $stmt = st20; }
+    | st21=dropUserStatement               { $stmt = st21; }
+    | st22=listUsersStatement              { $stmt = st22; }
+    | st23=createTriggerStatement          { $stmt = st23; }
+    | st24=dropTriggerStatement            { $stmt = st24; }
+    | st25=createTypeStatement             { $stmt = st25; }
+    | st26=alterTypeStatement              { $stmt = st26; }
+    | st27=dropTypeStatement               { $stmt = st27; }
+    | st28=createFunctionStatement         { $stmt = st28; }
+    | st29=dropFunctionStatement           { $stmt = st29; }
+    | st30=createAggregateStatement        { $stmt = st30; }
+    | st31=dropAggregateStatement          { $stmt = st31; }
+    | st32=createRoleStatement             { $stmt = st32; }
+    | st33=alterRoleStatement              { $stmt = st33; }
+    | st34=dropRoleStatement               { $stmt = st34; }
+    | st35=listRolesStatement              { $stmt = st35; }
+    | st36=grantRoleStatement              { $stmt = st36; }
+    | st37=revokeRoleStatement             { $stmt = st37; }
+    | st38=createMaterializedViewStatement { $stmt = st38; }
+    | st39=dropMaterializedViewStatement   { $stmt = st39; }
     ;
 
 /*
@@ -732,6 +734,19 @@ indexIdent returns [IndexTarget.Raw id]
     | K_FULL '(' c=cident ')'    { $id = IndexTarget.Raw.fullCollection(c); }
     ;
 
+/**
+ * CREATE MATERIALIZED VIEW <viewName> AS SELECT (<columns>|*) FROM (<columnName>) PRIMARY KEY (<columns>);
+ */
+createMaterializedViewStatement returns [CreateMaterializedViewStatement expr]
+    @init {
+        boolean ifNotExists = false;
+        List<ColumnIdentifier.Raw> primaryKeys = new ArrayList<>();
+    }
+    : K_CREATE K_MATERIALIZED K_VIEW (K_IF K_NOT K_EXISTS { ifNotExists = true; })? cf=columnFamilyName K_AS
+        select=selectStatement
+        K_PRIMARY K_KEY '(' ( key=cident { primaryKeys.add(key); } ) ( ',' key=cident { primaryKeys.add(key); } )* ')'
+        { $expr = new CreateMaterializedViewStatement(cf, select, primaryKeys, ifNotExists); }
+    ;
 
 /**
  * CREATE TRIGGER triggerName ON columnFamily USING 'triggerClass';
@@ -841,6 +856,15 @@ dropIndexStatement returns [DropIndexStatement expr]
     @init { boolean ifExists = false; }
     : K_DROP K_INDEX (K_IF K_EXISTS { ifExists = true; } )? index=indexName
       { $expr = new DropIndexStatement(index, ifExists); }
+    ;
+
+/**
+ * DROP MATERIALIZED VIEW [IF EXISTS] <view_name>
+ */
+dropMaterializedViewStatement returns [DropMaterializedViewStatement expr]
+    @init { boolean ifExists = false; }
+    : K_DROP K_MATERIALIZED K_VIEW (K_IF K_EXISTS { ifExists = true; } )? cf=columnFamilyName
+      { $expr = new DropMaterializedViewStatement(cf, ifExists); }
     ;
 
 /**
@@ -1597,6 +1621,8 @@ K_KEYSPACE:    ( K E Y S P A C E
 K_KEYSPACES:   K E Y S P A C E S;
 K_COLUMNFAMILY:( C O L U M N F A M I L Y
                  | T A B L E );
+K_MATERIALIZED:M A T E R I A L I Z E D;
+K_VIEW:        V I E W;
 K_INDEX:       I N D E X;
 K_CUSTOM:      C U S T O M;
 K_ON:          O N;

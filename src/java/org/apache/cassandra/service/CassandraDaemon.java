@@ -271,6 +271,24 @@ public class CassandraDaemon
         };
         ScheduledExecutors.optionalTasks.schedule(runnable, 5, TimeUnit.MINUTES);
 
+        Runnable indexRebuild = new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                for (Keyspace keyspace : Keyspace.all())
+                {
+                    for (ColumnFamilyStore cf: keyspace.getColumnFamilyStores())
+                    {
+                        cf.materializedViewManager.buildIfRequired();
+                    }
+                }
+            }
+        };
+
+        ScheduledExecutors.optionalTasks.schedule(indexRebuild, StorageService.RING_DELAY, TimeUnit.MILLISECONDS);
+
+
         SystemKeyspace.finishStartup();
 
         // start server internals

@@ -242,8 +242,8 @@ public class SSTableIterator extends AbstractSSTableIterator
                         }
 
                         // If we've crossed an index block boundary, update our informations
-                        if (currentIndexIdx < indexes.size() && file.bytesPastMark(mark) >= currentIndex().width)
-                            updateBlock(++currentIndexIdx);
+                        if (file.bytesPastMark(mark) >= currentIndex().width && ++currentIndexIdx < indexes.size())
+                            updateBlock(currentIndexIdx);
 
                         // Return the next atom unless we've reached the end, or we're beyond our slice
                         // end (note that unless we're on the last block for the slice, there is no point

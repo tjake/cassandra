@@ -25,7 +25,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.collect.Iterators;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;

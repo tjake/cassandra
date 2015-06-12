@@ -22,6 +22,8 @@ import java.nio.ByteBuffer;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.db.marshal.CollectionType;
+import org.apache.cassandra.db.marshal.SetType;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.*;
@@ -211,9 +213,14 @@ public class RowUpdateBuilder
     {
         ColumnDefinition c = getDefinition(columnName);
         assert c != null : "Cannot find column " + columnName;
-        assert c.isStatic() || update.metadata().comparator.size() == 0 || hasSetClustering : "Cannot set non static column " + c + " since no clustering hasn't been provided";
-        assert c.type.isCollection() && c.type.isMultiCell();
-        writer(c).writeComplexDeletion(c, new SimpleDeletionTime(defaultLiveness.timestamp() - 1, update.nowInSec()));
+        return resetCollection(c);
+    }
+
+    public RowUpdateBuilder resetCollection(ColumnDefinition columnDefinition)
+    {
+        assert columnDefinition.isStatic() || update.metadata().comparator.size() == 0 || hasSetClustering : "Cannot set non static column " + columnDefinition + " since no clustering hasn't been provided";
+        assert columnDefinition.type.isCollection() && columnDefinition.type.isMultiCell();
+        writer(columnDefinition).writeComplexDeletion(columnDefinition, new SimpleDeletionTime(defaultLiveness.timestamp() - 1, update.nowInSec()));
         return this;
     }
 
@@ -299,6 +306,16 @@ public class RowUpdateBuilder
         return this;
     }
 
+    public RowUpdateBuilder addSetEntry(String columnName, Object value)
+    {
+        ColumnDefinition c = getDefinition(columnName);
+        assert c.isStatic() || hasSetClustering : "Cannot set non static column " + c + " since no clustering hasn't been provided";
+        assert c.type instanceof SetType;
+        SetType st = (SetType)c.type;
+        writer(c).writeCell(c, false, null, defaultLiveness, CellPath.create(bb(value, st.getElementsType())));
+        return this;
+    }
+
     private ColumnDefinition getDefinition(String name)
     {
         return update.metadata().getColumnDefinition(new ColumnIdentifier(name, true));
@@ -307,5 +324,10 @@ public class RowUpdateBuilder
     public UnfilteredRowIterator unfilteredIterator()
     {
         return update.unfilteredIterator();
+    }
+
+    public void addComplex(ColumnDefinition columnDefinition, CellPath path, ByteBuffer value)
+    {
+        writer(columnDefinition).writeCell(columnDefinition, false, value, defaultLiveness, path);
     }
 }

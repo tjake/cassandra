@@ -192,6 +192,7 @@ public final class CFMetaData
     private volatile SpeculativeRetry speculativeRetry = DEFAULT_SPECULATIVE_RETRY;
     private volatile Map<ColumnIdentifier, DroppedColumn> droppedColumns = new HashMap();
     private volatile Map<String, TriggerDefinition> triggers = new HashMap<>();
+    private volatile Map<String, MaterializedViewDefinition> materializedViews = new HashMap<>();
     private volatile boolean isPurged = false;
     /*
      * All CQL3 columns definition are stored in the columnMetadata map.
@@ -238,6 +239,7 @@ public final class CFMetaData
     public CFMetaData speculativeRetry(SpeculativeRetry prop) {speculativeRetry = prop; return this;}
     public CFMetaData droppedColumns(Map<ColumnIdentifier, DroppedColumn> cols) {droppedColumns = cols; return this;}
     public CFMetaData triggers(Map<String, TriggerDefinition> prop) {triggers = prop; return this;}
+    public CFMetaData materializedViews(Map<String, MaterializedViewDefinition> prop) {materializedViews = prop; return this;}
 
     private CFMetaData(String keyspace,
                        String name,
@@ -290,6 +292,10 @@ public final class CFMetaData
             this.compactValueColumn = CompactTables.getCompactValueColumn(partitionColumns, isSuper());
     }
 
+    public Map<String, MaterializedViewDefinition> getMaterializedViews()
+    {
+        return materializedViews;
+    }
     public static CFMetaData create(String ksName,
                                     String name,
                                     UUID cfId,
@@ -467,6 +473,7 @@ public final class CFMetaData
                       .speculativeRetry(oldCFMD.speculativeRetry)
                       .memtableFlushPeriod(oldCFMD.memtableFlushPeriod)
                       .droppedColumns(new HashMap<>(oldCFMD.droppedColumns))
+                      .materializedViews(new HashMap<>(oldCFMD.materializedViews))
                       .triggers(new HashMap<>(oldCFMD.triggers));
     }
 
@@ -747,6 +754,8 @@ public final class CFMetaData
             && Objects.equal(maxIndexInterval, other.maxIndexInterval)
             && Objects.equal(speculativeRetry, other.speculativeRetry)
             && Objects.equal(droppedColumns, other.droppedColumns)
+            && Objects.equal(triggers, other.triggers)
+            && Objects.equal(materializedViews, other.materializedViews)
             && Objects.equal(triggers, other.triggers);
     }
 
@@ -782,6 +791,7 @@ public final class CFMetaData
             .append(speculativeRetry)
             .append(droppedColumns)
             .append(triggers)
+            .append(materializedViews)
             .toHashCode();
     }
 
@@ -843,6 +853,7 @@ public final class CFMetaData
         compressionParameters = cfm.compressionParameters;
 
         triggers = cfm.triggers;
+        materializedViews = cfm.materializedViews;
 
         logger.debug("application result is {}", this);
 
@@ -1216,6 +1227,23 @@ public final class CFMetaData
         return triggers.remove(name) != null;
     }
 
+    public void addMaterializedView(MaterializedViewDefinition def)
+    {
+        if (materializedViews.containsKey(def.viewName))
+            throw new InvalidRequestException(String.format("Cannot create materialized view %s, a materialized view with the same name already exists", def.viewName));
+        materializedViews.put(def.viewName, def);
+    }
+
+    public void removeMaterializedView(String name)
+    {
+        materializedViews.remove(name);
+    }
+
+    public void replaceMaterializedView(MaterializedViewDefinition def)
+    {
+        materializedViews.put(def.viewName, def);
+    }
+
     public void recordColumnDrop(ColumnDefinition def)
     {
         droppedColumns.put(def.name, new DroppedColumn(def.type, FBUtilities.timestampMicros()));
@@ -1367,6 +1395,7 @@ public final class CFMetaData
             .append("speculativeRetry", speculativeRetry)
             .append("droppedColumns", droppedColumns)
             .append("triggers", triggers.values())
+            .append("materializedViews", materializedViews.values())
             .toString();
     }
 
