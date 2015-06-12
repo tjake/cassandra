@@ -79,7 +79,7 @@ public class CacheProviderTest
             .apply();
 
         ColumnFamilyStore store = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD1);
-        return Util.materializePartition(store, Util.dk("key1"));
+        return (ArrayBackedPartition)Util.getOnlyPartitionUnfiltered(Util.cmd(store, Util.dk("key1")).build());
     }
 
     private void simpleCase(ArrayBackedPartition partition, ICache<MeasureableString, IRowCacheEntry> cache)

@@ -34,6 +34,7 @@ import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.metrics.ColumnFamilyMetrics;
 import org.apache.cassandra.service.*;
 import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.thrift.ThriftResultsMerger;
@@ -138,67 +139,24 @@ public class PartitionRangeReadCommand extends ReadCommand
         return StorageProxy.getRangeSlice(this, consistency);
     }
 
-    public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
-    {
-        return getPager(consistency, pagingState, false);
-    }
-
-    public QueryPager getLocalPager()
-    {
-        return getPager(null, null, true);
-    }
-
-    private QueryPager getPager(ConsistencyLevel consistency, PagingState pagingState, boolean local)
+    public QueryPager getPager(PagingState pagingState)
     {
         if (isNamesQuery())
-            return new RangeNamesQueryPager(this, consistency, local, pagingState);
+            return new RangeNamesQueryPager(this, pagingState);
         else
-            return new RangeSliceQueryPager(this, consistency, local, pagingState);
+            return new RangeSliceQueryPager(this, pagingState);
+    }
+
+    protected void recordLatency(ColumnFamilyMetrics metric, long latencyNanos)
+    {
+        metric.rangeLatency.addNano(latencyNanos);
     }
 
     protected UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs)
     {
-        final long start = System.nanoTime();
+        ColumnFamilyStore.ViewFragment view = cfs.select(cfs.viewFilter(dataRange().keyRange()));
+        Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), dataRange().keyRange().getString(metadata().getKeyValidator()));
 
-        @SuppressWarnings("resource") // We close on execption and on closing the result returned by this method
-        final OpOrder.Group op = cfs.readOrdering.start();
-        try
-        {
-            ColumnFamilyStore.ViewFragment view = cfs.select(cfs.viewFilter(dataRange().keyRange()));
-            Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), dataRange().keyRange().getString(metadata().getKeyValidator()));
-            return new WrappingUnfilteredPartitionIterator(getSequentialIterator(view, cfs))
-            {
-                private boolean closed;
-
-                @Override
-                public void close()
-                {
-                    if (closed)
-                        return;
-
-                    try
-                    {
-                        super.close();
-                    }
-                    finally
-                    {
-                        op.close();
-                        closed = true;
-                        cfs.metric.rangeLatency.addNano(System.nanoTime() - start);
-                    }
-                }
-            };
-        }
-        catch (RuntimeException | Error e)
-        {
-            op.close();
-            cfs.metric.rangeLatency.addNano(System.nanoTime() - start);
-            throw e;
-        }
-    }
-
-    private UnfilteredPartitionIterator getSequentialIterator(ColumnFamilyStore.ViewFragment view, ColumnFamilyStore cfs)
-    {
         // fetch data from current memtable, historical memtables, and SSTables in the correct order.
         final List<UnfilteredPartitionIterator> iterators = new ArrayList<>(Iterables.size(view.memtables) + view.sstables.size());
 
@@ -243,7 +201,7 @@ public class PartitionRangeReadCommand extends ReadCommand
             public UnfilteredRowIterator computeNext(UnfilteredRowIterator iter)
             {
                 // Note that we rely on the fact that until we actually advance 'iter', no really costly operation is actually done
-                // (except for reading the partition key from the index file) due to the call to mergeLazily in getSequentialIterator.
+                // (except for reading the partition key from the index file) due to the call to mergeLazily in queryStorage.
                 DecoratedKey dk = iter.partitionKey();
 
                 // Check if this partition is in the rowCache and if it is, if  it covers our filter

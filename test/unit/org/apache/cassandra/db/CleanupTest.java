@@ -120,10 +120,7 @@ public class CleanupTest
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, "birthdate", LOOPS);
-        try (PartitionIterator rows = UnfilteredPartitionIterators.filter(Util.getRangeSlice(cfs)))
-        {
-            assertEquals(LOOPS, Util.size(rows));
-        }
+        assertEquals(LOOPS, Util.getAll(Util.cmd(cfs).build()).size());
 
         SecondaryIndex index = cfs.indexManager.getIndexForColumn(cfs.metadata.getColumnDefinition(COLUMN));
         long start = System.nanoTime();
@@ -133,12 +130,7 @@ public class CleanupTest
         ColumnDefinition cdef = cfs.metadata.getColumnDefinition(COLUMN);
         ColumnFilter cf = ColumnFilter.create();
         cf.add(cdef, Operator.EQ, VALUE);
-        DataRange range = DataRange.allData(cfs.metadata, cfs.partitioner);
-        ReadCommand rc = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), cf, DataLimits.NONE, range);
-        try (PartitionIterator iter = rc.executeInternal())
-        {
-            assertEquals(LOOPS, Util.size(iter));
-        }
+        assertEquals(LOOPS, Util.getAll(Util.cmd(cfs).filterOn("birthdate", Operator.EQ, VALUE).build()).size());
 
         // we don't allow cleanup when the local host has no range to avoid wipping up all data when a node has not join the ring.
         // So to make sure cleanup erase everything here, we give the localhost the tiniest possible range.
@@ -152,20 +144,13 @@ public class CleanupTest
         CompactionManager.instance.performCleanup(cfs);
 
         // row data should be gone
-        try (PartitionIterator rows = UnfilteredPartitionIterators.filter(Util.getRangeSlice(cfs)))
-        {
-            assertEquals(0, Util.size(rows));
-        }
+        assertEquals(0, Util.getAll(Util.cmd(cfs).build()).size());
 
         // not only should it be gone but there should be no data on disk, not even tombstones
         assert cfs.getSSTables().isEmpty();
 
         // 2ary indexes should result in no results, too (although tombstones won't be gone until compacted)
-        rc = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), cf, DataLimits.NONE, range);
-        try (PartitionIterator iter = rc.executeInternal())
-        {
-            assertEquals(0, Util.size(iter));
-        }
+        assertEquals(0, Util.getAll(Util.cmd(cfs).filterOn("birthdate", Operator.EQ, VALUE).build()).size());
     }
 
     @Test
@@ -179,10 +164,7 @@ public class CleanupTest
         // insert data and verify we get it back w/ range query
         fillCF(cfs, "val", LOOPS);
 
-        try (PartitionIterator iter = UnfilteredPartitionIterators.filter(Util.getRangeSlice(cfs)))
-        {
-            assertEquals(LOOPS, Util.size(iter));
-        }
+        assertEquals(LOOPS, Util.getAll(Util.cmd(cfs).build()).size());
         TokenMetadata tmd = StorageService.instance.getTokenMetadata();
 
         byte[] tk1 = new byte[1], tk2 = new byte[1];
@@ -192,10 +174,7 @@ public class CleanupTest
         tmd.updateNormalToken(new BytesToken(tk2), InetAddress.getByName("127.0.0.2"));
         CompactionManager.instance.performCleanup(cfs);
 
-        try (PartitionIterator iter = UnfilteredPartitionIterators.filter(Util.getRangeSlice(cfs)))
-        {
-            assertEquals(0, Util.size(iter));
-        }
+        assertEquals(0, Util.getAll(Util.cmd(cfs).build()).size());
     }
 
     protected void fillCF(ColumnFamilyStore cfs, String colName, int rowsPerSSTable)

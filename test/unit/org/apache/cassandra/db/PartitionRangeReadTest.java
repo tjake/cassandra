@@ -38,7 +38,7 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
@@ -79,13 +79,7 @@ public class PartitionRangeReadTest
                 .clustering("cc2")
                 .add("val", "asdf").build().applyUnsafe();
 
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-             .setClusteringLowerBound(true, ByteBufferUtil.bytes("cc1"))
-             .setClusteringUpperBound(true, ByteBufferUtil.bytes("cc2"))
-             .executeInternal())
-        {
-            assertEquals(2, Iterators.size(iter));
-        }
+        assertEquals(2, Util.getAll(Util.cmd(cfs).fromIncl("cc1").toIncl("cc2").build()).size());
     }
 
     @Test
@@ -116,28 +110,12 @@ public class PartitionRangeReadTest
         cfs.forceBlockingFlush();
 
         // fetch by the first column name; we should get the second version of the column value
-        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
-             .addClustering(new BigInteger(new byte[]{1}))
-             .executeInternal())
-        {
-            assertTrue(iter.hasNext());
-            RowIterator ri = iter.next();
-            assertTrue(ri.hasNext());
-            Row r = ri.next();
-            assertTrue(r.getCell(cDef).value().equals(ByteBufferUtil.bytes("val2")));
-        }
+        Row row = Util.getOnlyRow(Util.cmd(cfs, "k1").includeRow(new BigInteger(new byte[]{1})).build());
+        assertTrue(row.getCell(cDef).value().equals(ByteBufferUtil.bytes("val2")));
 
         // fetch by the second column name; we should get the second version of the column value
-        try (PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("k1"))
-             .addClustering(new BigInteger(new byte[]{0, 0, 1}))
-             .executeInternal())
-        {
-            assertTrue(iter.hasNext());
-            RowIterator ri = iter.next();
-            assertTrue(ri.hasNext());
-            Row r = ri.next();
-            assertTrue(r.getCell(cDef).value().equals(ByteBufferUtil.bytes("val2")));
-        }
+        row = Util.getOnlyRow(Util.cmd(cfs, "k1").includeRow(new BigInteger(new byte[]{0, 0, 1})).build());
+        assertTrue(row.getCell(cDef).value().equals(ByteBufferUtil.bytes("val2")));
     }
 
     @Test
@@ -161,53 +139,31 @@ public class PartitionRangeReadTest
 
         ColumnDefinition cDef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
 
+        List<FilteredPartition> partitions;
+
         // Start and end inclusive
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
-             .setRangeType(PartitionRangeReadBuilder.RangeType.Inclusive)
-             .executeInternal())
-        {
-            List<Row> rows = AbstractReadCommandBuilder.getRowList(iter);
-            assertEquals(6, rows.size());
-            assertTrue(rows.get(0).getCell(cDef).value().equals(ByteBufferUtil.bytes("2")));
-            assertTrue(rows.get(rows.size() - 1).getCell(cDef).value().equals(ByteBufferUtil.bytes("7")));
-        }
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyIncl("2").toKeyIncl("7").build());
+        assertEquals(6, partitions.size());
+        assertTrue(partitions.get(0).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("2")));
+        assertTrue(partitions.get(partitions.size() - 1).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("7")));
 
         // Start and end excluded
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
-             .setRangeType(PartitionRangeReadBuilder.RangeType.Exclusive)
-             .executeInternal())
-        {
-            List<Row> rows = AbstractReadCommandBuilder.getRowList(iter);
-            assertEquals(4, rows.size());
-            assertTrue(rows.get(0).getCell(cDef).value().equals(ByteBufferUtil.bytes("3")));
-            assertTrue(rows.get(rows.size() - 1).getCell(cDef).value().equals(ByteBufferUtil.bytes("6")));
-        }
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyExcl("2").toKeyExcl("7").build());
+        assertEquals(4, partitions.size());
+        assertTrue(partitions.get(0).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("3")));
+        assertTrue(partitions.get(partitions.size() - 1).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("6")));
 
         // Start excluded, end included
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
-             .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-             .executeInternal())
-        {
-            List<Row> rows = AbstractReadCommandBuilder.getRowList(iter);
-            assertEquals(5, rows.size());
-            assertTrue(rows.get(0).getCell(cDef).value().equals(ByteBufferUtil.bytes("3")));
-            assertTrue(rows.get(rows.size() - 1).getCell(cDef).value().equals(ByteBufferUtil.bytes("7")));
-        }
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyExcl("2").toKeyIncl("7").build());
+        assertEquals(5, partitions.size());
+        assertTrue(partitions.get(0).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("3")));
+        assertTrue(partitions.get(partitions.size() - 1).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("7")));
 
         // Start included, end excluded
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .setKeyBounds(ByteBufferUtil.bytes("2"), ByteBufferUtil.bytes("7"))
-             .setRangeType(PartitionRangeReadBuilder.RangeType.ReverseRange)
-             .executeInternal())
-        {
-            List<Row> rows = AbstractReadCommandBuilder.getRowList(iter);
-            assertEquals(5, rows.size());
-            assertTrue(rows.get(0).getCell(cDef).value().equals(ByteBufferUtil.bytes("2")));
-            assertTrue(rows.get(rows.size() - 1).getCell(cDef).value().equals(ByteBufferUtil.bytes("6")));
-        }
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyIncl("2").toKeyExcl("7").build());
+        assertEquals(5, partitions.size());
+        assertTrue(partitions.get(0).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("2")));
+        assertTrue(partitions.get(partitions.size() - 1).iterator().next().getCell(cDef).value().equals(ByteBufferUtil.bytes("6")));
     }
 
         // TODO: Port or remove, depending on what DataLimits.thriftLimits (per cell) looks like

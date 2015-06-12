@@ -51,6 +51,7 @@ import org.apache.cassandra.utils.concurrent.Refs;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.Refs;
 import org.apache.cassandra.Util;
+import org.apache.cassandra.UpdateBuilder;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
@@ -160,21 +161,19 @@ public class AntiCompactionTest
 
     private SSTableReader writeFile(ColumnFamilyStore cfs, int count)
     {
-        DecoratedKey dk = Util.dk("key1");
-        new RowUpdateBuilder(cfm, System.currentTimeMillis(), "key1")
-                .clustering("c")
-                .add("val", "value1")
-                .build()
-                .applyUnsafe();
-        UnfilteredRowIterator atoms = Util.readFullPartition(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF), dk);
-
         File dir = cfs.directories.getDirectoryForNewSSTables();
         String filename = cfs.getTempSSTablePath(dir);
 
         try (SSTableWriter writer = SSTableWriter.create(filename, 0, 0, new SerializationHeader(cfm, cfm.partitionColumns(), RowStats.NO_STATS, true)))
         {
-            for (int i = 0; i < count * 5; i++)
-                writer.append(atoms);
+            for (int i = 0; i < count; i++)
+            {
+                UpdateBuilder builder = UpdateBuilder.create(cfm, ByteBufferUtil.bytes(i));
+                for (int j = 0; j < count * 5; j++)
+                    builder.newRow("c" + j).add("val", "value1");
+                writer.append(builder.build().unfilteredIterator());
+
+            }
             return writer.finish(true);
         }
     }
@@ -194,12 +193,14 @@ public class AntiCompactionTest
     }
 
     @Test
-    public void antiCompactTenSTC() throws InterruptedException, IOException{
+    public void antiCompactTenSTC() throws InterruptedException, IOException
+    {
         antiCompactTen("SizeTieredCompactionStrategy");
     }
 
     @Test
-    public void antiCompactTenLC() throws InterruptedException, IOException{
+    public void antiCompactTenLC() throws InterruptedException, IOException
+    {
         antiCompactTen("LeveledCompactionStrategy");
     }
 

@@ -30,10 +30,10 @@ import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.io.util.DataOutputPlus;
+import org.apache.cassandra.metrics.ColumnFamilyMetrics;
 import org.apache.cassandra.service.*;
 import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.tracing.Tracing;
-import org.apache.cassandra.utils.concurrent.OpOrder;
 
 /**
  * A read command that selects a (part of a) single partition.
@@ -196,62 +196,28 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         return StorageProxy.read(Group.one(this), consistency, clientState);
     }
 
-    public SinglePartitionPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
+    public SinglePartitionPager getPager(PagingState pagingState)
     {
-        return getPager(this, consistency, clientState, pagingState, false);
+        return getPager(this, pagingState);
     }
 
-    public SinglePartitionPager getLocalPager()
+    private static SinglePartitionPager getPager(SinglePartitionReadCommand command, PagingState pagingState)
     {
-        return getPager(this, null, null, null, true);
+        return new SinglePartitionPager(command, pagingState);
     }
 
-    private static SinglePartitionPager getPager(SinglePartitionReadCommand command, ConsistencyLevel consistency, ClientState clientState, PagingState pagingState, boolean local)
+    protected void recordLatency(ColumnFamilyMetrics metric, long latencyNanos)
     {
-        return new SinglePartitionPager(command, consistency, clientState, local, pagingState);
+        metric.readLatency.addNano(latencyNanos);
     }
 
-    @SuppressWarnings("resource") // we close 'result' on exception or through closing the result of this method
     protected UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs)
     {
-        final long start = System.nanoTime();
-        UnfilteredRowIterator result = null;
-        try
-        {
-            if (cfs.isRowCacheEnabled())
-            {
-                assert !cfs.isIndex(); // CASSANDRA-5732
-                result = getThroughCache(cfs);
-            }
-            else
-            {
-                result = queryMemtableAndDisk(cfs);
-            }
-
-            return new SingletonUnfilteredPartitionIterator(result, isForThrift())
-            {
-                @Override
-                public void close()
-                {
-                    try
-                    {
-                        super.close();
-                    }
-                    finally
-                    {
-                        cfs.metric.readLatency.addNano(System.nanoTime() - start);
-                    }
-                }
-            };
-        }
-        catch (RuntimeException | Error e)
-        {
-            if (result != null)
-                result.close();
-
-            cfs.metric.readLatency.addNano(System.nanoTime() - start);
-            throw e;
-        }
+        @SuppressWarnings("resource") // we close the created iterator through closing the result of this method (and SingletonUnfilteredPartitionIterator ctor cannot fail)
+        UnfilteredRowIterator partition = cfs.isRowCacheEnabled()
+                                        ? getThroughCache(cfs)
+                                        : queryMemtableAndDisk(cfs);
+        return new SingletonUnfilteredPartitionIterator(partition, isForThrift());
     }
 
     /**
@@ -265,6 +231,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
      */
     private UnfilteredRowIterator getThroughCache(ColumnFamilyStore cfs)
     {
+        assert !cfs.isIndex(); // CASSANDRA-5732
         assert cfs.isRowCacheEnabled() : String.format("Row cache is not enabled on table [" + cfs.name + "]");
 
         UUID cfId = metadata().cfId;
@@ -379,38 +346,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         Tracing.trace("Executing single-partition query on {}", cfs.name);
 
         boolean copyOnHeap = Memtable.MEMORY_POOL.needToCopyOnHeap();
-        @SuppressWarnings("resource") // We close on execption and on closing the result returned by this method
-        final OpOrder.Group op = cfs.readOrdering.start();
-        try
-        {
-            return new WrappingUnfilteredRowIterator(queryMemtableAndDiskInternal(cfs, copyOnHeap))
-            {
-                private boolean closed;
-
-                @Override
-                public void close()
-                {
-                    // Make sure we don't close twice as this would confuse OpOrder
-                    if (closed)
-                        return;
-
-                    try
-                    {
-                        super.close();
-                    }
-                    finally
-                    {
-                        op.close();
-                        closed = true;
-                    }
-                }
-            };
-        }
-        catch (RuntimeException | Error e)
-        {
-            op.close();
-            throw e;
-        }
+        return queryMemtableAndDiskInternal(cfs, copyOnHeap);
     }
 
     protected abstract UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, boolean copyOnHeap);
@@ -491,32 +427,29 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
             return commands.get(0).metadata();
         }
 
-        public PartitionIterator executeInternal()
+        public ReadOrderGroup startOrderGroup()
+        {
+            // Note that the only difference between the command in a group must be the partition key on which
+            // they applied. So as far as ReadOrderGroup is concerned, we can use any of the commands to start one.
+            return commands.get(0).startOrderGroup();
+        }
+
+        public PartitionIterator executeInternal(ReadOrderGroup orderGroup)
         {
             List<PartitionIterator> partitions = new ArrayList<>(commands.size());
             for (SinglePartitionReadCommand cmd : commands)
-                partitions.add(cmd.executeInternal());
+                partitions.add(cmd.executeInternal(orderGroup));
 
             // Because we only have enforce the limit per command, we need to enforce it globally.
             return limits.filter(PartitionIterators.concat(partitions));
         }
 
-        public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState)
-        {
-            return getPager(consistency, clientState, pagingState, false);
-        }
-
-        public QueryPager getLocalPager()
-        {
-            return getPager(null, null, null, true);
-        }
-
-        private QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState, boolean local)
+        public QueryPager getPager(PagingState pagingState)
         {
             if (commands.size() == 1)
-                return SinglePartitionReadCommand.getPager(commands.get(0), consistency, clientState, pagingState, local);
+                return SinglePartitionReadCommand.getPager(commands.get(0), pagingState);
 
-            return new MultiPartitionPager(commands, consistency, clientState, local, pagingState, limits);
+            return new MultiPartitionPager(commands, pagingState, limits);
         }
 
         @Override

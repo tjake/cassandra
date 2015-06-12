@@ -190,10 +190,10 @@ public class SelectStatement implements CQLStatement
         if (pageSize <= 0 || query.limits().count() <= pageSize)
             return execute(query, options, state);
 
-        QueryPager pager = query.getPager(cl, state.getClientState(), options.getPagingState());
+        QueryPager pager = query.getPager(options.getPagingState());
 
         if (selection.isAggregate())
-            return pageAggregateQuery(pager, options, pageSize);
+            return pageAggregateQuery(pager, options, pageSize, cl, state.getClientState());
 
         // We can't properly do post-query ordering if we page (see #6722)
         checkFalse(needsPostQueryOrdering(),
@@ -201,7 +201,7 @@ public class SelectStatement implements CQLStatement
                   + " you must either remove the ORDER BY or the IN and sort client side, or disable paging for this query");
 
         ResultMessage.Rows msg;
-        try (PartitionIterator page = pager.fetchPage(pageSize))
+        try (PartitionIterator page = pager.fetchPage(pageSize, cl, state.getClientState()))
         {
             msg = processResults(page, options);
         }
@@ -232,13 +232,13 @@ public class SelectStatement implements CQLStatement
         }
     }
 
-    private ResultMessage.Rows pageAggregateQuery(QueryPager pager, QueryOptions options, int pageSize)
+    private ResultMessage.Rows pageAggregateQuery(QueryPager pager, QueryOptions options, int pageSize, ConsistencyLevel consistency, ClientState clientState)
     throws RequestValidationException, RequestExecutionException
     {
         Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
         while (!pager.isExhausted())
         {
-            try (PartitionIterator iter = pager.fetchPage(pageSize))
+            try (PartitionIterator iter = pager.fetchPage(pageSize, consistency, clientState))
             {
                 while (iter.hasNext())
                     processPartition(iter.next(), options, result);
@@ -255,7 +255,8 @@ public class SelectStatement implements CQLStatement
 
     public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
-        try (PartitionIterator data = getQuery(options).executeInternal())
+        ReadQuery query = getQuery(options);
+        try (ReadOrderGroup orderGroup = query.startOrderGroup(); PartitionIterator data = query.executeInternal(orderGroup))
         {
             return processResults(data, options);
         }

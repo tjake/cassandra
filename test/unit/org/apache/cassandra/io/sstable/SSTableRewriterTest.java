@@ -880,13 +880,7 @@ public class SSTableRewriterTest extends SchemaLoader
                     writer2.append(ci.next());
             }
             for (int i = 0; i < 5000; i++)
-            {
-                DecoratedKey key = Util.dk(ByteBufferUtil.bytes(i));
-                try (UnfilteredRowIterator partition = Util.readFullPartition(cfs, key))
-                {
-                    assertFalse(partition.isEmpty());
-                }
-            }
+                assertFalse(Util.getOnlyPartition(Util.cmd(cfs, i).build()).isEmpty());
         }
         truncateCF();
         validateCFS(cfs);
@@ -898,7 +892,7 @@ public class SSTableRewriterTest extends SchemaLoader
         for (int i = 0; i < 100; i++)
         {
             DecoratedKey key = Util.dk(Integer.toString(i));
-            ArrayBackedPartition partition = Util.materializePartition(ks.getColumnFamilyStore(CF), key);
+            ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(ks.getColumnFamilyStore(CF), key).build());
             assertTrue(partition != null && partition.nonExpiringLiveCells() > 0);
         }
     }

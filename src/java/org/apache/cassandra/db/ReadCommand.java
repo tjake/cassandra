@@ -257,17 +257,19 @@ public abstract class ReadCommand implements ReadQuery
      */
     @SuppressWarnings("resource") // The result iterator is closed upon exceptions (we know it's fine to potentially not close the intermediary
                                   // iterators created inside the try as long as we do close the original resultIterator), or by closing the result.
-    public UnfilteredPartitionIterator executeLocally()
+    public UnfilteredPartitionIterator executeLocally(ReadOrderGroup orderGroup)
     {
+        long startTimeNanos = System.nanoTime();
+
         ColumnFamilyStore cfs = Keyspace.openAndGetStore(metadata());
         SecondaryIndexSearcher searcher = getIndexSearcher(cfs);
         UnfilteredPartitionIterator resultIterator = searcher == null
                                          ? queryStorage(cfs)
-                                         : searcher.search(this);
+                                         : searcher.search(this, orderGroup);
 
         try
         {
-            resultIterator = withMetricsRecording(withoutExpiredTombstones(resultIterator, cfs), cfs.metric);
+            resultIterator = withMetricsRecording(withoutExpiredTombstones(resultIterator, cfs), cfs.metric, startTimeNanos);
 
             // TODO: we should push the dropping of columns down the layers because
             // 1) it'll be more efficient
@@ -296,16 +298,23 @@ public abstract class ReadCommand implements ReadQuery
         }
     }
 
-    public PartitionIterator executeInternal()
+    protected abstract void recordLatency(ColumnFamilyMetrics metric, long latencyNanos);
+
+    public PartitionIterator executeInternal(ReadOrderGroup orderGroup)
     {
-        return UnfilteredPartitionIterators.filter(executeLocally());
+        return UnfilteredPartitionIterators.filter(executeLocally(orderGroup));
+    }
+
+    public ReadOrderGroup startOrderGroup()
+    {
+        return ReadOrderGroup.forCommand(this);
     }
 
     /**
      * Wraps the provided iterator so that metrics on what is scanned by the command are recorded.
      * This also log warning/trow TombstoneOverwhelmingException if appropriate.
      */
-    private UnfilteredPartitionIterator withMetricsRecording(UnfilteredPartitionIterator iter, final ColumnFamilyMetrics metric)
+    private UnfilteredPartitionIterator withMetricsRecording(UnfilteredPartitionIterator iter, final ColumnFamilyMetrics metric, final long startTimeNanos)
     {
         return new WrappingUnfilteredPartitionIterator(iter)
         {
@@ -366,6 +375,8 @@ public abstract class ReadCommand implements ReadQuery
                 }
                 finally
                 {
+                    recordLatency(metric, System.nanoTime() - startTimeNanos);
+
                     metric.tombstoneScannedHistogram.update(tombstones);
                     metric.liveScannedHistogram.update(liveRows);
 

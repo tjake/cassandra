@@ -158,8 +158,7 @@ public class IndexSummaryManagerTest
     {
         for (int i = 0; i < numRows; i++)
         {
-            DecoratedKey key = Util.dk(String.format("%3d", i));
-            ArrayBackedPartition iter = Util.materializePartition(cfs, key);
+            ArrayBackedPartition iter = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, String.format("%3d", i)).build());
 
             assertNotNull(iter);
             assertFalse(iter.isEmpty());

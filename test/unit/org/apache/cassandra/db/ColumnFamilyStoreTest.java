@@ -35,11 +35,8 @@ import com.google.common.collect.Iterators;
 import org.apache.cassandra.*;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.cql3.Operator;
-import org.apache.cassandra.db.rows.UnfilteredRowIterator;
-import org.apache.cassandra.db.rows.Cell;
-import org.apache.cassandra.db.rows.Row;
-import org.apache.cassandra.db.rows.RowIterator;
-import org.apache.cassandra.db.partitions.PartitionIterators;
+import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -112,10 +109,7 @@ public class ColumnFamilyStoreTest
         cfs.forceBlockingFlush();
 
         ((ClearableHistogram)cfs.metric.sstablesPerReadHistogram.cf).clear(); // resets counts
-        try (PartitionIterator iterator = new SinglePartitionNamesReadBuilder(cfs, Util.dk("key1")).addClustering("c1").executeInternal())
-        {
-            PartitionIterators.consume(iterator);
-        }
+        Util.getAll(Util.cmd(cfs, "key1").includeRow("c1").build());
         assertEquals(1, cfs.metric.sstablesPerReadHistogram.cf.getCount());
     }
 
@@ -136,10 +130,7 @@ public class ColumnFamilyStoreTest
         List<SSTableReader> ssTables = keyspace.getAllSSTables();
         assertEquals(1, ssTables.size());
         ssTables.get(0).forceFilterFailures();
-        try (UnfilteredRowIterator result = Util.readFullPartition(cfs, Util.dk("key2")))
-        {
-            assertEquals(0, Iterators.size(result));
-        }
+        Util.assertEmpty(Util.cmd(cfs, "key2").build());
     }
 
     @Test
@@ -154,7 +145,7 @@ public class ColumnFamilyStoreTest
         {
             public void runMayThrow() throws IOException
             {
-                Row toCheck = Util.getSingleRow(cfs, Util.dk("key1"));
+                Row toCheck = Util.getOnlyRowUnfiltered(Util.cmd(cfs, "key1").build());
                 Iterator<Cell> iter = toCheck.iterator();
                 assert(Iterators.size(iter) == 0);
             }
@@ -578,25 +569,19 @@ public class ColumnFamilyStoreTest
 
     private void assertRangeCount(ColumnFamilyStore cfs, ColumnDefinition col, ByteBuffer val, int count)
     {
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .addFilter(col, Operator.EQ, val)
-                .build().executeInternal())
+
+        int found = 0;
+        if (count != 0)
         {
-            int found = 0;
-            if (count != 0)
+            for (FilteredPartition partition : Util.getAll(Util.cmd(cfs).filterOn(col.name.toString(), Operator.EQ, val).build()))
             {
-                while (iter.hasNext())
+                for (Row r : partition)
                 {
-                    RowIterator ri = iter.next();
-                    while (ri.hasNext())
-                    {
-                        Row r = ri.next();
-                        if (r.getCell(col).value().equals(val))
-                            ++found;
-                    }
+                    if (r.getCell(col).value().equals(val))
+                        ++found;
                 }
             }
-            assertEquals(count, found);
         }
+        assertEquals(count, found);
     }
 }

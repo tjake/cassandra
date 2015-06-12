@@ -123,7 +123,7 @@ public class CompactionsPurgeTest
         FBUtilities.waitOnFutures(CompactionManager.instance.submitMaximal(cfs, Integer.MAX_VALUE, false));
         cfs.invalidateCachedPartition(dk(key));
 
-        ArrayBackedPartition partition = Util.materializePartition(cfs, dk(key));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build());
         assertEquals(1,partition.rowsWithNonExpiringCells());
         assertTrue(ByteBufferUtil.compareUnsigned(partition.lastRow().clustering().get(0), ByteBufferUtil.bytes("5")) == 0);
     }
@@ -177,12 +177,11 @@ public class CompactionsPurgeTest
 
         // verify that minor compaction does GC when key is provably not
         // present in a non-compacted sstable
-        ArrayBackedPartition partition = Util.materializePartition(cfs, key2);
-        assertEquals(0, partition.rowsWithNonExpiringCells());
+        Util.assertEmpty(Util.cmd(cfs, key2).build());
 
         // verify that minor compaction still GC when key is present
         // in a non-compacted sstable but the timestamp ensures we won't miss anything
-        partition = Util.materializePartition(cfs, key1);
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key1).build());
         assertEquals(1,partition.rowsWithNonExpiringCells());
         assertTrue(ByteBufferUtil.compareUnsigned(partition.lastRow().clustering().get(0), ByteBufferUtil.bytes("5")) == 0);
     }
@@ -227,7 +226,7 @@ public class CompactionsPurgeTest
 
         // We should have both the c1 and c2 tombstones still. Since the min timestamp in the c2 tombstone
         // sstable is older than the c1 tombstone, it is invalid to throw out the c1 tombstone.
-        ArrayBackedPartition partition = Util.materializePartition(cfs, dk(key3));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key3).build());
         assertEquals(0,partition.rowsWithNonExpiringCells());
     }
 
@@ -263,8 +262,7 @@ public class CompactionsPurgeTest
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
         assertTrue(cfs.getSSTables().isEmpty());
 
-        ArrayBackedPartition partition = Util.materializePartition(cfs, dk(key));
-        assertTrue(partition.isEmpty());
+        Util.assertEmpty(Util.cmd(cfs, key).build());
     }
 
 
@@ -299,14 +297,14 @@ public class CompactionsPurgeTest
         new RowUpdateBuilder(cfs.metadata, 0, "key4").clustering("c").add("val", ByteBufferUtil.EMPTY_BYTE_BUFFER).build().applyUnsafe();
 
         // move the key up in row cache (it should not be empty since we have the partition deletion info)
-        assertFalse(Util.materializePartition(cfs, dk(key)).isEmpty());
+        assertFalse(Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build()).isEmpty());
 
         // flush and major compact
         cfs.forceBlockingFlush();
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
 
         // Since we've force purging (by passing MAX_VALUE for gc_before), the row should have been invalidated and we should have no deletion info anymore
-        assertTrue(Util.materializePartition(cfs, dk(key)).isEmpty());
+        Util.assertEmpty(Util.cmd(cfs, key).build());
     }
 
     @Test
@@ -334,13 +332,13 @@ public class CompactionsPurgeTest
         rm.add(PartitionUpdate.fullPartitionDelete(cfs.metadata, dk(key), 4, FBUtilities.nowInSeconds()));
         rm.applyUnsafe();
 
-        ArrayBackedPartition partition = Util.materializePartition(cfs, dk(key));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build());
         assertFalse(partition.partitionLevelDeletion().isLive());
 
         // flush and major compact (with tombstone purging)
         cfs.forceBlockingFlush();
         Util.compactAll(cfs, Integer.MAX_VALUE).get();
-        assertFalse(Util.materializePartition(cfs, dk(key)).isEmpty());
+        assertFalse(Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build()).isEmpty());
 
         // re-inserts with timestamp lower than delete
         for (int i = 0; i < 5; i++)
@@ -352,7 +350,7 @@ public class CompactionsPurgeTest
         }
 
         // Check that the second insert went in
-        partition = Util.materializePartition(cfs, dk(key));
+        partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build());
         assertEquals(10, partition.rowsWithNonExpiringCells());
     }
 

@@ -46,12 +46,12 @@ public class QueryPagers
                                  boolean isForThrift) throws RequestValidationException, RequestExecutionException
     {
         SinglePartitionReadCommand command = SinglePartitionReadCommand.create(isForThrift, metadata, nowInSec, ColumnFilter.NONE, limits, key, filter);
-        final SinglePartitionPager pager = new SinglePartitionPager(command, consistencyLevel, state, false, null);
+        final SinglePartitionPager pager = new SinglePartitionPager(command, null);
 
         int count = 0;
         while (!pager.isExhausted())
         {
-            try (CountingPartitionIterator iter = new CountingPartitionIterator(pager.fetchPage(pageSize), limits))
+            try (CountingPartitionIterator iter = new CountingPartitionIterator(pager.fetchPage(pageSize, consistencyLevel, state), limits))
             {
                 PartitionIterators.consume(iter);
                 count += iter.counter().counted();

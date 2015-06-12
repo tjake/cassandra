@@ -53,32 +53,13 @@ public class KeyspaceTest extends CQLTester
         for (int round = 0; round < 2; round++)
         {
             // slice with limit 0
-            Slices slices = Slices.ALL;
-            PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
-            SlicePartitionFilter filter = new SlicePartitionFilter(columns, slices, false);
-            SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, 0);
-            try (PartitionIterator iterator = command.executeInternal())
-            {
-                assertFalse(iterator.hasNext());
-            }
+            Util.assertEmpty(Util.cmd(cfs, "0").columns("c").withLimit(0).build());
 
             // slice with nothing in between the bounds
-            filter = slices(cfs, 1, 1, false);
-            command = singlePartitionSlice(cfs, "0", filter, null);
-            try (PartitionIterator iterator = command.executeInternal())
-            {
-                assertFalse(iterator.hasNext());
-            }
+            Util.assertEmpty(Util.cmd(cfs, "0").columns("c").fromIncl(1).toIncl(1).build());
 
             // fetch a non-existent name
-            TreeSet<Clustering> clusterings = new TreeSet<>(cfs.getComparator());
-            clusterings.add(new SimpleClustering(ByteBufferUtil.bytes(1)));
-            NamesPartitionFilter namesFilter = new NamesPartitionFilter(cfs.metadata.partitionColumns(), clusterings, false);
-            SinglePartitionNamesCommand namesCommand = new SinglePartitionNamesCommand(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, Util.dk("0"), namesFilter);
-            try (PartitionIterator iterator = namesCommand.executeInternal())
-            {
-                assertFalse(iterator.hasNext());
-            }
+            Util.assertEmpty(Util.cmd(cfs, "0").columns("c").includeRow(1).build());
 
             if (round == 0)
                 cfs.forceBlockingFlush();
@@ -98,67 +79,25 @@ public class KeyspaceTest extends CQLTester
         for (int round = 0; round < 2; round++)
         {
             // slice with limit 1
-            PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
-            SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
-            SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, 1);
-            try (PartitionIterator iterator = command.executeInternal())
-            {
-                try (RowIterator rowIterator = iterator.next())
-                {
-                    Row row = rowIterator.next();
-                    assertEquals(ByteBufferUtil.bytes(0), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
-                    assertFalse(rowIterator.hasNext());
-                }
-            }
+            Row row = Util.getOnlyRow(Util.cmd(cfs, "0").columns("c").withLimit(1).build());
+            assertEquals(ByteBufferUtil.bytes(0), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
 
             // fetch each row by name
             for (int i = 0; i < 2; i++)
             {
-                TreeSet<Clustering> clusterings = new TreeSet<>(cfs.getComparator());
-                clusterings.add(new SimpleClustering(ByteBufferUtil.bytes(i)));
-                NamesPartitionFilter namesFilter = new NamesPartitionFilter(cfs.metadata.partitionColumns(), clusterings, false);
-                SinglePartitionNamesCommand namesCommand = new SinglePartitionNamesCommand(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, Util.dk("0"), namesFilter);
-
-                try (PartitionIterator iterator = namesCommand.executeInternal())
-                {
-                    try (RowIterator rowIterator = iterator.next())
-                    {
-                        Row row = rowIterator.next();
-                        assertEquals(ByteBufferUtil.bytes(i), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
-                        assertFalse(rowIterator.hasNext());
-                    }
-                }
+                row = Util.getOnlyRow(Util.cmd(cfs, "0").columns("c").includeRow(i).build());
+                assertEquals(ByteBufferUtil.bytes(i), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
             }
 
             // fetch each row by slice
             for (int i = 0; i < 2; i++)
             {
-                filter = slices(cfs, i, i, false);
-                command = singlePartitionSlice(cfs, "0", filter, null);
-                try (PartitionIterator iterator = command.executeInternal())
-                {
-                    try (RowIterator rowIterator = iterator.next())
-                    {
-                        Row row = rowIterator.next();
-                        assertEquals(ByteBufferUtil.bytes(i), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
-                        assertFalse(rowIterator.hasNext());
-                    }
-                }
+                row = Util.getOnlyRow(Util.cmd(cfs, "0").columns("c").fromIncl(i).toIncl(i).build());
+                assertEquals(ByteBufferUtil.bytes(i), row.getCell(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false))).value());
             }
 
             if (round == 0)
                 cfs.forceBlockingFlush();
-        }
-    }
-
-    private static void assertPartitionIsEmpty(ColumnFamilyStore cfs, String key)
-    {
-        PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
-        SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
-        SinglePartitionSliceCommand command = singlePartitionSlice(cfs, key, filter, null);
-        try (PartitionIterator iterator = command.executeInternal())
-        {
-            assertFalse(iterator.hasNext());
         }
     }
 
@@ -173,19 +112,19 @@ public class KeyspaceTest extends CQLTester
 
         // check empty reads on the partitions before and after the existing one
         for (String key : new String[]{"0", "2"})
-            assertPartitionIsEmpty(cfs, key);
+            Util.assertEmpty(Util.cmd(cfs, key).build());
 
         cfs.forceBlockingFlush();
 
         for (String key : new String[]{"0", "2"})
-            assertPartitionIsEmpty(cfs, key);
+            Util.assertEmpty(Util.cmd(cfs, key).build());
 
         Collection<SSTableReader> sstables = cfs.getSSTables();
         assertEquals(1, sstables.size());
         sstables.iterator().next().forceFilterFailures();
 
         for (String key : new String[]{"0", "2"})
-            assertPartitionIsEmpty(cfs, key);
+            Util.assertEmpty(Util.cmd(cfs, key).build());
     }
 
     private static void assertRowsInSlice(ColumnFamilyStore cfs, String key, int sliceStart, int sliceEnd, int limit, boolean reversed, String columnValuePrefix)
@@ -197,7 +136,7 @@ public class KeyspaceTest extends CQLTester
         SlicePartitionFilter filter = new SlicePartitionFilter(columns, slices, reversed);
         SinglePartitionSliceCommand command = singlePartitionSlice(cfs, key, filter, limit);
 
-        try (PartitionIterator iterator = command.executeInternal())
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); PartitionIterator iterator = command.executeInternal(orderGroup))
         {
             try (RowIterator rowIterator = iterator.next())
             {
@@ -270,7 +209,7 @@ public class KeyspaceTest extends CQLTester
             PartitionColumns columns = PartitionColumns.of(cfs.metadata.getColumnDefinition(new ColumnIdentifier("c", false)));
             SlicePartitionFilter filter = new SlicePartitionFilter(columns, Slices.ALL, false);
             SinglePartitionSliceCommand command = singlePartitionSlice(cfs, "0", filter, null);
-            try (PartitionIterator iterator = command.executeInternal())
+            try (ReadOrderGroup orderGroup = command.startOrderGroup(); PartitionIterator iterator = command.executeInternal(orderGroup))
             {
                 try (RowIterator rowIterator = iterator.next())
                 {
@@ -284,7 +223,7 @@ public class KeyspaceTest extends CQLTester
 
     private static void assertRowsInResult(ColumnFamilyStore cfs, SinglePartitionReadCommand command, int ... columnValues)
     {
-        try (PartitionIterator iterator = command.executeInternal())
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); PartitionIterator iterator = command.executeInternal(orderGroup))
         {
             if (columnValues.length == 0)
             {

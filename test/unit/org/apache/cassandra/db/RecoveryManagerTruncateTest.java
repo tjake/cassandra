@@ -23,7 +23,6 @@ import static org.junit.Assert.assertNull;
 
 import java.io.IOException;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.KSMetaData;
@@ -33,6 +32,8 @@ import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 /**
  * Test for the truncate operation.
@@ -52,31 +53,27 @@ public class RecoveryManagerTruncateTest
                                     SchemaLoader.standardCFMD(KEYSPACE1, CF_STANDARD1));
     }
 
-	@Test
-	public void testTruncate() throws IOException
-	{
-		Keyspace keyspace = Keyspace.open(KEYSPACE1);
-		ColumnFamilyStore cfs = keyspace.getColumnFamilyStore("Standard1");
+    @Test
+    public void testTruncate() throws IOException
+    {
+        Keyspace keyspace = Keyspace.open(KEYSPACE1);
+        ColumnFamilyStore cfs = keyspace.getColumnFamilyStore("Standard1");
 
-		// add a single cell
+        // add a single cell
         new RowUpdateBuilder(cfs.metadata, 0, "key1")
             .clustering("cc")
             .add("val", "val1")
             .build()
             .applyUnsafe();
 
-		// Make sure data was written
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs).getOnlyRow())
-        { }
+        // Make sure data was written
+        assertTrue(Util.getAll(Util.cmd(cfs).build()).size() > 0);
 
-		// and now truncate it
-		cfs.truncateBlocking();
+        // and now truncate it
+        cfs.truncateBlocking();
         assert 0 != CommitLog.instance.resetUnsafe(false);
 
-		// and validate truncation.
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
-        {
-            assert !iter.hasNext();
-        }
-	}
+        // and validate truncation.
+        Util.assertEmptyUnfiltered(Util.cmd(cfs).build());
+    }
 }

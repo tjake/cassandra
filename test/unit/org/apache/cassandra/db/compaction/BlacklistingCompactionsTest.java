@@ -128,10 +128,7 @@ public class BlacklistingCompactionsTest
             }
             cfs.forceBlockingFlush();
             CompactionsTest.assertMaxTimestamp(cfs, maxTimestampExpected);
-            try (UnfilteredPartitionIterator iter = Util.getRangeSlice(cfs))
-            {
-                assertEquals(inserted.toString(), inserted.size(), Iterators.size(iter));
-            }
+            assertEquals(inserted.toString(), inserted.size(), Util.getAll(Util.cmd(cfs).build()).size());
         }
 
         Collection<SSTableReader> sstables = cfs.getSSTables();

@@ -77,10 +77,7 @@ public class OneCompactionTest
 
             inserted.add(key);
             store.forceBlockingFlush();
-            try (UnfilteredPartitionIterator it = Util.getRangeSlice(store))
-            {
-                assertEquals(inserted.size(), Iterables.size(Util.once(it)));
-            }
+            assertEquals(inserted.size(), Util.getAll(Util.cmd(store).build()).size());
         }
         CompactionManager.instance.performMaximal(store, false);
         assertEquals(1, store.getSSTables().size());

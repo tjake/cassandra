@@ -39,7 +39,6 @@ import java.util.zip.Checksum;
 
 import com.google.common.collect.ImmutableMap;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
@@ -51,6 +50,7 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.apache.cassandra.SchemaLoader;
+import org.apache.cassandra.Util;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.config.ParameterizedClass;
@@ -359,22 +359,12 @@ public class CommitLogTest
                 .build()
                 .applyUnsafe();
 
-            try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-                                     .addColumn(ByteBufferUtil.bytes("val"))
-                                     .executeInternal())
-            {
-                Row r = iter.next().next();
-                assertTrue(r.iterator().next().value().equals(ByteBufferUtil.bytes("abcd")));
-            }
+            assertTrue(Util.getOnlyRow(Util.cmd(cfs).columns("val").build())
+                            .iterator().next().value().equals(ByteBufferUtil.bytes("abcd")));
 
             cfs.truncateBlocking();
 
-            try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-                                     .addColumn(ByteBufferUtil.bytes("val"))
-                                     .executeInternal())
-            {
-                assertFalse(iter.hasNext());
-            }
+            Util.assertEmpty(Util.cmd(cfs).columns("val").build());
         }
         finally
         {

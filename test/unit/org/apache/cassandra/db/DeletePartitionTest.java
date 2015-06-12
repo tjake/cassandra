@@ -28,9 +28,7 @@ import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
-import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
-import org.apache.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -75,15 +73,10 @@ public class DeletePartitionTest
                 .applyUnsafe();
 
         // validate that data's written
-        try (PartitionIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
-                .executeInternal())
-        {
-            assertTrue(iter.hasNext());
-            RowIterator ri = iter.next();
-            assertTrue(ri.hasNext());
-            Row r = ri.next();
-            assertTrue(r.getCell(column).value().equals(ByteBufferUtil.bytes("asdf")));
-        }
+        FilteredPartition partition = Util.getOnlyPartition(Util.cmd(store, key).build());
+        assertTrue(partition.rowCount() > 0);
+        Row r = partition.iterator().next();
+        assertTrue(r.getCell(column).value().equals(ByteBufferUtil.bytes("asdf")));
 
         if (flushBeforeRemove)
             store.forceBlockingFlush();
@@ -97,12 +90,8 @@ public class DeletePartitionTest
             store.forceBlockingFlush();
 
         // validate removal
-        try (UnfilteredPartitionIterator iter = SinglePartitionReadCommand.fullPartitionRead(store.metadata, FBUtilities.nowInSeconds(), key)
-                                                                .executeLocally())
-        {
-            UnfilteredRowIterator partition = iter.next();
-            assertFalse(partition.partitionLevelDeletion().isLive());
-            assertFalse(partition.hasNext());
-        }
+        ArrayBackedPartition partitionUnfiltered = Util.getOnlyPartitionUnfiltered(Util.cmd(store, key).build());
+        assertFalse(partitionUnfiltered.partitionLevelDeletion().isLive());
+        assertFalse(partitionUnfiltered.iterator().hasNext());
     }
 }

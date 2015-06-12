@@ -489,7 +489,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
                                                         DataLimits.cqlLimits(Integer.MAX_VALUE, 1),
                                                         DataRange.allData(hintStore.metadata, StorageService.getPartitioner()));
 
-        try (UnfilteredPartitionIterator iter = cmd.executeLocally())
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); UnfilteredPartitionIterator iter = cmd.executeLocally(orderGroup))
         {
             while (iter.hasNext())
             {
@@ -558,7 +558,7 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
         // Extract the keys as strings to be reported.
         LinkedList<String> result = new LinkedList<>();
         ReadCommand cmd = PartitionRangeReadCommand.allDataRead(SystemKeyspace.Hints, FBUtilities.nowInSeconds());
-        try (UnfilteredPartitionIterator iter = cmd.executeLocally())
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); UnfilteredPartitionIterator iter = cmd.executeLocally(orderGroup))
         {
             while (iter.hasNext())
             {

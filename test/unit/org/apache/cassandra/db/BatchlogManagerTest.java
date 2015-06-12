@@ -91,8 +91,8 @@ public class BatchlogManagerTest
                 .applyUnsafe();
 
         DecoratedKey dk = StorageService.getPartitioner().decorateKey(ByteBufferUtil.bytes("1234"));
-        ArrayBackedPartition results = Util.materializePartition(cfs, dk);
-        Iterator<Row> iter = results.iterator(FBUtilities.nowInSeconds());
+        ArrayBackedPartition results = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, dk).build());
+        Iterator<Row> iter = results.iterator();
         assert iter.hasNext();
 
         Mutation mutation = new Mutation(KEYSPACE1, dk);
@@ -102,9 +102,7 @@ public class BatchlogManagerTest
                                                          FBUtilities.nowInSeconds()));
         mutation.applyUnsafe();
 
-        results = Util.materializePartition(cfs, dk);
-        iter = results.iterator(FBUtilities.nowInSeconds());
-        assert !iter.hasNext();
+        Util.assertEmpty(Util.cmd(cfs, dk).build());
     }
 
     // TODO: Fix. Currently endlessly looping on BatchLogManager.replayAllFailedBatches

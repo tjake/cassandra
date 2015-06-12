@@ -106,7 +106,7 @@ public class SSTableLoaderTest
 
         loader.stream().get();
 
-        List<FilteredPartition> partitions = Util.readAllAndMaterialize(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD));
+        List<FilteredPartition> partitions = Util.getAll(Util.cmd(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD)).build());
 
         assertEquals(1, partitions.size());
         assertEquals("key1", AsciiType.instance.getString(partitions.get(0).partitionKey().getKey()));

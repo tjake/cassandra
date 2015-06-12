@@ -30,7 +30,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -40,9 +39,7 @@ import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.index.SecondaryIndex;
 import org.apache.cassandra.db.index.SecondaryIndexSearcher;
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
-import org.apache.cassandra.db.partitions.UnfilteredPartitionIterators;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -91,108 +88,65 @@ public class SecondaryIndexTest
         new RowUpdateBuilder(cfs.metadata, 0, "k3").clustering("c").add("birthdate", 1L).add("notbirthdate", 2L).build().applyUnsafe();
         new RowUpdateBuilder(cfs.metadata, 0, "k4").clustering("c").add("birthdate", 3L).add("notbirthdate", 2L).build().applyUnsafe();
 
-        ByteBuffer bBB = ByteBufferUtil.bytes("birthdate");
-        ByteBuffer nbBB = ByteBufferUtil.bytes("notbirthdate");
-        ColumnDefinition bDef = cfs.metadata.getColumnDefinition(bBB);
-        ColumnDefinition nbDef = cfs.metadata.getColumnDefinition(nbBB);
-
         // basic single-expression query
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k3"))
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .addColumn(bBB).executeInternal())
-        {
-            try (RowIterator ri = iter.next(); RowIterator ri2 = iter.next())
-            {
-                Row r = ri.next();
-                // k2
-                assert r.getCell(bDef).value().equals(ByteBufferUtil.bytes(2L));
-
-                r = ri2.next();
-                // k3
-                assert r.getCell(bDef).value().equals(ByteBufferUtil.bytes(1L));
-
-                assert !ri.hasNext();
-            }
-        }
+        List<FilteredPartition> partitions = Util.getAll(Util.cmd(cfs).fromKeyExcl("k1").toKeyIncl("k3").columns("birthdate").build());
+        assertEquals(2, partitions.size());
+        Util.assertCellValue(2L, cfs, Util.row(partitions.get(0), "c"), "birthdate");
+        Util.assertCellValue(1L, cfs, Util.row(partitions.get(1), "c"), "birthdate");
 
         // 2 columns, 3 results
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .executeInternal())
-        {
-            try (RowIterator ri = iter.next(); RowIterator ri2 = iter.next(); RowIterator ri3 = iter.next())
-            {
-                Row r = ri.next();
-                assert r.getCell(bDef).value().equals(ByteBufferUtil.bytes(2L));
-                assert r.getCell(nbDef).value().equals(ByteBufferUtil.bytes(2L));
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyExcl("k1").toKeyIncl("k4aaa").build());
+        assertEquals(3, partitions.size());
 
-                r = ri2.next();
-                assert r.getCell(bDef).value().equals(ByteBufferUtil.bytes(1L));
-                assert r.getCell(nbDef).value().equals(ByteBufferUtil.bytes(2L));
+        Row first = Util.row(partitions.get(0), "c");
+        Util.assertCellValue(2L, cfs, first, "birthdate");
+        Util.assertCellValue(2L, cfs, first, "notbirthdate");
 
-                r = ri3.next();
-                assert r.getCell(bDef).value().equals(ByteBufferUtil.bytes(3L));
-                assert r.getCell(nbDef).value().equals(ByteBufferUtil.bytes(2L));
-                assert !ri.hasNext();
-            }
-        }
+        Row second = Util.row(partitions.get(1), "c");
+        Util.assertCellValue(1L, cfs, second, "birthdate");
+        Util.assertCellValue(2L, cfs, second, "notbirthdate");
+
+        Row third = Util.row(partitions.get(2), "c");
+        Util.assertCellValue(3L, cfs, third, "birthdate");
+        Util.assertCellValue(2L, cfs, third, "notbirthdate");
 
         // Verify getIndexSearchers finds the data for our rc
-        ReadCommand rc = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k3"))
-                .addColumn(bBB)
-                .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(1L)).build();
+        ReadCommand rc = Util.cmd(cfs).fromKeyIncl("k1")
+                                      .toKeyIncl("k3")
+                                      .columns("birthdate")
+                                      .filterOn("birthdate", Operator.EQ, 1L)
+                                      .build();
         List<SecondaryIndexSearcher> searchers = cfs.indexManager.getIndexSearchersFor(rc);
         assertEquals(searchers.size(), 1);
-        try (UnfilteredPartitionIterator pi = searchers.get(0).search(rc))
+        try (ReadOrderGroup orderGroup = rc.startOrderGroup(); UnfilteredPartitionIterator pi = searchers.get(0).search(rc, orderGroup))
         {
             assertTrue(pi.hasNext());
             pi.next().close();
         }
 
         // Verify gt on idx scan
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
-                .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.GT, ByteBufferUtil.bytes(1L))
-                .executeInternal())
+        partitions = Util.getAll(Util.cmd(cfs).fromKeyIncl("k1").toKeyIncl("k4aaa") .filterOn("birthdate", Operator.GT, 1L).build());
+        int rowCount = 0;
+        for (FilteredPartition partition : partitions)
         {
-            int rowCount = 0;
-            while (iter.hasNext())
+            for (Row row : partition)
             {
-                try (RowIterator ri = iter.next())
-                {
-                    while (ri.hasNext())
-                    {
-                        ++rowCount;
-                        assert ByteBufferUtil.toLong(ri.next().getCell(bDef).value()) > 1L;
-                    }
-                }
+                ++rowCount;
+                assert ByteBufferUtil.toLong(Util.cell(cfs, row, "birthdate").value()) > 1L;
             }
-            assertEquals(2, rowCount);
         }
+        assertEquals(2, rowCount);
 
         // Filter on non-indexed, LT comparison
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .addFilter(cfs.metadata.getColumnDefinition(nbBB), Operator.LT, ByteBufferUtil.bytes(2L))
-                .executeInternal())
-        {
-            assertFalse(iter.hasNext());
-        }
+        Util.assertEmpty(Util.cmd(cfs).fromKeyExcl("k1").toKeyIncl("k4aaa")
+                                      .filterOn("notbirthdate", Operator.NEQ, 2L)
+                                      .build());
 
         // Hit on primary, fail on non-indexed filter
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k4aaaa"))
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(1L))
-                .addFilter(cfs.metadata.getColumnDefinition(nbBB), Operator.NEQ, ByteBufferUtil.bytes(2L))
-                .executeInternal())
-        {
-            assertFalse(iter.hasNext());
-        }
+        Util.assertEmpty(Util.cmd(cfs).fromKeyExcl("k1").toKeyIncl("k4aaa")
+                                      .filterOn("birthdate", Operator.EQ, 1L)
+                                      .filterOn("notbirthdate", Operator.NEQ, 2L)
+                                      .build());
     }
 
     @Test
@@ -212,29 +166,23 @@ public class SecondaryIndexTest
                     .applyUnsafe();
         }
 
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .addFilter(cfs.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(34L))
-                .addFilter(cfs.metadata.getColumnDefinition(nbBB), Operator.EQ, ByteBufferUtil.bytes(1L))
-                .executeInternal())
+        List<FilteredPartition> partitions = Util.getAll(Util.cmd(cfs)
+                                                             .filterOn("birthdate", Operator.EQ, 34L)
+                                                             .filterOn("notbirthdate", Operator.EQ, 1L)
+                                                             .build());
+
+        Set<DecoratedKey> keys = new HashSet<>();
+        int rowCount = 0;
+
+        for (FilteredPartition partition : partitions)
         {
-            Set<DecoratedKey> keys = new HashSet<>();
-            int rowCount = 0;
-            while (iter.hasNext())
-            {
-                try (RowIterator ri = iter.next())
-                {
-                    keys.add(ri.partitionKey());
-                    while (ri.hasNext())
-                    {
-                        ri.next();
-                        ++rowCount;
-                    }
-                }
-            }
-            // extra check that there are no duplicate results -- see https://issues.apache.org/jira/browse/CASSANDRA-2406
-            assertEquals(rowCount, keys.size());
-            assertEquals(50, rowCount);
+            keys.add(partition.partitionKey());
+            rowCount += partition.rowCount();
         }
+
+        // extra check that there are no duplicate results -- see https://issues.apache.org/jira/browse/CASSANDRA-2406
+        assertEquals(rowCount, keys.size());
+        assertEquals(50, rowCount);
     }
 
     @Test
@@ -254,7 +202,7 @@ public class SecondaryIndexTest
         assertIndexedNone(cfs, col, 1L);
 
         // verify that it's not being indexed under any other value either
-        ReadCommand rc = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds()).build();
+        ReadCommand rc = Util.cmd(cfs).build();
         assertEquals(0, cfs.indexManager.getIndexSearchersFor(rc).size());
 
         // resurrect w/ a newer timestamp
@@ -271,12 +219,12 @@ public class SecondaryIndexTest
 
         // delete the entire row (w/ newer timestamp this time)
         RowUpdateBuilder.deleteRow(cfs.metadata, 3, "k1", "c").applyUnsafe();
-        rc = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds()).build();
+        rc = Util.cmd(cfs).build();
         assertEquals(0, cfs.indexManager.getIndexSearchersFor(rc).size());
 
         // make sure obsolete mutations don't generate an index entry
         new RowUpdateBuilder(cfs.metadata, 3, "k1").clustering("c").add("birthdate", 1L).build().apply();;
-        rc = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds()).build();
+        rc = Util.cmd(cfs).build();
         assertEquals(0, cfs.indexManager.getIndexSearchersFor(rc).size());
     }
 
@@ -465,27 +413,11 @@ public class SecondaryIndexTest
         new RowUpdateBuilder(cfs.metadata, 0, "kk4").clustering("c").add("notbirthdate", 2L).build().applyUnsafe();
 
         // basic single-expression query, limit 1
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-             .addFilter(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("birthdate")), Operator.EQ, ByteBufferUtil.bytes(1L))
-             .addFilter(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("notbirthdate")), Operator.GT, ByteBufferUtil.bytes(1L))
-             .setCQLLimit(1)
-             .executeInternal())
-        {
-            int legitRows = 0;
-            // We get back a RowIterator for each partitionKey but all but 1 should be empty
-            while (iter.hasNext())
-            {
-                try (RowIterator ri = iter.next())
-                {
-                    while (ri.hasNext())
-                    {
-                        ++legitRows;
-                        ri.next();
-                    }
-                }
-            }
-            assertEquals(1, legitRows);
-        }
+        Util.getOnlyRow(Util.cmd(cfs)
+                            .filterOn("birthdate", Operator.EQ, 1L)
+                            .filterOn("notbirthdate", Operator.EQ, 1L)
+                            .withLimit(1)
+                            .build());
     }
 
     @Test
@@ -544,16 +476,13 @@ public class SecondaryIndexTest
     private void assertIndexedCount(ColumnFamilyStore cfs, ByteBuffer col, Object val, int count)
     {
         ColumnDefinition cdef = cfs.metadata.getColumnDefinition(col);
-        ReadCommand rc = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .addFilter(cdef, Operator.EQ, ((AbstractType) cdef.cellValueType()).decompose(val))
-                .build();
 
+        ReadCommand rc = Util.cmd(cfs).filterOn(cdef.name.toString(), Operator.EQ, ((AbstractType) cdef.cellValueType()).decompose(val)).build();
         List<SecondaryIndexSearcher> searchers = cfs.indexManager.getIndexSearchersFor(rc);
         if (count != 0)
             assertTrue(searchers.size() > 0);
 
-        try (PartitionIterator iter = UnfilteredPartitionIterators.filter(searchers.get(0).search(rc)))
+        try (ReadOrderGroup orderGroup = rc.startOrderGroup(); PartitionIterator iter = UnfilteredPartitionIterators.filter(searchers.get(0).search(rc, orderGroup)))
         {
             assertEquals(count, Util.size(iter));
         }

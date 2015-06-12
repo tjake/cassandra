@@ -27,6 +27,7 @@ import org.apache.cassandra.Util;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 
 public class RowIterationTest extends CQLTester
@@ -57,27 +58,13 @@ public class RowIterationTest extends CQLTester
         execute("INSERT INTO %s (a, b) VALUES (?, ?) USING TIMESTAMP ?", 0, 0, 1L);
         execute("DELETE FROM %s USING TIMESTAMP ? WHERE a = ?", 1L, 0);
 
-        int localDeletionTime;
-        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
-        {
-            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
-            {
-                DeletionTime deletionTime = unfilteredRowIterator.partitionLevelDeletion();
-                localDeletionTime = deletionTime.localDeletionTime();
-            }
-        }
+        int localDeletionTime = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs).build()).partitionLevelDeletion().localDeletionTime();
 
         cfs.forceBlockingFlush();
 
-        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
-        {
-            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
-            {
-                DeletionTime deletionTime = unfilteredRowIterator.partitionLevelDeletion();
-                assertEquals(1L, deletionTime.markedForDeleteAt());
-                assertEquals(localDeletionTime, deletionTime.localDeletionTime());
-            }
-        }
+        DeletionTime dt = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs).build()).partitionLevelDeletion();
+        assertEquals(1L, dt.markedForDeleteAt());
+        assertEquals(localDeletionTime, dt.localDeletionTime());
     }
 
     @Test
@@ -90,9 +77,6 @@ public class RowIterationTest extends CQLTester
         execute("DELETE FROM %s USING TIMESTAMP ? WHERE a = ?", 0L, 0);
         cfs.forceBlockingFlush();
 
-        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
-        {
-            assertTrue(iterator.hasNext());
-        }
+        assertFalse(Util.getOnlyPartitionUnfiltered(Util.cmd(cfs).build()).isEmpty());
     }
 }

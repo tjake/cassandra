@@ -145,6 +145,14 @@ public class AtomicBTreePartition implements Partition
         return ref.stats;
     }
 
+    public Row getRow(Clustering clustering)
+    {
+        Row row = searchIterator(ColumnsSelection.withoutSubselection(columns()), false, FBUtilities.nowInSeconds()).next(clustering);
+        // Note that for statics, this will never return null, this will return an empty row. However,
+        // it's more consistent for this method to return null if we don't really have a static row.
+        return row == null || (clustering == Clustering.STATIC_CLUSTERING && row.isEmpty()) ? null : row;
+    }
+
     public SearchIterator<Clustering, Row> searchIterator(final ColumnsSelection columns, final boolean reversed, final int nowInSec)
     {
         // TODO: we could optimize comparison for "NativeRow" à la #6755

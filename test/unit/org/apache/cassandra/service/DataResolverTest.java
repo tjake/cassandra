@@ -29,7 +29,6 @@ import com.google.common.collect.Iterators;
 import org.junit.*;
 
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.KSMetaData;
@@ -94,7 +93,7 @@ public class DataResolverTest
         cfs = ks.getColumnFamilyStore(CF_STANDARD);
         cfm = cfs.metadata;
         nowInSec = FBUtilities.nowInSeconds();
-        command = new SinglePartitionNamesReadBuilder(cfs, nowInSec, dk).addClustering().build();
+        command = Util.cmd(cfs, dk).withNowInSeconds(nowInSec).build();
     }
 
     @Before

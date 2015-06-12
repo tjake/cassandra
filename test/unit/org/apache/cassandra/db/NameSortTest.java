@@ -21,12 +21,13 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
+import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -93,22 +94,17 @@ public class NameSortTest
 
     private void validateNameSort(ColumnFamilyStore cfs) throws IOException
     {
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
+        for (FilteredPartition partition : Util.getAll(Util.cmd(cfs).build()))
         {
-            while (iter.hasNext())
+            for (Row r : partition)
             {
-                RowIterator ri = iter.next();
-                while (ri.hasNext())
+                for (ColumnDefinition cd : r.columns())
                 {
-                    Row r = ri.next();
-                    for (ColumnDefinition cd : r.columns())
-                    {
-                        if (r.getCell(cd) == null)
-                            continue;
-                        int cellVal = Integer.valueOf(cd.name.toString().substring(cd.name.toString().length() - 1));
-                        String expected = cellVal % 2 == 0 ? "a" : "b";
-                        assertEquals(expected, ByteBufferUtil.string(r.getCell(cd).value()));
-                    }
+                    if (r.getCell(cd) == null)
+                        continue;
+                    int cellVal = Integer.valueOf(cd.name.toString().substring(cd.name.toString().length() - 1));
+                    String expected = cellVal % 2 == 0 ? "a" : "b";
+                    assertEquals(expected, ByteBufferUtil.string(r.getCell(cd).value()));
                 }
             }
         }

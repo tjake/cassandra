@@ -92,15 +92,13 @@ public class PaxosStateTest
 
     private void assertDataPresent(ColumnFamilyStore cfs, DecoratedKey key, String name, ByteBuffer value)
     {
-        UnfilteredRowIterator cf = Util.readFullPartition(cfs, key);
-        assertTrue(cf.hasNext());
+        Row row = Util.getOnlyRowUnfiltered(Util.cmd(cfs, key).build());
         assertEquals(0, ByteBufferUtil.compareUnsigned(value,
-                ((Row) cf.next()).getCell(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(name))).value()));
+                row.getCell(cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(name))).value()));
     }
 
     private void assertNoDataPresent(ColumnFamilyStore cfs, DecoratedKey key)
     {
-        UnfilteredRowIterator cf = Util.readFullPartition(cfs, key);
-        assertFalse(cf.hasNext());
+        Util.assertEmpty(Util.cmd(cfs, key).build());
     }
 }

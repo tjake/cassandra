@@ -26,7 +26,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -162,22 +161,12 @@ public class RowTest
 
         // when we read with a nowInSeconds before the cell has expired,
         // the PartitionIterator includes the row we just wrote
-        try( PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds, dk).addClustering("c1")
-                                                                                           .build()
-                                                                                           .executeInternal())
-        {
-            assertTrue(iter.hasNext());
-            assertEquals("a1", ByteBufferUtil.string(iter.next().next().getCell(def).value()));
-        }
+        Row row = Util.getOnlyRow(Util.cmd(cfs, dk).includeRow("c1").withNowInSeconds(nowInSeconds).build());
+        assertEquals("a1", ByteBufferUtil.string(row.getCell(def).value()));
 
         // when we read with a nowInSeconds after the cell has expired, the row is filtered
         // so the PartitionIterator is empty
-        try( PartitionIterator iter = new SinglePartitionNamesReadBuilder(cfs, nowInSeconds + ttl + 1, dk).addClustering("c1")
-                                                                                                     .build()
-                                                                                                     .executeInternal())
-        {
-            assertFalse(iter.hasNext());
-        }
+        Util.assertEmpty(Util.cmd(cfs, dk).includeRow("c1").withNowInSeconds(nowInSeconds + ttl + 1).build());
     }
 
     private void assertRangeTombstoneMarkers(Slice.Bound start, Slice.Bound end, DeletionTime deletionTime, Object[] expected)

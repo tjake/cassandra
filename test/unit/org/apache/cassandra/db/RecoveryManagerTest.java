@@ -27,12 +27,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.OrderedJUnit4ClassRunner;
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
-import org.apache.cassandra.db.rows.AbstractUnfilteredRowIterator;
-import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -114,8 +112,8 @@ public class RecoveryManagerTest
         CommitLog.instance.resetUnsafe(false);
 
         DecoratedKey dk = Util.dk("keymulti");
-        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd1, Util.readFullPartition(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk)));
-        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd2, Util.readFullPartition(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk)));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd1, Util.getOnlyPartitionUnfiltered(Util.cmd(keyspace1.getColumnFamilyStore(CF_STANDARD1), dk).build()).unfilteredIterator()));
+        Assert.assertTrue(AbstractUnfilteredRowIterator.equal(upd2, Util.getOnlyPartitionUnfiltered(Util.cmd(keyspace2.getColumnFamilyStore(CF_STANDARD3), dk).build()).unfilteredIterator()));
     }
 
     @Test
@@ -137,13 +135,8 @@ public class RecoveryManagerTest
         int replayed = CommitLog.instance.resetUnsafe(false);
 
         ColumnDefinition counterCol = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .getOnlyRow())
-        {
-            assertEquals(10L, CounterContext.instance().total(r.row.getCell(counterCol).value()));
-        }
+        Row row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val").build());
+        assertEquals(10L, CounterContext.instance().total(row.getCell(counterCol).value()));
     }
 
     @Test
@@ -166,21 +159,12 @@ public class RecoveryManagerTest
         }
 
         // Sanity check row count prior to clear and replay
-        int rowCount = 0;
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
-        {
-            rowCount = Iterators.size(iter);
-        }
-        assertEquals(10, rowCount);
+        assertEquals(10, Util.getAll(Util.cmd(cfs).build()).size());
 
         keyspace1.getColumnFamilyStore("Standard1").clearUnsafe();
         CommitLog.instance.resetUnsafe(false);
 
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
-        {
-            rowCount = Iterators.size(iter);
-        }
-        assertEquals(6, rowCount);
+        assertEquals(6, Util.getAll(Util.cmd(cfs).build()).size());
     }
 
     @Test
@@ -210,20 +194,11 @@ public class RecoveryManagerTest
         }
 
         // Sanity check row count prior to clear and replay
-        int rowCount = 0;
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
-        {
-            rowCount = Iterators.size(iter);
-        }
-        assertEquals(10, rowCount);
+        assertEquals(10, Util.getAll(Util.cmd(cfs).build()).size());
 
         keyspace1.getColumnFamilyStore("Standard1").clearUnsafe();
         CommitLog.instance.resetUnsafe(false);
 
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs).executeInternal())
-        {
-            rowCount = Iterators.size(iter);
-        }
-        assertEquals(2, rowCount);
+        assertEquals(2, Util.getAll(Util.cmd(cfs).build()).size());
     }
 }

@@ -40,19 +40,17 @@ public class SinglePartitionPager extends AbstractQueryPager
     private static final Logger logger = LoggerFactory.getLogger(SinglePartitionPager.class);
 
     private final SinglePartitionReadCommand<?> command;
-    private final ClientState cstate;
 
     private volatile Clustering lastReturned;
 
-    public SinglePartitionPager(SinglePartitionReadCommand<?> command, ConsistencyLevel consistencyLevel, ClientState cstate, boolean localQuery, PagingState state)
+    public SinglePartitionPager(SinglePartitionReadCommand<?> command, PagingState state)
     {
-        super(consistencyLevel, localQuery, command.metadata(), command.limits());
+        super(command);
         this.command = command;
-        this.cstate = cstate;
 
         if (state != null)
         {
-            lastReturned = LegacyLayout.decodeClustering(cfm, state.cellName);
+            lastReturned = LegacyLayout.decodeClustering(command.metadata(), state.cellName);
             restoreState(command.partitionKey(), state.remaining, state.remainingInPartition);
         }
     }
@@ -74,11 +72,9 @@ public class SinglePartitionPager extends AbstractQueryPager
              : new PagingState(null, LegacyLayout.encodeClustering(command.metadata(), lastReturned), maxRemaining(), remainingInPartition());
     }
 
-    protected PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
-    throws RequestValidationException, RequestExecutionException
+    protected ReadCommand nextPageReadCommand(int pageSize)
     {
-        SinglePartitionReadCommand pageCmd = command.forPaging(lastReturned, pageSize);
-        return localQuery ? pageCmd.executeInternal() : pageCmd.execute(consistencyLevel, cstate);
+        return command.forPaging(lastReturned, pageSize);
     }
 
     protected void recordLast(DecoratedKey key, Row last)

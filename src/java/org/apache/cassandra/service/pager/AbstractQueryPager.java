@@ -24,17 +24,11 @@ import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.cassandra.service.ClientState;
 
 abstract class AbstractQueryPager implements QueryPager
 {
-    private static final Logger logger = LoggerFactory.getLogger(AbstractQueryPager.class);
-
-    private final ConsistencyLevel consistencyLevel;
-    private final boolean localQuery;
-
-    protected final CFMetaData cfm;
+    protected final ReadCommand command;
     protected final DataLimits limits;
 
     private int remaining;
@@ -47,28 +41,36 @@ abstract class AbstractQueryPager implements QueryPager
 
     private boolean exhausted;
 
-    protected AbstractQueryPager(ConsistencyLevel consistencyLevel,
-                                 boolean localQuery,
-                                 CFMetaData cfm,
-                                 DataLimits limits)
+    protected AbstractQueryPager(ReadCommand command)
     {
-        this.consistencyLevel = consistencyLevel;
-        this.localQuery = localQuery;
-
-        this.cfm = cfm;
-        this.limits = limits;
+        this.command = command;
+        this.limits = command.limits();
 
         this.remaining = limits.count();
         this.remainingInPartition = limits.perPartitionCount();
     }
 
-    public PartitionIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public ReadOrderGroup startOrderGroup()
+    {
+        return command.startOrderGroup();
+    }
+
+    public PartitionIterator fetchPage(int pageSize, ConsistencyLevel consistency, ClientState clientState) throws RequestValidationException, RequestExecutionException
     {
         if (isExhausted())
             return PartitionIterators.EMPTY;
 
         pageSize = Math.min(pageSize, remaining);
-        return new PagerIterator(queryNextPage(pageSize, consistencyLevel, localQuery), limits.forPaging(pageSize));
+        return new PagerIterator(nextPageReadCommand(pageSize).execute(consistency, clientState), limits.forPaging(pageSize));
+    }
+
+    public PartitionIterator fetchPageInternal(int pageSize, ReadOrderGroup orderGroup) throws RequestValidationException, RequestExecutionException
+    {
+        if (isExhausted())
+            return PartitionIterators.EMPTY;
+
+        pageSize = Math.min(pageSize, remaining);
+        return new PagerIterator(nextPageReadCommand(pageSize).executeInternal(orderGroup), limits.forPaging(pageSize));
     }
 
     private class PagerIterator extends CountingPartitionIterator
@@ -154,7 +156,6 @@ abstract class AbstractQueryPager implements QueryPager
         return remainingInPartition;
     }
 
-    protected abstract PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistency, boolean localQuery) throws RequestValidationException, RequestExecutionException;
-
+    protected abstract ReadCommand nextPageReadCommand(int pageSize);
     protected abstract void recordLast(DecoratedKey key, Row row);
 }

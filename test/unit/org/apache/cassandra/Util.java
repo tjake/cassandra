@@ -3,8 +3,7 @@ package org.apache.cassandra;
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
+ * distributed with this work for additional information * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
@@ -72,31 +71,6 @@ public class Util
 {
     private static List<UUID> hostIdPool = new ArrayList<UUID>();
 
-    public static class OnlyRow implements AutoCloseable
-    {
-        private final PartitionIterator iterator;
-        public final Row row;
-
-        public OnlyRow(PartitionIterator iter)
-        {
-            iterator = iter;
-            while (iterator.hasNext())
-            {
-                RowIterator ri = iterator.next();
-                assert !iterator.hasNext() : "Expected single row result, have more than 1.";
-                row = ri.next();
-                assert !ri.hasNext() : "Expected single row result, have more than 1.";
-                return;
-            }
-            throw new RuntimeException("Attempted to query single row but no results were in result set.");
-        }
-
-        public void close()
-        {
-            iterator.close();
-        }
-    }
-
     public static DecoratedKey dk(String key)
     {
         return StorageService.getPartitioner().decorateKey(ByteBufferUtil.bytes(key));
@@ -134,41 +108,10 @@ public class Util
         return comparator.make(o).clustering();
     }
 
-    /*
-    public static CellName cellname(String... strs)
-    {
-        ByteBuffer[] bbs = new ByteBuffer[strs.length];
-        for (int i = 0; i < strs.length; i++)
-            bbs[i] = ByteBufferUtil.bytes(strs[i]);
-        return cellname(bbs);
-    }
-
-    public static CellName cellname(int i)
-    {
-        return CellNames.simpleDense(ByteBufferUtil.bytes(i));
-    }
-
-    public static CellName cellname(long l)
-    {
-        return CellNames.simpleDense(ByteBufferUtil.bytes(l));
-    }
-
-    public static Cell column(String name, String value, long timestamp)
-    {
-        return new BufferCell(cellname(name), ByteBufferUtil.bytes(value), timestamp);
-    }
-
-    public static Cell expiringColumn(String name, String value, long timestamp, int ttl)
-    {
-        return new BufferExpiringCell(cellname(name), ByteBufferUtil.bytes(value), timestamp, ttl);
-    }
-    */
-
     public static Token token(String key)
     {
         return StorageService.getPartitioner().getToken(ByteBufferUtil.bytes(key));
     }
-
 
     public static Range<PartitionPosition> range(String left, String right)
     {
@@ -194,21 +137,6 @@ public class Util
         };
     }
 
-    /*
-    public static Bounds<PartitionPosition> bounds(String left, String right)
-    {
-        return new Bounds<PartitionPosition>(rp(left), rp(right));
-    }
-
-    public static void addMutation(Mutation rm, String columnFamilyName, String superColumnName, long columnName, String value, long timestamp)
-    {
-        CellName cname = superColumnName == null
-                       ? CellNames.simpleDense(getBytes(columnName))
-                       : CellNames.compositeDense(ByteBufferUtil.bytes(superColumnName), getBytes(columnName));
-        rm.add(columnFamilyName, cname, ByteBufferUtil.bytes(value), timestamp);
-    }
-    */
-
     public static ByteBuffer getBytes(long v)
     {
         byte[] bytes = new byte[8];
@@ -225,50 +153,6 @@ public class Util
         bb.putInt(v);
         bb.rewind();
         return bb;
-    }
-
-    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs)
-    {
-        return getRangeSlice(cfs, null);
-    }
-    public static UnfilteredPartitionIterator getRangeSlice(ColumnFamilyStore cfs, ByteBuffer superColumn)
-    {
-        ColumnFilter filter = ColumnFilter.create();
-        if (superColumn != null)
-            filter.add(cfs.metadata.compactValueColumn(), Operator.EQ, superColumn);
-        
-        ReadCommand command = new PartitionRangeReadCommand(cfs.metadata, FBUtilities.nowInSeconds(), filter, DataLimits.cqlLimits(100000), DataRange.allData(cfs.metadata, cfs.partitioner));
-
-        return command.executeLocally();
-    }
-    public static PartitionIterator getRangeSlice(ColumnFamilyStore cfs,
-                                             ByteBuffer startKey,
-                                             ByteBuffer endKey,
-                                             ByteBuffer superColumn,
-                                             ColumnFilter filter,
-                                             ByteBuffer... columns)
-    {
-        return makeReadCommand(cfs, startKey, endKey, superColumn, filter, columns).executeInternal();
-    }
-
-    public static ReadCommand makeReadCommand(ColumnFamilyStore cfs,
-                                              ByteBuffer startKey,
-                                              ByteBuffer endKey,
-                                              ByteBuffer superColumn,
-                                              ColumnFilter filter,
-                                              ByteBuffer... columns)
-    {
-        AbstractReadCommandBuilder builder = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(startKey, endKey)
-                .replaceFilter(filter);
-
-        for (ByteBuffer bb : columns)
-            builder.addColumn(bb);
-
-        if (superColumn != null)
-            builder.setSuper(superColumn);
-
-        return builder.build();
     }
 
     /**
@@ -291,26 +175,10 @@ public class Util
         return store;
     }
 
-    /*
-    public static ColumnFamily getColumnFamily(Keyspace keyspace, DecoratedKey key, String cfName)
-    {
-        ColumnFamilyStore cfStore = keyspace.getColumnFamilyStore(cfName);
-        assert cfStore != null : "Table " + cfName + " has not been defined";
-        return cfStore.getColumnFamily(QueryFilter.getIdentityFilter(key, cfName, System.currentTimeMillis()));
-    }
-    */
-
     public static boolean equalsCounterId(CounterId n, ByteBuffer context, int offset)
     {
         return CounterId.wrap(context, context.position() + offset).equals(n);
     }
-
-    /*
-    public static ColumnFamily cloneAndRemoveDeleted(ColumnFamily cf, int gcBefore)
-    {
-        return ColumnFamilyStore.removeDeleted(cf.cloneMe(), gcBefore);
-    }
-    */
 
     /**
      * Creates initial set of nodes and tokens. Nodes are added to StorageService as 'normal'
@@ -383,54 +251,141 @@ public class Util
         assert thrown : exception.getName() + " not received";
     }
 
-    @SuppressWarnings("rawtypes")
-    public static UnfilteredRowIterator readFullPartition(ColumnFamilyStore cfs, DecoratedKey key)
+    public static AbstractReadCommandBuilder.SinglePartitionBuilder cmd(ColumnFamilyStore cfs, Object... partitionKey)
     {
-        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);
-        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+        return new AbstractReadCommandBuilder.SinglePartitionBuilder(cfs, makeKey(cfs.metadata, partitionKey));
     }
 
-    @SuppressWarnings("rawtypes")
-    public static UnfilteredRowIterator readPartitionWithLimit(ColumnFamilyStore cfs, DecoratedKey key, int limit)
+    public static AbstractReadCommandBuilder.PartitionRangeBuilder cmd(ColumnFamilyStore cfs)
     {
-        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), Slices.ALL, false);
-        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.cqlLimits(limit), key, filter);
-        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+        return new AbstractReadCommandBuilder.PartitionRangeBuilder(cfs);
     }
 
-    @SuppressWarnings("rawtypes")
-    public static UnfilteredRowIterator readPartitionWithBounds(ColumnFamilyStore cfs, DecoratedKey key, Bound start, Bound end)
+    static DecoratedKey makeKey(CFMetaData metadata, Object... partitionKey)
     {
-        Slices.Builder sb = new Slices.Builder(cfs.getComparator());
-        SlicePartitionFilter filter = new SlicePartitionFilter(cfs.metadata.partitionColumns(), sb.build(), false);
-        SinglePartitionReadCommand cmd = SinglePartitionReadCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), ColumnFilter.NONE, DataLimits.NONE, key, filter);
-        return UnfilteredPartitionIterators.getOnlyElement(cmd.executeLocally(), cmd);
+        if (partitionKey.length == 1 && partitionKey[0] instanceof DecoratedKey)
+            return (DecoratedKey)partitionKey[0];
+
+        ByteBuffer key = CFMetaData.serializePartitionKey(metadata.getKeyValidatorAsClusteringComparator().make(partitionKey));
+        return StorageService.getPartitioner().decorateKey(key);
     }
 
-    public static PartitionIterator readAll(ColumnFamilyStore cfs)
+    public static void assertEmptyUnfiltered(ReadCommand command)
     {
-        PartitionRangeReadCommand cmd = PartitionRangeReadCommand.allDataRead(cfs.metadata, FBUtilities.nowInSeconds());
-        return cmd.executeInternal();
-    }
-
-    public static List<FilteredPartition> readAllAndMaterialize(ColumnFamilyStore cfs)
-    {
-        List<FilteredPartition> partitions = new ArrayList<>();
-        try (PartitionIterator iter = readAll(cfs))
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); UnfilteredPartitionIterator iterator = command.executeLocally(orderGroup))
         {
-            try (RowIterator partition = iter.next())
+            if (iterator.hasNext())
             {
-                partitions.add(FilteredPartition.create(partition));
+                try (UnfilteredRowIterator partition = iterator.next())
+                {
+                    throw new AssertionError("Expected no results for query " + command.toCQLString() + " but got key " + command.metadata().getKeyValidator().getString(partition.partitionKey().getKey()));
+                }
             }
         }
-        return partitions;
     }
 
-    public static ArrayBackedPartition materializePartition(ColumnFamilyStore cfs, DecoratedKey key)
+    public static void assertEmpty(ReadCommand command)
     {
-        try (UnfilteredRowIterator iter = readFullPartition(cfs, key))
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); PartitionIterator iterator = command.executeInternal(orderGroup))
         {
-            return ArrayBackedPartition.create(iter);
+            if (iterator.hasNext())
+            {
+                try (RowIterator partition = iterator.next())
+                {
+                    throw new AssertionError("Expected no results for query " + command.toCQLString() + " but got key " + command.metadata().getKeyValidator().getString(partition.partitionKey().getKey()));
+                }
+            }
+        }
+    }
+
+    public static List<ArrayBackedPartition> getAllUnfiltered(ReadCommand command)
+    {
+        List<ArrayBackedPartition> results = new ArrayList<>();
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); UnfilteredPartitionIterator iterator = command.executeLocally(orderGroup))
+        {
+            while (iterator.hasNext())
+            {
+                try (UnfilteredRowIterator partition = iterator.next())
+                {
+                    results.add(ArrayBackedPartition.create(partition));
+                }
+            }
+        }
+        return results;
+    }
+
+    public static List<FilteredPartition> getAll(ReadCommand command)
+    {
+        List<FilteredPartition> results = new ArrayList<>();
+        try (ReadOrderGroup orderGroup = command.startOrderGroup(); PartitionIterator iterator = command.executeInternal(orderGroup))
+        {
+            while (iterator.hasNext())
+            {
+                try (RowIterator partition = iterator.next())
+                {
+                    results.add(FilteredPartition.create(partition));
+                }
+            }
+        }
+        return results;
+    }
+
+    public static Row getOnlyRowUnfiltered(ReadCommand cmd)
+    {
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); UnfilteredPartitionIterator iterator = cmd.executeLocally(orderGroup))
+        {
+            assert iterator.hasNext() : "Expecting one row in one partition but got nothing";
+            try (UnfilteredRowIterator partition = iterator.next())
+            {
+                assert !iterator.hasNext() : "Expecting a single partition but got more";
+
+                assert partition.hasNext() : "Expecting one row in one partition but got an empty partition";
+                Row row = ((Row)partition.next()).takeAlias();
+                assert !partition.hasNext() : "Expecting a single row but got more";
+                return row;
+            }
+        }
+    }
+
+    public static Row getOnlyRow(ReadCommand cmd)
+    {
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); PartitionIterator iterator = cmd.executeInternal(orderGroup))
+        {
+            assert iterator.hasNext() : "Expecting one row in one partition but got nothing";
+            try (RowIterator partition = iterator.next())
+            {
+                assert !iterator.hasNext() : "Expecting a single partition but got more";
+                assert partition.hasNext() : "Expecting one row in one partition but got an empty partition";
+                Row row = partition.next().takeAlias();
+                assert !partition.hasNext() : "Expecting a single row but got more";
+                return row;
+            }
+        }
+    }
+
+    public static ArrayBackedPartition getOnlyPartitionUnfiltered(ReadCommand cmd)
+    {
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); UnfilteredPartitionIterator iterator = cmd.executeLocally(orderGroup))
+        {
+            assert iterator.hasNext() : "Expecting a single partition but got nothing";
+            try (UnfilteredRowIterator partition = iterator.next())
+            {
+                assert !iterator.hasNext() : "Expecting a single partition but got more";
+                return ArrayBackedPartition.create(partition);
+            }
+        }
+    }
+
+    public static FilteredPartition getOnlyPartition(ReadCommand cmd)
+    {
+        try (ReadOrderGroup orderGroup = cmd.startOrderGroup(); PartitionIterator iterator = cmd.executeInternal(orderGroup))
+        {
+            assert iterator.hasNext() : "Expecting a single partition but got nothing";
+            try (RowIterator partition = iterator.next())
+            {
+                assert !iterator.hasNext() : "Expecting a single partition but got more";
+                return FilteredPartition.create(partition);
+            }
         }
     }
 
@@ -441,9 +396,23 @@ public class Util
         return mutation.getPartitionUpdates().iterator().next().unfilteredIterator();
     }
 
-    public static Row getSingleRow(ColumnFamilyStore cfs, DecoratedKey dk)
+    public static Cell cell(ColumnFamilyStore cfs, Row row, String columnName)
     {
-        return materializePartition(cfs, dk).lastRow();
+        ColumnDefinition def = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(columnName));
+        assert def != null;
+        return row.getCell(def);
+    }
+
+    public static Row row(Partition partition, Object... clustering)
+    {
+        return partition.getRow(partition.metadata().comparator.make(clustering));
+    }
+
+    public static void assertCellValue(Object value, ColumnFamilyStore cfs, Row row, String columnName)
+    {
+        Cell cell = cell(cfs, row, columnName);
+        assert cell != null : "Row " + row.toString(cfs.metadata) + " has no cell for " + columnName;
+        assertEquals(value, cell.column().type.compose(cell.value()));
     }
 
     public static void consume(UnfilteredRowIterator iter)
@@ -465,55 +434,6 @@ public class Util
         }
         return size;
     }
-
-   /* public static QueryFilter namesQueryFilter(ColumnFamilyStore cfs, DecoratedKey key)
-    {
-        SortedSet<CellName> s = new TreeSet<CellName>(cfs.getComparator());
-        return QueryFilter.getNamesFilter(key, cfs.name, s, System.currentTimeMillis());
-    }
-
-    public static QueryFilter namesQueryFilter(ColumnFamilyStore cfs, DecoratedKey key, String... names)
-    {
-        SortedSet<CellName> s = new TreeSet<CellName>(cfs.getComparator());
-        for (String str : names)
-            s.add(cellname(str));
-        return QueryFilter.getNamesFilter(key, cfs.name, s, System.currentTimeMillis());
-    }
-
-    public static QueryFilter namesQueryFilter(ColumnFamilyStore cfs, DecoratedKey key, CellName... names)
-    {
-        SortedSet<CellName> s = new TreeSet<CellName>(cfs.getComparator());
-        for (CellName n : names)
-            s.add(n);
-        return QueryFilter.getNamesFilter(key, cfs.name, s, System.currentTimeMillis());
-    }
-
-    public static NamesQueryFilter namesFilter(ColumnFamilyStore cfs, String... names)
-    {
-        SortedSet<CellName> s = new TreeSet<CellName>(cfs.getComparator());
-        for (String str : names)
-            s.add(cellname(str));
-        return new NamesQueryFilter(s);
-    }
-
-    public static String string(ByteBuffer bb)
-    {
-        try
-        {
-            return ByteBufferUtil.string(bb);
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static RangeTombstone tombstone(String start, String finish, long timestamp, int localtime)
-    {
-        Composite startName = CellNames.simpleDense(ByteBufferUtil.bytes(start));
-        Composite endName = CellNames.simpleDense(ByteBufferUtil.bytes(finish));
-        return new RangeTombstone(startName, endName, timestamp , localtime);
-    } */
 
     public static CBuilder getCBuilderForCFM(CFMetaData cfm)
     {
@@ -560,7 +480,6 @@ public class Util
         assertEquals(row.clustering().size(), clusteringValue.length);
         assertEquals(0, cfm.comparator.compare(row.clustering(), cfm.comparator.make(clusteringValue)));
     }
-
 
     public static void spinAssertEquals(Object expected, Supplier<Object> s, int timeoutInSeconds)
     {

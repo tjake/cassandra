@@ -322,7 +322,7 @@ public class QueryProcessor implements QueryHandler
             throw new IllegalArgumentException("Only SELECTs can be paged");
 
         SelectStatement select = (SelectStatement)prepared.statement;
-        QueryPager pager = select.getQuery(makeInternalOptions(prepared, values)).getLocalPager();
+        QueryPager pager = select.getQuery(makeInternalOptions(prepared, values)).getPager(null);
         return UntypedResultSet.create(select, pager, pageSize);
     }
 

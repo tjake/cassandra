@@ -35,13 +35,11 @@ import org.apache.cassandra.service.StorageService;
  */
 public class RangeNamesQueryPager extends AbstractQueryPager
 {
-    private final PartitionRangeReadCommand command;
     private volatile DecoratedKey lastReturnedKey;
 
-    public RangeNamesQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
+    public RangeNamesQueryPager(PartitionRangeReadCommand command, PagingState state)
     {
-        super(consistencyLevel, localQuery, command.metadata(), command.limits());
-        this.command = command;
+        super(command);
         assert command.isNamesQuery();
 
         if (state != null)
@@ -58,14 +56,14 @@ public class RangeNamesQueryPager extends AbstractQueryPager
              : new PagingState(lastReturnedKey.getKey(), null, maxRemaining(), remainingInPartition());
     }
 
-    protected PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    protected ReadCommand nextPageReadCommand(int pageSize)
     throws RequestExecutionException
     {
-        PartitionRangeReadCommand pageCmd = command.withUpdatedLimit(command.limits().forPaging(pageSize));
+        PartitionRangeReadCommand pageCmd = ((PartitionRangeReadCommand)command).withUpdatedLimit(command.limits().forPaging(pageSize));
         if (lastReturnedKey != null)
             pageCmd = pageCmd.forSubRange(makeExcludingKeyBounds(lastReturnedKey));
 
-        return localQuery ? pageCmd.executeInternal() : pageCmd.execute(consistencyLevel, null);
+        return pageCmd;
     }
 
     protected void recordLast(DecoratedKey key, Row last)
@@ -77,7 +75,7 @@ public class RangeNamesQueryPager extends AbstractQueryPager
     {
         // We return a range that always exclude lastReturnedKey, since we've already
         // returned it.
-        AbstractBounds<PartitionPosition> bounds = command.dataRange().keyRange();
+        AbstractBounds<PartitionPosition> bounds = ((PartitionRangeReadCommand)command).dataRange().keyRange();
         if (bounds instanceof Range || bounds instanceof Bounds)
         {
             return new Range<PartitionPosition>(lastReturnedKey, bounds.right);

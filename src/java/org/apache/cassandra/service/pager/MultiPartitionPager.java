@@ -51,7 +51,7 @@ public class MultiPartitionPager implements QueryPager
     private int remaining;
     private int current;
 
-    public MultiPartitionPager(List<SinglePartitionReadCommand<?>> commands, ConsistencyLevel consistencyLevel, ClientState cState, boolean localQuery, PagingState state, DataLimits limit)
+    public MultiPartitionPager(List<SinglePartitionReadCommand<?>> commands, PagingState state, DataLimits limit)
     {
         this.limit = limit;
 
@@ -71,9 +71,7 @@ public class MultiPartitionPager implements QueryPager
 
         pagers = new SinglePartitionPager[commands.size() - i];
         // 'i' is on the first non exhausted pager for the previous page (or the first one)
-        pagers[0] = localQuery
-                  ? commands.get(i).getLocalPager()
-                  : commands.get(i).getPager(consistencyLevel, cState, state);
+        pagers[0] = commands.get(i).getPager(state);
         int nowInSec = commands.get(i).nowInSec();
 
         // Following ones haven't been started yet
@@ -82,9 +80,7 @@ public class MultiPartitionPager implements QueryPager
             SinglePartitionReadCommand command = commands.get(j);
             if (command.nowInSec() != nowInSec)
                 throw new IllegalArgumentException("All commands must have the same timestamp or weird results may happen.");
-            pagers[j - i] = localQuery
-                          ? command.getLocalPager()
-                          : command.getPager(consistencyLevel, cState, null);
+            pagers[j - i] = command.getPager(null);
         }
 
         remaining = state == null ? limit.count() : state.remaining;
@@ -115,11 +111,32 @@ public class MultiPartitionPager implements QueryPager
         return true;
     }
 
+    public ReadOrderGroup startOrderGroup()
+    {
+        // Note that for all pagers, the only difference is the partition key to which it applies, so in practice we
+        // can use any of the sub-pager ReadOrderGroup group to protect the whole pager
+        for (int i = current; i < pagers.length; i++)
+        {
+            if (pagers[i] != null)
+                return pagers[i].startOrderGroup();
+        }
+        throw new AssertionError("Shouldn't be called on an exhausted pager");
+    }
+
     @SuppressWarnings("resource")
-    public PartitionIterator fetchPage(int pageSize) throws RequestValidationException, RequestExecutionException
+    public PartitionIterator fetchPage(int pageSize, ConsistencyLevel consistency, ClientState clientState) throws RequestValidationException, RequestExecutionException
     {
         int toQuery = Math.min(remaining, pageSize);
-        PagersIterator iter = new PagersIterator(toQuery);
+        PagersIterator iter = new PagersIterator(toQuery, consistency, clientState, null);
+        CountingPartitionIterator countingIter = new CountingPartitionIterator(iter, limit.forPaging(toQuery));
+        iter.setCounter(countingIter.counter());
+        return countingIter;
+    }
+
+    public PartitionIterator fetchPageInternal(int pageSize, ReadOrderGroup orderGroup) throws RequestValidationException, RequestExecutionException
+    {
+        int toQuery = Math.min(remaining, pageSize);
+        PagersIterator iter = new PagersIterator(toQuery, null, null, orderGroup);
         CountingPartitionIterator countingIter = new CountingPartitionIterator(iter, limit.forPaging(toQuery));
         iter.setCounter(countingIter.counter());
         return countingIter;
@@ -131,9 +148,19 @@ public class MultiPartitionPager implements QueryPager
         private PartitionIterator result;
         private DataLimits.Counter counter;
 
-        public PagersIterator(int pageSize)
+        // For "normal" queries
+        private final ConsistencyLevel consistency;
+        private final ClientState clientState;
+
+        // For internal queries
+        private final ReadOrderGroup orderGroup;
+
+        public PagersIterator(int pageSize, ConsistencyLevel consistency, ClientState clientState, ReadOrderGroup orderGroup)
         {
             this.pageSize = pageSize;
+            this.consistency = consistency;
+            this.clientState = clientState;
+            this.orderGroup = orderGroup;
         }
 
         public void setCounter(DataLimits.Counter counter)
@@ -152,7 +179,10 @@ public class MultiPartitionPager implements QueryPager
                 if (result != null)
                     result.close();
 
-                result = pagers[current].fetchPage(pageSize - counter.counted());
+                int toQuery = pageSize - counter.counted();
+                result = consistency == null
+                       ? pagers[current].fetchPageInternal(toQuery, orderGroup)
+                       : pagers[current].fetchPage(toQuery, consistency, clientState);
             }
             return result.next();
         }

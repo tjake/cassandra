@@ -221,9 +221,8 @@ public class PerRowSecondaryIndexTest
         {
             return new SecondaryIndexSearcher(baseCfs.indexManager, columns)
             {
-                
                 @Override
-                public UnfilteredPartitionIterator search(ReadCommand filter)
+                public UnfilteredPartitionIterator search(ReadCommand filter, ReadOrderGroup orderGroup)
                 {
                     return new SingletonUnfilteredPartitionIterator(LAST_INDEXED_PARTITION, false);
                 }

@@ -26,9 +26,7 @@ import com.google.common.base.Predicate;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -41,6 +39,7 @@ import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.marshal.AsciiType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.FilteredPartition;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -49,6 +48,7 @@ import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
+import static org.junit.Assert.*;
 
 public class ReadMessageTest
 {
@@ -100,58 +100,51 @@ public class ReadMessageTest
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_FOR_READ_TEST);
         ReadCommand rm, rm2;
 
-        rm = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("key1"))
-                .addClustering("col1")
-                .addClustering("col2")
-                .build();
+        rm = Util.cmd(cfs, Util.dk("key1"))
+                 .includeRow("col1", "col2")
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new SinglePartitionNamesReadBuilder(cfs, FBUtilities.nowInSeconds(), Util.dk("key1"))
-                .addClustering("col1")
-                .addClustering("col2")
-                .setReversed(true)
-                .build();
+        rm = Util.cmd(cfs, Util.dk("key1"))
+                 .includeRow("col1", "col2")
+                 .reverse()
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .build();
+        rm = Util.cmd(cfs)
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .addClustering("col1", "col2")
-                .build();
+        rm = Util.cmd(cfs)
+                 .fromKeyIncl(ByteBufferUtil.bytes("key1"))
+                 .toKeyIncl(ByteBufferUtil.bytes("key2"))
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("key1"), ByteBufferUtil.bytes("key2"))
-                .build();
+        rm = Util.cmd(cfs)
+                 .columns("a")
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .addColumn(ByteBufferUtil.bytes("a"))
-                .build();
+        rm = Util.cmd(cfs)
+                 .includeRow("col1", "col2")
+                 .columns("a")
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
 
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .addClustering("col1", "col2")
-                .addColumn(ByteBufferUtil.bytes("a"))
-                .build();
+        rm = Util.cmd(cfs)
+                 .fromKeyIncl(ByteBufferUtil.bytes("key1"))
+                 .includeRow("col1", "col2")
+                 .columns("a")
+                 .build();
         rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
-
-        rm = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .setKeyBounds(ByteBufferUtil.bytes("key1"), null)
-                .addClustering("col1", "col2")
-                .addColumn(ByteBufferUtil.bytes("a"))
-                .build();
-        rm2 = serializeAndDeserializeReadMessage(rm);
-        assert rm2.toString().equals(rm.toString());
+        assertEquals(rm.toString(), rm2.toString());
     }
 
     private ReadCommand serializeAndDeserializeReadMessage(ReadCommand rm) throws IOException
@@ -179,22 +172,16 @@ public class ReadMessageTest
                 .apply();
 
         ColumnDefinition col = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs, FBUtilities.nowInSeconds())
-                .build().executeInternal())
+        int found = 0;
+        for (FilteredPartition partition : Util.getAll(Util.cmd(cfs).build()))
         {
-            int found = 0;
-            while (iter.hasNext())
+            for (Row r : partition)
             {
-                RowIterator ri = iter.next();
-                while (ri.hasNext())
-                {
-                    Row r = ri.next();
-                    if (r.getCell(col).value().equals(ByteBufferUtil.bytes("abcd")))
-                        ++found;
-                }
+                if (r.getCell(col).value().equals(ByteBufferUtil.bytes("abcd")))
+                    ++found;
             }
-            assertEquals(1, found);
         }
+        assertEquals(1, found);
     }
 
     @Test

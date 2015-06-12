@@ -38,20 +38,18 @@ public class RangeSliceQueryPager extends AbstractQueryPager
 {
     private static final Logger logger = LoggerFactory.getLogger(RangeSliceQueryPager.class);
 
-    private final PartitionRangeReadCommand command;
     private volatile DecoratedKey lastReturnedKey;
     private volatile Clustering lastReturnedClustering;
 
-    public RangeSliceQueryPager(PartitionRangeReadCommand command, ConsistencyLevel consistencyLevel, boolean localQuery, PagingState state)
+    public RangeSliceQueryPager(PartitionRangeReadCommand command, PagingState state)
     {
-        super(consistencyLevel, localQuery, command.metadata(), command.limits());
-        this.command = command;
+        super(command);
         assert !command.isNamesQuery();
 
         if (state != null)
         {
             lastReturnedKey = StorageService.getPartitioner().decorateKey(state.partitionKey);
-            lastReturnedClustering = LegacyLayout.decodeClustering(cfm, state.cellName);
+            lastReturnedClustering = LegacyLayout.decodeClustering(command.metadata(), state.cellName);
             restoreState(lastReturnedKey, state.remaining, state.remainingInPartition);
         }
     }
@@ -63,14 +61,15 @@ public class RangeSliceQueryPager extends AbstractQueryPager
              : new PagingState(lastReturnedKey.getKey(), LegacyLayout.encodeClustering(command.metadata(), lastReturnedClustering), maxRemaining(), remainingInPartition());
     }
 
-    protected PartitionIterator queryNextPage(int pageSize, ConsistencyLevel consistencyLevel, boolean localQuery)
+    protected ReadCommand nextPageReadCommand(int pageSize)
     throws RequestExecutionException
     {
-        DataRange range;
         DataLimits limits;
+        DataRange fullRange = ((PartitionRangeReadCommand)command).dataRange();
+        DataRange pageRange;
         if (lastReturnedKey == null)
         {
-            range = command.dataRange();
+            pageRange = fullRange;
             limits = command.limits().forPaging(pageSize);
         }
         else
@@ -80,23 +79,17 @@ public class RangeSliceQueryPager extends AbstractQueryPager
             AbstractBounds<PartitionPosition> bounds = makeKeyBounds(lastReturnedKey, includeLastKey);
             if (includeLastKey)
             {
-                range = command.dataRange().forPaging(bounds, command.metadata().comparator, lastReturnedClustering, false);
+                pageRange = fullRange.forPaging(bounds, command.metadata().comparator, lastReturnedClustering, false);
                 limits = command.limits().forPaging(pageSize, lastReturnedKey.getKey(), remainingInPartition());
             }
             else
             {
-                range = command.dataRange().forSubRange(bounds);
+                pageRange = fullRange.forSubRange(bounds);
                 limits = command.limits().forPaging(pageSize);
             }
         }
 
-        PartitionRangeReadCommand pageCmd = new PartitionRangeReadCommand(command.metadata(),
-                                                                          command.nowInSec(),
-                                                                          command.columnFilter(),
-                                                                          limits,
-                                                                          range);
-
-        return localQuery ? pageCmd.executeInternal() : pageCmd.execute(consistencyLevel, null);
+        return new PartitionRangeReadCommand(command.metadata(), command.nowInSec(), command.columnFilter(), limits, pageRange);
     }
 
     protected void recordLast(DecoratedKey key, Row last)
@@ -110,7 +103,7 @@ public class RangeSliceQueryPager extends AbstractQueryPager
 
     private AbstractBounds<PartitionPosition> makeKeyBounds(PartitionPosition lastReturnedKey, boolean includeLastKey)
     {
-        AbstractBounds<PartitionPosition> bounds = command.dataRange().keyRange();
+        AbstractBounds<PartitionPosition> bounds = ((PartitionRangeReadCommand)command).dataRange().keyRange();
         if (bounds instanceof Range || bounds instanceof Bounds)
         {
             return includeLastKey

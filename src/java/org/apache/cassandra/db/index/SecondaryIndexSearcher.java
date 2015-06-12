@@ -63,7 +63,7 @@ public abstract class SecondaryIndexSearcher
 
     @SuppressWarnings("resource") // Both the OpOrder and 'indexIter' are closed on exception, or through the closing of the result
                                   // of this method.
-    public UnfilteredPartitionIterator search(ReadCommand command)
+    public UnfilteredPartitionIterator search(ReadCommand command, ReadOrderGroup orderGroup)
     {
         ColumnFilter.Expression primary = highestSelectivityPredicate(command.columnFilter(), true);
         assert primary != null;
@@ -76,59 +76,14 @@ public abstract class SecondaryIndexSearcher
 
         DecoratedKey indexKey = index.getIndexKeyFor(primary.getIndexValue());
 
-        // TODO: this should perhaps not open and maintain a writeOp for the full duration, but instead only *try* to delete stale entries, without blocking if there's no room
-        // as it stands, we open a writeOp and keep it open for the duration to ensure that should this CF get flushed to make room we don't block the reclamation of any room being made
-        final OpOrder.Group writeOp = baseCfs.keyspace.writeOrder.start();
-        final OpOrder.Group baseOp = baseCfs.readOrdering.start();
-        final OpOrder.Group indexOp = index.getIndexCfs().readOrdering.start();
+        UnfilteredRowIterator indexIter = queryIndex(index, indexKey, command);
         try
         {
-            UnfilteredRowIterator indexIter = new WrappingUnfilteredRowIterator(queryIndex(index, indexKey, command))
-            {
-                @Override
-                public void close()
-                {
-                    try
-                    {
-                        super.close();
-                    }
-                    finally
-                    {
-                        indexOp.close();
-                    }
-                }
-            };
-
-            try
-            {
-                return new WrappingUnfilteredPartitionIterator(queryDataFromIndex(index, indexKey, UnfilteredRowIterators.filter(indexIter), command, writeOp))
-                {
-                    @Override
-                    public void close()
-                    {
-                        try
-                        {
-                            super.close();
-                        }
-                        finally
-                        {
-                            baseOp.close();
-                            writeOp.close();
-                        }
-                    }
-                };
-            }
-            catch (RuntimeException | Error e)
-            {
-                indexIter.close();
-                throw e;
-            }
+            return queryDataFromIndex(index, indexKey, UnfilteredRowIterators.filter(indexIter), command, orderGroup.writeOpOrderGroup());
         }
         catch (RuntimeException | Error e)
         {
-            indexOp.close();
-            baseOp.close();
-            writeOp.close();
+            indexIter.close();
             throw e;
         }
     }
@@ -232,10 +187,10 @@ public abstract class SecondaryIndexSearcher
     }
 
     protected abstract UnfilteredPartitionIterator queryDataFromIndex(AbstractSimplePerColumnSecondaryIndex index,
-                                                            DecoratedKey indexKey,
-                                                            RowIterator indexHits,
-                                                            ReadCommand command,
-                                                            OpOrder.Group writeOp);
+                                                                      DecoratedKey indexKey,
+                                                                      RowIterator indexHits,
+                                                                      ReadCommand command,
+                                                                      OpOrder.Group writeOp);
 
     protected ColumnFilter.Expression highestSelectivityPredicate(ColumnFilter filter, boolean includeInTrace)
     {

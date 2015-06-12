@@ -391,6 +391,20 @@ public class Slice
             return inclusiveEndOf(values);
         }
 
+        public static Bound create(ClusteringComparator comparator, boolean isStart, boolean isInclusive, Object... values)
+        {
+            CBuilder builder = CBuilder.create(comparator);
+            for (int i = 0; i < values.length; i++)
+            {
+                Object val = values[i];
+                if (val instanceof ByteBuffer)
+                    builder.add((ByteBuffer)val);
+                else
+                    builder.add(val);
+            }
+            return builder.buildBound(isStart, isInclusive);
+        }
+
         public abstract Bound withNewKind(Kind kind);
 
         public boolean isStart()

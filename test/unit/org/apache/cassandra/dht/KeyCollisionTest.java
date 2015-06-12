@@ -43,7 +43,7 @@ import org.apache.cassandra.db.RowUpdateBuilder;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.IntegerType;
-import org.apache.cassandra.db.partitions.PartitionIterator;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.locator.SimpleStrategy;
 import org.apache.cassandra.service.StorageService;
@@ -97,12 +97,12 @@ public class KeyCollisionTest
         insert("key1", "key2", "key3"); // token = 4
         insert("longKey1", "longKey2"); // token = 8
 
-        PartitionIterator rows = Util.getRangeSlice(cfs, bytes("k2"), bytes("key2"), null, ColumnFilter.NONE);
+        List<FilteredPartition> partitions = Util.getAll(Util.cmd(cfs).fromKeyIncl("k2").toKeyIncl("key2").build());
 
-        assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("k2"));
-        assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("kq"));
-        assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("key1"));
-        assert rows.next().partitionKey().getKey().equals(ByteBufferUtil.bytes("key2"));
+        assert partitions.get(0).partitionKey().getKey().equals(ByteBufferUtil.bytes("k2"));
+        assert partitions.get(1).partitionKey().getKey().equals(ByteBufferUtil.bytes("kq"));
+        assert partitions.get(2).partitionKey().getKey().equals(ByteBufferUtil.bytes("key1"));
+        assert partitions.get(3).partitionKey().getKey().equals(ByteBufferUtil.bytes("key2"));
     }
 
     private void insert(String... keys)

@@ -24,112 +24,303 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.cql3.Operator;
+import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.marshal.*;
+import org.apache.cassandra.dht.*;
+import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.FBUtilities;
 
 public abstract class AbstractReadCommandBuilder
 {
     protected final ColumnFamilyStore cfs;
-    protected final int nowInSeconds;
+    protected int nowInSeconds;
 
-    protected int cqlLimit = 100000;
-    protected int pagingLimit = -1;
-    protected ColumnFilter filter;
-    protected ByteBuffer superColumn;
-    protected boolean reversed = false;
-    protected List<ByteBuffer> columns = new ArrayList<>();
+    private int cqlLimit = -1;
+    private int pagingLimit = -1;
+    private boolean reversed = false;
 
-    protected Slice.Bound lowerClusteringBound;
-    protected Slice.Bound upperClusteringBound;
+    private Set<ColumnIdentifier> columns;
+    protected final ColumnFilter filter = ColumnFilter.create();
 
-    public AbstractReadCommandBuilder(ColumnFamilyStore cfs, int nowInSeconds)
+    private Slice.Bound lowerClusteringBound;
+    private Slice.Bound upperClusteringBound;
+
+    private SortedSet<Clustering> clusterings;
+
+    // Use Util.cmd() instead of this ctor directly
+    AbstractReadCommandBuilder(ColumnFamilyStore cfs)
     {
         this.cfs = cfs;
-        this.nowInSeconds = nowInSeconds;
-        filter = ColumnFilter.create();
+        this.nowInSeconds = FBUtilities.nowInSeconds();
     }
 
-    public AbstractReadCommandBuilder setClusteringLowerBound(boolean inclusive, ByteBuffer... values)
+    public AbstractReadCommandBuilder withNowInSeconds(int nowInSec)
     {
-        ClusteringPrefix.Kind kind = inclusive ? ClusteringPrefix.Kind.INCL_START_BOUND : ClusteringPrefix.Kind.EXCL_START_BOUND;
-        lowerClusteringBound = Slice.Bound.create(kind, values);
+        this.nowInSeconds = nowInSec;
         return this;
     }
 
-    public AbstractReadCommandBuilder setClusteringUpperBound(boolean inclusive, ByteBuffer... values)
+    public AbstractReadCommandBuilder fromIncl(Object... values)
     {
-        ClusteringPrefix.Kind kind = inclusive ? ClusteringPrefix.Kind.INCL_END_BOUND : ClusteringPrefix.Kind.EXCL_END_BOUND;
-        upperClusteringBound = Slice.Bound.create(kind, values);
+        assert lowerClusteringBound == null && clusterings == null;
+        this.lowerClusteringBound = Slice.Bound.create(cfs.metadata.comparator, true, true, values);
         return this;
     }
 
-    public AbstractReadCommandBuilder setReversed(boolean val)
+    public AbstractReadCommandBuilder fromExcl(Object... values)
     {
-        reversed = val;
+        assert lowerClusteringBound == null && clusterings == null;
+        this.lowerClusteringBound = Slice.Bound.create(cfs.metadata.comparator, true, false, values);
         return this;
     }
 
-    public AbstractReadCommandBuilder setCQLLimit(int newLimit)
+    public AbstractReadCommandBuilder toIncl(Object... values)
     {
-        cqlLimit = newLimit;
+        assert upperClusteringBound == null && clusterings == null;
+        this.upperClusteringBound = Slice.Bound.create(cfs.metadata.comparator, false, true, values);
         return this;
     }
 
-    public AbstractReadCommandBuilder setPagingLimit(int newLimit)
+    public AbstractReadCommandBuilder toExcl(Object... values)
     {
-        pagingLimit = newLimit;
+        assert upperClusteringBound == null && clusterings == null;
+        this.upperClusteringBound = Slice.Bound.create(cfs.metadata.comparator, false, false, values);
         return this;
     }
 
-    public AbstractReadCommandBuilder replaceFilter(ColumnFilter filter)
+    public AbstractReadCommandBuilder includeRow(Object... values)
     {
-        this.filter = filter;
+        assert lowerClusteringBound == null && upperClusteringBound == null;
+
+        if (this.clusterings == null)
+            this.clusterings = new TreeSet<>(cfs.metadata.comparator);
+
+        this.clusterings.add(cfs.metadata.comparator.make(values));
         return this;
     }
 
-    public AbstractReadCommandBuilder setSuper(ByteBuffer sc)
+    public AbstractReadCommandBuilder reverse()
     {
-        this.superColumn = sc;
+        this.reversed = true;
         return this;
     }
 
-    public AbstractReadCommandBuilder addColumn(ByteBuffer column)
+    public AbstractReadCommandBuilder withLimit(int newLimit)
     {
-        columns.add(column);
+        this.cqlLimit = newLimit;
         return this;
     }
 
-    public AbstractReadCommandBuilder addFilter(ColumnDefinition cdef, Operator op, ByteBuffer value)
+    public AbstractReadCommandBuilder withPagingLimit(int newLimit)
     {
-        filter.add(cdef, op, value);
+        this.pagingLimit = newLimit;
         return this;
     }
 
-    public PartitionIterator executeInternal()
+    public AbstractReadCommandBuilder columns(String... columns)
     {
-        return build().executeInternal();
+        if (this.columns == null)
+            this.columns = new HashSet<>();
+
+        for (String column : columns)
+            this.columns.add(ColumnIdentifier.getInterned(column, true));
+        return this;
     }
 
-    public Util.OnlyRow getOnlyRow()
+    private ByteBuffer bb(Object value, AbstractType<?> type)
     {
-        return new Util.OnlyRow(build().executeInternal());
+        return value instanceof ByteBuffer ? (ByteBuffer)value : ((AbstractType)type).decompose(value);
     }
 
-    public static List<Row> getRowList(PartitionIterator iter)
+    private AbstractType<?> forValues(AbstractType<?> collectionType)
     {
-        List<Row> results = new ArrayList<>();
-        while (iter.hasNext())
+        assert collectionType instanceof CollectionType;
+        CollectionType ct = (CollectionType)collectionType;
+        switch (ct.kind)
         {
-            RowIterator ri = iter.next();
-            while (ri.hasNext())
-                results.add(ri.next());
+            case LIST:
+            case MAP:
+                return ct.valueComparator();
+            case SET:
+                return ct.nameComparator();
         }
-        return results;
+        throw new AssertionError();
+    }
+
+    private AbstractType<?> forKeys(AbstractType<?> collectionType)
+    {
+        assert collectionType instanceof CollectionType;
+        CollectionType ct = (CollectionType)collectionType;
+        switch (ct.kind)
+        {
+            case LIST:
+            case MAP:
+                return ct.nameComparator();
+        }
+        throw new AssertionError();
+    }
+
+    public AbstractReadCommandBuilder filterOn(String column, Operator op, Object value)
+    {
+        ColumnDefinition def = cfs.metadata.getColumnDefinition(ColumnIdentifier.getInterned(column, true));
+        assert def != null;
+
+        AbstractType<?> type = def.type;
+        if (op == Operator.CONTAINS)
+            type = forValues(type);
+        else if (op == Operator.CONTAINS_KEY)
+            type = forKeys(type);
+
+        this.filter.add(def, op, bb(value, type));
+        return this;
+    }
+
+    protected PartitionFilter makeFilter()
+    {
+        PartitionColumns cols = cfs.metadata.partitionColumns();
+        if (columns != null)
+        {
+            PartitionColumns.Builder builder = new PartitionColumns.Builder();
+            for (ColumnIdentifier column : columns)
+                builder.add(cfs.metadata.getColumnDefinition(column));
+            cols = builder.build();
+        }
+
+        if (clusterings != null)
+        {
+            return new NamesPartitionFilter(cols, clusterings, reversed);
+        }
+        else
+        {
+            Slice slice = Slice.make(lowerClusteringBound == null ? Slice.Bound.BOTTOM : lowerClusteringBound,
+                                     upperClusteringBound == null ? Slice.Bound.TOP : upperClusteringBound);
+            return new SlicePartitionFilter(cols, Slices.with(cfs.metadata.comparator, slice), reversed);
+        }
+    }
+
+    protected DataLimits makeLimits()
+    {
+        DataLimits limits = cqlLimit < 0 ? DataLimits.NONE : DataLimits.cqlLimits(cqlLimit);
+        if (pagingLimit >= 0)
+            limits = limits.forPaging(pagingLimit);
+        return limits;
+    }
+
+    public Row getOnlyRow()
+    {
+        return Util.getOnlyRow(build());
+    }
+
+    public Row getOnlyRowUnfiltered()
+    {
+        return Util.getOnlyRowUnfiltered(build());
+    }
+
+    public FilteredPartition getOnlyPartition()
+    {
+        return Util.getOnlyPartition(build());
+    }
+
+    public Partition getOnlyPartitionUnfiltered()
+    {
+        return Util.getOnlyPartitionUnfiltered(build());
     }
 
     public abstract ReadCommand build();
+
+    public static class SinglePartitionBuilder extends AbstractReadCommandBuilder
+    {
+        private final DecoratedKey partitionKey;
+
+        SinglePartitionBuilder(ColumnFamilyStore cfs, DecoratedKey key)
+        {
+            super(cfs);
+            this.partitionKey = key;
+        }
+
+        @Override
+        public ReadCommand build()
+        {
+            return SinglePartitionReadCommand.create(cfs.metadata, nowInSeconds, filter, makeLimits(), partitionKey, makeFilter());
+        }
+    }
+
+    public static class PartitionRangeBuilder extends AbstractReadCommandBuilder
+    {
+        private DecoratedKey startKey;
+        private boolean startInclusive;
+        private DecoratedKey endKey;
+        private boolean endInclusive;
+
+        PartitionRangeBuilder(ColumnFamilyStore cfs)
+        {
+            super(cfs);
+        }
+
+        public PartitionRangeBuilder fromKeyIncl(Object... values)
+        {
+            assert startKey == null;
+            this.startInclusive = true;
+            this.startKey = Util.makeKey(cfs.metadata, values);
+            return this;
+        }
+
+        public PartitionRangeBuilder fromKeyExcl(Object... values)
+        {
+            assert startKey == null;
+            this.startInclusive = false;
+            this.startKey = Util.makeKey(cfs.metadata, values);
+            return this;
+        }
+
+        public PartitionRangeBuilder toKeyIncl(Object... values)
+        {
+            assert endKey == null;
+            this.endInclusive = true;
+            this.endKey = Util.makeKey(cfs.metadata, values);
+            return this;
+        }
+
+        public PartitionRangeBuilder toKeyExcl(Object... values)
+        {
+            assert endKey == null;
+            this.endInclusive = false;
+            this.endKey = Util.makeKey(cfs.metadata, values);
+            return this;
+        }
+
+        @Override
+        public ReadCommand build()
+        {
+            PartitionPosition start = startKey;
+            if (start == null)
+            {
+                start = StorageService.getPartitioner().getMinimumToken().maxKeyBound();
+                startInclusive = false;
+            }
+            PartitionPosition end = endKey;
+            if (end == null)
+            {
+                end = StorageService.getPartitioner().getMinimumToken().maxKeyBound();
+                endInclusive = true;
+            }
+            
+            AbstractBounds<PartitionPosition> bounds;
+            if (startInclusive && endInclusive)
+                bounds = new Bounds<PartitionPosition>(start, end);
+            else if (startInclusive && !endInclusive)
+                bounds = new IncludingExcludingBounds<PartitionPosition>(start, end);
+            else if (!startInclusive && endInclusive)
+                bounds = new Range<PartitionPosition>(start, end);
+            else
+                bounds = new ExcludingBounds<PartitionPosition>(start, end);
+
+            return new PartitionRangeReadCommand(cfs.metadata, nowInSeconds, filter, makeLimits(), new DataRange(bounds, makeFilter()));
+        }
+    }
 }

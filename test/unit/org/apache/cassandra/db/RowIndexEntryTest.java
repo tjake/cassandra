@@ -24,7 +24,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.CQLTester;
 import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.db.rows.RowStats;
-import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.sstable.format.big.BigFormat;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -57,22 +57,18 @@ public class RowIndexEntryTest extends CQLTester
             execute("INSERT INTO %s (a, b, c) VALUES (?, ?, ?)", 0, "" + i, i);
 
         buffer = new DataOutputBuffer();
-        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
-        {
-            try (UnfilteredRowIterator unfilteredRowIterator = iterator.next())
-            {
-                File tempFile = File.createTempFile("row_index_entry_test", null);
-                tempFile.deleteOnExit();
-                SequentialWriter writer = SequentialWriter.open(tempFile);
-                ColumnIndex columnIndex = ColumnIndex.writeAndBuildIndex(unfilteredRowIterator, writer, header, BigFormat.latestVersion);
-                RowIndexEntry<IndexHelper.IndexInfo> withIndex = RowIndexEntry.create(0xdeadbeef, DeletionTime.LIVE, columnIndex);
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs).build());
 
-                // sanity check
-                assertTrue(columnIndex.columnsIndex.size() >= 3);
+        File tempFile = File.createTempFile("row_index_entry_test", null);
+        tempFile.deleteOnExit();
+        SequentialWriter writer = SequentialWriter.open(tempFile);
+        ColumnIndex columnIndex = ColumnIndex.writeAndBuildIndex(partition.unfilteredIterator(), writer, header, BigFormat.latestVersion);
+        RowIndexEntry<IndexHelper.IndexInfo> withIndex = RowIndexEntry.create(0xdeadbeef, DeletionTime.LIVE, columnIndex);
 
-                serializer.serialize(withIndex, buffer);
-                assertEquals(buffer.getLength(), serializer.serializedSize(withIndex));
-            }
-        }
+        // sanity check
+        assertTrue(columnIndex.columnsIndex.size() >= 3);
+
+        serializer.serialize(withIndex, buffer);
+        assertEquals(buffer.getLength(), serializer.serializedSize(withIndex));
     }
 }

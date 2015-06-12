@@ -105,16 +105,16 @@ public class RowCacheTest
         rub.build().applyUnsafe();
 
         // populate row cache, we should not get a row cache hit;
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 1));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(1).build());
         assertEquals(startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
 
         // do another query, limit is 20, which is < 100 that we cache, we should get a hit and it should be in range
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 1));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(1).build());
         assertEquals(++startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
         assertEquals(startRowCacheOutOfRange, cachedStore.metric.rowCacheHitOutOfRange.getCount());
 
         CachedPartition cachedCf = (CachedPartition)CacheService.instance.rowCache.get(rck);
-        assertEquals(cachedCf.rowCount(), 1);
+        assertEquals(1, cachedCf.rowCount());
         for (Unfiltered unfiltered : Util.once(cachedCf.unfilteredIterator(ColumnsSelection.withoutSubselection(cachedCf.columns()), Slices.ALL, false, FBUtilities.nowInSeconds())))
         {
             Row r = (Row) unfiltered;
@@ -149,7 +149,7 @@ public class RowCacheTest
         {
             DecoratedKey key = Util.dk("key" + i);
 
-            try (UnfilteredRowIterator ignored = Util.readFullPartition(cachedStore, key)) {}
+            Util.getAll(Util.cmd(cachedStore, key).build());
             assert CacheService.instance.rowCache.size() == i + 1;
             assert cachedStore.containsCachedParition(key); // current key should be stored in the cache
 
@@ -177,7 +177,7 @@ public class RowCacheTest
         {
             DecoratedKey key = Util.dk("key" + i);
 
-            try (UnfilteredRowIterator ignored = Util.readFullPartition(cachedStore, key)) {}
+            Util.getAll(Util.cmd(cachedStore, key).build());
             assert cachedStore.containsCachedParition(key); // cache should be populated with the latest rows read (old ones should be popped)
 
             // checking if cell is read correctly after cache
@@ -278,21 +278,21 @@ public class RowCacheTest
         Arrays.sort(values);
 
         // populate row cache, we should not get a row cache hit;
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 10));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(10).build());
         assertEquals(startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
 
         // do another query, limit is 20, which is < 100 that we cache, we should get a hit and it should be in range
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 10));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(10).build());
         assertEquals(++startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
         assertEquals(startRowCacheOutOfRange, cachedStore.metric.rowCacheHitOutOfRange.getCount());
 
         // get a slice from 95 to 105, 95->99 are in cache, we should not get a hit and then row cache is out of range
-        Util.consume(Util.readPartitionWithBounds(cachedStore, dk, Bound.inclusiveStartOf(ByteBufferUtil.bytes(95)), Bound.exclusiveEndOf(ByteBufferUtil.bytes(95)) ));
+        Util.getAll(Util.cmd(cachedStore, dk).fromIncl(String.valueOf(210)).toExcl(String.valueOf(215)).build());
         assertEquals(startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
         assertEquals(++startRowCacheOutOfRange, cachedStore.metric.rowCacheHitOutOfRange.getCount());
 
         // get a slice with limit > 100, we should get a hit out of range.
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 101));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(101).build());
         assertEquals(startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
         assertEquals(++startRowCacheOutOfRange, cachedStore.metric.rowCacheHitOutOfRange.getCount());
 
@@ -300,7 +300,7 @@ public class RowCacheTest
         CacheService.instance.invalidateRowCache();
 
         // try to populate row cache with a limit > rows to cache, we should still populate row cache;
-        Util.consume(Util.readPartitionWithLimit(cachedStore, dk, 105));
+        Util.getAll(Util.cmd(cachedStore, dk).withLimit(105).build());
         assertEquals(startRowCacheHits, cachedStore.metric.rowCacheHit.getCount());
 
         // validate the stuff in cache;
@@ -358,7 +358,7 @@ public class RowCacheTest
             DecoratedKey key = Util.dk("key" + i);
             Clustering cl = new SimpleClustering(ByteBufferUtil.bytes("col" + i));
             NamesPartitionFilter filter = new NamesPartitionFilter(cfm.partitionColumns(), FBUtilities.singleton(cl, cfm.comparator), false);
-            SinglePartitionReadCommand.create(cfm, FBUtilities.nowInSeconds(), key, filter).executeLocally();
+            Util.getAll(Util.cmd(store, key).build());
         }
     }
 }

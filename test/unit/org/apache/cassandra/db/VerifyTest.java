@@ -112,7 +112,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        try(Verifier verifier = new Verifier(cfs, sstable, false))
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(false);
         }
@@ -133,8 +133,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(false);
         }
@@ -155,8 +154,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(true);
         }
@@ -177,8 +175,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(true);
         }
@@ -199,8 +196,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(false);
         }
@@ -221,8 +217,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(false);
         }
@@ -243,8 +238,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(true);
         }
@@ -265,8 +259,7 @@ public class VerifyTest
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(true);
         }
@@ -286,9 +279,7 @@ public class VerifyTest
 
         fillCF(cfs, 2);
 
-        try (PartitionIterator iter = Util.readAll(cfs))
-        {
-        }
+        Util.getAll(Util.cmd(cfs).build());
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -299,8 +290,7 @@ public class VerifyTest
 
         writeChecksum(++correctChecksum, sstable.descriptor.filenameFor(Component.DIGEST));
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
-        try
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
         {
             verifier.verify(false);
             fail("Expected a CorruptSSTableException to be thrown");
@@ -318,9 +308,7 @@ public class VerifyTest
 
         fillCF(cfs, 2);
 
-        try (PartitionIterator iter = Util.readAll(cfs))
-        {
-        }
+        Util.getAll(Util.cmd(cfs).build());
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -338,29 +326,30 @@ public class VerifyTest
         // Update the Digest to have the right Checksum
         writeChecksum(simpleFullChecksum(sstable.getFilename()), sstable.descriptor.filenameFor(Component.DIGEST));
 
-        Verifier verifier = new Verifier(cfs, sstable, false);
+        try (Verifier verifier = new Verifier(cfs, sstable, false))
+        {
+            // First a simple verify checking digest, which should succeed
+            try
+            {
+                verifier.verify(false);
+            }
+            catch (CorruptSSTableException err)
+            {
+                fail("Simple verify should have succeeded as digest matched");
+            }
 
-        // First a simple verify checking digest, which should succeed
-        try
-        {
-            verifier.verify(false);
-        }
-        catch (CorruptSSTableException err)
-        {
-            fail("Simple verify should have succeeded as digest matched");
-        }
+            // Now try extended verify
+            try
+            {
+                verifier.verify(true);
 
-        // Now try extended verify
-        try
-        {
-            verifier.verify(true);
-
+            }
+            catch (CorruptSSTableException err)
+            {
+                return;
+            }
+            fail("Expected a CorruptSSTableException to be thrown");
         }
-        catch (CorruptSSTableException err)
-        {
-            return;
-        }
-        fail("Expected a CorruptSSTableException to be thrown");
 
     }
 

@@ -147,8 +147,8 @@ public class KeyCacheTest
         cfs.forceBlockingFlush();
 
         // reads to cache key position
-        Util.consume(Util.readFullPartition(cfs, Util.dk("key1")));
-        Util.consume(Util.readFullPartition(cfs, Util.dk("key2")));
+        Util.getAll(Util.cmd(cfs, "key1").build());
+        Util.getAll(Util.cmd(cfs, "key2").build());
 
         assertKeyCacheSize(2, KEYSPACE1, COLUMN_FAMILY1);
 
@@ -174,8 +174,8 @@ public class KeyCacheTest
         assertKeyCacheSize(2, KEYSPACE1, COLUMN_FAMILY1);
 
         // re-read same keys to verify that key cache didn't grow further
-        Util.consume(Util.readFullPartition(cfs, Util.dk("key1")));
-        Util.consume(Util.readFullPartition(cfs, Util.dk("key2")));
+        Util.getAll(Util.cmd(cfs, "key1").build());
+        Util.getAll(Util.cmd(cfs, "key2").build());
 
         assertKeyCacheSize(2, KEYSPACE1, COLUMN_FAMILY1);
     }
@@ -186,12 +186,7 @@ public class KeyCacheTest
         CFMetaData cfm = Schema.instance.getCFMetaData(keyspace, columnFamily);
 
         for (int i = 0; i < numberOfRows; i++)
-        {
-            DecoratedKey key = Util.dk("key" + i);
-            Clustering cl = new SimpleClustering(ByteBufferUtil.bytes("col" + i));
-            NamesPartitionFilter filter = new NamesPartitionFilter(cfm.partitionColumns(), FBUtilities.singleton(cl, cfm.comparator), false);
-            SinglePartitionReadCommand.create(cfm, FBUtilities.nowInSeconds(), key, filter).executeLocally();
-        }
+            Util.getAll(Util.cmd(store, "key" + i).includeRow("col" + i).build());
     }
 
 

@@ -519,14 +519,30 @@ public abstract class ModificationStatement implements CQLStatement
 
         SinglePartitionReadCommand.Group group = new SinglePartitionReadCommand.Group(commands, DataLimits.NONE);
 
-        try (PartitionIterator iter = local ? group.executeInternal() : group.execute(cl, null))
+        if (local)
         {
-            while (iter.hasNext())
+            try (ReadOrderGroup orderGroup = group.startOrderGroup(); PartitionIterator iter = group.executeInternal(orderGroup))
             {
-                try (RowIterator rowIter = iter.next())
-                {
-                    map.put(rowIter.partitionKey(), FilteredPartition.create(rowIter));
-                }
+                return asMaterializedMap(iter);
+            }
+        }
+        else
+        {
+            try (PartitionIterator iter = group.execute(cl, null))
+            {
+                return asMaterializedMap(iter);
+            }
+        }
+    }
+
+    private Map<DecoratedKey, Partition> asMaterializedMap(PartitionIterator iterator)
+    {
+        Map<DecoratedKey, Partition> map = new HashMap();
+        while (iterator.hasNext())
+        {
+            try (RowIterator partition = iterator.next())
+            {
+                map.put(partition.partitionKey(), FilteredPartition.create(partition));
             }
         }
         return map;

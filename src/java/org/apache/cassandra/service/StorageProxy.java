@@ -1517,7 +1517,7 @@ public class StorageProxy implements StorageProxyMBean
         {
             try
             {
-                try (UnfilteredPartitionIterator iterator = command.executeLocally())
+                try (ReadOrderGroup orderGroup = command.startOrderGroup(); UnfilteredPartitionIterator iterator = command.executeLocally(orderGroup))
                 {
                     handler.response(command.createResponse(iterator));
                 }

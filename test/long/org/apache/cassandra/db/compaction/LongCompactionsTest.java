@@ -170,18 +170,11 @@ public class LongCompactionsTest
             cfs.forceBlockingFlush();
             CompactionsTest.assertMaxTimestamp(cfs, maxTimestampExpected);
 
-            try (PartitionIterator iterator = Util.readAll(cfs))
-            {
-                assertEquals(inserted.toString(), inserted.size(), Util.size(iterator));
-            }
+            assertEquals(inserted.toString(), inserted.size(), Util.getAll(Util.cmd(cfs).build()).size());
         }
 
         forceCompactions(cfs);
-
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertEquals(inserted.toString(), inserted.size(), Util.size(iterator));
-        }
+        assertEquals(inserted.toString(), inserted.size(), Util.getAll(Util.cmd(cfs).build()).size());
 
         // make sure max timestamp of compacted sstables is recorded properly after compaction.
         CompactionsTest.assertMaxTimestamp(cfs, maxTimestampExpected);

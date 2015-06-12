@@ -35,12 +35,17 @@ public interface ReadQuery
 {
     public static final ReadQuery EMPTY = new ReadQuery()
     {
+        public ReadOrderGroup startOrderGroup()
+        {
+            return ReadOrderGroup.emptyGroup();
+        }
+
         public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
         {
             return PartitionIterators.EMPTY;
         }
 
-        public PartitionIterator executeInternal()
+        public PartitionIterator executeInternal(ReadOrderGroup orderGroup)
         {
             return PartitionIterators.EMPTY;
         }
@@ -53,7 +58,7 @@ public interface ReadQuery
             return DataLimits.cqlLimits(0);
         }
 
-        public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState state)
+        public QueryPager getPager(PagingState state)
         {
             return QueryPager.EMPTY;
         }
@@ -63,6 +68,17 @@ public interface ReadQuery
             return QueryPager.EMPTY;
         }
     };
+
+    /**
+     * Starts a new read operation.
+     * <p>
+     * This must be called before {@link executeInternal} and passed to it to protect the read.
+     * The returned object <b>must</b> be closed on all path and it is thus strongly advised to
+     * use it in a try-with-ressource construction.
+     *
+     * @return a newly started order group for this {@code ReadQuery}.
+     */
+    public ReadOrderGroup startOrderGroup();
 
     /**
      * Executes the query at the provided consistency level.
@@ -78,29 +94,20 @@ public interface ReadQuery
     /**
      * Execute the query for internal queries (that is, it basically executes the query locally).
      *
+     * @param orderGroup the {@code ReadOrderGroup} protecting the read.
      * @return the result of the query.
      */
-    public PartitionIterator executeInternal();
+    public PartitionIterator executeInternal(ReadOrderGroup orderGroup);
 
     /**
      * Returns a pager for the query.
      *
-     * @param consistency the consistency level to achieve for the query.
-     * @param clientState the {@code ClientState} for the query. In practice, this can be null unless
-     * {@code consistency} is a serial consistency.
      * @param pagingState the {@code PagingState} to start from if this is a paging continuation. This can be
      * {@code null} if this is the start of paging.
      *
      * @return a pager for the query.
      */
-    public QueryPager getPager(ConsistencyLevel consistency, ClientState clientState, PagingState pagingState);
-
-    /**
-     * Returns a pager for the query that executes the query locally.
-     *
-     * @return a pager for the query.
-     */
-    public QueryPager getLocalPager();
+    public QueryPager getPager(PagingState pagingState);
 
     /**
      * The limits for the query.

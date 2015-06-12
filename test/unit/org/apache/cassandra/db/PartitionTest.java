@@ -73,7 +73,7 @@ public class PartitionTest
     {
         ColumnFamilyStore cfs = Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD1);
         new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("c").add("val", "val1").build().applyUnsafe();
-        ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key1").build());
 
         DataOutputBuffer bufOut = new DataOutputBuffer();
         CachedPartition.cacheSerializer.serialize(partition, bufOut);
@@ -95,7 +95,7 @@ public class PartitionTest
         for (int i = 0; i < 10; i++)
             builder.add("val" + i, "val" + i);
         builder.build().applyUnsafe();
-        ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key1").build());
 
         DataOutputBuffer bufOut = new DataOutputBuffer();
         CachedPartition.cacheSerializer.serialize(partition, bufOut);
@@ -124,44 +124,31 @@ public class PartitionTest
 
         new RowUpdateBuilder(cfs.metadata, 5, "key2").clustering("c").add("val", "val2").build().applyUnsafe();
 
-        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key1"));
-             UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
-        {
-            MessageDigest digest1 = MessageDigest.getInstance("MD5");
-            MessageDigest digest2 = MessageDigest.getInstance("MD5");
-            UnfilteredRowIterators.digest(iter1, digest1);
-            UnfilteredRowIterators.digest(iter2, digest2);
-            assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
-        }
+        ArrayBackedPartition p1 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key1").build());
+        ArrayBackedPartition p2 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key2").build());
 
-        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
-        {
-            MessageDigest digest1 = MessageDigest.getInstance("MD5");
-            UnfilteredRowIterators.digest(iter1, digest1);
+        MessageDigest digest1 = MessageDigest.getInstance("MD5");
+        MessageDigest digest2 = MessageDigest.getInstance("MD5");
+        UnfilteredRowIterators.digest(p1.unfilteredIterator(), digest1);
+        UnfilteredRowIterators.digest(p2.unfilteredIterator(), digest2);
+        assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
 
-            try (UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
-            {
-                MessageDigest digest2 = MessageDigest.getInstance("MD5");
-                UnfilteredRowIterators.digest(iter2, digest2);
+        p1 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key2").build());
+        p2 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key2").build());
+        digest1 = MessageDigest.getInstance("MD5");
+        digest2 = MessageDigest.getInstance("MD5");
+        UnfilteredRowIterators.digest(p1.unfilteredIterator(), digest1);
+        UnfilteredRowIterators.digest(p2.unfilteredIterator(), digest2);
+        assertTrue(Arrays.equals(digest1.digest(), digest2.digest()));
 
-                assertTrue(Arrays.equals(digest1.digest(), digest2.digest()));
-            }
-        }
-
-        try (UnfilteredRowIterator iter1 = Util.readFullPartition(cfs, Util.dk("key2")))
-        {
-            MessageDigest digest1 = MessageDigest.getInstance("MD5");
-            UnfilteredRowIterators.digest(iter1, digest1);
-
-            RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key2", "c").applyUnsafe();
-            try (UnfilteredRowIterator iter2 = Util.readFullPartition(cfs, Util.dk("key2")))
-            {
-                MessageDigest digest2 = MessageDigest.getInstance("MD5");
-                UnfilteredRowIterators.digest(iter2, digest2);
-
-                assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
-            }
-        }
+        p1 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key2").build());
+        RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key2", "c").applyUnsafe();
+        p2 = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key2").build());
+        digest1 = MessageDigest.getInstance("MD5");
+        digest2 = MessageDigest.getInstance("MD5");
+        UnfilteredRowIterators.digest(p1.unfilteredIterator(), digest1);
+        UnfilteredRowIterators.digest(p2.unfilteredIterator(), digest2);
+        assertFalse(Arrays.equals(digest1.digest(), digest2.digest()));
     }
 
     @Test
@@ -177,7 +164,7 @@ public class PartitionTest
         builder.build().applyUnsafe();
 
         RowUpdateBuilder.deleteRow(cfs.metadata, 10, "key1", "c").applyUnsafe();
-        ArrayBackedPartition partition = Util.materializePartition(cfs, Util.dk("key1"));
+        ArrayBackedPartition partition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, "key1").build());
         RowStats stats = partition.stats();
         assertEquals(localDeletionTime, stats.minLocalDeletionTime);
     }

@@ -20,11 +20,11 @@ package org.apache.cassandra.db;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
 import org.apache.cassandra.SchemaLoader;
+import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.context.CounterContext;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -77,13 +77,9 @@ public class CounterMutationTest
         ColumnDefinition cDef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
         Mutation m = new RowUpdateBuilder(cfs.metadata, 5, "key1").clustering("cc").add("val", toAdd).build();
         new CounterMutation(m, ConsistencyLevel.ONE).apply();
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .getOnlyRow())
-        {
-            assertEquals(expected, CounterContext.instance().total(r.row.getCell(cDef).value()));
-        }
+
+        Row row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val").build());
+        assertEquals(expected, CounterContext.instance().total(row.getCell(cDef).value()));
     }
 
     @Test
@@ -113,15 +109,10 @@ public class CounterMutationTest
             .add("val2", addTwo)
             .build();
         new CounterMutation(m, ConsistencyLevel.ONE).apply();
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs)
-            .addClustering("cc")
-            .addColumn(ByteBufferUtil.bytes("val"))
-            .addColumn(ByteBufferUtil.bytes("val2"))
-            .getOnlyRow())
-        {
-            assertEquals(expectedOne, CounterContext.instance().total(r.row.getCell(cDefOne).value()));
-            assertEquals(expectedTwo, CounterContext.instance().total(r.row.getCell(cDefTwo).value()));
-        }
+
+        Row row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
+        assertEquals(expectedOne, CounterContext.instance().total(row.getCell(cDefOne).value()));
+        assertEquals(expectedTwo, CounterContext.instance().total(row.getCell(cDefTwo).value()));
     }
 
     @Test
@@ -151,27 +142,16 @@ public class CounterMutationTest
 
         ColumnDefinition c1cfs1 = cfsOne.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
         ColumnDefinition c2cfs1 = cfsOne.metadata.getColumnDefinition(ByteBufferUtil.bytes("val2"));
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfsOne)
-            .addClustering("cc")
-            .addColumn(ByteBufferUtil.bytes("val"))
-            .addColumn(ByteBufferUtil.bytes("val2"))
-            .getOnlyRow())
-        {
-            assertEquals(1L, CounterContext.instance().total(r.row.getCell(c1cfs1).value()));
-            assertEquals(-1L, CounterContext.instance().total(r.row.getCell(c2cfs1).value()));
-        }
+
+        Row row = Util.getOnlyRow(Util.cmd(cfsOne).includeRow("cc").columns("val", "val2").build());
+        assertEquals(1L, CounterContext.instance().total(row.getCell(c1cfs1).value()));
+        assertEquals(-1L, CounterContext.instance().total(row.getCell(c2cfs1).value()));
 
         ColumnDefinition c1cfs2 = cfsTwo.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
         ColumnDefinition c2cfs2 = cfsTwo.metadata.getColumnDefinition(ByteBufferUtil.bytes("val2"));
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfsTwo)
-            .addClustering("cc")
-            .addColumn(ByteBufferUtil.bytes("val"))
-            .addColumn(ByteBufferUtil.bytes("val2"))
-            .getOnlyRow())
-        {
-            assertEquals(2L, CounterContext.instance().total(r.row.getCell(c1cfs2).value()));
-            assertEquals(-2L, CounterContext.instance().total(r.row.getCell(c2cfs2).value()));
-        }
+        row = Util.getOnlyRow(Util.cmd(cfsTwo).includeRow("cc").columns("val", "val2").build());
+        assertEquals(2L, CounterContext.instance().total(row.getCell(c1cfs2).value()));
+        assertEquals(-2L, CounterContext.instance().total(row.getCell(c2cfs2).value()));
 
         // Check the caches, separately
         CBuilder cb = CBuilder.create(cfsOne.metadata.comparator);
@@ -201,15 +181,9 @@ public class CounterMutationTest
                 .build(),
             ConsistencyLevel.ONE).apply();
 
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .addColumn(ByteBufferUtil.bytes("val2"))
-             .getOnlyRow())
-        {
-            assertEquals(1L, CounterContext.instance().total(r.row.getCell(cOne).value()));
-            assertEquals(-1L, CounterContext.instance().total(r.row.getCell(cTwo).value()));
-        }
+        Row row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
+        assertEquals(1L, CounterContext.instance().total(row.getCell(cOne).value()));
+        assertEquals(-1L, CounterContext.instance().total(row.getCell(cTwo).value()));
 
         // Remove the first counter, increment the second counter
         new CounterMutation(
@@ -219,15 +193,10 @@ public class CounterMutationTest
                 .add("val2", -5L)
                 .build(),
             ConsistencyLevel.ONE).apply();
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .addColumn(ByteBufferUtil.bytes("val2"))
-             .getOnlyRow())
-        {
-            assertEquals(null, r.row.getCell(cOne));
-            assertEquals(-6L, CounterContext.instance().total(r.row.getCell(cTwo).value()));
-        }
+
+        row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
+        assertEquals(null, row.getCell(cOne));
+        assertEquals(-6L, CounterContext.instance().total(row.getCell(cTwo).value()));
 
         // Increment the first counter, make sure it's still shadowed by the tombstone
         new CounterMutation(
@@ -236,24 +205,12 @@ public class CounterMutationTest
                 .add("val", 1L)
                 .build(),
             ConsistencyLevel.ONE).apply();
-        try (Util.OnlyRow r = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .getOnlyRow())
-        {
-            assertEquals(null, r.row.getCell(cOne));
-        }
+        row = Util.getOnlyRow(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
+        assertEquals(null, row.getCell(cOne));
 
         // Get rid of the complete partition
         RowUpdateBuilder.deleteRow(cfs.metadata, 6, "key1", "cc").applyUnsafe();
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .addColumn(ByteBufferUtil.bytes("val2"))
-             .executeInternal())
-        {
-            assert !iter.hasNext() : "Didn't expect to receive results after deletion.";
-        }
+        Util.assertEmpty(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
 
         // Increment both counters, ensure that both stay dead
         new CounterMutation(
@@ -263,13 +220,6 @@ public class CounterMutationTest
                 .add("val2", 1L)
                 .build(),
             ConsistencyLevel.ONE).apply();
-        try (PartitionIterator iter = new PartitionRangeReadBuilder(cfs)
-             .addClustering("cc")
-             .addColumn(ByteBufferUtil.bytes("val"))
-             .addColumn(ByteBufferUtil.bytes("val2"))
-             .executeInternal())
-        {
-            assert !iter.hasNext() : "Didn't expect to receive results after deletion.";
-        }
+        Util.assertEmpty(Util.cmd(cfs).includeRow("cc").columns("val", "val2").build());
     }
 }

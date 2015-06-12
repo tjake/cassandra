@@ -200,7 +200,7 @@ public class CompositeTypeTest
 
         ColumnDefinition cdef = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes("val"));
 
-        ArrayBackedPartition readPartition = Util.materializePartition(cfs, StorageService.getPartitioner().decorateKey(key));
+        ArrayBackedPartition readPartition = Util.getOnlyPartitionUnfiltered(Util.cmd(cfs, key).build());
         Iterator<Row> iter = readPartition.iterator(FBUtilities.nowInSeconds());
 
         compareValues(iter.next().getCell(cdef), "cname1");

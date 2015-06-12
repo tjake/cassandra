@@ -48,7 +48,12 @@ public interface Partition
     public boolean isEmpty();
 
     /**
-     * Return the row corresponding to the provided clustering, or null if there is not such row.
+     * Returns the row corresponding to the provided clustering, or null if there is not such row.
+     */
+    public Row getRow(Clustering clustering);
+
+    /**
+     * Returns an iterator that allows to search specific rows efficiently.
      */
     public SearchIterator<Clustering, Row> searchIterator(ColumnsSelection columns, boolean reversed, int nowInSec);
 

@@ -114,33 +114,39 @@ public class QueryPagerTest
         return Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD);
     }
 
-    private static List<FilteredPartition> assertSize(PartitionIterator partitions, int expectedSize)
+    private static List<FilteredPartition> query(QueryPager pager, int expectedSize)
+    {
+        return query(pager, expectedSize, expectedSize);
+    }
+
+    private static List<FilteredPartition> query(QueryPager pager, int toQuery, int expectedSize)
     {
         StringBuilder sb = new StringBuilder();
         List<FilteredPartition> partitionList = new ArrayList<>();
-        for (RowIterator rowIterator : Util.once(partitions))
+        int rows = 0;
+        try (ReadOrderGroup orderGroup = pager.startOrderGroup(); PartitionIterator iterator = pager.fetchPageInternal(toQuery, orderGroup))
         {
-            FilteredPartition partition = FilteredPartition.create(rowIterator);
-            rowIterator.close();
-            sb.append(partition);
-            partitionList.add(partition);
+            while (iterator.hasNext())
+            {
+                try (RowIterator rowIter = iterator.next())
+                {
+                    FilteredPartition partition = FilteredPartition.create(rowIter);
+                    sb.append(partition);
+                    partitionList.add(partition);
+                    rows += partition.rowCount();
+                }
+            }
         }
-        partitions.close();
-
-        assertEquals(sb.toString(), expectedSize, partitionList.size());
+        assertEquals(sb.toString(), expectedSize, rows);
         return partitionList;
     }
 
     private static ReadCommand namesQuery(String key, String... names)
     {
-        SinglePartitionNamesReadBuilder builder = new SinglePartitionNamesReadBuilder(cfs(), Util.dk(key));
-
+        AbstractReadCommandBuilder builder = Util.cmd(cfs(), key);
         for (String name : names)
-        {
-            builder.addClustering(name);
-        }
-
-        return builder.setPagingLimit(100).build();
+            builder.includeRow(name);
+        return builder.withPagingLimit(100).build();
     }
 
     private static SinglePartitionSliceCommand sliceQuery(String key, String start, String end, int count)
@@ -163,29 +169,25 @@ public class QueryPagerTest
 
     private static ReadCommand rangeNamesQuery(String keyStart, String keyEnd, int count, String... names)
     {
-        PartitionRangeReadBuilder builder = new PartitionRangeReadBuilder(cfs());
-
+        AbstractReadCommandBuilder builder = Util.cmd(cfs())
+                                                 .fromKeyExcl(keyStart)
+                                                 .toKeyIncl(keyEnd)
+                                                 .withPagingLimit(count);
         for (String name : names)
-            builder.addClustering(name);
-
-        builder.setKeyBounds(bytes(keyStart), bytes(keyEnd))
-               .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-               .setPagingLimit(count);
+            builder.includeRow(name);
 
         return builder.build();
     }
 
     private static ReadCommand rangeSliceQuery(String keyStart, String keyEnd, int count, String start, String end)
     {
-        PartitionRangeReadBuilder builder = new PartitionRangeReadBuilder(cfs());
-
-        builder.setKeyBounds(bytes(keyStart), bytes(keyEnd))
-                .setRangeType(PartitionRangeReadBuilder.RangeType.Range)
-                .setClusteringLowerBound(true, bytes(start))
-                .setClusteringUpperBound(true, bytes(end))
-                .setPagingLimit(count);
-
-        return builder.build();
+        return Util.cmd(cfs())
+                   .fromKeyExcl(keyStart)
+                   .toKeyIncl(keyEnd)
+                   .fromIncl(start)
+                   .toIncl(end)
+                   .withPagingLimit(count)
+                   .build();
     }
 
     private static void assertRow(FilteredPartition r, String key, String... names)
@@ -211,12 +213,10 @@ public class QueryPagerTest
     @Test
     public void namesQueryTest() throws Exception
     {
-        QueryPager pager = namesQuery("k0", "c1", "c5", "c7", "c8").getLocalPager();
+        QueryPager pager = namesQuery("k0", "c1", "c5", "c7", "c8").getPager(null);
 
         assertFalse(pager.isExhausted());
-        PartitionIterator page = pager.fetchPage(5);
-
-        List<FilteredPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = query(pager, 5, 4);
         assertRow(partition.get(0), "k0", "c1", "c5", "c7", "c8");
 
         assertTrue(pager.isExhausted());
@@ -225,23 +225,18 @@ public class QueryPagerTest
     @Test
     public void sliceQueryTest() throws Exception
     {
-        QueryPager pager = sliceQuery("k0", "c1", "c8", 10).getLocalPager();
-
-        PartitionIterator page;
+        QueryPager pager = sliceQuery("k0", "c1", "c8", 10).getPager(null);
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        List<FilteredPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = query(pager, 3);
         assertRow(partition.get(0), "k0", "c1", "c2", "c3");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        partition = assertSize(page, 1);
+        partition = query(pager, 3);
         assertRow(partition.get(0), "k0", "c4", "c5", "c6");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        partition = assertSize(page, 1);
+        partition = query(pager, 3, 2);
         assertRow(partition.get(0), "k0", "c7", "c8");
 
         assertTrue(pager.isExhausted());
@@ -250,23 +245,18 @@ public class QueryPagerTest
     @Test
     public void reversedSliceQueryTest() throws Exception
     {
-        QueryPager pager = sliceQuery("k0", "c1", "c8", true, 10).getLocalPager();
-
-        PartitionIterator page;
+        QueryPager pager = sliceQuery("k0", "c1", "c8", true, 10).getPager(null);
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        List<FilteredPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = query(pager, 3);
         assertRow(partition.get(0), "k0", "c6", "c7", "c8");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        partition = assertSize(page, 1);
+        partition = query(pager, 3);
         assertRow(partition.get(0), "k0", "c3", "c4", "c5");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        partition = assertSize(page, 1);
+        partition = query(pager, 3, 2);
         assertRow(partition.get(0), "k0", "c1", "c2");
 
         assertTrue(pager.isExhausted());
@@ -279,24 +269,19 @@ public class QueryPagerTest
         {{
             add(sliceQuery("k1", "c2", "c6", 10));
             add(sliceQuery("k4", "c3", "c5", 10));
-        }}, DataLimits.NONE).getLocalPager();
-
-        PartitionIterator page;
+        }}, DataLimits.NONE).getPager(null);
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        List<FilteredPartition> partition = assertSize(page, 1);
+        List<FilteredPartition> partition = query(pager, 3);
         assertRow(partition.get(0), "k1", "c2", "c3", "c4");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(4);
-        partition = assertSize(page , 2);
+        partition = query(pager , 4);
         assertRow(partition.get(0), "k1", "c5", "c6");
         assertRow(partition.get(1), "k4", "c3", "c4");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3);
-        partition = assertSize(page, 1);
+        partition = query(pager, 3, 1);
         assertRow(partition.get(0), "k4", "c5");
 
         assertTrue(pager.isExhausted());
@@ -305,19 +290,15 @@ public class QueryPagerTest
     @Test
     public void rangeNamesQueryTest() throws Exception
     {
-        QueryPager pager = rangeNamesQuery("k0", "k5", 100, "c1", "c4", "c8").getLocalPager();
-
-        PartitionIterator page;
+        QueryPager pager = rangeNamesQuery("k0", "k5", 100, "c1", "c4", "c8").getPager(null);
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3 * 3);
-        List<FilteredPartition> partitions = assertSize(page, 3);
+        List<FilteredPartition> partitions = query(pager, 3 * 3);
         for (int i = 1; i <= 3; i++)
             assertRow(partitions.get(i-1), "k" + i, "c1", "c4", "c8");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(3 * 3);
-        partitions = assertSize(page, 2);
+        partitions = query(pager, 3 * 3, 2 * 3);
         for (int i = 4; i <= 5; i++)
             assertRow(partitions.get(i-4), "k" + i, "c1", "c4", "c8");
 
@@ -327,41 +308,33 @@ public class QueryPagerTest
     @Test
     public void rangeSliceQueryTest() throws Exception
     {
-        QueryPager pager = rangeSliceQuery("k1", "k5", 100, "c1", "c7").getLocalPager();
-
-        PartitionIterator page;
+        QueryPager pager = rangeSliceQuery("k1", "k5", 100, "c1", "c7").getPager(null);
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(5);
-        List<FilteredPartition> partitions = assertSize(page, 1);
+        List<FilteredPartition> partitions = query(pager, 5);
         assertRow(partitions.get(0), "k2", "c1", "c2", "c3", "c4", "c5");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(4);
-        partitions = assertSize(page, 2);
+        partitions = query(pager, 4);
         assertRow(partitions.get(0), "k2", "c6", "c7");
         assertRow(partitions.get(1), "k3", "c1", "c2");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(6);
-        partitions = assertSize(page, 2);
+        partitions = query(pager, 6);
         assertRow(partitions.get(0), "k3", "c3", "c4", "c5", "c6", "c7");
         assertRow(partitions.get(1), "k4", "c1");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(5);
-        partitions = assertSize(page, 1);
+        partitions = query(pager, 5);
         assertRow(partitions.get(0), "k4", "c2", "c3", "c4", "c5", "c6");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(5);
-        partitions = assertSize(page, 2);
+        partitions = query(pager, 5);
         assertRow(partitions.get(0), "k4", "c7");
         assertRow(partitions.get(1), "k5", "c1", "c2", "c3", "c4");
 
         assertFalse(pager.isExhausted());
-        page = pager.fetchPage(5);
-        partitions = assertSize(page, 1);
+        partitions = query(pager, 5, 3);
         assertRow(partitions.get(0), "k5", "c5", "c6", "c7");
 
         assertTrue(pager.isExhausted());
@@ -382,12 +355,11 @@ public class QueryPagerTest
 
         ReadCommand command = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk("k0"), Slice.ALL);
 
-        QueryPager pager = command.getLocalPager();
+        QueryPager pager = command.getPager(null);
 
         for (int i = 0; i < 5; i++)
         {
-            PartitionIterator page = pager.fetchPage(1);
-            List<FilteredPartition> partitions = assertSize(page, 1);
+            List<FilteredPartition> partitions = query(pager, 1);
             // The only live cell we should have each time is the row marker
             assertRow(partitions.get(0), "k0", "c" + i);
         }

@@ -38,9 +38,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.apache.cassandra.OrderedJUnit4ClassRunner;
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.SchemaLoader;
-import org.apache.cassandra.SinglePartitionNamesReadBuilder;
 import org.apache.cassandra.Util;
 import org.apache.cassandra.cache.CachingOptions;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -236,12 +234,10 @@ public class SSTableReaderTest
         assertEquals(0, sstable.getReadMeter().count());
 
         DecoratedKey key = sstable.partitioner.decorateKey(ByteBufferUtil.bytes("4"));
-        Util.materializePartition(store, key);
+        Util.getAll(Util.cmd(store, key).build());
         assertEquals(1, sstable.getReadMeter().count());
 
-        new SinglePartitionNamesReadBuilder(store, key)
-            .addClustering("0")
-            .executeInternal();
+        Util.getAll(Util.cmd(store, key).includeRow("0").build());
         assertEquals(2, sstable.getReadMeter().count());
     }
 
@@ -511,7 +507,7 @@ public class SSTableReaderTest
             {
                 public void run()
                 {
-                    ArrayBackedPartition result = Util.materializePartition(store, Util.dk(key));
+                    ArrayBackedPartition result = Util.getOnlyPartitionUnfiltered(Util.cmd(store, key).build());
                     assertFalse(result.isEmpty());
                     assertEquals(0, ByteBufferUtil.compare(String.format("%3d", index).getBytes(), result.lastRow().iterator().next().value()));
                 }
@@ -552,20 +548,13 @@ public class SSTableReaderTest
         ByteBuffer bBB = bytes("birthdate");
 
         // query using index to see if sstable for secondary index opens
-        ReadCommand rc = new PartitionRangeReadBuilder(indexedCFS, FBUtilities.nowInSeconds())
-                         .setKeyBounds(ByteBufferUtil.bytes("k1"), ByteBufferUtil.bytes("k3"))
-                         .addColumn(bBB)
-                         .addFilter(indexedCFS.metadata.getColumnDefinition(bBB), Operator.EQ, ByteBufferUtil.bytes(1L)).build();
-
-
+        ReadCommand rc = Util.cmd(indexedCFS).fromKeyIncl("k1").toKeyIncl("k3")
+                                             .columns("birthdate")
+                                             .filterOn("birthdate", Operator.EQ, 1L)
+                                             .build();
         List<SecondaryIndexSearcher> searchers = indexedCFS.indexManager.getIndexSearchersFor(rc);
         assertEquals(searchers.size(), 1);
-        try (UnfilteredPartitionIterator pi = searchers.get(0).search(rc))
-        {
-            assert pi.hasNext();
-            pi.next();
-            assert !pi.hasNext();
-        }
+        assertEquals(1, Util.getAll(rc).size());
     }
 
     private List<Range<Token>> makeRanges(Token left, Token right)

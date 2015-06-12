@@ -32,7 +32,6 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 
 import org.apache.cassandra.Util;
-import org.apache.cassandra.PartitionRangeReadBuilder;
 import org.apache.cassandra.UpdateBuilder;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.KSMetaData;
@@ -121,18 +120,12 @@ public class ScrubTest
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, 1);
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 1);
-        }
+        assertOrderedAll(cfs, 1);
 
         CompactionManager.instance.performScrub(cfs, false, true);
 
         // check data is still there
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 1);
-        }
+        assertOrderedAll(cfs, 1);
     }
 
     @Test
@@ -149,10 +142,7 @@ public class ScrubTest
 
         fillCounterCF(cfs, numPartitions);
 
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, numPartitions);
-        }
+        assertOrderedAll(cfs, numPartitions);
 
         assertEquals(1, cfs.getSSTables().size());
 
@@ -196,10 +186,7 @@ public class ScrubTest
         }
         assertEquals(1, cfs.getSSTables().size());
 
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, scrubResult.goodRows);
-        }
+        assertOrderedAll(cfs, scrubResult.goodRows);
     }
 
     @Test
@@ -215,10 +202,7 @@ public class ScrubTest
 
         fillCounterCF(cfs, 2);
 
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 2);
-        }
+        assertOrderedAll(cfs, 2);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
 
@@ -245,10 +229,7 @@ public class ScrubTest
 
         assertEquals(1, cfs.getSSTables().size());
         // verify that we can read all of the rows, and there is now one less row
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 1);
-        }
+        assertOrderedAll(cfs, 1);
     }
 
     @Test
@@ -264,10 +245,7 @@ public class ScrubTest
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, 4);
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 4);
-        }
+        assertOrderedAll(cfs, 4);
 
         SSTableReader sstable = cfs.getSSTables().iterator().next();
         overrideWithGarbage(sstable, 0, 2);
@@ -275,10 +253,7 @@ public class ScrubTest
         CompactionManager.instance.performScrub(cfs, false, true);
 
         // check data is still there
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 4);
-        }
+        assertOrderedAll(cfs, 4);
     }
 
     @Test
@@ -306,18 +281,12 @@ public class ScrubTest
 
         // insert data and verify we get it back w/ range query
         fillCF(cfs, 10);
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 10);
-        }
+        assertOrderedAll(cfs, 10);
 
         CompactionManager.instance.performScrub(cfs, false, true);
 
         // check data is still there
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 10);
-        }
+        assertOrderedAll(cfs, 10);
     }
 
     @Test
@@ -389,10 +358,7 @@ public class ScrubTest
             scrubber.scrub();
         }
         cfs.loadNewSSTables();
-        try (PartitionIterator iterator = Util.readAll(cfs))
-        {
-            assertOrdered(iterator, 7);
-        }
+        assertOrderedAll(cfs, 7);
         sstable.selfRef().release();
     }
 
@@ -434,19 +400,21 @@ public class ScrubTest
         file.close();
     }
 
-    private static void assertOrdered(PartitionIterator iterator, int expectedSize)
+    private static void assertOrderedAll(ColumnFamilyStore cfs, int expectedSize)
+    {
+        assertOrdered(Util.cmd(cfs).build(), expectedSize);
+    }
+
+    private static void assertOrdered(ReadCommand cmd, int expectedSize)
     {
         int size = 0;
         DecoratedKey prev = null;
-        while (iterator.hasNext())
+        for (Partition partition : Util.getAllUnfiltered(cmd))
         {
-            try (RowIterator partition = iterator.next())
-            {
-                DecoratedKey current = partition.partitionKey();
-                assertTrue("key " + current + " does not sort after previous key " + prev, prev == null || prev.compareTo(current) < 0);
-                prev = current;
-                ++size;
-            }
+            DecoratedKey current = partition.partitionKey();
+            assertTrue("key " + current + " does not sort after previous key " + prev, prev == null || prev.compareTo(current) < 0);
+            prev = current;
+            ++size;
         }
         assertEquals(expectedSize, size);
     }
@@ -646,12 +614,7 @@ public class ScrubTest
 
         // check index
 
-        ColumnDefinition def = cfs.metadata.getColumnDefinition(ByteBufferUtil.bytes(colName));
-        ReadCommand cmd = new PartitionRangeReadBuilder(cfs).addFilter(def, Operator.EQ, ByteBufferUtil.bytes(1L)).build();
-        try (PartitionIterator iterator = cmd.executeInternal())
-        {
-            assertOrdered(iterator, numRows / 2);
-        }
+        assertOrdered(Util.cmd(cfs).filterOn(colName, Operator.EQ, 1L).build(), numRows / 2);
 
         // scrub index
         Set<ColumnFamilyStore> indexCfss = cfs.indexManager.getIndexesBackedByCfs();
@@ -675,9 +638,6 @@ public class ScrubTest
 
 
         // check index is still working
-        try (PartitionIterator iterator = cmd.executeInternal())
-        {
-            assertOrdered(iterator, numRows / 2);
-        }
+        assertOrdered(Util.cmd(cfs).filterOn(colName, Operator.EQ, 1L).build(), numRows / 2);
     }
 }

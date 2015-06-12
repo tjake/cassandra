@@ -43,7 +43,7 @@ import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.marshal.*;
-import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
+import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
@@ -193,23 +193,17 @@ public class StreamingTransferTest
         assertEquals(1, cfs.getSSTables().size());
 
         // and that the index and filter were properly recovered
-        try (UnfilteredPartitionIterator iterator = Util.getRangeSlice(cfs))
+        List<ArrayBackedPartition> partitions = Util.getAllUnfiltered(Util.cmd(cfs).build());
+        assertEquals(offs.length, partitions.size());
+        for (int i = 0; i < offs.length; i++)
         {
-            for (int i = 0; i < offs.length; i++)
-            {
-                String key = "key" + offs[i];
-                String col = "col" + offs[i];
+            String key = "key" + offs[i];
+            String col = "col" + offs[i];
 
-                SinglePartitionReadCommand readCommand = SinglePartitionSliceCommand.create(cfs.metadata, FBUtilities.nowInSeconds(), Util.dk(key), Slices.ALL);
-
-                assert readCommand.executeLocally().hasNext();
-                RowIterator row = UnfilteredRowIterators.filter(iterator.next());
-                assert ByteBufferUtil.compareUnsigned(row.partitionKey().getKey(), ByteBufferUtil.bytes(key)) == 0;
-                assert ByteBufferUtil.compareUnsigned(row.next().clustering().get(0), ByteBufferUtil.bytes(col)) == 0;
-            }
-
-            // and no extra partitions
-            assert !iterator.hasNext();
+            assert !Util.getAll(Util.cmd(cfs, key).build()).isEmpty();
+            ArrayBackedPartition partition = partitions.get(i);
+            assert ByteBufferUtil.compareUnsigned(partition.partitionKey().getKey(), ByteBufferUtil.bytes(key)) == 0;
+            assert ByteBufferUtil.compareUnsigned(partition.iterator().next().clustering().get(0), ByteBufferUtil.bytes(col)) == 0;
         }
 
         // and that the max timestamp for the file was rediscovered
@@ -339,24 +333,9 @@ public class StreamingTransferTest
         // confirm that a single SSTable was transferred and registered
         assertEquals(1, cfs.getSSTables().size());
 
-        try (UnfilteredPartitionIterator rows = Util.getRangeSlice(cfs))
-        {
-            RowIterator it = UnfilteredRowIterators.filter(rows.next());
-
-            Assert.assertTrue(!rows.hasNext());
-            Row r = it.next();
-
-            Assert.assertFalse(r.isEmpty());
-
-            Assert.assertTrue(1 == Int32Type.instance.compose(r.clustering().get(0)));
-
-            boolean failed = false;
-            while (it.hasNext())
-            {
-                failed = true;
-            }
-            Assert.assertFalse(failed);
-        }
+        Row r = Util.getOnlyRow(Util.cmd(cfs).build());
+        Assert.assertFalse(r.isEmpty());
+        Assert.assertTrue(1 == Int32Type.instance.compose(r.clustering().get(0)));
     }
 
     @Test
