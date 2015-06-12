@@ -211,6 +211,7 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
         metric.readLatency.addNano(latencyNanos);
     }
 
+    @SuppressWarnings("resource") // we close 'result' on exception or through closing the result of this method
     protected UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs)
     {
         @SuppressWarnings("resource") // we close the created iterator through closing the result of this method (and SingletonUnfilteredPartitionIterator ctor cannot fail)
