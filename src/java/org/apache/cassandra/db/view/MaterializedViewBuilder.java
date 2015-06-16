@@ -34,7 +34,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Mutation;
-import org.apache.cassandra.db.SinglePartitionNamesReadBuilder;
+import org.apache.cassandra.db.ReadOrderGroup;
 import org.apache.cassandra.db.SinglePartitionReadCommand;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionInfo;
@@ -76,11 +76,12 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
 
     private void buildKey(DecoratedKey key)
     {
-        QueryPager pager = SinglePartitionReadCommand.fullPartitionRead(baseCfs.metadata, FBUtilities.nowInSeconds(), key).getLocalPager();
+        QueryPager pager = SinglePartitionReadCommand.fullPartitionRead(baseCfs.metadata, FBUtilities.nowInSeconds(), key).getPager(null);
 
         while (!pager.isExhausted())
         {
-           try (PartitionIterator partitionIterator = pager.fetchPage(128))
+           try (ReadOrderGroup orderGroup = pager.startOrderGroup();
+                PartitionIterator partitionIterator = pager.fetchPageInternal(128, orderGroup))
            {
                if (!partitionIterator.hasNext())
                    return;

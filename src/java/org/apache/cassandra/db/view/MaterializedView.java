@@ -23,12 +23,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -36,38 +34,27 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.db.AbstractReadCommandBuilder.SinglePartitionSliceBuilder;
 import org.apache.cassandra.db.Clustering;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.DeletionTime;
-import org.apache.cassandra.db.LivenessInfo;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.ReadCommand;
+import org.apache.cassandra.db.ReadOrderGroup;
 import org.apache.cassandra.db.RowUpdateBuilder;
-import org.apache.cassandra.db.SimpleLivenessInfo;
 import org.apache.cassandra.db.SinglePartitionReadCommand;
-import org.apache.cassandra.db.SinglePartitionSliceReadBuilder;
 import org.apache.cassandra.db.Slice;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.partitions.AbstractPartitionData;
-import org.apache.cassandra.db.partitions.ArrayBackedPartition;
-import org.apache.cassandra.db.partitions.FilteredPartition;
 import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.db.rows.Cell;
-import org.apache.cassandra.db.rows.CellPath;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
-import org.apache.cassandra.db.rows.Unfiltered;
-import org.apache.cassandra.db.rows.UnfilteredRowIterator;
-import org.apache.cassandra.exceptions.ReadFailureException;
-import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.thrift.Deletion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -334,7 +321,7 @@ public class MaterializedView
             long timestamp;
             if (deletionInfo.hasRanges())
             {
-                SinglePartitionSliceReadBuilder builder = new SinglePartitionSliceReadBuilder(baseCfs, dk);
+                SinglePartitionSliceBuilder builder = new SinglePartitionSliceBuilder(baseCfs, dk);
                 Iterator<RangeTombstone> tombstones = deletionInfo.rangeIterator(false);
                 timestamp = Long.MIN_VALUE;
                 while (tombstones.hasNext())
@@ -364,16 +351,17 @@ public class MaterializedView
                 command = SinglePartitionReadCommand.fullPartitionRead(baseCfs.metadata, FBUtilities.nowInSeconds(), dk);
             }
 
-            QueryPager pager = command.getLocalPager();
+            QueryPager pager = command.getPager(null);
 
             while (!pager.isExhausted())
             {
-                try (PartitionIterator partitionIterator = pager.fetchPage(128))
+                try (ReadOrderGroup orderGroup = pager.startOrderGroup();
+                     PartitionIterator iter = pager.fetchPageInternal(128, orderGroup))
                 {
-                    if (!partitionIterator.hasNext())
+                    if (!iter.hasNext())
                         break;
 
-                    try (RowIterator rowIterator = partitionIterator.next())
+                    try (RowIterator rowIterator = iter.next())
                     {
                         while (rowIterator.hasNext())
                         {
@@ -404,20 +392,21 @@ public class MaterializedView
 
     private void query(ByteBuffer key, DeletionInfo deletionInfo, MutationUnit.Set mutationUnits)
     {
-        SinglePartitionSliceReadBuilder builder = new SinglePartitionSliceReadBuilder(baseCfs, baseCfs.partitioner.decorateKey(key));
+        SinglePartitionSliceBuilder builder = new SinglePartitionSliceBuilder(baseCfs, baseCfs.partitioner.decorateKey(key));
 
         for (MutationUnit mutationUnit : mutationUnits)
             builder.addSlice(mutationUnit.baseSlice());
 
-        QueryPager pager = builder.build().getLocalPager();
+        QueryPager pager = builder.build().getPager(null);
 
         while (!pager.isExhausted())
         {
-            try (PartitionIterator page = pager.fetchPage(128))
+            try (ReadOrderGroup orderGroup = pager.startOrderGroup();
+                 PartitionIterator iter = pager.fetchPageInternal(128, orderGroup))
             {
-                while (page.hasNext())
+                while (iter.hasNext())
                 {
-                    RowIterator rows = page.next();
+                    RowIterator rows = iter.next();
 
                     while (rows.hasNext())
                     {
