@@ -1335,6 +1335,14 @@ public final class CFMetaData
         return false;
     }
 
+    public boolean hasComplexColumns()
+    {
+        for (ColumnDefinition def : partitionColumns())
+            if (def.isComplex())
+                return true;
+        return false;
+    }
+
     // We call dense a CF for which each component of the comparator is a clustering column, i.e. no
     // component is used to store a regular column names. In other words, non-composite static "thrift"
     // and CQL3 CF are *not* dense.

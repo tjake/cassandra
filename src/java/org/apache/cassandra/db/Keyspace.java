@@ -441,6 +441,10 @@ public class Keyspace
                 }
                 catch (Exception e)
                 {
+                    if ( !(e instanceof WriteTimeoutException))
+                        logger.warn("Encountered exception when creating materialized view mutations", e);
+
+
                     JVMStabilityInspector.inspectThrowable(e);
                 }
 

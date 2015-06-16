@@ -90,9 +90,7 @@ public class MutationUnit
             while (iterator.hasNext())
                 value = value.reconcile(iterator.next());
 
-            return value.isNew && ByteBufferUtil.compareUnsigned(initial.value, value.value) != 0
-                   ? value
-                   : null;
+            return value.isNew ? value : null;
         }
     };
 
@@ -187,7 +185,7 @@ public class MutationUnit
 
     final ColumnFamilyStore baseCfs;
     private final ByteBuffer partitionKey;
-    private final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
+    public final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
     private final Map<ColumnIdentifier, Map<CellPath, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
     public int ttl;
 
@@ -196,6 +194,26 @@ public class MutationUnit
         this.baseCfs = baseCfs;
         this.partitionKey = key;
         this.clusteringColumns = clusteringColumns;
+    }
+
+    MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Row row)
+    {
+
+        this.baseCfs = baseCfs;
+        this.partitionKey = key;
+        clusteringColumns = new HashMap<>();
+
+        List<ColumnDefinition> clusteringDefs = baseCfs.metadata.clusteringColumns();
+        for (int i = 0; i < clusteringDefs.size(); i++)
+        {
+            clusteringColumns.put(clusteringDefs.get(i).name, row.clustering().get(i));
+        }
+
+        Iterator<Cell> cellIterator = row.iterator();
+        while (cellIterator.hasNext())
+        {
+            addColumnValue(cellIterator.next(), true);
+        }
     }
 
     @Override
@@ -220,7 +238,7 @@ public class MutationUnit
         return result;
     }
 
-    public void addColumnValue(Clustering clustering, Cell cell, boolean isNew)
+    public void addColumnValue(Cell cell, boolean isNew)
     {
         ColumnIdentifier identifier = cell.column().name;
 
@@ -264,24 +282,30 @@ public class MutationUnit
             if (clusteringColumns.containsKey(columnIdentifier))
                 return clusteringColumns.get(columnIdentifier);
 
-            Collection<Cell> val = values(definition, resolver);
+            Collection<Cell> val = values(definition, resolver, 1L);
             if (val != null && val.size() == 1)
                 return Iterables.getOnlyElement(val).value();
         }
         return null;
     }
 
-    public Collection<Cell> values(ColumnDefinition definition, Resolver resolver)
+    public Collection<Cell> values(ColumnDefinition definition, Resolver resolver, final long newTimeStamp)
     {
         Map<CellPath, SortedMap<Long, MUCell>> innerMap = columnValues.get(definition.name);
         if (innerMap == null)
             return Collections.emptyList();
 
         Collection<Cell> value = new ArrayList<>();
-        for (Map.Entry<CellPath, SortedMap<Long, MUCell>> pathAndCells: innerMap.entrySet())
+        for (Map.Entry<CellPath, SortedMap<Long, MUCell>> pathAndCells : innerMap.entrySet())
         {
             MUCell cell = resolver.resolve(pathAndCells.getValue().values());
+
+
             if (cell != null)
+            {
+                final LivenessInfo liveness = cell.isNew ? cell.liveness.withUpdatedTimestamp(newTimeStamp)
+                                                         : cell.liveness.withUpdatedTimestamp(newTimeStamp - 1);
+
                 value.add(new Cell()
                 {
                     public ColumnDefinition column()
@@ -301,17 +325,17 @@ public class MutationUnit
 
                     public LivenessInfo livenessInfo()
                     {
-                        return cell.liveness;
+                        return liveness;
                     }
 
                     public boolean isTombstone()
                     {
-                        return false;
+                        return livenessInfo().hasLocalDeletionTime() && !livenessInfo().hasTTL();
                     }
 
                     public boolean isExpiring()
                     {
-                        return false;
+                        return livenessInfo().hasTTL();
                     }
 
                     public boolean isLive(int nowInSec)
@@ -346,9 +370,10 @@ public class MutationUnit
 
                     public Cell takeAlias()
                     {
-                        return null;
+                        return this;
                     }
                 });
+            }
         }
         return value;
     }
@@ -371,11 +396,12 @@ public class MutationUnit
     static class Set implements Iterable<MutationUnit>
     {
         private final ColumnFamilyStore baseCfs;
-        private final Map<MutationUnit, MutationUnit> mutationUnits = new HashMap<>();
+        private final Map<MutationUnit, MutationUnit> mutationUnits;
 
         Set(ColumnFamilyStore baseCfs)
         {
             this.baseCfs = baseCfs;
+            this.mutationUnits = new HashMap<>();
         }
 
         Set(MutationUnit single)
@@ -389,12 +415,25 @@ public class MutationUnit
             return mutationUnits.values().iterator();
         }
 
+        public MutationUnit getUnit(ByteBuffer key, Clustering clustering)
+        {
+            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
+            for (int i = 0; i < baseCfs.metadata.clusteringColumns().size(); i++)
+            {
+                clusteringColumns.put(baseCfs.metadata.clusteringColumns().get(i).name, clustering.get(i));
+            }
+
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
+
+            return mutationUnits.get(mutationUnit);
+        }
+
         public void addUnit(ByteBuffer key, Clustering clustering, Cell cell, boolean isNew)
         {
             Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-            for (ColumnDefinition columnDefinition: baseCfs.metadata.clusteringColumns())
+            for (int i = 0; i < baseCfs.metadata.clusteringColumns().size(); i++)
             {
-                clusteringColumns.put(columnDefinition.name, cell.value());
+                clusteringColumns.put(baseCfs.metadata.clusteringColumns().get(i).name, clustering.get(i));
             }
 
             MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
@@ -407,7 +446,8 @@ public class MutationUnit
                 mutationUnits.put(mutationUnit, mutationUnit);
             }
 
-            mutationUnit.addColumnValue(clustering, cell, isNew);
+            if (cell != null)
+                mutationUnit.addColumnValue(cell, isNew);
         }
 
         public int size()

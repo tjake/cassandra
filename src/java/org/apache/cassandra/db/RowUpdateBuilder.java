@@ -250,14 +250,20 @@ public class RowUpdateBuilder
         return add(c, value);
     }
 
-    public RowUpdateBuilder add(ColumnDefinition columnDefinition, Object value)
+
+    public RowUpdateBuilder add(ColumnDefinition columnDefinition, Object value, LivenessInfo livenessInfo)
     {
         assert columnDefinition.isStatic() || update.metadata().comparator.size() == 0 || hasSetClustering : "Cannot set non static column " + columnDefinition + " since no clustering hasn't been provided";
         if (value == null)
             writer(columnDefinition).writeCell(columnDefinition, false, ByteBufferUtil.EMPTY_BYTE_BUFFER, deletionLiveness, null);
         else
-            writer(columnDefinition).writeCell(columnDefinition, false, bb(value, columnDefinition.type), defaultLiveness, null);
+            writer(columnDefinition).writeCell(columnDefinition, false, bb(value, columnDefinition.type), livenessInfo, null);
         return this;
+    }
+
+    public RowUpdateBuilder add(ColumnDefinition columnDefinition, Object value)
+    {
+       return add(columnDefinition, value, defaultLiveness);
     }
 
     public RowUpdateBuilder delete(String columnName)
@@ -326,8 +332,14 @@ public class RowUpdateBuilder
         return update.unfilteredIterator();
     }
 
-    public void addComplex(ColumnDefinition columnDefinition, CellPath path, ByteBuffer value)
+    public RowUpdateBuilder addComplex(ColumnDefinition columnDefinition, CellPath path, ByteBuffer value)
     {
-        writer(columnDefinition).writeCell(columnDefinition, false, value, defaultLiveness, path);
+        return addComplex(columnDefinition, path, value, defaultLiveness);
+    }
+
+    public RowUpdateBuilder addComplex(ColumnDefinition columnDefinition, CellPath path, ByteBuffer value, LivenessInfo livenessInfo)
+    {
+        writer(columnDefinition).writeCell(columnDefinition, false, value, livenessInfo, path);
+        return this;
     }
 }

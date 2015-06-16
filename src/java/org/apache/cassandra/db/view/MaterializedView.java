@@ -42,24 +42,32 @@ import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.DeletionTime;
+import org.apache.cassandra.db.LivenessInfo;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.ReadCommand;
 import org.apache.cassandra.db.RowUpdateBuilder;
+import org.apache.cassandra.db.SimpleLivenessInfo;
 import org.apache.cassandra.db.SinglePartitionReadCommand;
 import org.apache.cassandra.db.SinglePartitionSliceReadBuilder;
 import org.apache.cassandra.db.Slice;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.partitions.AbstractPartitionData;
+import org.apache.cassandra.db.partitions.ArrayBackedPartition;
+import org.apache.cassandra.db.partitions.FilteredPartition;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.db.rows.Cell;
+import org.apache.cassandra.db.rows.CellPath;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
+import org.apache.cassandra.db.rows.Unfiltered;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.exceptions.ReadFailureException;
 import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.pager.QueryPager;
+import org.apache.cassandra.thrift.Deletion;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -137,8 +145,6 @@ public class MaterializedView
 
     private Mutation createComplexTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp, ColumnDefinition deletedColumn)
     {
-        // Need to generate a tombstone in this case; there will be only one element because we do not allow Collections
-        // for keys of a materialized view.
         int numViewClustering = viewCfs.metadata.clusteringColumns().size();
 
         Object[] viewClusteringValues = new Object[numViewClustering];
@@ -155,7 +161,7 @@ public class MaterializedView
                .build();
     }
 
-    private Collection<Mutation> createTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
+    private Collection<Mutation> createPartitionTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
         if (targetDef.isPrimaryKeyColumn())
@@ -198,18 +204,18 @@ public class MaterializedView
             if (columnDefinition.isPrimaryKeyColumn())
                 continue;
 
-            for (Cell cell : mutationUnit.values(columnDefinition, resolver))
+            for (Cell cell : mutationUnit.values(columnDefinition, resolver, timestamp))
             {
-                if (columnDefinition.isPrimaryKeyColumn())
+                if (columnDefinition.isComplex())
                 {
-                }
-                else if (columnDefinition.isComplex())
-                {
-                    builder.addComplex(columnDefinition, cell.path(), cell.isLive(nowInSec) ? cell.value() : null);
+                    if (cell.isTombstone())
+                        builder.addComplex(columnDefinition, cell.path(), ByteBufferUtil.EMPTY_BYTE_BUFFER, cell.livenessInfo());
+                    else
+                        builder.addComplex(columnDefinition, cell.path(), cell.isLive(nowInSec) ? cell.value() : null, cell.livenessInfo());
                 }
                 else
                 {
-                    builder.add(columnDefinition.name.toString(), cell.isLive(nowInSec) ? cell.value() : null);
+                    builder.add(columnDefinition, cell.isLive(nowInSec) ? cell.value() : null, cell.livenessInfo());
                 }
             }
         }
@@ -281,85 +287,38 @@ public class MaterializedView
     }
 
 
-
-    private Collection<Mutation> createForDeletionInfo(ByteBuffer key, AbstractPartitionData upd, ConsistencyLevel consistency)
+    private Collection<Mutation> createForDeletionInfo(MutationUnit.Set mutationUnits, ByteBuffer key, AbstractPartitionData upd, ConsistencyLevel consistency)
     {
         DeletionInfo deletionInfo = upd.deletionInfo();
 
+
         List<Mutation> mutations = new ArrayList<>();
+
+        if (baseCfs.metadata.hasComplexColumns())
         {
-            boolean query = false, useSlice = false;
-            long timestamp = Long.MIN_VALUE;
-            SinglePartitionSliceReadBuilder builder = new SinglePartitionSliceReadBuilder(baseCfs, baseCfs.partitioner.decorateKey(key));
-            Iterator<Row> rows = upd.iterator();
-            Map<Clustering, Set<ColumnDefinition>> deletes = new HashMap<>();
-            while (rows.hasNext())
+            Iterator<Row> rowIterator = upd.iterator();
+
+            while (rowIterator.hasNext())
             {
-                Row row = rows.next();
-                if (row.hasComplexDeletion())
+                Row row = rowIterator.next();
+
+                if (!row.hasComplexDeletion())
+                    continue;
+
+                MutationUnit mutationUnit = mutationUnits.getUnit(key, row.clustering());
+
+                assert mutationUnit != null;
+
+                for (ColumnDefinition definition : baseCfs.metadata.allColumns())
                 {
-                    for (ColumnDefinition definition : baseCfs.metadata.allColumns())
+                    if (definition.isComplex())
                     {
-                        if (definition.isComplex())
+                        DeletionTime time = row.getDeletion(definition);
+                        if (!time.isLive())
                         {
-                            DeletionTime time = row.getDeletion(definition);
-                            if (!time.isLive())
-                            {
-                                // gotta delete this row
-                                timestamp = Math.max(time.markedForDeleteAt(), timestamp);
-                                useSlice = true;
-                                query = true;
-                                builder.addSlice(Slice.make(baseCfs.getComparator(), row.clustering()));
-                                if (!deletes.containsKey(row.clustering()))
-                                    deletes.put(row.clustering(), new HashSet<>());
-                                deletes.get(row.clustering()).add(definition);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (query)
-            {
-                MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
-                QueryPager pager = (useSlice ? SinglePartitionReadCommand.fullPartitionRead(baseCfs.metadata,
-                                                                                            FBUtilities.nowInSeconds(),
-                                                                                            baseCfs.partitioner.decorateKey(key))
-                                             : builder.build())
-                                   .getLocalPager();
-
-                while (!pager.isExhausted())
-                {
-                    try (PartitionIterator partitionIterator = pager.fetchPage(128))
-                    {
-                        if (!partitionIterator.hasNext())
-                            break;
-
-                        try (RowIterator rowIterator = partitionIterator.next())
-                        {
-                            while (rowIterator.hasNext())
-                            {
-                                Row row = rowIterator.next();
-                                Iterator<Cell> cellIterator = row.iterator();
-
-                                while (cellIterator.hasNext())
-                                    mutationUnits.addUnit(key, row.clustering(), cellIterator.next(), false);
-                            }
-                        }
-                    }
-                }
-
-                for (MutationUnit mutationUnit : mutationUnits)
-                {
-                    ByteBuffer value = mutationUnit.clusteringValue(targetDef, MutationUnit.earliest);
-                    if (value != null)
-                    {
-                        Clustering clustering = mutationUnit.baseClustering(MutationUnit.earliest);
-                        for (ColumnDefinition definition: deletes.get(clustering))
-                        {
-                            Mutation mutation = createComplexTombstone(mutationUnit, value, timestamp, definition);
-                            if (mutation != null)
-                                mutations.add(mutation);
+                            ByteBuffer targetKey = mutationUnit.clusteringValue(targetDef, MutationUnit.earliest);
+                            if (targetKey != null)
+                                mutations.add(createComplexTombstone(mutationUnit, targetKey, upd.maxTimestamp(), definition));
                         }
                     }
                 }
@@ -369,8 +328,6 @@ public class MaterializedView
 
         if (deletionInfo.hasRanges() || deletionInfo.getPartitionDeletion().markedForDeleteAt() != Long.MIN_VALUE)
         {
-            MutationUnit.Set mutationUnits = new MutationUnit.Set(baseCfs);
-
             ReadCommand command;
             DecoratedKey dk = baseCfs.partitioner.decorateKey(key);
 
@@ -449,7 +406,7 @@ public class MaterializedView
     {
         SinglePartitionSliceReadBuilder builder = new SinglePartitionSliceReadBuilder(baseCfs, baseCfs.partitioner.decorateKey(key));
 
-        for (MutationUnit mutationUnit: mutationUnits)
+        for (MutationUnit mutationUnit : mutationUnits)
             builder.addSlice(mutationUnit.baseSlice());
 
         QueryPager pager = builder.build().getLocalPager();
@@ -465,7 +422,8 @@ public class MaterializedView
                     while (rows.hasNext())
                     {
                         Row row = rows.next();
-                        for (Cell cell: row)
+
+                        for (Cell cell : row)
                         {
                             if (deletionInfo.isDeleted(row.clustering(), cell))
                                 continue;
@@ -487,12 +445,20 @@ public class MaterializedView
         while (rows.hasNext())
         {
             Row row = rows.next();
+
+            boolean rowAdded = false;
+
             Iterator<Cell> cells = row.iterator();
             while (cells.hasNext())
             {
                 Cell cell = cells.next();
                 mutationUnits.addUnit(key, row.clustering(), cell, true);
+                rowAdded = true;
             }
+
+            //Always add a mutation unit since it may be a tombstone
+            if (!rowAdded)
+                mutationUnits.addUnit(key, row.clustering(), null, true);
         }
 
         return mutationUnits;
@@ -513,20 +479,20 @@ public class MaterializedView
 
         Collection<Mutation> mutations = null;
 
-        for (MutationUnit mutationUnit: mutationUnits)
+        for (MutationUnit mutationUnit : mutationUnits)
         {
-            Collection<Mutation> tombstones = null;
+            Collection<Mutation> partitionTombstones = null;
             if (!isBuilding)
             {
-                tombstones = createTombstonesForUpdates(mutationUnit, upd.maxTimestamp());
-                if (tombstones != null && !tombstones.isEmpty())
+                partitionTombstones = createPartitionTombstonesForUpdates(mutationUnit, upd.maxTimestamp());
+                if (partitionTombstones != null && !partitionTombstones.isEmpty())
                 {
                     if (mutations == null) mutations = new LinkedList<>();
-                    mutations.addAll(tombstones);
+                    mutations.addAll(partitionTombstones);
                 }
             }
 
-            Mutation insert = createMutationsForInserts(mutationUnit, upd.maxTimestamp(), tombstones != null && !tombstones.isEmpty());
+            Mutation insert = createMutationsForInserts(mutationUnit, upd.maxTimestamp(), partitionTombstones != null && !partitionTombstones.isEmpty());
             if (insert != null)
             {
                 if (mutations == null) mutations = new LinkedList<>();
@@ -536,7 +502,7 @@ public class MaterializedView
 
         if (!isBuilding)
         {
-            Collection<Mutation> deletion = createForDeletionInfo(key, upd, consistency);
+            Collection<Mutation> deletion = createForDeletionInfo(mutationUnits, key, upd, consistency);
             if (deletion != null && !deletion.isEmpty())
             {
                 if (mutations == null) mutations = new LinkedList<>();
