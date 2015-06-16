@@ -411,7 +411,7 @@ public class Keyspace
     public static void indexPartition(DecoratedKey key, ColumnFamilyStore cfs, Set<String> idxNames)
     {
         if (logger.isDebugEnabled())
-            logger.debug("Indexing row {} ", cfs.metadata.getKeyValidator().getString(key.getKey()));
+            logger.debug("Indexing partition {} ", cfs.metadata.getKeyValidator().getString(key.getKey()));
 
         Set<SecondaryIndex> indexes = cfs.indexManager.getIndexesByNames(idxNames);
         SinglePartitionReadCommand cmd = SinglePartitionReadCommand.fullPartitionRead(cfs.metadata, FBUtilities.nowInSeconds(), key);

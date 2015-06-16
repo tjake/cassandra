@@ -404,32 +404,45 @@ public class SecondaryIndexManager
     /**
      * When building an index against existing data, add the given partition to the index
      */
-    public void indexPartition(UnfilteredRowIterator atoms, OpOrder.Group opGroup, Set<SecondaryIndex> allIndexes)
+    public void indexPartition(UnfilteredRowIterator partition, OpOrder.Group opGroup, Set<SecondaryIndex> allIndexes)
     {
         Set<PerRowSecondaryIndex> perRowIndexes = perRowIndexes();
         Set<PerColumnSecondaryIndex> perColumnIndexes = perColumnIndexes();
 
         if (!perRowIndexes.isEmpty())
         {
-            // Update entire row only once per row level index
+            // TODO: This is passing the same partition iterator to all perRow index, which means this only
+            // work if there is only one of them. We should change the API so it doesn't work directly on the
+            // partition, but rather on individual rows, so we can do a single iteration on the partition in this
+            // method and pass the rows to index to all indexes.
+
+            // Update entire partition only once per row level index
             Set<Class<? extends SecondaryIndex>> appliedRowLevelIndexes = new HashSet<>();
             for (PerRowSecondaryIndex index : perRowIndexes)
             {
                 if (appliedRowLevelIndexes.add(index.getClass()))
-                    ((PerRowSecondaryIndex)index).index(atoms.partitionKey().getKey(), atoms);
+                    ((PerRowSecondaryIndex)index).index(partition.partitionKey().getKey(), partition);
             }
         }
 
         if (!perColumnIndexes.isEmpty())
         {
-            DecoratedKey key = atoms.partitionKey();
-            for (PerColumnSecondaryIndex index : perColumnIndexes)
+            DecoratedKey key = partition.partitionKey();
+            int nowInSec = partition.nowInSec();
+
+            if (!partition.staticRow().isEmpty())
             {
-                index.indexRow(key, atoms.staticRow(), opGroup, atoms.nowInSec());
-                try (RowIterator iter = UnfilteredRowIterators.filter(atoms))
+                for (PerColumnSecondaryIndex index : perColumnIndexes)
+                    index.indexRow(key, partition.staticRow(), opGroup, nowInSec);
+            }
+
+            try (RowIterator filtered = UnfilteredRowIterators.filter(partition))
+            {
+                while (filtered.hasNext())
                 {
-                    while (iter.hasNext())
-                        index.indexRow(key, iter.next(), opGroup, atoms.nowInSec());
+                    Row row = filtered.next();
+                    for (PerColumnSecondaryIndex index : perColumnIndexes)
+                        index.indexRow(key, row, opGroup, nowInSec);
                 }
             }
         }
