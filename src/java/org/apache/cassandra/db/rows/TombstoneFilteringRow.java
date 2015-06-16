@@ -31,7 +31,7 @@ public class TombstoneFilteringRow extends FilteringRow
     @Override
     protected boolean include(Cell cell)
     {
-        return cell.isLive(wrapped.nowInSec());
+        return cell.isLive(nowInSec());
     }
 
     @Override

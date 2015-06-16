@@ -657,7 +657,7 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
             // the maxLiveTimestamp information is valid. Otherwise, it needs to be recomputed.
             return nowInSec == createdAtInSec
                  ? maxLiveTimestamps[row]
-                 : Rows.computeMaxLiveTimestamp(this);
+                 : computeMaxLiveTimestamp();
         }
 
         public DeletionTime deletion()
@@ -705,7 +705,8 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
             ensureCapacity(row);
             livenessInfos.set(row, info);
             collectStats(info);
-            updateMaxLiveTimestamp(info.timestamp());
+            if (info.isLive(createdAtInSec))
+                updateMaxLiveTimestamp(info.timestamp());
         }
 
         public void writeRowDeletion(DeletionTime deletion)

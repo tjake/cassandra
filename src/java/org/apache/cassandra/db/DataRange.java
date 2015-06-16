@@ -263,11 +263,12 @@ public class DataRange
             if (needAnd)
                 sb.append(" AND ");
             appendClause(stopKey(), sb, metadata, false, keyRange.isEndInclusive());
+            needAnd = true;
         }
 
         String filterString = partitionFilter.toCQLString(metadata);
         if (!filterString.isEmpty())
-            sb.append(" AND ").append(filterString);
+            sb.append(needAnd ? " AND " : "").append(filterString);
 
         return sb.toString();
     }

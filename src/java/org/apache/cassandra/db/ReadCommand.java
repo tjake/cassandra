@@ -383,7 +383,7 @@ public abstract class ReadCommand implements ReadQuery
                     boolean warnTombstones = tombstones > warningThreshold;
                     if (warnTombstones)
                     {
-                        String msg = String.format("Read %d live rows and %d tombstone cells for query %1.512s (see tombstone_warn_threshold)", liveRows, tombstones, ReadCommand.this.toString());
+                        String msg = String.format("Read %d live rows and %d tombstone cells for query %1.512s (see tombstone_warn_threshold)", liveRows, tombstones, ReadCommand.this.toCQLString());
                         ClientWarn.warn(msg);
                         logger.warn(msg);
                     }

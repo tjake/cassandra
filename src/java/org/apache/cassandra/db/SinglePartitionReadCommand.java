@@ -354,13 +354,14 @@ public abstract class SinglePartitionReadCommand<F extends PartitionFilter> exte
     @Override
     public String toString()
     {
-        return String.format("Read(%s.%s columnFilter=%s limits=%s key=%s filter=%s)",
+        return String.format("Read(%s.%s columnFilter=%s limits=%s key=%s filter=%s, nowInSec=%d)",
                              metadata().ksName,
                              metadata().cfName,
                              columnFilter(),
                              limits(),
                              metadata().getKeyValidator().getString(partitionKey().getKey()),
-                             partitionFilter.toString(metadata()));
+                             partitionFilter.toString(metadata()),
+                             nowInSec());
     }
 
     protected void appendCQLWhereClause(StringBuilder sb)

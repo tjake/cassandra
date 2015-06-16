@@ -180,8 +180,7 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
         PartitionColumns columns = filter.queriedColumns().columns();
         SortedSet<Clustering> clusterings = filter.requestedRows();
 
-        // We want to remove rows for which we have values for all requested columns. We have to deal with
-        // both static and regular rows.
+        // We want to remove rows for which we have values for all requested columns. We have to deal with both static and regular rows.
         // TODO: we could also remove a selected column if we've found values for every requested row but we'll leave
         // that for later.
 
@@ -231,6 +230,15 @@ public class SinglePartitionNamesCommand extends SinglePartitionReadCommand<Name
 
     private boolean canRemoveRow(Row row, Columns requestedColumns, long sstableTimestamp)
     {
+        // We can remove a row if:
+        //   - We have a cell for every requested column whose timestamp is greater than the sstableTimestamp we consider. In other
+        //     words, we have more recent data than the sstable can have for every columns requested.
+        //   - The row has either a maxLiveTimestamp or deletion timestamp greater than the sstableTimestamp we consider. This is necessary to
+        //     ensure we don't consider that the row doesn't exist, while it might exists in older sstable but just have no live data for the
+        //     requested columns.
+        if (row.primaryKeyLivenessInfo().timestamp() <= sstableTimestamp && row.deletion().markedForDeleteAt() <= sstableTimestamp)
+            return false;
+
         for (ColumnDefinition column : requestedColumns)
         {
             // We can never be sure we have all of a collection, so never remove rows in that case.

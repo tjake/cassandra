@@ -174,6 +174,20 @@ public abstract class AbstractRow implements Row
         return sb.toString();
     }
 
+    protected long computeMaxLiveTimestamp()
+    {
+        long maxLive = LivenessInfo.NO_TIMESTAMP;
+        if (primaryKeyLivenessInfo().isLive(nowInSec()))
+            maxLive = primaryKeyLivenessInfo().timestamp();
+
+        for (Cell cell : this)
+        {
+            if (cell.isLive(nowInSec()) && cell.livenessInfo().timestamp() > maxLive)
+                maxLive = cell.livenessInfo().timestamp();
+        }
+        return maxLive;
+    }
+
     @Override
     public boolean equals(Object other)
     {

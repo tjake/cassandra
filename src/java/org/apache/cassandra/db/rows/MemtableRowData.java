@@ -132,7 +132,7 @@ public interface MemtableRowData extends Clusterable
 
             public long maxLiveTimestamp()
             {
-                return Rows.computeMaxLiveTimestamp(this);
+                return computeMaxLiveTimestamp();
             }
 
             public int nowInSec()

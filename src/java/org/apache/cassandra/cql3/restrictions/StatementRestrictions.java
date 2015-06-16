@@ -508,15 +508,9 @@ public final class StatementRestrictions
      */
     public boolean isColumnRange()
     {
-        // Due to CASSANDRA-5762, we always do a slice for CQL3 tables (not dense, composite).
-        // Static CF (non dense but non composite) never entails a column slice however
-        if (!cfm.isDense())
-            return cfm.isCompound();
-
-        // Otherwise (i.e. for compact table where we don't have a row marker anyway and thus don't care about
-        // CASSANDRA-5762),
         // it is a range query if it has at least one the column alias for which no relation is defined or is not EQ.
-        return clusteringColumnsRestrictions.size() < cfm.clusteringColumns().size() || clusteringColumnsRestrictions.isSlice();
+        return clusteringColumnsRestrictions.size() < cfm.clusteringColumns().size()
+            || (!clusteringColumnsRestrictions.isEQ() && !clusteringColumnsRestrictions.isIN());
     }
 
     /**

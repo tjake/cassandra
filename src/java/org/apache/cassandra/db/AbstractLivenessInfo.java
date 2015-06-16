@@ -136,7 +136,7 @@ public abstract class AbstractLivenessInfo implements LivenessInfo
         }
         if (hasTTL())
         {
-            sb.append(needSpace ? ' ' : "").append("ttl=").append(timestamp());
+            sb.append(needSpace ? ' ' : "").append("ttl=").append(ttl());
             needSpace = true;
         }
         if (hasLocalDeletionTime())

@@ -200,18 +200,6 @@ public abstract class Rows
         return timeDelta;
     }
 
-    public static long computeMaxLiveTimestamp(Row row)
-    {
-        long maxLive = LivenessInfo.NO_TIMESTAMP;
-        if (row.primaryKeyLivenessInfo().isLive(row.nowInSec()))
-            maxLive = row.primaryKeyLivenessInfo().timestamp();
-
-        for (Cell cell : row)
-            if (cell.isLive(row.nowInSec()) && cell.livenessInfo().timestamp() > maxLive)
-                maxLive = cell.livenessInfo().timestamp();
-        return maxLive;
-    }
-
     public abstract static class Merger
     {
         private final CFMetaData metadata;
