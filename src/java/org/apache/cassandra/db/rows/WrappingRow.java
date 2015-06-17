@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db.rows;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
@@ -24,18 +25,42 @@ import com.google.common.collect.UnmodifiableIterator;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.utils.SearchIterator;
 
 public abstract class WrappingRow extends AbstractRow
 {
     protected Row wrapped;
 
     private final ReusableIterator cellIterator = new ReusableIterator();
+    private final ReusableSearchIterator cellSearchIterator = new ReusableSearchIterator();
 
     /**
      * Apply some filtering/transformation on cells. This function
      * can return {@code null} in which case the cell will be ignored.
      */
     protected abstract Cell filterCell(Cell cell);
+
+    protected DeletionTime filterDeletionTime(DeletionTime deletionTime)
+    {
+        return deletionTime;
+    }
+
+    protected ColumnData filterColumnData(ColumnData data)
+    {
+        if (data.column().isComplex())
+        {
+            Iterator<Cell> cells = cellIterator.setTo(data.cells());
+            DeletionTime dt = filterDeletionTime(data.complexDeletion());
+            return cells == null && dt.isLive()
+                 ? null
+                 : new ColumnData(data.column(), null, cells == null ? Collections.emptyIterator(): cells, dt);
+        }
+        else
+        {
+            Cell filtered = filterCell(data.cell());
+            return filtered == null ? null : new ColumnData(data.column(), filtered, null, null);
+        }
+    }
 
     public WrappingRow setTo(Row row)
     {
@@ -112,12 +137,17 @@ public abstract class WrappingRow extends AbstractRow
 
     public DeletionTime getDeletion(ColumnDefinition c)
     {
-        return wrapped.getDeletion(c);
+        return filterDeletionTime(wrapped.getDeletion(c));
     }
 
     public Iterator<Cell> iterator()
     {
         return cellIterator.setTo(wrapped.iterator());
+    }
+
+    public SearchIterator<ColumnDefinition, ColumnData> searchIterator()
+    {
+        return cellSearchIterator.setTo(wrapped.searchIterator());
     }
 
     public Row takeAlias()
@@ -164,6 +194,31 @@ public abstract class WrappingRow extends AbstractRow
             Cell result = next;
             next = null;
             return result;
+        }
+    };
+
+    private class ReusableSearchIterator implements SearchIterator<ColumnDefinition, ColumnData>
+    {
+        private SearchIterator<ColumnDefinition, ColumnData> iter;
+
+        public ReusableSearchIterator setTo(SearchIterator<ColumnDefinition, ColumnData> iter)
+        {
+            this.iter = iter;
+            return this;
+        }
+
+        public boolean hasNext()
+        {
+            return iter.hasNext();
+        }
+
+        public ColumnData next(ColumnDefinition column)
+        {
+            ColumnData data = iter.next(column);
+            if (data == null)
+                return null;
+
+            return filterColumnData(data);
         }
     };
 }

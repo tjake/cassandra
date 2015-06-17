@@ -29,6 +29,7 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.index.SecondaryIndexManager;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.MergeIterator;
+import org.apache.cassandra.utils.SearchIterator;
 
 /**
  * Static utilities to work on Row objects.
@@ -104,6 +105,22 @@ public abstract class Rows
         public Iterator<Cell> iterator()
         {
             return Iterators.<Cell>emptyIterator();
+        }
+
+        public SearchIterator<ColumnDefinition, ColumnData> searchIterator()
+        {
+            return new SearchIterator<ColumnDefinition, ColumnData>()
+            {
+                public boolean hasNext()
+                {
+                    return false;
+                }
+
+                public ColumnData next(ColumnDefinition column)
+                {
+                    return null;
+                }
+            };
         }
 
         public Kind kind()

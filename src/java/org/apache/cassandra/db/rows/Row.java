@@ -23,6 +23,7 @@ import java.util.Iterator;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.utils.SearchIterator;
 
 /**
  * Storage engine representation of a row.
@@ -213,6 +214,13 @@ public interface Row extends Unfiltered, Iterable<Cell>, Aliasable<Row>
      * @return an iterator over the cells of this row.
      */
     public Iterator<Cell> iterator();
+
+    /**
+     * An iterator to efficiently search data for a given column.
+     *
+     * @return a search iterator for the cells of this row.
+     */
+    public SearchIterator<ColumnDefinition, ColumnData> searchIterator();
 
     /**
      * Copy this row to the provided writer.

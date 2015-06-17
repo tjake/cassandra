@@ -29,6 +29,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.SearchIterator;
 
 /**
  * Serialize/deserialize a single Unfiltered for the intra-node protocol.
@@ -167,37 +168,37 @@ public class UnfilteredSerializer
         Columns columns = header.columns(isStatic);
         int simpleCount = columns.simpleColumnCount();
         boolean useSparse = header.useSparseColumnLayout(isStatic);
+        SearchIterator<ColumnDefinition, ColumnData> cells = row.searchIterator();
 
         for (int i = 0; i < simpleCount; i++)
-            writeSimpleColumn(i, columns.getSimple(i), row, header, out, pkLiveness, useSparse);
+            writeSimpleColumn(i, cells.next(columns.getSimple(i)), header, out, pkLiveness, useSparse);
 
         for (int i = simpleCount; i < columns.columnCount(); i++)
-            writeComplexColumn(i, columns.getComplex(i - simpleCount), row, hasComplexDeletion, header, out, pkLiveness, useSparse);
+            writeComplexColumn(i, cells.next(columns.getComplex(i - simpleCount)), hasComplexDeletion, header, out, pkLiveness, useSparse);
 
         if (useSparse)
             out.writeShort(-1);
     }
 
-    private void writeSimpleColumn(int idx, ColumnDefinition column, Row row, SerializationHeader header, DataOutputPlus out, LivenessInfo rowLiveness, boolean useSparse)
+    private void writeSimpleColumn(int idx, ColumnData data, SerializationHeader header, DataOutputPlus out, LivenessInfo rowLiveness, boolean useSparse)
     throws IOException
     {
-        Cell cell = row.getCell(column);
         if (useSparse)
         {
-            if (cell == null)
+            if (data == null)
                 return;
 
             out.writeShort(idx);
         }
 
-        writeCell(cell, header, out, rowLiveness);
+        writeCell(data == null ? null : data.cell(), header, out, rowLiveness);
     }
 
-    private void writeComplexColumn(int idx, ColumnDefinition column, Row row, boolean hasComplexDeletion, SerializationHeader header, DataOutputPlus out, LivenessInfo rowLiveness, boolean useSparse)
+    private void writeComplexColumn(int idx, ColumnData data, boolean hasComplexDeletion, SerializationHeader header, DataOutputPlus out, LivenessInfo rowLiveness, boolean useSparse)
     throws IOException
     {
-        Iterator<Cell> cells = row.getCells(column);
-        DeletionTime deletion = row.getDeletion(column);
+        Iterator<Cell> cells = data == null ? null : data.cells();
+        DeletionTime deletion = data == null ? DeletionTime.LIVE : data.complexDeletion();
 
         if (useSparse)
         {
@@ -267,12 +268,13 @@ public class UnfilteredSerializer
         Columns columns = header.columns(isStatic);
         int simpleCount = columns.simpleColumnCount();
         boolean useSparse = header.useSparseColumnLayout(isStatic);
+        SearchIterator<ColumnDefinition, ColumnData> cells = row.searchIterator();
 
         for (int i = 0; i < simpleCount; i++)
-            size += sizeOfSimpleColumn(i, columns.getSimple(i), row, header, sizes, pkLiveness, useSparse);
+            size += sizeOfSimpleColumn(i, cells.next(columns.getSimple(i)), header, sizes, pkLiveness, useSparse);
 
         for (int i = simpleCount; i < columns.columnCount(); i++)
-            size += sizeOfComplexColumn(i, columns.getComplex(i - simpleCount), row, hasComplexDeletion, header, sizes, pkLiveness, useSparse);
+            size += sizeOfComplexColumn(i, cells.next(columns.getComplex(i - simpleCount)), hasComplexDeletion, header, sizes, pkLiveness, useSparse);
 
         if (useSparse)
             size += sizes.sizeof((short)-1);
@@ -280,25 +282,24 @@ public class UnfilteredSerializer
         return size;
     }
 
-    private long sizeOfSimpleColumn(int idx, ColumnDefinition column, Row row, SerializationHeader header, TypeSizes sizes, LivenessInfo rowLiveness, boolean useSparse)
+    private long sizeOfSimpleColumn(int idx, ColumnData data, SerializationHeader header, TypeSizes sizes, LivenessInfo rowLiveness, boolean useSparse)
     {
         long size = 0;
-        Cell cell = row.getCell(column);
         if (useSparse)
         {
-            if (cell == null)
+            if (data == null)
                 return size;
 
             size += sizes.sizeof((short)idx);
         }
-        return size + sizeOfCell(cell, header, sizes, rowLiveness);
+        return size + sizeOfCell(data == null ? null : data.cell(), header, sizes, rowLiveness);
     }
 
-    private long sizeOfComplexColumn(int idx, ColumnDefinition column, Row row, boolean hasComplexDeletion, SerializationHeader header, TypeSizes sizes, LivenessInfo rowLiveness, boolean useSparse)
+    private long sizeOfComplexColumn(int idx, ColumnData data, boolean hasComplexDeletion, SerializationHeader header, TypeSizes sizes, LivenessInfo rowLiveness, boolean useSparse)
     {
         long size = 0;
-        Iterator<Cell> cells = row.getCells(column);
-        DeletionTime deletion = row.getDeletion(column);
+        Iterator<Cell> cells = data == null ? null : data.cells();
+        DeletionTime deletion = data == null ? DeletionTime.LIVE : data.complexDeletion();
         if (useSparse)
         {
             assert hasComplexDeletion || deletion.isLive();

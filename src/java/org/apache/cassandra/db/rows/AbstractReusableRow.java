@@ -21,6 +21,7 @@ import java.util.Iterator;
 
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.utils.SearchIterator;
 
 public abstract class AbstractReusableRow extends AbstractRow
 {
@@ -123,6 +124,41 @@ public abstract class AbstractReusableRow extends AbstractRow
     public Iterator<Cell> iterator()
     {
         return reusableIterator().setTo(data(), row());
+    }
+
+    public SearchIterator<ColumnDefinition, ColumnData> searchIterator()
+    {
+        return new SearchIterator<ColumnDefinition, ColumnData>()
+        {
+            private int simpleIdx = 0;
+
+            public boolean hasNext()
+            {
+                // TODO: we can do better, but we expect users to no rely on this anyway
+                return true;
+            }
+
+            public ColumnData next(ColumnDefinition column)
+            {
+                if (column.isComplex())
+                {
+                    // TODO: this is sub-optimal
+
+                    Iterator<Cell> cells = getCells(column);
+                    return cells == null ? null : new ColumnData(column, null, cells, getDeletion(column));
+                }
+                else
+                {
+                    int idx = columns().simpleIdx(column, simpleIdx);
+                    if (idx < 0)
+                        return null;
+
+                    Cell cell = simpleCell().setTo(data().simpleData.data, column, (row() * columns().simpleColumnCount()) + idx);
+                    simpleIdx = idx + 1;
+                    return cell == null ? null : new ColumnData(column, cell, null, null);
+                }
+            }
+        };
     }
 
     public Row takeAlias()

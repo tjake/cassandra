@@ -23,6 +23,7 @@ import java.util.Iterator;
 import org.apache.cassandra.db.*;
 
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.utils.SearchIterator;
 
 public class StaticRow extends AbstractRow
 {
@@ -99,6 +100,40 @@ public class StaticRow extends AbstractRow
     public Iterator<Cell> iterator()
     {
         return RowDataBlock.reusableIterator().setTo(data, 0);
+    }
+
+    public SearchIterator<ColumnDefinition, ColumnData> searchIterator()
+    {
+        return new SearchIterator<ColumnDefinition, ColumnData>()
+        {
+            private int simpleIdx = 0;
+
+            public boolean hasNext()
+            {
+                // TODO: we can do better, but we expect users to no rely on this anyway
+                return true;
+            }
+
+            public ColumnData next(ColumnDefinition column)
+            {
+                if (column.isComplex())
+                {
+                    // TODO: this is sub-optimal
+
+                    Iterator<Cell> cells = getCells(column);
+                    return cells == null ? null : new ColumnData(column, null, cells, getDeletion(column));
+                }
+                else
+                {
+                    simpleIdx = columns().simpleIdx(column, simpleIdx);
+                    assert simpleIdx >= 0;
+
+                    Cell cell = SimpleRowDataBlock.reusableCell().setTo(data.simpleData.data, column, simpleIdx);
+                    ++simpleIdx;
+                    return cell == null ? null : new ColumnData(column, cell, null, null);
+                }
+            }
+        };
     }
 
     public Row takeAlias()

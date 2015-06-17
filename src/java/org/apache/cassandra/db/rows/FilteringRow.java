@@ -77,6 +77,13 @@ public abstract class FilteringRow extends WrappingRow
         return include(cell.column()) && include(cell.livenessInfo()) && include(cell) ? cell : null;
     }
 
+    protected DeletionTime filterDeletionTime(DeletionTime deletion)
+    {
+        return deletion == null || !include(deletion)
+             ? DeletionTime.LIVE
+             : deletion;
+    }
+
     @Override
     public LivenessInfo primaryKeyLivenessInfo()
     {
