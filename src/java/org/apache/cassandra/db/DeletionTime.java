@@ -108,7 +108,7 @@ public abstract class DeletionTime implements Comparable<DeletionTime>, IMeasura
 
     public boolean supersedes(DeletionTime dt)
     {
-        return markedForDeleteAt() > dt.markedForDeleteAt();
+        return markedForDeleteAt() > dt.markedForDeleteAt() || (markedForDeleteAt() == dt.markedForDeleteAt() && localDeletionTime() > dt.localDeletionTime());
     }
 
     public boolean isPurgeable(long maxPurgeableTimestamp, int gcBefore)

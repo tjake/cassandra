@@ -79,9 +79,16 @@ public abstract class RangeTombstoneMarkers
                 return mergeCloseMarkers(merged);
         }
 
+        // The deletion time for the currently open marker of iterator i
+        private DeletionTime dt(int i)
+        {
+            return openMarkersCursor.setTo(openMarkers, i);
+        }
+
         private UnfilteredRowIterators.MergedUnfiltered mergeOpenMarkers(UnfilteredRowIterators.MergedUnfiltered merged)
         {
             int toReturn = -1;
+            int previouslyOpen = openMarker;
             for (int i = 0; i < markers.length; i++)
             {
                 RangeTombstoneMarker marker = markers[i];
@@ -92,59 +99,82 @@ public abstract class RangeTombstoneMarkers
                 if (partitionDeletion.supersedes(marker.deletionTime()))
                     continue;
 
-                // We have an open marker. It's only present after merge if it's bigger than the
-                // currently open marker.
+                // We have an open marker.
                 DeletionTime dt = marker.deletionTime();
                 openMarkers.set(i, dt);
 
-                if (openMarker < 0 || !openMarkers.supersedes(openMarker, dt))
+                // It's present after merge if it's bigger than the currently open marker.
+                if (openMarker < 0 || dt.supersedes(dt(openMarker)))
                     openMarker = toReturn = i;
             }
 
             if (toReturn < 0)
                 return merged.setTo(null);
 
-            openMarkersCursor.setTo(openMarkers, toReturn);
+            // If we had an open marker in the output stream, we must close it before opening the new one
+            if (previouslyOpen >= 0)
+            {
+                DeletionTime prev = dt(previouslyOpen).takeAlias();
+                Slice.Bound closingBound = bound.invert();
+                if (listener != null)
+                    listener.onMergedRangeTombstoneMarkers(closingBound, prev, markers);
+                merged.setTo(new SimpleRangeTombstoneMarker(closingBound, prev));
+            }
+
+            DeletionTime dt = dt(toReturn);
             if (listener != null)
-                listener.onMergedRangeTombstoneMarkers(bound, openMarkersCursor, markers);
-            return merged.setTo(reusableMarker.setTo(bound, openMarkersCursor));
+                listener.onMergedRangeTombstoneMarkers(bound, dt, markers);
+
+            return previouslyOpen >= 0
+                 ? merged.setSecondTo(reusableMarker.setTo(bound, dt))
+                 : merged.setTo(reusableMarker.setTo(bound, dt));
         }
 
         private UnfilteredRowIterators.MergedUnfiltered mergeCloseMarkers(UnfilteredRowIterators.MergedUnfiltered merged)
         {
+            DeletionTime previouslyOpenDeletion = null;
             for (int i = 0; i < markers.length; i++)
             {
                 RangeTombstoneMarker marker = markers[i];
                 if (marker == null)
                     continue;
 
+                if (i == openMarker)
+                    previouslyOpenDeletion = dt(i).takeAlias();
+
                 // Close the marker for this iterator
                 openMarkers.clear(i);
+            }
 
-                // What we do now depends on what the current open marker is. If it's not i, then we can
-                // just ignore that close (the corresponding open marker has been ignored).
-                // If it's i, we need to issue a close for that marker. However, we also need to find the
-                // next biggest open marker. If there is none, then we're good, but otherwise, on top
-                // of closing the marker, we need to open that new biggest marker.
-                if (i == openMarker)
+            // What we do now depends on whether we've closed the current open marker is. If we haven't, then
+            // we can ignore any close we had (the corresponding opens had been ignored).
+            // If we have closed the open marker, we need to issue a close for that marker. However, we also need
+            // to find the next biggest open marker. If there is none, then we're good, but otherwise, on top
+            // of closing the marker, we need to open that new biggest marker.
+            if (previouslyOpenDeletion != null)
+            {
+                // We've cleaned openMarker so update to find the new biggest one
+                updateOpenMarker();
+
+                DeletionTime newOpenDeletion = openMarker >= 0 ? dt(openMarker).takeAlias() : null;
+
+                // What could happen is that the new "biggest" open marker has actually the exact same deletion than the
+                // previously open one. In that case, there is no point in closing to re-open the same thing.
+                if (newOpenDeletion != null && newOpenDeletion.equals(previouslyOpenDeletion))
+                    return merged;
+
+                if (listener != null)
+                    listener.onMergedRangeTombstoneMarkers(bound, previouslyOpenDeletion, markers);
+
+                merged.setTo(reusableMarker.setTo(bound, previouslyOpenDeletion));
+
+                if (openMarker >= 0)
                 {
+                    Slice.Bound openingBound = bound.invert();
                     if (listener != null)
-                        listener.onMergedRangeTombstoneMarkers(bound, marker.deletionTime(), markers);
+                        listener.onMergedRangeTombstoneMarkers(openingBound, newOpenDeletion, markers);
 
-                    merged.setTo(reusableMarker.setTo(bound, marker.deletionTime()));
-
-                    // We've cleaned i so updateOpenMarker will return the new biggest one
-                    updateOpenMarker();
-
-                    if (openMarker >= 0)
-                    {
-                        openMarkersCursor.setTo(openMarkers, openMarker);
-                        Slice.Bound openingBound = bound.withNewKind(ClusteringPrefix.Kind.INCL_START_BOUND);
-                        if (listener != null)
-                            listener.onMergedRangeTombstoneMarkers(openingBound, openMarkersCursor, markers);
-
-                        merged.setSecondTo(reusableMarker.setTo(openingBound, openMarkersCursor));
-                    }
+                    merged.setSecondTo(new SimpleRangeTombstoneMarker(openingBound, newOpenDeletion));
                 }
             }
             return merged;
