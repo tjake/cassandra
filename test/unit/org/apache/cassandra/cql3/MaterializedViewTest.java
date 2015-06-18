@@ -34,6 +34,7 @@ import org.junit.Test;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 import junit.framework.Assert;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.config.CFMetaData;
@@ -54,6 +55,122 @@ public class MaterializedViewTest extends CQLTester
     public static void startup()
     {
         requireNetwork();
+    }
+
+
+    @Test
+    public void testCountersTable() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "k int PRIMARY KEY, " +
+                    "count counter)");
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+        try
+        {
+            executeNet(protocolVersion, "CREATE MATERIALIZED VIEW " + keyspace() + ".mv_counter AS SELECT * FROM %s PRIMARY KEY (count,k)");
+            Assert.fail("MV on counter should fail");
+        }
+        catch (InvalidQueryException e)
+        {
+
+        }
+    }
+
+    @Test
+    public void testCompoundPartitionKey() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "k int, " +
+                    "asciival ascii, " +
+                    "bigintval bigint, " +
+                    "PRIMARY KEY((k, asciival)))");
+
+        CFMetaData metadata = currentTableMetadata();
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+        for (ColumnDefinition def : new HashSet<>(metadata.allColumns()))
+        {
+            try
+            {
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv1_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", k)");
+
+                if (def.type.isMultiCell())
+                    Assert.fail("MV on a multicell should fail " + def);
+            }
+            catch (InvalidQueryException e)
+            {
+                if (!def.type.isMultiCell() && !def.isPartitionKey())
+                    Assert.fail("MV creation failed on "+def);
+            }
+
+
+            try
+            {
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv2_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", asciival)");
+
+                if (def.type.isMultiCell())
+                    Assert.fail("MV on a multicell should fail " + def);
+            }
+            catch (InvalidQueryException e)
+            {
+                if (!def.type.isMultiCell() && !def.isPartitionKey())
+                    Assert.fail("MV creation failed on "+def);
+            }
+
+            try
+            {
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv3_"+def.name+" AS SELECT * FROM %s PRIMARY KEY (("+def.name+", k), asciival)");
+
+                if (def.type.isMultiCell())
+                    Assert.fail("MV on a multicell should fail " + def);
+            }
+            catch (InvalidQueryException e)
+            {
+                if (!def.type.isMultiCell() && !def.isPartitionKey())
+                    Assert.fail("MV creation failed on "+def);
+            }
+        }
+
+        executeNet(protocolVersion, "INSERT INTO %s (k, asciival, bigintval) VALUES (?, ?, fromJson(?))", 0, "ascii text", "123123123123");
+
+        executeNet(protocolVersion, "INSERT INTO %s (k, asciival) VALUES (?, fromJson(?))", 0, "\"ascii text\"");
+        assertRows(execute("SELECT bigintval FROM %s WHERE k = ? and asciival = ?", 0, "ascii text"), row(123123123123L));
+
+        //Check the MV
+        assertRows(execute("SELECT k, bigintval from mv1_asciival WHERE asciival = ?", "ascii text"), row(0,123123123123L));
+        assertRows(execute("SELECT k, bigintval from mv2_k WHERE asciival = ? and k = ?", "ascii text",0), row(0,123123123123L));
+
+        assertRows(execute("SELECT k from mv1_bigintval WHERE bigintval = ?", 123123123123L), row(0));
+        assertRows(execute("SELECT asciival from mv3_bigintval where bigintval = ? AND k = ?", 123123123123L, 0), row("ascii text"));
+
+
+        //UPDATE BASE
+        executeNet(protocolVersion, "INSERT INTO %s (k, asciival, bigintval) VALUES (?, ?, fromJson(?))", 0, "ascii text", "1");
+        assertRows(execute("SELECT bigintval FROM %s WHERE k = ? and asciival = ?", 0, "ascii text"), row(1L));
+
+        //Check the MV
+        assertRows(execute("SELECT k, bigintval from mv1_asciival WHERE asciival = ?", "ascii text"), row(0,1L));
+        assertRows(execute("SELECT k, bigintval from mv2_k WHERE asciival = ? and k = ?", "ascii text",0), row(0,1L));
+
+        assertRows(execute("SELECT k from mv1_bigintval WHERE bigintval = ?", 123123123123L));
+        assertRows(execute("SELECT asciival from mv3_bigintval where bigintval = ? AND k = ?", 123123123123L, 0));
+        assertRows(execute("SELECT asciival from mv3_bigintval where bigintval = ? AND k = ?", 1L, 0), row("ascii text"));
+
+
+        //test truncate
+        execute("TRUNCATE %s");
+
+        assertRows(execute("SELECT bigintval FROM %s WHERE k = ? and asciival = ?", 0, "ascii text"));
+        assertRows(execute("SELECT k, bigintval from mv1_asciival WHERE asciival = ?", "ascii text"));
+        assertRows(execute("SELECT k, bigintval from mv2_k WHERE asciival = ? and k = ?", "ascii text",0));
+        assertRows(execute("SELECT asciival from mv3_bigintval where bigintval = ? AND k = ?", 1L, 0));
+
+
     }
 
     @Test
@@ -97,11 +214,21 @@ public class MaterializedViewTest extends CQLTester
 
         for (ColumnDefinition def : new HashSet<>(metadata.allColumns()))
         {
-            if (def.isPrimaryKeyColumn())
-                continue;
-
-            if (!def.type.isMultiCell())
+            try
+            {
                 executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+",k)");
+
+                if (def.type.isMultiCell())
+                    Assert.fail("MV on a multicell should fail " + def);
+
+                if (def.isPartitionKey())
+                    Assert.fail("MV on partition key should fail " + def);
+            }
+            catch (InvalidQueryException e)
+            {
+                if (!def.type.isMultiCell() && !def.isPartitionKey())
+                    Assert.fail("MV creation failed on "+def);
+            }
         }
 
         // fromJson() can only be used when the receiver type is known

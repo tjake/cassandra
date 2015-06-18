@@ -432,10 +432,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
         }
 
-        for (MaterializedViewDefinition definition: metadata.getMaterializedViews().values())
+        for (MaterializedViewDefinition definition : metadata.getMaterializedViews().values())
         {
             materializedViewManager.addMaterializedView(definition);
         }
+
         latencyCalculator.cancel(false);
         compactionStrategyManager.shutdown();
         SystemKeyspace.removeTruncationRecord(metadata.cfId);

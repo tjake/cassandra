@@ -141,7 +141,7 @@ public class LegacySchemaTables
               + "keyspace_name text,"
               + "columnfamily_name text,"
               + "view_name text,"
-              + "target_column text,"
+              + "target_columns list<text>,"
               + "clustering_columns list<text>,"
               + "included_columns list<text>,"
               + "PRIMARY KEY ((keyspace_name), columnfamily_name, view_name))");
@@ -1315,11 +1315,13 @@ public class LegacySchemaTables
     private static void addMaterializedViewToSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
     {
         RowUpdateBuilder builder = new RowUpdateBuilder(MaterializedViews, timestamp, mutation)
-            .clustering(table.cfName, materializedView.viewName)
-            .add("target_column", materializedView.target.toString());
-        for (ColumnIdentifier clusteringColumn: materializedView.clusteringColumns)
+            .clustering(table.cfName, materializedView.viewName);
+
+        for (ColumnIdentifier partitionColumn : materializedView.partitionColumns)
+            builder.addListEntry("target_columns", partitionColumn.toString());
+        for (ColumnIdentifier clusteringColumn : materializedView.clusteringColumns)
             builder = builder.addListEntry("clustering_columns", clusteringColumn.toString());
-        for (ColumnIdentifier includedColumn: materializedView.included)
+        for (ColumnIdentifier includedColumn : materializedView.included)
             builder = builder.addListEntry("included_columns", includedColumn.toString());
 
         builder.build();
@@ -1328,8 +1330,7 @@ public class LegacySchemaTables
     private static void dropMaterializedViewFromSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
     {
         RowUpdateBuilder.deleteRow(MaterializedViews, timestamp, mutation, table.cfName, materializedView.viewName);
-        RowUpdateBuilder.deleteRow(SystemKeyspace.MaterializedViewsBuilds, timestamp, mutation, table.cfName, materializedView.viewName);
-        RowUpdateBuilder.deleteRow(SystemKeyspace.BuiltIndexes, timestamp, mutation, table.cfName, materializedView.viewName);
+        RowUpdateBuilder.deleteRow(SystemKeyspace.MaterializedViewsBuilds, timestamp, mutation, materializedView.viewName);
     }
 
     /**
@@ -1349,26 +1350,35 @@ public class LegacySchemaTables
 
     private static MaterializedViewDefinition createMaterializedViewFromMaterializedViewRow(UntypedResultSet.Row row)
     {
-
         String name = row.getString("view_name");
-        String targetColumn = row.getString("target_column");
+        List<String> partitionColumnNames = row.getList("target_columns", UTF8Type.instance);
+
         String cfName = row.getString("columnfamily_name");
         List<String> clusteringColumnNames = row.getList("clustering_columns", UTF8Type.instance);
+
+        List<ColumnIdentifier> partitionColumns = new ArrayList<>();
+        for (String columnName : partitionColumnNames)
+        {
+            partitionColumns.add(ColumnIdentifier.getInterned(columnName, true));
+        }
+
         List<ColumnIdentifier> clusteringColumns = new ArrayList<>();
         for (String columnName : clusteringColumnNames)
         {
-            clusteringColumns.add(new ColumnIdentifier(columnName, true));
+            clusteringColumns.add(ColumnIdentifier.getInterned(columnName, true));
         }
+
         List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
         List<ColumnIdentifier> includedColumns = new ArrayList<>();
         if (includedColumnNames != null)
         {
             for (String columnName : includedColumnNames)
-                includedColumns.add(new ColumnIdentifier(columnName, true));
+                includedColumns.add(ColumnIdentifier.getInterned(columnName, true));
         }
+
         return new MaterializedViewDefinition(cfName,
                                               name,
-                                              new ColumnIdentifier(targetColumn, true),
+                                              partitionColumns,
                                               clusteringColumns,
                                               includedColumns);
     }

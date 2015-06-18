@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.google.common.collect.Iterables;
+
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
@@ -65,7 +67,8 @@ public class MaterializedView
 
     final ColumnFamilyStore baseCfs;
     public final ColumnFamilyStore viewCfs;
-    public final ColumnDefinition targetDef;
+    public final List<ColumnDefinition> targetDefs;
+    public final boolean targetHasAllPrimaryKeyColumns;
     MaterializedViewBuilder builder;
 
     public MaterializedView(MaterializedViewDefinition definition,
@@ -75,8 +78,19 @@ public class MaterializedView
         this.baseCfs = baseCfs;
 
         name = definition.viewName;
-        targetDef = baseCfs.metadata.getColumnDefinition(definition.target);
+        targetDefs = new ArrayList<>(definition.partitionColumns.size());
+        boolean nonPrimaryKeyCol = false;
+        for (ColumnIdentifier identifier : definition.partitionColumns)
+        {
+            ColumnDefinition cdef = baseCfs.metadata.getColumnDefinition(identifier);
+            assert cdef != null;
+            targetDefs.add(cdef);
 
+            if(!cdef.isPrimaryKeyColumn())
+                nonPrimaryKeyCol = true;
+        }
+
+        targetHasAllPrimaryKeyColumns = !nonPrimaryKeyCol;
         CFMetaData viewCfm = getCFMetaData(definition, baseCfs.metadata);
         viewCfs = Schema.instance.getColumnFamilyStoreInstance(viewCfm.cfId);
     }
@@ -113,7 +127,7 @@ public class MaterializedView
         return false;
     }
 
-    private Mutation createTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp)
+    private Mutation createTombstone(MutationUnit mutationUnit, DecoratedKey partitionKey, long timestamp)
     {
         // Need to generate a tombstone in this case; there will be only one element because we do not allow Collections
         // for keys of a materialized view.
@@ -130,7 +144,7 @@ public class MaterializedView
         return RowUpdateBuilder.deleteRow(viewCfs.metadata, timestamp, partitionKey, viewClusteringValues);
     }
 
-    private Mutation createComplexTombstone(MutationUnit mutationUnit, ByteBuffer partitionKey, long timestamp, ColumnDefinition deletedColumn)
+    private Mutation createComplexTombstone(MutationUnit mutationUnit, DecoratedKey partitionKey, long timestamp, ColumnDefinition deletedColumn)
     {
         int numViewClustering = viewCfs.metadata.clusteringColumns().size();
 
@@ -148,17 +162,47 @@ public class MaterializedView
                .build();
     }
 
+    public DecoratedKey targetPartitionKey(MutationUnit mutationUnit, MutationUnit.Resolver resolver)
+    {
+        Object[] partitionKey = new Object[targetDefs.size()];
+
+        for (int i = 0; i < partitionKey.length; i++)
+        {
+            ByteBuffer value = mutationUnit.clusteringValue(targetDefs.get(i), resolver);
+
+            if (value == null)
+                return null;
+
+            partitionKey[i] = value;
+        }
+
+        return viewCfs
+               .partitioner
+               .decorateKey(CFMetaData
+                            .serializePartitionKey(viewCfs
+                                                   .metadata
+                                                   .getKeyValidatorAsClusteringComparator()
+                                                   .make(partitionKey)));
+    }
+
+
     private Collection<Mutation> createPartitionTombstonesForUpdates(MutationUnit mutationUnit, long timestamp)
     {
         // Primary Key and Clustering columns do not generate tombstones
-        if (targetDef.isPrimaryKeyColumn())
+        if (targetHasAllPrimaryKeyColumns)
             return null;
 
-        // Target must be modified in order for a tombstone to be created
-        if (mutationUnit.clusteringValue(targetDef, MutationUnit.oldValueIfUpdated) == null)
+        boolean hasUpdate = false;
+        for (ColumnDefinition target : targetDefs)
+        {
+            if (!target.isPartitionKey() && mutationUnit.clusteringValue(target, MutationUnit.oldValueIfUpdated) != null)
+                hasUpdate = true;
+        }
+
+        if (!hasUpdate)
             return null;
 
-        Mutation mutation = createTombstone(mutationUnit, mutationUnit.clusteringValue(targetDef, MutationUnit.oldValueIfUpdated), timestamp);
+        Mutation mutation = createTombstone(mutationUnit, targetPartitionKey(mutationUnit, MutationUnit.earliest), timestamp);
         if (mutation != null)
             return Collections.singleton(mutation);
 
@@ -167,7 +211,7 @@ public class MaterializedView
 
     private Mutation createMutationsForInserts(MutationUnit mutationUnit, long timestamp, boolean tombstonesGenerated)
     {
-        ByteBuffer partitionKey = mutationUnit.clusteringValue(targetDef, MutationUnit.latest);
+        DecoratedKey partitionKey = targetPartitionKey(mutationUnit, MutationUnit.latest);
         if (partitionKey == null)
         {
             // Not having a partition key means we aren't updating anything
@@ -240,7 +284,7 @@ public class MaterializedView
 
 
             boolean queryNeeded = false;
-            for (ColumnDefinition definition : viewCfs.metadata.clusteringColumns())
+            for (ColumnDefinition definition : Iterables.concat(viewCfs.metadata.clusteringColumns(), viewCfs.metadata.partitionKeyColumns()))
             {
                 if (baseCfs.metadata.getColumnDefinition(definition.name).isPartitionKey())
                     continue;
@@ -250,15 +294,13 @@ public class MaterializedView
 
             MutationUnit mu = new MutationUnit(baseCfs, key, clusterings);
 
-            //Incase we need a diff partition key
-            queryNeeded = queryNeeded || !clusterings.containsKey(targetDef.name);
 
             //Fetch missing info
             if (queryNeeded)
                 query(key, DeletionInfo.live(), new MutationUnit.Set(mu));
 
             //Build modified RT mutation
-            ByteBuffer targetKey = mu.clusteringValue(targetDef, MutationUnit.earliest);
+            DecoratedKey targetKey = targetPartitionKey(mu, MutationUnit.earliest);
             if (targetKey == null)
                 return null; //Fixme: need a empty mutation type
 
@@ -303,7 +345,7 @@ public class MaterializedView
                         DeletionTime time = row.getDeletion(definition);
                         if (!time.isLive())
                         {
-                            ByteBuffer targetKey = mutationUnit.clusteringValue(targetDef, MutationUnit.earliest);
+                            DecoratedKey targetKey = targetPartitionKey(mutationUnit, MutationUnit.earliest);
                             if (targetKey != null)
                                 mutations.add(createComplexTombstone(mutationUnit, targetKey, upd.maxTimestamp(), definition));
                         }
@@ -377,7 +419,7 @@ public class MaterializedView
             
             for (MutationUnit mutationUnit : mutationUnits)
             {
-                ByteBuffer value = mutationUnit.clusteringValue(targetDef, MutationUnit.earliest);
+                DecoratedKey value = targetPartitionKey(mutationUnit, MutationUnit.earliest);
                 if (value != null)
                 {
                     Mutation mutation = createTombstone(mutationUnit, value, timestamp);
@@ -524,13 +566,12 @@ public class MaterializedView
                                            CFMetaData baseCf)
     {
         Collection<ColumnDefinition> included = new ArrayList<>();
-        for(ColumnIdentifier identifier: definition.included)
+        for(ColumnIdentifier identifier : definition.included)
         {
             ColumnDefinition cfDef = baseCf.getColumnDefinition(identifier);
             assert cfDef != null;
             included.add(cfDef);
         }
-        ColumnDefinition target = baseCf.getColumnDefinition(definition.target);
 
         UUID cfId = Schema.instance.getId(baseCf.ksName, definition.viewName);
         if (cfId != null)
@@ -538,9 +579,18 @@ public class MaterializedView
 
 
         CFMetaData.Builder viewBuilder = CFMetaData.Builder
-                                         .create(baseCf.ksName, definition.viewName)
-                                         .addPartitionKey(target.name, target.type);
+                                         .create(baseCf.ksName, definition.viewName);
 
+        ColumnDefinition nonPkTarget = null;
+
+        for (ColumnIdentifier targetIdentifier : definition.partitionColumns)
+        {
+            ColumnDefinition target = baseCf.getColumnDefinition(targetIdentifier);
+            if (!target.isPartitionKey())
+                nonPkTarget = target;
+
+            viewBuilder.addPartitionKey(target.name, target.type);
+        }
 
         boolean includeAll = included.isEmpty();
 
@@ -552,7 +602,7 @@ public class MaterializedView
 
         for (ColumnDefinition column : baseCf.partitionColumns().regulars.columns)
         {
-            if (column != target && (includeAll || included.contains(column)))
+            if (column != nonPkTarget && (includeAll || included.contains(column)))
             {
                 viewBuilder.addRegularColumn(column.name, column.type);
             }
@@ -560,7 +610,7 @@ public class MaterializedView
 
         for (ColumnDefinition column : baseCf.partitionColumns().statics.columns)
         {
-            if (column != target && (includeAll || included.contains(column)))
+            if (column != nonPkTarget && (includeAll || included.contains(column)))
             {
                 viewBuilder.addStaticColumn(column.name, column.type);
             }

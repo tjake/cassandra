@@ -740,12 +740,15 @@ indexIdent returns [IndexTarget.Raw id]
 createMaterializedViewStatement returns [CreateMaterializedViewStatement expr]
     @init {
         boolean ifNotExists = false;
-        List<ColumnIdentifier.Raw> primaryKeys = new ArrayList<>();
+        List<ColumnIdentifier.Raw> partitionKeys = new ArrayList<>();
+        List<ColumnIdentifier.Raw> compositeKeys = new ArrayList<>();
     }
     : K_CREATE K_MATERIALIZED K_VIEW (K_IF K_NOT K_EXISTS { ifNotExists = true; })? cf=columnFamilyName K_AS
         select=selectStatement
-        K_PRIMARY K_KEY '(' ( key=cident { primaryKeys.add(key); } ) ( ',' key=cident { primaryKeys.add(key); } )* ')'
-        { $expr = new CreateMaterializedViewStatement(cf, select, primaryKeys, ifNotExists); }
+        K_PRIMARY K_KEY (
+        '(' '(' k1=cident { partitionKeys.add(k1); } ( ',' kn=cident { partitionKeys.add(kn); } )* ')' ( ',' c1=cident { compositeKeys.add(c1); } )* ')'
+    |   '(' k1=cident { partitionKeys.add(k1); } ( ',' cn=cident { compositeKeys.add(cn); } )* ')'  
+        ) { $expr = new CreateMaterializedViewStatement(cf, select, partitionKeys, compositeKeys, ifNotExists); }
     ;
 
 /**

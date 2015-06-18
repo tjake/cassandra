@@ -184,7 +184,7 @@ public class MutationUnit
     }
 
     final ColumnFamilyStore baseCfs;
-    private final ByteBuffer partitionKey;
+    private final ByteBuffer basePartitionKey;
     public final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
     private final Map<ColumnIdentifier, Map<CellPath, SortedMap<Long, MUCell>>> columnValues = new HashMap<>();
     public int ttl;
@@ -192,7 +192,7 @@ public class MutationUnit
     MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
     {
         this.baseCfs = baseCfs;
-        this.partitionKey = key;
+        this.basePartitionKey = key;
         this.clusteringColumns = clusteringColumns;
     }
 
@@ -200,7 +200,7 @@ public class MutationUnit
     {
 
         this.baseCfs = baseCfs;
-        this.partitionKey = key;
+        this.basePartitionKey = key;
         clusteringColumns = new HashMap<>();
 
         List<ColumnDefinition> clusteringDefs = baseCfs.metadata.clusteringColumns();
@@ -225,7 +225,7 @@ public class MutationUnit
         MutationUnit that = (MutationUnit) o;
 
         if (!clusteringColumns.equals(that.clusteringColumns)) return false;
-        if (!partitionKey.equals(that.partitionKey)) return false;
+        if (!basePartitionKey.equals(that.basePartitionKey)) return false;
 
         return true;
     }
@@ -233,7 +233,7 @@ public class MutationUnit
     @Override
     public int hashCode()
     {
-        int result = partitionKey.hashCode();
+        int result = basePartitionKey.hashCode();
         result = 31 * result + clusteringColumns.hashCode();
         return result;
     }
@@ -267,11 +267,11 @@ public class MutationUnit
         if (baseDefinition.isPartitionKey())
         {
             if (baseDefinition.isOnAllComponents())
-                return partitionKey;
+                return basePartitionKey;
             else
             {
                 CompositeType keyComparator = (CompositeType) baseCfs.metadata.getKeyValidator();
-                ByteBuffer[] components = keyComparator.split(partitionKey);
+                ByteBuffer[] components = keyComparator.split(basePartitionKey);
                 return components[baseDefinition.position()];
             }
         }

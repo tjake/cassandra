@@ -28,24 +28,27 @@ public class MaterializedViewDefinition
 {
     public String baseCfName;
     public String viewName;
-    public ColumnIdentifier target;
+    public List<ColumnIdentifier> partitionColumns;
     public List<ColumnIdentifier> clusteringColumns;
     public Collection<ColumnIdentifier> included;
 
-    public MaterializedViewDefinition(String baseCfName, String viewName, ColumnIdentifier target, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
+    public MaterializedViewDefinition(String baseCfName, String viewName, List<ColumnIdentifier> partitionColumns, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
     {
-        assert target != null;
+        assert partitionColumns != null && !partitionColumns.isEmpty();
         this.baseCfName = baseCfName;
         this.viewName = viewName;
-        this.target = target;
+        this.partitionColumns = partitionColumns;
         this.clusteringColumns = clusteringColumns;
         this.included = included;
     }
 
     public boolean selects(ColumnIdentifier def)
     {
-        if (target.bytes.compareTo(def.bytes) == 0)
-            return true;
+        for (ColumnIdentifier identifier : partitionColumns)
+        {
+            if (identifier.bytes.compareTo(def.bytes) == 0)
+                return true;
+        }
 
         if (included.isEmpty())
             return true;
@@ -61,9 +64,8 @@ public class MaterializedViewDefinition
 
     public void renameColumn(ColumnIdentifier from, ColumnIdentifier to)
     {
-        if (target == from)
-            target = from;
-        else if (!included.isEmpty())
+
+        if (!included.isEmpty())
         {
             Collection<ColumnIdentifier> columns = new ArrayList<>();
             for (ColumnIdentifier column: included)
@@ -83,20 +85,21 @@ public class MaterializedViewDefinition
         int primaryKeyIndex = clusteringColumns.indexOf(from);
         if (primaryKeyIndex >= 0)
             clusteringColumns.set(primaryKeyIndex, to);
+
+        primaryKeyIndex = partitionColumns.indexOf(from);
+        if (primaryKeyIndex >= 0)
+            partitionColumns.set(primaryKeyIndex, to);
+
+
+
     }
 
     public MaterializedViewDefinition copy()
     {
-        List<ColumnIdentifier> copyClusteringColumns = new ArrayList<>(clusteringColumns.size());
-        for (ColumnIdentifier clustering: this.clusteringColumns)
-        {
-            copyClusteringColumns.add(clustering);
-        }
-        Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included.size());
-        for (ColumnIdentifier include: included)
-        {
-            copyIncluded.add(include);
-        }
-        return new MaterializedViewDefinition(baseCfName, viewName, target, copyClusteringColumns, copyIncluded);
+        List<ColumnIdentifier> copyPartitionColumns = new ArrayList<>(partitionColumns);
+        List<ColumnIdentifier> copyClusteringColumns = new ArrayList<>(clusteringColumns);
+        Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included);
+
+        return new MaterializedViewDefinition(baseCfName, viewName, copyPartitionColumns, copyClusteringColumns, copyIncluded);
     }
 }
