@@ -1526,7 +1526,10 @@ public class StorageProxy implements StorageProxyMBean
             catch (Throwable t)
             {
                 handler.onFailure(FBUtilities.getBroadcastAddress());
-                throw t;
+                if (t instanceof TombstoneOverwhelmingException)
+                    logger.error(t.getMessage());
+                else
+                    throw t;
             }
         }
     }

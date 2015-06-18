@@ -28,6 +28,8 @@ public class CountingRowIterator extends WrappingRowIterator
     {
         super(iter);
         this.counter = counter;
+
+        counter.newPartition(iter.partitionKey(), iter.staticRow());
     }
 
     @Override
@@ -45,5 +47,12 @@ public class CountingRowIterator extends WrappingRowIterator
         Row row = super.next();
         counter.newRow(row);
         return row;
+    }
+
+    @Override
+    public void close()
+    {
+        super.close();
+        counter.endOfPartition();
     }
 }

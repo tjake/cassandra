@@ -246,7 +246,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
                     if (!intersecting.isEmpty())
                     {
                         @SuppressWarnings("resource") // The ScannerList will be in charge of closing (and we close properly on errors)
-                        ISSTableScanner scanner = new LeveledScanner(intersecting, range);
+                        ISSTableScanner scanner = new LeveledScanner(intersecting, range, nowInSec);
                         scanners.add(scanner);
                     }
                 }
@@ -298,7 +298,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
         private ISSTableScanner currentScanner;
         private long positionOffset;
 
-        public LeveledScanner(Collection<SSTableReader> sstables, Range<Token> range)
+        public LeveledScanner(Collection<SSTableReader> sstables, Range<Token> range, int nowInSec)
         {
             this.range = range;
 
@@ -321,7 +321,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
             Collections.sort(this.sstables, SSTableReader.sstableComparator);
             sstableIterator = this.sstables.iterator();
             assert sstableIterator.hasNext(); // caller should check intersecting first
-            currentScanner = sstableIterator.next().getScanner(range, CompactionManager.instance.getRateLimiter(), FBUtilities.nowInSeconds());
+            currentScanner = sstableIterator.next().getScanner(range, CompactionManager.instance.getRateLimiter(), nowInSec);
         }
 
         public static List<SSTableReader> intersecting(Collection<SSTableReader> sstables, Range<Token> range)

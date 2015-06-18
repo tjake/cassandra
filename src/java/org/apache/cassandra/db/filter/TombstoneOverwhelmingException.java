@@ -28,7 +28,7 @@ public class TombstoneOverwhelmingException extends RuntimeException
 {
     public TombstoneOverwhelmingException(int numTombstones, String query, CFMetaData metadata, DecoratedKey lastPartitionKey, ClusteringPrefix lastClustering)
     {
-        super(String.format("Scanned over %d tombstones during query '%s' (last scanned row partion key was (%s))",
+        super(String.format("Scanned over %d tombstones during query '%s' (last scanned row partion key was (%s)); query aborted",
                             numTombstones, query, makePKString(metadata, lastPartitionKey.getKey(), lastClustering)));
     }
 

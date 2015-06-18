@@ -1070,6 +1070,7 @@ public class CassandraServer implements Cassandra.Iface
                     }
                 }
 
+                sortAndMerge(metadata, cells, nowInSec);
                 PartitionUpdate update = UnfilteredRowIterators.toUpdate(LegacyLayout.toUnfilteredRowIterator(metadata, dk, delInfo, cells.iterator(), nowInSec));
 
                 org.apache.cassandra.db.Mutation mutation;

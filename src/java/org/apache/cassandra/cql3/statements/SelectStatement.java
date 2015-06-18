@@ -329,7 +329,12 @@ public class SelectStatement implements CQLStatement
             // so that it's hard to really optimize properly internally. So to keep it simple, we simply query
             // for the first row of the partition and hence uses Slices.ALL. We'll limit it to the first live
             // row however in getLimit().
-            return new SlicePartitionFilter(queriedColumns, Slices.ALL, false);
+            // Also note that we want to fetch the static columns is there is any, for the case where the partition
+            // has only static values set.
+            PartitionColumns columns = queriedColumns.isEmpty()
+                                     ? new PartitionColumns(cfm.partitionColumns().statics, Columns.NONE)
+                                     : queriedColumns;
+            return new SlicePartitionFilter(columns, Slices.ALL, false);
         }
 
         if (restrictions.isColumnRange())

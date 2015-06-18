@@ -321,6 +321,8 @@ public abstract class ReadCommand implements ReadQuery
             private final int failureThreshold = DatabaseDescriptor.getTombstoneFailureThreshold();
             private final int warningThreshold = DatabaseDescriptor.getTombstoneWarnThreshold();
 
+            private final boolean respectTombstoneThresholds = !ReadCommand.this.metadata().ksName.equals(SystemKeyspace.NAME);
+
             private int liveRows = 0;
             private int tombstones = 0;
 
@@ -356,7 +358,7 @@ public abstract class ReadCommand implements ReadQuery
                     private void countTombstone(ClusteringPrefix clustering)
                     {
                         ++tombstones;
-                        if (tombstones > failureThreshold)
+                        if (tombstones > failureThreshold && respectTombstoneThresholds)
                         {
                             String query = ReadCommand.this.toCQLString();
                             Tracing.trace("Scanned over {} tombstones for query {}; query aborted (see tombstone_failure_threshold)", failureThreshold, query);
@@ -380,7 +382,7 @@ public abstract class ReadCommand implements ReadQuery
                     metric.tombstoneScannedHistogram.update(tombstones);
                     metric.liveScannedHistogram.update(liveRows);
 
-                    boolean warnTombstones = tombstones > warningThreshold;
+                    boolean warnTombstones = tombstones > warningThreshold && respectTombstoneThresholds;
                     if (warnTombstones)
                     {
                         String msg = String.format("Read %d live rows and %d tombstone cells for query %1.512s (see tombstone_warn_threshold)", liveRows, tombstones, ReadCommand.this.toCQLString());

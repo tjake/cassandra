@@ -1209,9 +1209,7 @@ public abstract class SSTableReader extends SSTable implements SelfRefCounted<SS
 
         //We need the parent cf metadata
         String cfName = metadata.isSecondaryIndex() ? metadata.getParentColumnFamilyName() : metadata.cfName;
-        CFMetaData liveMetadata = Schema.instance.getCFMetaData(metadata.ksName, cfName);
-        if (cmd.parameters != liveMetadata.compressionParameters)
-            cmd.parameters.setLiveMetadata(liveMetadata);
+        cmd.parameters.setLiveMetadata(Schema.instance.getCFMetaData(metadata.ksName, cfName));
 
         return cmd;
     }

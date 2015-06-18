@@ -28,6 +28,8 @@ public class CountingUnfilteredRowIterator extends WrappingUnfilteredRowIterator
     {
         super(iter);
         this.counter = counter;
+
+        counter.newPartition(iter.partitionKey(), iter.staticRow());
     }
 
     public DataLimits.Counter counter()
@@ -51,5 +53,12 @@ public class CountingUnfilteredRowIterator extends WrappingUnfilteredRowIterator
         if (unfiltered.kind() == Unfiltered.Kind.ROW)
             counter.newRow((Row) unfiltered);
         return unfiltered;
+    }
+
+    @Override
+    public void close()
+    {
+        super.close();
+        counter.endOfPartition();
     }
 }

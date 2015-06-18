@@ -454,17 +454,12 @@ public interface Row extends Unfiltered, Iterable<Cell>, Aliasable<Row>
                 mergeComplex(overrideActive ? maxComplexDeletion : activeDeletion, c);
             }
             writer.endOfRow();
-            if (listener != null)
-                listener.onRowDone();
+            maybeSignalEndOfRow();
 
             // Because shadowed cells are skipped, the row could be empty. In which case
             // we return null.
             Row row = getRow();
-            if (row.isEmpty())
-                return null;
-
-            maybeSignalEndOfRow();
-            return row;
+            return row.isEmpty() ? null : row;
         }
 
         private void maybeSignalListenerForRow()

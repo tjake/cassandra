@@ -50,11 +50,9 @@ public class CountingPartitionIterator extends WrappingPartitionIterator
     }
 
     @Override
-    @SuppressWarnings("resource") // Close through the closing of the returned 'CountingRowIterator' (and counter.newPartition() shouldn't throw)
+    @SuppressWarnings("resource") // Close through the closing of the returned 'CountingRowIterator' (and CountingRowIterator shouldn't throw)
     public RowIterator next()
     {
-        RowIterator iter = super.next();
-        counter.newPartition(iter.partitionKey());
-        return new CountingRowIterator(iter, counter);
+        return new CountingRowIterator(super.next(), counter);
     }
 }

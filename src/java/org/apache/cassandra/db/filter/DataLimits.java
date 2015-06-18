@@ -146,8 +146,9 @@ public abstract class DataLimits
 
     public interface Counter
     {
-        public void newPartition(DecoratedKey partitionKey);
+        public void newPartition(DecoratedKey partitionKey, Row staticRow);
         public void newRow(Row row);
+        public void endOfPartition();
 
         /**
          * The number of results counted.
@@ -282,14 +283,27 @@ public abstract class DataLimits
             protected int rowCounted;
             protected int rowInCurrentPartition;
 
+            protected boolean hasLiveStaticRow;
+
             public CQLCounter(boolean assumeLiveData)
             {
                 this.assumeLiveData = assumeLiveData;
             }
 
-            public void newPartition(DecoratedKey partitionKey)
+            public void newPartition(DecoratedKey partitionKey, Row staticRow)
             {
                 rowInCurrentPartition = 0;
+                if (!staticRow.isEmpty() && (assumeLiveData || staticRow.hasLiveData()))
+                    hasLiveStaticRow = true;
+            }
+
+            public void endOfPartition()
+            {
+                // Normally, we don't count static rows as from a CQL point of view, it will be merge with other
+                // rows in the partition. However, if we only have the static row, it will be returned as one row
+                // so count it.
+                if (hasLiveStaticRow && rowInCurrentPartition == 0)
+                    ++rowCounted;
             }
 
             public int counted()
@@ -385,11 +399,21 @@ public abstract class DataLimits
             }
 
             @Override
-            public void newPartition(DecoratedKey partitionKey)
+            public void newPartition(DecoratedKey partitionKey, Row staticRow)
             {
-                rowInCurrentPartition = partitionKey.getKey().equals(lastReturnedKey)
-                                      ? perPartitionLimit - lastReturnedKeyRemaining
-                                      : 0;
+                if (partitionKey.getKey().equals(lastReturnedKey))
+                {
+                    rowInCurrentPartition = perPartitionLimit - lastReturnedKeyRemaining;
+                    // lastReturnedKey is the last key for which we're returned rows in the first page.
+                    // So, since we know we have returned rows, we know we have accounted for the static row
+                    // if any already, so force hasLiveStaticRow to false so we make sure to not count it
+                    // once more.
+                    hasLiveStaticRow = false;
+                }
+                else
+                {
+                    super.newPartition(partitionKey, staticRow);
+                }
             }
         }
     }
@@ -504,9 +528,15 @@ public abstract class DataLimits
                 this.assumeLiveData = assumeLiveData;
             }
 
-            public void newPartition(DecoratedKey partitionKey)
+            public void newPartition(DecoratedKey partitionKey, Row staticRow)
             {
                 cellsInCurrentPartition = 0;
+                if (!staticRow.isEmpty())
+                    newRow(staticRow);
+            }
+
+            public void endOfPartition()
+            {
                 ++partitionsCounted;
             }
 
@@ -527,9 +557,7 @@ public abstract class DataLimits
 
             public boolean isDoneForPartition()
             {
-                // Note that as we count partition at the beginning while this is called withing a partition, we don't want to
-                // check isDone() as this would make use stop too early.
-                return cellsInCurrentPartition >= cellPerPartitionLimit;
+                return isDone() || cellsInCurrentPartition >= cellPerPartitionLimit;
             }
 
             public void newRow(Row row)

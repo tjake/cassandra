@@ -482,4 +482,24 @@ public class SimpleQueryTest extends CQLTester
         );
         assertEmpty(execute("SELECT DISTINCT s FROM %s WHERE k=?", 2));
     }
+
+    @Test
+    public void testCompactStorageUpdateWithNull() throws Throwable
+    {
+        createTable("CREATE TABLE %s (partitionKey int," +
+                "clustering_1 int," +
+                "value int," +
+                " PRIMARY KEY (partitionKey, clustering_1)) WITH COMPACT STORAGE");
+
+        execute("INSERT INTO %s (partitionKey, clustering_1, value) VALUES (0, 0, 0)");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value) VALUES (0, 1, 1)");
+
+        flush();
+
+        execute("UPDATE %s SET value = ? WHERE partitionKey = ? AND clustering_1 = ?", null, 0, 0);
+
+        assertRows(execute("SELECT * FROM %s WHERE partitionKey = ? AND (clustering_1) IN ((?), (?))", 0, 0, 1),
+            row(0, 1, 1)
+        );
+    }
 }

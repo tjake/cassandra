@@ -47,7 +47,6 @@ public class CountingUnfilteredPartitionIterator extends WrappingUnfilteredParti
     @Override
     public UnfilteredRowIterator computeNext(UnfilteredRowIterator iter)
     {
-        counter.newPartition(iter.partitionKey());
         return new CountingUnfilteredRowIterator(iter, counter);
     }
 }

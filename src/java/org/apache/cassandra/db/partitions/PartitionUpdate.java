@@ -530,7 +530,16 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
         public void endOfRow()
         {
             super.endOfRow();
-            staticRow = build();
+            if (staticRow == null)
+            {
+                staticRow = build();
+            }
+            else
+            {
+                StaticRow.Builder builder = StaticRow.builder(columns.statics, true, createdAtInSec, metadata().isCounter());
+                Rows.merge(staticRow, build(), columns.statics, builder, createdAtInSec);
+                staticRow = builder.build();
+            }
         }
     }
 
