@@ -23,16 +23,23 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 
 /**
- * An iterator over a given partition that includes deletion informations.
- *
- * In practice,
- *
- * Any implementation of UnfilteredRowIterator *must* provide the following guarantees:
- *   1) the returned atoms must be in clustering order, or reverse clustering order
- *      iff isReversedOrder() is true.
- *   2) the iterator should not shadow its own data. That is, no deletion
+ * An iterator over the rows of a given partition that also includes deletion informations.
+ * <p>
+ * An {@code UnfilteredRowIterator} contains a few partition top-level informations and is an
+ * iterator of {@code Unfiltered}, that is of either {@code Row} or {@code RangeTombstoneMarker}.
+ * An implementation of {@code UnfilteredRowIterator} <b>must</b> provide the following
+ * guarantees:
+ *   1. the returned {@code Unfiltered} must be in clustering order, or in reverse clustering
+ *      order iff {@link #isReverseOrder} returns true.
+ *   2. the iterator should not shadow its own data. That is, no deletion
  *      (partition level deletion, row deletion, range tombstone, complex
- *      deletion) should deletion any cell or row returned by this iterator.
+ *      deletion) should delete anything else returned by the iterator (cell, row, ...).
+ *   3. every "start" range tombstone marker should have a corresponding "end" marker, and no other
+ *      marker should be in-between this start-end pair of marker. Note that due to the
+ *      previous rule this means that between a "start" and a corresponding "end" marker there
+ *      can only be rows that are not deleted by the markers. Also note that when iterating
+ *      in reverse order, "end" markers are returned before their "start" counterpart (i.e.
+ *      "start" and "end" are always in the sense of the clustering order).
  *
  * Note further that the objects returned by next() are only valid until the
  * next call to hasNext() or next(). If a consumer wants to keep a reference on

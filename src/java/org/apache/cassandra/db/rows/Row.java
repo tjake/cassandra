@@ -18,11 +18,14 @@
 package org.apache.cassandra.db.rows;
 
 import java.nio.ByteBuffer;
-import java.util.Iterator;
+import java.util.*;
+
+import com.google.common.collect.Iterators;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.utils.MergeIterator;
 import org.apache.cassandra.utils.SearchIterator;
 
 /**
@@ -294,5 +297,305 @@ public interface Row extends Unfiltered, Iterable<Cell>, Aliasable<Row>
          * Should be called to indicates that the row has been fully written.
          */
         public void endOfRow();
+    }
+
+    /**
+     * Utility class to help merging rows from multiple inputs (UnfilteredRowIterators).
+     */
+    public abstract static class Merger
+    {
+        private final CFMetaData metadata;
+        private final int nowInSec;
+        private final UnfilteredRowIterators.MergeListener listener;
+        private final Columns columns;
+
+        private Clustering clustering;
+        private final Row[] rows;
+        private int rowsToMerge;
+
+        private LivenessInfo rowInfo = LivenessInfo.NONE;
+        private DeletionTime rowDeletion = DeletionTime.LIVE;
+
+        private final Cell[] cells;
+        private final List<Iterator<Cell>> complexCells;
+        private final ComplexColumnReducer complexReducer = new ComplexColumnReducer();
+
+        // For the sake of the listener if there is one
+        private final DeletionTime[] complexDelTimes;
+
+        private boolean signaledListenerForRow;
+
+        public static Merger createStatic(CFMetaData metadata, int size, int nowInSec, Columns columns, UnfilteredRowIterators.MergeListener listener)
+        {
+            return new StaticMerger(metadata, size, nowInSec, columns, listener);
+        }
+
+        public static Merger createRegular(CFMetaData metadata, int size, int nowInSec, Columns columns, UnfilteredRowIterators.MergeListener listener)
+        {
+            return new RegularMerger(metadata, size, nowInSec, columns, listener);
+        }
+
+        protected Merger(CFMetaData metadata, int size, int nowInSec, Columns columns, UnfilteredRowIterators.MergeListener listener)
+        {
+            this.metadata = metadata;
+            this.nowInSec = nowInSec;
+            this.listener = listener;
+            this.columns = columns;
+            this.rows = new Row[size];
+            this.complexCells = new ArrayList<>(size);
+
+            this.cells = new Cell[size];
+            this.complexDelTimes = listener == null ? null : new DeletionTime[size];
+        }
+
+        public void clear()
+        {
+            Arrays.fill(rows, null);
+            Arrays.fill(cells, null);
+            if (complexDelTimes != null)
+                Arrays.fill(complexDelTimes, null);
+            complexCells.clear();
+            rowsToMerge = 0;
+
+            rowInfo = LivenessInfo.NONE;
+            rowDeletion = DeletionTime.LIVE;
+
+            signaledListenerForRow = false;
+        }
+
+        public void add(int i, Row row)
+        {
+            clustering = row.clustering();
+            rows[i] = row;
+            ++rowsToMerge;
+        }
+
+        protected abstract Row.Writer getWriter();
+        protected abstract Row getRow();
+
+        public Row merge(DeletionTime activeDeletion)
+        {
+            // If for this clustering we have only one row version and have no activeDeletion (i.e. nothing to filter out),
+            // then we can just return that single row (we also should have no listener)
+            if (rowsToMerge == 1 && activeDeletion.isLive() && listener == null)
+            {
+                for (int i = 0; i < rows.length; i++)
+                    if (rows[i] != null)
+                        return rows[i];
+                throw new AssertionError();
+            }
+
+            Row.Writer writer = getWriter();
+            Rows.writeClustering(clustering, writer);
+
+            long maxLiveTimestamp = LivenessInfo.NO_TIMESTAMP;
+            for (int i = 0; i < rows.length; i++)
+            {
+                if (rows[i] == null)
+                    continue;
+
+                rowInfo = rowInfo.mergeWith(rows[i].primaryKeyLivenessInfo());
+
+                if (rows[i].maxLiveTimestamp() > maxLiveTimestamp)
+                    maxLiveTimestamp = rows[i].maxLiveTimestamp();
+
+                if (rows[i].deletion().supersedes(rowDeletion))
+                    rowDeletion = rows[i].deletion();
+            }
+
+            if (rowDeletion.supersedes(activeDeletion))
+                activeDeletion = rowDeletion;
+
+            if (activeDeletion.deletes(rowInfo))
+                rowInfo = LivenessInfo.NONE;
+
+            if (activeDeletion.deletes(maxLiveTimestamp))
+                maxLiveTimestamp = LivenessInfo.NO_TIMESTAMP;
+
+            writer.writePartitionKeyLivenessInfo(rowInfo);
+            writer.writeRowDeletion(rowDeletion);
+            writer.writeMaxLiveTimestamp(maxLiveTimestamp);
+
+            for (int i = 0; i < columns.simpleColumnCount(); i++)
+            {
+                ColumnDefinition c = columns.getSimple(i);
+                for (int j = 0; j < rows.length; j++)
+                    cells[j] = rows[j] == null ? null : rows[j].getCell(c);
+
+                reconcileCells(activeDeletion, c, writer);
+            }
+
+            complexReducer.activeDeletion = activeDeletion;
+            complexReducer.writer = writer;
+            for (int i = 0; i < columns.complexColumnCount(); i++)
+            {
+                ColumnDefinition c = columns.getComplex(i);
+
+                DeletionTime maxComplexDeletion = DeletionTime.LIVE;
+                for (int j = 0; j < rows.length; j++)
+                {
+                    if (rows[j] == null)
+                        continue;
+
+                    DeletionTime dt = rows[j].getDeletion(c);
+                    if (complexDelTimes != null)
+                        complexDelTimes[j] = dt;
+
+                    if (dt.supersedes(maxComplexDeletion))
+                        maxComplexDeletion = dt;
+                }
+
+                boolean overrideActive = maxComplexDeletion.supersedes(activeDeletion);
+                maxComplexDeletion =  overrideActive ? maxComplexDeletion : DeletionTime.LIVE;
+                writer.writeComplexDeletion(c, maxComplexDeletion);
+                if (listener != null)
+                    listener.onMergedComplexDeletion(c, maxComplexDeletion, complexDelTimes);
+
+                mergeComplex(overrideActive ? maxComplexDeletion : activeDeletion, c);
+            }
+            writer.endOfRow();
+            if (listener != null)
+                listener.onRowDone();
+
+            // Because shadowed cells are skipped, the row could be empty. In which case
+            // we return null.
+            Row row = getRow();
+            if (row.isEmpty())
+                return null;
+
+            maybeSignalEndOfRow();
+            return row;
+        }
+
+        private void maybeSignalListenerForRow()
+        {
+            if (listener != null && !signaledListenerForRow)
+            {
+                listener.onMergingRows(clustering, rowInfo, rowDeletion, rows);
+                signaledListenerForRow = true;
+            }
+        }
+
+        private void maybeSignalListenerForCell(Cell merged, Cell[] versions)
+        {
+            if (listener != null)
+            {
+                maybeSignalListenerForRow();
+                listener.onMergedCells(merged, versions);
+            }
+        }
+
+        private void maybeSignalEndOfRow()
+        {
+            if (listener != null)
+            {
+                // If we haven't signaled the listener yet (we had no cells), do it now
+                maybeSignalListenerForRow();
+                listener.onRowDone();
+            }
+        }
+
+        private void reconcileCells(DeletionTime activeDeletion, ColumnDefinition c, Row.Writer writer)
+        {
+            Cell reconciled = null;
+            for (int j = 0; j < cells.length; j++)
+            {
+                Cell cell = cells[j];
+                if (cell != null && !activeDeletion.deletes(cell.livenessInfo()))
+                    reconciled = Cells.reconcile(reconciled, cell, nowInSec);
+            }
+
+            if (reconciled != null)
+            {
+                reconciled.writeTo(writer);
+                maybeSignalListenerForCell(reconciled, cells);
+            }
+        }
+
+        private void mergeComplex(DeletionTime activeDeletion, ColumnDefinition c)
+        {
+            complexCells.clear();
+            for (int j = 0; j < rows.length; j++)
+            {
+                Row row = rows[j];
+                Iterator<Cell> iter = row == null ? null : row.getCells(c);
+                complexCells.add(iter == null ? Iterators.<Cell>emptyIterator() : iter);
+            }
+
+            complexReducer.column = c;
+            complexReducer.activeDeletion = activeDeletion;
+
+            // Note that we use the mergeIterator only to group cells to merge, but we
+            // write the result to the writer directly in the reducer, so all we care
+            // about is iterating over the result.
+            Iterator<Void> iter = MergeIterator.get(complexCells, c.cellComparator(), complexReducer);
+            while (iter.hasNext())
+                iter.next();
+        }
+
+        private class ComplexColumnReducer extends MergeIterator.Reducer<Cell, Void>
+        {
+            private DeletionTime activeDeletion;
+            private Row.Writer writer;
+            private ColumnDefinition column;
+
+            public void reduce(int idx, Cell current)
+            {
+                cells[idx] = current;
+            }
+
+            protected Void getReduced()
+            {
+                reconcileCells(activeDeletion, column, writer);
+                return null;
+            }
+
+            protected void onKeyChange()
+            {
+                Arrays.fill(cells, null);
+            }
+        }
+
+        private static class StaticMerger extends Merger
+        {
+            private final StaticRow.Builder builder;
+
+            private StaticMerger(CFMetaData metadata, int size, int nowInSec, Columns columns, UnfilteredRowIterators.MergeListener listener)
+            {
+                super(metadata, size, nowInSec, columns, listener);
+                this.builder = StaticRow.builder(columns, true, nowInSec, metadata.isCounter());
+            }
+
+            protected Row.Writer getWriter()
+            {
+                return builder;
+            }
+
+            protected Row getRow()
+            {
+                return builder.build();
+            }
+        }
+
+        private static class RegularMerger extends Merger
+        {
+            private final ReusableRow row;
+
+            private RegularMerger(CFMetaData metadata, int size, int nowInSec, Columns columns, UnfilteredRowIterators.MergeListener listener)
+            {
+                super(metadata, size, nowInSec, columns, listener);
+                this.row = new ReusableRow(metadata.clusteringColumns().size(), columns, true, nowInSec, metadata.isCounter());
+            }
+
+            protected Row.Writer getWriter()
+            {
+                return row.writer();
+            }
+
+            protected Row getRow()
+            {
+                return row;
+            }
+        }
     }
 }

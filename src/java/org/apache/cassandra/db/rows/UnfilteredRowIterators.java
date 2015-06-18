@@ -602,7 +602,7 @@ public abstract class UnfilteredRowIterators
             if (columns.isEmpty())
                 return Rows.EMPTY_STATIC_ROW;
 
-            Rows.Merger merger = Rows.Merger.createStatic(metadata, iterators.size(), nowInSec, columns, listener);
+            Row.Merger merger = Row.Merger.createStatic(metadata, iterators.size(), nowInSec, columns, listener);
             for (int i = 0; i < iterators.size(); i++)
                 merger.add(i, iterators.get(i).staticRow());
 
@@ -679,13 +679,13 @@ public abstract class UnfilteredRowIterators
 
             private final MergedUnfiltered mergedUnfiltered = new MergedUnfiltered();
 
-            private final Rows.Merger rowMerger;
-            private final RangeTombstoneMarkers.Merger markerMerger;
+            private final Row.Merger rowMerger;
+            private final RangeTombstoneMarker.Merger markerMerger;
 
             private MergeReducer(CFMetaData metadata, int size, boolean reversed, int nowInSec)
             {
-                this.rowMerger = Rows.Merger.createRegular(metadata, size, nowInSec, columns().regulars, listener);
-                this.markerMerger = new RangeTombstoneMarkers.Merger(metadata, size, partitionLevelDeletion(), reversed, listener);
+                this.rowMerger = Row.Merger.createRegular(metadata, size, nowInSec, columns().regulars, listener);
+                this.markerMerger = new RangeTombstoneMarker.Merger(metadata, size, partitionLevelDeletion(), reversed, listener);
             }
 
             @Override
