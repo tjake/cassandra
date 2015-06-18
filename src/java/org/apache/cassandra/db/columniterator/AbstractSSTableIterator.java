@@ -115,6 +115,8 @@ abstract class AbstractSSTableIterator implements SliceableUnfilteredRowIterator
                     this.reader = needsReader ? createReader(indexEntry, file, needSeekAtPartitionStart, shouldCloseFile) : null;
                 }
 
+                if (reader == null && shouldCloseFile)
+                    file.close();
             }
             catch (IOException e)
             {

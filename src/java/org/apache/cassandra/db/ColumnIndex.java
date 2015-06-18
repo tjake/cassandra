@@ -137,19 +137,6 @@ public class ColumnIndex
                 // Beginning of an index block. Remember the start and position
                 firstClustering = lastClustering.get().takeAlias();
                 startPosition = currentPosition();
-
-                // A read could start reading at the beginning of any index block, so if we have an
-                // open range tombstone, we need to "repeat" it at the beginning of the block so a
-                // reader that start by this block is aware of that ongoing deletion.
-                // If we do have an open marker, unfiltered can only be either a Clustering, or a close marker.
-                // If it's a close marker, then there is really nothing to do. If it's a clustering, we
-                // close and re-open the current marker.
-                if (openMarker != null && !isMarker)
-                {
-                    UnfilteredSerializer.serializer.serialize(SimpleRangeTombstoneMarker.close(firstClustering, openMarker), header, writer.stream, version);
-                    UnfilteredSerializer.serializer.serialize(SimpleRangeTombstoneMarker.open(firstClustering, openMarker), header, writer.stream, version);
-                    written += 2;
-                }
             }
 
             UnfilteredSerializer.serializer.serialize(unfiltered, header, writer.stream, version);
