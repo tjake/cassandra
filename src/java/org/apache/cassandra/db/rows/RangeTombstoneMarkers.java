@@ -34,6 +34,7 @@ public abstract class RangeTombstoneMarkers
         private final CFMetaData metadata;
         private final UnfilteredRowIterators.MergeListener listener;
         private final DeletionTime partitionDeletion;
+        private final boolean reversed;
 
         private Slice.Bound bound;
         private final RangeTombstoneMarker[] markers;
@@ -49,11 +50,12 @@ public abstract class RangeTombstoneMarkers
         // As reusable marker to return the result
         private final ReusableRangeTombstoneMarker reusableMarker;
 
-        public Merger(CFMetaData metadata, int size, DeletionTime partitionDeletion, UnfilteredRowIterators.MergeListener listener)
+        public Merger(CFMetaData metadata, int size, DeletionTime partitionDeletion, boolean reversed, UnfilteredRowIterators.MergeListener listener)
         {
             this.metadata = metadata;
             this.listener = listener;
             this.partitionDeletion = partitionDeletion;
+            this.reversed = reversed;
 
             this.markers = new RangeTombstoneMarker[size];
             this.openMarkers = new DeletionTimeArray(size);
@@ -73,7 +75,7 @@ public abstract class RangeTombstoneMarkers
 
         public UnfilteredRowIterators.MergedUnfiltered merge(UnfilteredRowIterators.MergedUnfiltered merged)
         {
-            if (bound.kind().isStart())
+            if (bound.kind().isStart() != reversed)
                 return mergeOpenMarkers(merged);
             else
                 return mergeCloseMarkers(merged);

@@ -525,7 +525,7 @@ public abstract class UnfilteredRowIterators
             this.listener = listener;
             this.mergeIterator = MergeIterator.get(iterators,
                                                    reversed ? metadata.comparator.reversed() : metadata.comparator,
-                                                   new MergeReducer(metadata, iterators.size(), nowInSec));
+                                                   new MergeReducer(metadata, iterators.size(), reversed, nowInSec));
         }
 
         private static UnfilteredRowMergeIterator create(List<UnfilteredRowIterator> iterators, MergeListener listener)
@@ -682,10 +682,10 @@ public abstract class UnfilteredRowIterators
             private final Rows.Merger rowMerger;
             private final RangeTombstoneMarkers.Merger markerMerger;
 
-            private MergeReducer(CFMetaData metadata, int size, int nowInSec)
+            private MergeReducer(CFMetaData metadata, int size, boolean reversed, int nowInSec)
             {
                 this.rowMerger = Rows.Merger.createRegular(metadata, size, nowInSec, columns().regulars, listener);
-                this.markerMerger = new RangeTombstoneMarkers.Merger(metadata, size, partitionLevelDeletion(), listener);
+                this.markerMerger = new RangeTombstoneMarkers.Merger(metadata, size, partitionLevelDeletion(), reversed, listener);
             }
 
             @Override
