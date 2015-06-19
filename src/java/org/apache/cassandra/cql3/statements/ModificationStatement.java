@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.Restriction;
@@ -150,6 +151,11 @@ public abstract class ModificationStatement implements CQLStatement
         return cfm.isCounter();
     }
 
+    public boolean isMaterializedView()
+    {
+        return Schema.instance.isMaterializedView(cfm.ksName, cfm.cfName);
+    }
+
     public long getTimestamp(long now, QueryOptions options) throws InvalidRequestException
     {
         return attrs.getTimestamp(now, options);
@@ -187,6 +193,9 @@ public abstract class ModificationStatement implements CQLStatement
 
         if (isCounter() && attrs.isTimeToLiveSet())
             throw new InvalidRequestException("Cannot provide custom TTL for counter updates");
+
+        if (isMaterializedView())
+            throw new InvalidRequestException("Cannot directly modify a materialized view");
     }
 
     public void addOperation(Operation op)

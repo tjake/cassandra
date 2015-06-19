@@ -132,6 +132,11 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
             if (!targetPrimaryKeys.add(identifier))
                 throw new InvalidRequestException("Duplicate entry found in PRIMARY KEY: "+identifier);
 
+            ColumnDefinition cdef = cfm.getColumnDefinition(identifier.prepare(cfm));
+
+            if (cdef == null)
+                throw new InvalidRequestException("Unknown column name detected in CREATE MATERIALIZED VIEW statement : "+identifier);
+
             if (cfm.getColumnDefinition(identifier.prepare(cfm)).type.isMultiCell())
                 throw new InvalidRequestException(String.format("Cannot use MultiCell column '%s' in PRIMARY KEY of materialized view", identifier));
         }

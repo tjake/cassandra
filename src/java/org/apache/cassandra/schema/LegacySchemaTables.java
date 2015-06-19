@@ -1331,6 +1331,7 @@ public class LegacySchemaTables
     {
         RowUpdateBuilder.deleteRow(MaterializedViews, timestamp, mutation, table.cfName, materializedView.viewName);
         RowUpdateBuilder.deleteRow(SystemKeyspace.MaterializedViewsBuilds, timestamp, mutation, materializedView.viewName);
+        RowUpdateBuilder.deleteRow(SystemKeyspace.BuiltIndexes, timestamp, mutation, materializedView.viewName);
     }
 
     /**

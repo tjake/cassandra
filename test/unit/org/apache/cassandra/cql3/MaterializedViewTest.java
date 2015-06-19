@@ -41,12 +41,17 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.SystemKeyspace;
+import org.apache.cassandra.exceptions.AlreadyExistsException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.serializers.SimpleDateSerializer;
 import org.apache.cassandra.serializers.TimeSerializer;
 import org.apache.cassandra.service.EmbeddedCassandraService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
+//FIXME: Need a test for builder that died
+//FIXME: need a test for schema changes on base table && blocking schema changes on MV directly
+//FIXME: test you can't insert directly into a MV
 public class MaterializedViewTest extends CQLTester
 {
     int protocolVersion = 3;
@@ -57,6 +62,36 @@ public class MaterializedViewTest extends CQLTester
         requireNetwork();
     }
 
+
+    @Test
+    public void testAccess() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "k int, " +
+                    "asciival ascii, " +
+                    "bigintval bigint, " +
+                    "PRIMARY KEY((k, asciival)))");
+
+        CFMetaData metadata = currentTableMetadata();
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+
+        executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv1_test AS SELECT * FROM %s PRIMARY KEY (bigintval, k)");
+
+
+        executeNet(protocolVersion, "INSERT INTO %s(k,asciival,bigintval)VALUES(?,?,?)", 0, "foo", 1L);
+        try
+        {
+            executeNet(protocolVersion, "INSERT INTO mv1_test(k,asciival,bigintval)VALUES(?,?,?)", 1, "foo", 2L);
+            Assert.fail("Shouldn't be able to modify a MV directly");
+        }
+        catch (Exception e)
+        {
+
+        }
+    }
 
     @Test
     public void testCountersTable() throws Throwable
@@ -80,6 +115,58 @@ public class MaterializedViewTest extends CQLTester
     }
 
     @Test
+    public void testRangeTombstone() throws Throwable
+    {
+        createTable("CREATE TABLE %s (" +
+                    "k int, " +
+                    "asciival ascii, " +
+                    "bigintval bigint, " +
+                    "textval1 text, " +
+                    "textval2 text, " +
+                    "PRIMARY KEY((k, asciival), bigintval, textval1)" +
+                    ")" );
+
+        execute("USE " + keyspace());
+        executeNet(protocolVersion, "USE " + keyspace());
+
+        executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_test1 AS SELECT * FROM %s PRIMARY KEY ((textval2, k), asciival)");
+
+        for (int i = 0; i < 100; i++)
+            executeNet(protocolVersion, "INSERT into %s (k,asciival,bigintval,textval1,textval2)VALUES(?,?,?,?,?)",0,"foo",(long)i % 2, "bar"+i, "baz");
+
+        Assert.assertEquals(50, execute("select * from %s where k = 0 and asciival = 'foo' and bigintval = 0").size());
+        Assert.assertEquals(50, execute("select * from %s where k = 0 and asciival = 'foo' and bigintval = 1").size());
+
+        Assert.assertEquals(1, execute("select * from mv_test1").size());
+        assertRows(execute("select textval1 from mv_test1 where k = 0 and textval2 = 'baz'"), row("bar99"));
+
+
+        //Check the builder works
+        executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_test2 AS SELECT * FROM %s PRIMARY KEY ((textval2, k), asciival)");
+
+        while (!SystemKeyspace.isIndexBuilt(keyspace(), "mv_test2"))
+            Thread.sleep(1000);
+
+        Assert.assertEquals(1, execute("select * from mv_test2").size());
+        assertRows(execute("select textval1 from mv_test2 where k = 0 and textval2 = 'baz'"), row("bar99"));
+
+        executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_test3 AS SELECT * FROM %s PRIMARY KEY ((textval2, k), bigintval, textval1)");
+
+        while (!SystemKeyspace.isIndexBuilt(keyspace(), "mv_test3"))
+            Thread.sleep(1000);
+
+        Assert.assertEquals(100, execute("select * from mv_test3").size());
+        Assert.assertEquals(100, execute("select asciival from mv_test3 where textval2 = ? and k = ?", "baz", 0).size());
+
+        //Write a RT and verify the data is removed from index
+        executeNet(protocolVersion, "DELETE FROM %s WHERE k = ? AND asciival = ? and bigintval = ?", 0, "foo", 0L);
+
+        Assert.assertEquals(50, execute("select asciival from mv_test3 where textval2 = ? and k = ?", "baz", 0).size());
+    }
+
+
+
+    @Test
     public void testCompoundPartitionKey() throws Throwable
     {
         createTable("CREATE TABLE %s (" +
@@ -97,7 +184,7 @@ public class MaterializedViewTest extends CQLTester
         {
             try
             {
-                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv1_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", k)");
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv1_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", k)");
 
                 if (def.type.isMultiCell())
                     Assert.fail("MV on a multicell should fail " + def);
@@ -111,7 +198,7 @@ public class MaterializedViewTest extends CQLTester
 
             try
             {
-                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv2_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", asciival)");
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv2_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+", asciival)");
 
                 if (def.type.isMultiCell())
                     Assert.fail("MV on a multicell should fail " + def);
@@ -124,7 +211,7 @@ public class MaterializedViewTest extends CQLTester
 
             try
             {
-                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv3_"+def.name+" AS SELECT * FROM %s PRIMARY KEY (("+def.name+", k), asciival)");
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv3_"+def.name+" AS SELECT * FROM %s PRIMARY KEY (("+def.name+", k), asciival)");
 
                 if (def.type.isMultiCell())
                     Assert.fail("MV on a multicell should fail " + def);
@@ -134,6 +221,29 @@ public class MaterializedViewTest extends CQLTester
                 if (!def.type.isMultiCell() && !def.isPartitionKey())
                     Assert.fail("MV creation failed on "+def);
             }
+
+
+            try
+            {
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv3_"+def.name+" AS SELECT * FROM %s PRIMARY KEY (("+def.name+", k), asciival)");
+
+                Assert.fail("Should fail on duplicate name");
+            }
+            catch (Exception e)
+            {
+
+            }
+
+            try
+            {
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv4_"+def.name+" AS SELECT * FROM %s PRIMARY KEY (("+def.name+", k), asciivalNDJNDJD)");
+                Assert.fail("Should fail with unknown base column");
+            }
+            catch (InvalidQueryException e)
+            {
+
+            }
+
         }
 
         executeNet(protocolVersion, "INSERT INTO %s (k, asciival, bigintval) VALUES (?, ?, fromJson(?))", 0, "ascii text", "123123123123");
@@ -162,8 +272,8 @@ public class MaterializedViewTest extends CQLTester
         assertRows(execute("SELECT asciival from mv3_bigintval where bigintval = ? AND k = ?", 1L, 0), row("ascii text"));
 
 
-        //test truncate
-        execute("TRUNCATE %s");
+        //test truncate also truncates all MV
+        executeNet(protocolVersion, "TRUNCATE %s");
 
         assertRows(execute("SELECT bigintval FROM %s WHERE k = ? and asciival = ?", 0, "ascii text"));
         assertRows(execute("SELECT k, bigintval from mv1_asciival WHERE asciival = ?", "ascii text"));
@@ -216,7 +326,7 @@ public class MaterializedViewTest extends CQLTester
         {
             try
             {
-                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW "+keyspace()+".mv_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+",k)");
+                executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_"+def.name+" AS SELECT * FROM %s PRIMARY KEY ("+def.name+",k)");
 
                 if (def.type.isMultiCell())
                     Assert.fail("MV on a multicell should fail " + def);
@@ -680,5 +790,11 @@ public class MaterializedViewTest extends CQLTester
         assertRows(execute("SELECT k, textval FROM mv_udtval WHERE udtval = fromJson(?)", "{\"a\": 1, \"b\": \"6bddc89a-5644-11e4-97fc-56847afe9799\"}"),
                    row(0, "abcd"));
         
+
+        // test drop also drops mv
+        executeNet(protocolVersion, "DROP TABLE %s");
+
+        Assert.assertNull(Schema.instance.getCFMetaData(keyspace(), currentTable()));
+        Assert.assertNull(Schema.instance.getCFMetaData(keyspace(), "mv_udtval"));
     }
 }

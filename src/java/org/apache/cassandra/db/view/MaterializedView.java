@@ -254,67 +254,6 @@ public class MaterializedView
         return builder.build();
     }
 
-    private Mutation getCollectionRangeTombstone(ByteBuffer key, RangeTombstone tombstone, ConsistencyLevel cl)
-    {
-        CFMetaData metadata = baseCfs.metadata;
-        int clusteringSize = metadata.clusteringColumns().size();
-
-        Slice tombSlice = tombstone.deletedSlice();
-
-        //In the case of a tombstoned collection we have a shortcut.
-        //Since collections can't be part of clustering we can simply tombstone the whole thing
-        if (tombSlice.start().size() > clusteringSize && tombSlice.end().size() > clusteringSize &&
-            ByteBufferUtil.compareUnsigned(tombSlice.start().get(clusteringSize),
-                                           tombSlice.end().get(clusteringSize)) == 0)
-        {
-            ColumnDefinition collectionDef = metadata.getColumnDefinition(tombstone.deletedSlice().start().get(clusteringSize));
-
-            if (collectionDef == null || !collectionDef.type.isCollection())
-                return null;
-
-            Map<ColumnIdentifier, ByteBuffer> clusterings = new HashMap<>(clusteringSize);
-            for (int i = 0; i < clusteringSize; i++)
-            {
-                //we can't handle RT across clustering keys
-                assert ByteBufferUtil.compareUnsigned(tombSlice.start().get(i), tombSlice.end().get(i)) == 0;
-
-                ColumnDefinition cdef = metadata.clusteringColumns().get(i);
-                clusterings.put(cdef.name, tombSlice.start().get(i));
-            }
-
-
-            boolean queryNeeded = false;
-            for (ColumnDefinition definition : Iterables.concat(viewCfs.metadata.clusteringColumns(), viewCfs.metadata.partitionKeyColumns()))
-            {
-                if (baseCfs.metadata.getColumnDefinition(definition.name).isPartitionKey())
-                    continue;
-
-                queryNeeded = queryNeeded || !clusterings.containsKey(definition.name);
-            }
-
-            MutationUnit mu = new MutationUnit(baseCfs, key, clusterings);
-
-
-            //Fetch missing info
-            if (queryNeeded)
-                query(key, DeletionInfo.live(), new MutationUnit.Set(mu));
-
-            //Build modified RT mutation
-            DecoratedKey targetKey = targetPartitionKey(mu, MutationUnit.earliest);
-            if (targetKey == null)
-                return null; //Fixme: need a empty mutation type
-
-            RowUpdateBuilder builder = new RowUpdateBuilder(viewCfs.metadata, tombstone.deletionTime().localDeletionTime(), tombstone.deletionTime().markedForDeleteAt(), targetKey);
-            Clustering clustering = mu.viewClustering(viewCfs.getComparator(), viewCfs.metadata.clusteringColumns(), MutationUnit.earliest);
-
-            builder.addRangeTombstone(Slice.make(viewCfs.getComparator(), clustering, clustering));
-
-            return builder.build();
-        }
-
-        return null;
-    }
-
 
     private Collection<Mutation> createForDeletionInfo(MutationUnit.Set mutationUnits, ByteBuffer key, AbstractPartitionData upd, ConsistencyLevel consistency)
     {
@@ -334,7 +273,7 @@ public class MaterializedView
                 if (!row.hasComplexDeletion())
                     continue;
 
-                MutationUnit mutationUnit = mutationUnits.getUnit(key, row.clustering());
+                MutationUnit mutationUnit = mutationUnits.getExistingUnit(key, row);
 
                 assert mutationUnit != null;
 
@@ -370,16 +309,8 @@ public class MaterializedView
                 {
                     RangeTombstone tombstone = tombstones.next();
 
-                    Mutation m = getCollectionRangeTombstone(key, tombstone, consistency);
-                    if (m != null)
-                    {
-                        mutations.add(m);
-                    }
-                    else
-                    {
-                        builder.addSlice(tombstone.deletedSlice());
-                        timestamp = Math.max(timestamp, tombstone.deletionTime().markedForDeleteAt());
-                    }
+                    builder.addSlice(tombstone.deletedSlice());
+                    timestamp = Math.max(timestamp, tombstone.deletionTime().markedForDeleteAt());
                 }
 
                 if (!mutations.isEmpty())
@@ -408,10 +339,7 @@ public class MaterializedView
                         while (rowIterator.hasNext())
                         {
                             Row row = rowIterator.next();
-                            Iterator<Cell> cellIterator = row.iterator();
-
-                            while (cellIterator.hasNext())
-                                mutationUnits.addUnit(key, row.clustering(), cellIterator.next(), false);
+                            mutationUnits.addUnit(key, row, false);
                         }
                     }
                 }
@@ -452,15 +380,7 @@ public class MaterializedView
 
                     while (rows.hasNext())
                     {
-                        Row row = rows.next();
-
-                        for (Cell cell : row)
-                        {
-                            if (deletionInfo.isDeleted(row.clustering(), cell))
-                                continue;
-
-                            mutationUnits.addUnit(key, row.clustering(), cell, false);
-                        }
+                        mutationUnits.addUnit(key, rows.next(), false);
                     }
                 }
             }
@@ -475,21 +395,7 @@ public class MaterializedView
         Iterator<Row> rows = upd.iterator();
         while (rows.hasNext())
         {
-            Row row = rows.next();
-
-            boolean rowAdded = false;
-
-            Iterator<Cell> cells = row.iterator();
-            while (cells.hasNext())
-            {
-                Cell cell = cells.next();
-                mutationUnits.addUnit(key, row.clustering(), cell, true);
-                rowAdded = true;
-            }
-
-            //Always add a mutation unit since it may be a tombstone
-            if (!rowAdded)
-                mutationUnits.addUnit(key, row.clustering(), null, true);
+            mutationUnits.addUnit(key, rows.next(), true);
         }
 
         return mutationUnits;
@@ -613,6 +519,16 @@ public class MaterializedView
             if (column != nonPkTarget && (includeAll || included.contains(column)))
             {
                 viewBuilder.addStaticColumn(column.name, column.type);
+            }
+        }
+
+        //Add any extra clustering columns
+        for (ColumnDefinition column : Iterables.concat(baseCf.partitionKeyColumns(), baseCf.clusteringColumns()))
+        {
+            if ( (!definition.partitionColumns.contains(column.name) && !definition.clusteringColumns.contains(column.name)) &&
+                 (includeAll || included.contains(column)) )
+            {
+                viewBuilder.addRegularColumn(column.name, column.type);
             }
         }
 

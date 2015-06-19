@@ -156,8 +156,13 @@ public class MutationUnit
         public final boolean isNew;
         private MUCell(Cell cell, boolean isNew)
         {
-            this.value = cell.value();
-            this.liveness = cell.livenessInfo();
+            this(cell.value(), cell.livenessInfo(), isNew);
+        }
+
+        private MUCell(ByteBuffer value, LivenessInfo liveness, boolean isNew)
+        {
+            this.value = value;
+            this.liveness = liveness;
             this.isNew = isNew;
         }
 
@@ -196,9 +201,8 @@ public class MutationUnit
         this.clusteringColumns = clusteringColumns;
     }
 
-    MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Row row)
+    MutationUnit(ColumnFamilyStore baseCfs, ByteBuffer key, Row row, boolean isNew)
     {
-
         this.baseCfs = baseCfs;
         this.basePartitionKey = key;
         clusteringColumns = new HashMap<>();
@@ -206,13 +210,10 @@ public class MutationUnit
         List<ColumnDefinition> clusteringDefs = baseCfs.metadata.clusteringColumns();
         for (int i = 0; i < clusteringDefs.size(); i++)
         {
-            clusteringColumns.put(clusteringDefs.get(i).name, row.clustering().get(i));
-        }
+            ColumnDefinition cdef = clusteringDefs.get(i);
+            clusteringColumns.put(cdef.name, row.clustering().get(i));
 
-        Iterator<Cell> cellIterator = row.iterator();
-        while (cellIterator.hasNext())
-        {
-            addColumnValue(cellIterator.next(), true);
+            addColumnValue(cdef.name, null, row.primaryKeyLivenessInfo(), row.clustering().get(i), isNew);
         }
     }
 
@@ -238,23 +239,25 @@ public class MutationUnit
         return result;
     }
 
-    public void addColumnValue(Cell cell, boolean isNew)
+    public void addColumnValue(ColumnIdentifier identifier, CellPath cellPath, LivenessInfo liveness, ByteBuffer value,  boolean isNew)
     {
-        ColumnIdentifier identifier = cell.column().name;
-
         if (!columnValues.containsKey(identifier))
             columnValues.put(identifier, new HashMap<>());
 
         Map<CellPath, SortedMap<Long, MUCell>> innerMap = columnValues.get(identifier);
 
-        CellPath path = cell.path();
-        if (!innerMap.containsKey(path))
-            innerMap.put(path, new TreeMap<>());
+        if (!innerMap.containsKey(cellPath))
+            innerMap.put(cellPath, new TreeMap<>());
 
-        if (cell.isExpiring())
-            ttl = Math.max(cell.livenessInfo().ttl(), ttl);
+        if (liveness.hasTTL())
+            ttl = Math.max(liveness.ttl(), ttl);
 
-        innerMap.get(path).put(cell.livenessInfo().timestamp(), new MUCell(cell, isNew));
+        innerMap.get(cellPath).put(liveness.timestamp(), new MUCell(value, liveness, isNew));
+    }
+
+    public void addColumnValue(Cell cell, boolean isNew)
+    {
+        addColumnValue(cell.column().name, cell.path(), cell.livenessInfo(), cell.value(), isNew);
     }
 
     // The Definition here is actually the *base table* definition
@@ -293,7 +296,10 @@ public class MutationUnit
     {
         Map<CellPath, SortedMap<Long, MUCell>> innerMap = columnValues.get(definition.name);
         if (innerMap == null)
+        {
+
             return Collections.emptyList();
+        }
 
         Collection<Cell> value = new ArrayList<>();
         for (Map.Entry<CellPath, SortedMap<Long, MUCell>> pathAndCells : innerMap.entrySet())
@@ -415,39 +421,36 @@ public class MutationUnit
             return mutationUnits.values().iterator();
         }
 
-        public MutationUnit getUnit(ByteBuffer key, Clustering clustering)
+        public MutationUnit getExistingUnit(ByteBuffer key, Row row)
         {
-            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-            for (int i = 0; i < baseCfs.metadata.clusteringColumns().size(); i++)
-            {
-                clusteringColumns.put(baseCfs.metadata.clusteringColumns().get(i).name, clustering.get(i));
-            }
-
-            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, row, false);
 
             return mutationUnits.get(mutationUnit);
         }
 
-        public void addUnit(ByteBuffer key, Clustering clustering, Cell cell, boolean isNew)
+        private MutationUnit getInternedUnit(ByteBuffer key, Row row, boolean isNew)
         {
-            Map<ColumnIdentifier, ByteBuffer> clusteringColumns = new HashMap<>();
-            for (int i = 0; i < baseCfs.metadata.clusteringColumns().size(); i++)
-            {
-                clusteringColumns.put(baseCfs.metadata.clusteringColumns().get(i).name, clustering.get(i));
-            }
+            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, row, isNew);
 
-            MutationUnit mutationUnit = new MutationUnit(baseCfs, key, clusteringColumns);
-            if (mutationUnits.containsKey(mutationUnit))
+            MutationUnit existingUnit = mutationUnits.get(mutationUnit);
+            if (existingUnit == null)
             {
-                mutationUnit = mutationUnits.get(mutationUnit);
-            }
-            else
-            {
+                existingUnit = mutationUnit;
                 mutationUnits.put(mutationUnit, mutationUnit);
             }
 
-            if (cell != null)
-                mutationUnit.addColumnValue(cell, isNew);
+            return existingUnit;
+        }
+
+        public void addUnit(ByteBuffer key, Row row, boolean isNew)
+        {
+            MutationUnit mutationUnit = getInternedUnit(key, row, isNew);
+
+            Iterator<Cell> cellIterator = row.iterator();
+            while (cellIterator.hasNext())
+            {
+                mutationUnit.addColumnValue(cellIterator.next(), isNew);
+            }
         }
 
         public int size()
