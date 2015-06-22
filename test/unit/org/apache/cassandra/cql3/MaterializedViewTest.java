@@ -134,9 +134,7 @@ public class MaterializedViewTest extends CQLTester
         Assert.assertEquals(50, execute("select * from %s where k = 0 and asciival = 'foo' and bigintval = 0").size());
         Assert.assertEquals(50, execute("select * from %s where k = 0 and asciival = 'foo' and bigintval = 1").size());
 
-        Assert.assertEquals(1, execute("select * from mv_test1").size());
-        assertRows(execute("select textval1 from mv_test1 where k = 0 and textval2 = 'baz'"), row("bar99"));
-
+        Assert.assertEquals(100, execute("select * from mv_test1").size());
 
         //Check the builder works
         executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_test2 AS SELECT * FROM %s PRIMARY KEY ((textval2, k), asciival)");
@@ -144,8 +142,7 @@ public class MaterializedViewTest extends CQLTester
         while (!SystemKeyspace.isIndexBuilt(keyspace(), "mv_test2"))
             Thread.sleep(1000);
 
-        Assert.assertEquals(1, execute("select * from mv_test2").size());
-        assertRows(execute("select textval1 from mv_test2 where k = 0 and textval2 = 'baz'"), row("bar99"));
+        Assert.assertEquals(100, execute("select * from mv_test2").size());
 
         executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv_test3 AS SELECT * FROM %s PRIMARY KEY ((textval2, k), bigintval, textval1)");
 
