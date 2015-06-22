@@ -179,8 +179,22 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
             targetClusteringColumns.add(identifier);
         }
 
+        for (ColumnDefinition def: cfm.allColumns())
+        {
+            if (!def.isPrimaryKeyColumn()) continue;
+
+            ColumnIdentifier identifier = def.name;
+            if (!targetClusteringColumns.contains(identifier) && !targetPartitionKeys.contains(identifier))
+            {
+                targetClusteringColumns.add(identifier);
+            }
+        }
+
         if (targetPartitionKeys.isEmpty())
             throw new InvalidRequestException("Must select at least a column for a Materialized View");
+
+        if (targetClusteringColumns.isEmpty())
+            throw new InvalidRequestException("No columns are defined for Materialized View other than primary key");
 
         MaterializedViewDefinition definition = new MaterializedViewDefinition(base.getColumnFamily(), columnFamily(), targetPartitionKeys, targetClusteringColumns, included);
 
