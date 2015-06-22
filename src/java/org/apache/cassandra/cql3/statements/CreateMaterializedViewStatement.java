@@ -203,6 +203,7 @@ public class CreateMaterializedViewStatement extends SchemaAlteringStatement
 
         CFMetaData newCfm = cfm.copy();
         newCfm.addMaterializedView(definition);
+
         MigrationManager.announceColumnFamilyUpdate(newCfm, false, isLocalOnly);
 
         return true;

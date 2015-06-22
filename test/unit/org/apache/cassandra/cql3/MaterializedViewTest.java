@@ -72,16 +72,13 @@ public class MaterializedViewTest extends CQLTester
                     "bigintval bigint, " +
                     "PRIMARY KEY((k, asciival)))");
 
-        CFMetaData metadata = currentTableMetadata();
-
         execute("USE " + keyspace());
         executeNet(protocolVersion, "USE " + keyspace());
 
 
         executeNet(protocolVersion, "CREATE MATERIALIZED VIEW mv1_test AS SELECT * FROM %s PRIMARY KEY (bigintval, k)");
-
-
         executeNet(protocolVersion, "INSERT INTO %s(k,asciival,bigintval)VALUES(?,?,?)", 0, "foo", 1L);
+        
         try
         {
             executeNet(protocolVersion, "INSERT INTO mv1_test(k,asciival,bigintval)VALUES(?,?,?)", 1, "foo", 2L);

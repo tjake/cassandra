@@ -496,6 +496,9 @@ public class Schema
         assert cfm != null;
         boolean columnsDidChange = cfm.reload();
 
+        for (MaterializedViewDefinition definition : cfm.getMaterializedViews().values())
+            materializedViewList.add(Pair.create(cfm.ksName, definition.viewName));
+
         Keyspace keyspace = Keyspace.open(cfm.ksName);
         keyspace.getColumnFamilyStore(cfm.cfName).reload();
         MigrationManager.instance.notifyUpdateColumnFamily(cfm, columnsDidChange);
