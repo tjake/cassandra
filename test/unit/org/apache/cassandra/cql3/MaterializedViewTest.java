@@ -51,7 +51,6 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 //FIXME: Need a test for builder that died
 //FIXME: need a test for schema changes on base table && blocking schema changes on MV directly
-//FIXME: test you can't insert directly into a MV
 public class MaterializedViewTest extends CQLTester
 {
     int protocolVersion = 3;
@@ -88,6 +87,21 @@ public class MaterializedViewTest extends CQLTester
         {
 
         }
+
+
+        try
+        {
+            executeNet(protocolVersion, "ALTER TABLE mv1_test ADD foo text");
+            Assert.fail("Should not be able to alter MV directly");
+        }
+        catch (Exception e)
+        {
+
+        }
+
+        executeNet(protocolVersion, "ALTER TABLE mv1_test WITH compaction = { 'class' : 'LeveledCompactionStrategy' }");
+
+
     }
 
     @Test

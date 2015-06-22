@@ -26,6 +26,7 @@ import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.db.marshal.*;
@@ -79,6 +80,10 @@ public class AlterTableStatement extends SchemaAlteringStatement
 
     public boolean announceMigration(boolean isLocalOnly) throws RequestValidationException
     {
+        if (oType != Type.OPTS && Schema.instance.isMaterializedView(keyspace(), columnFamily()))
+            throw new InvalidRequestException("Materialized views can not be directly altered, except for table options");
+
+
         CFMetaData meta = validateColumnFamily(keyspace(), columnFamily());
         CFMetaData cfm = meta.copy();
 
