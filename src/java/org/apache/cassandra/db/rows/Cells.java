@@ -73,11 +73,11 @@ public abstract class Cells
             if (merged.livenessInfo().supersedes(cell.livenessInfo()))
                 return merged;
 
-            // Reconciliation never return something with a timestamp strictly lower than its operand. This
-            // means we're in the case where merged.timestamp() == cell.timestamp(). As 1) tombstones win
-            // over counters when timestamps are equal and 2) merged is a counter, it follows that cell
-            // can't a tombstone or merge would be one too.
-            assert !cell.isCounterCell();
+            // Reconciliation never returns something with a timestamp strictly lower than its operand. This
+            // means we're in the case where merged.timestamp() == cell.timestamp(). As 1) tombstones
+            // always win over counters (CASSANDRA-7346) and 2) merged is a counter, it follows that cell
+            // can't be a tombstone or merged would be one too.
+            assert !cell.isTombstone();
 
             CounterContext.Relationship rel = CounterContext.instance().diff(merged.value(), cell.value());
             return (rel == CounterContext.Relationship.GREATER_THAN || rel == CounterContext.Relationship.DISJOINT) ? merged : null;
