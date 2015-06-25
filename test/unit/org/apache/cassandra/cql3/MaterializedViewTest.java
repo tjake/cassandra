@@ -50,7 +50,6 @@ import org.apache.cassandra.service.EmbeddedCassandraService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 //FIXME: Need a test for builder that died
-//FIXME: need a test for schema changes on base table && blocking schema changes on MV directly
 public class MaterializedViewTest extends CQLTester
 {
     int protocolVersion = 3;
@@ -63,7 +62,7 @@ public class MaterializedViewTest extends CQLTester
 
 
     @Test
-    public void testAccess() throws Throwable
+    public void testAccessAndSchema() throws Throwable
     {
         createTable("CREATE TABLE %s (" +
                     "k int, " +
@@ -100,6 +99,39 @@ public class MaterializedViewTest extends CQLTester
         }
 
         executeNet(protocolVersion, "ALTER TABLE mv1_test WITH compaction = { 'class' : 'LeveledCompactionStrategy' }");
+
+
+        //Test alter add
+        executeNet(protocolVersion, "ALTER TABLE %s ADD foo text");
+        CFMetaData metadata = Schema.instance.getCFMetaData(keyspace(), "mv1_test");
+        Assert.assertNotNull(metadata.getColumnDefinition(ByteBufferUtil.bytes("foo")));
+
+        executeNet(protocolVersion, "INSERT INTO %s(k,asciival,bigintval,foo)VALUES(?,?,?,?)", 0, "foo", 1L, "bar");
+
+        assertRows(execute("SELECT foo from %s"), row("bar"));
+
+        //test alter drop
+        executeNet(protocolVersion, "ALTER TABLE %s DROP foo");
+        metadata = Schema.instance.getCFMetaData(keyspace(), "mv1_test");
+        Assert.assertNull(metadata.getColumnDefinition(ByteBufferUtil.bytes("foo")));
+
+        try
+        {
+            execute("SELECT foo from %s");
+            Assert.fail("Should fail.");
+        }
+        catch (Exception e)
+        {
+
+        }
+
+
+        //Test alter rename
+        executeNet(protocolVersion, "ALTER TABLE %s RENAME asciival TO bar");
+
+        assertRows(execute("SELECT bar from %s"), row("foo"));
+         metadata = Schema.instance.getCFMetaData(keyspace(), "mv1_test");
+        Assert.assertNotNull(metadata.getColumnDefinition(ByteBufferUtil.bytes("bar")));
 
 
     }
