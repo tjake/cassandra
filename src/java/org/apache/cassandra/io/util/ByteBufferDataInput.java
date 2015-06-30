@@ -130,11 +130,13 @@ public class ByteBufferDataInput extends AbstractDataInput implements FileDataIn
         bytes.position(buffer.position() + position).limit(buffer.position() + position + length);
         position += length;
 
+
+        return bytes;
         // we have to copy the data in case we unreference the underlying sstable.  See CASSANDRA-3179
-        ByteBuffer clone = ByteBuffer.allocate(bytes.remaining());
+        /*ByteBuffer clone = ByteBuffer.allocate(bytes.remaining());
         clone.put(bytes);
         clone.flip();
-        return clone;
+        return clone; */
     }
 
     @Override
