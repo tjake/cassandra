@@ -25,6 +25,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.CQLTester;
 import org.apache.cassandra.dht.ByteOrderedPartitioner;
+import org.apache.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.transport.Message;
 import org.apache.cassandra.transport.Server;
 import org.apache.cassandra.transport.SimpleClient;
@@ -38,7 +39,7 @@ public class ClientWarningsTest extends CQLTester
     @BeforeClass
     public static void setUp()
     {
-        DatabaseDescriptor.setPartitioner(ByteOrderedPartitioner.instance);
+        StorageService.instance.setPartitionerUnsafe(Murmur3Partitioner.instance);
 
         requireNetwork();
         DatabaseDescriptor.setBatchSizeWarnThresholdInKB(1);
@@ -61,6 +62,22 @@ public class ClientWarningsTest extends CQLTester
             resp = client.execute(query);
             assertEquals(2, resp.getWarnings().size());
 
+        }
+    }
+
+    @Test
+    public void testMultiPartitionQueryV4() throws Exception
+    {
+
+        createTable("CREATE TABLE %s (pk int PRIMARY KEY, v text)");
+
+        try (SimpleClient client = new SimpleClient(nativeAddr.getHostAddress(), nativePort, Server.VERSION_4))
+        {
+            client.connect(false);
+
+            QueryMessage query = new QueryMessage(String.format("Select * from %s.%s where pk in (1,2,3,4,5)", KEYSPACE, currentTable()), QueryOptions.DEFAULT);
+            Message.Response resp = client.execute(query);
+            assertEquals(1, resp.getWarnings().size());
         }
     }
 

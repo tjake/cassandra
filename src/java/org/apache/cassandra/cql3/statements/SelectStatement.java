@@ -19,15 +19,21 @@ package org.apache.cassandra.cql3.statements;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Objects;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.helpers.MessageFormatter;
+
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.StatementRestrictions;
@@ -44,6 +50,7 @@ import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.service.ClientState;
+import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.pager.Pageable;
@@ -53,6 +60,7 @@ import org.apache.cassandra.thrift.ThriftValidation;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.NoSpamLogger;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkNotNull;
@@ -72,6 +80,8 @@ import static org.apache.cassandra.utils.ByteBufferUtil.UNSET_BYTE_BUFFER;
 public class SelectStatement implements CQLStatement
 {
     private static final int DEFAULT_COUNT_PAGE_SIZE = 10000;
+    private static final Logger logger = LoggerFactory.getLogger(SelectStatement.class);
+    private static final String MultiKeyWarning = "Query covering {} partitions detected against table {}.{}. You should use client side asynchronous queries per-partition.";
 
     private final int boundTerms;
     public final CFMetaData cfm;
@@ -335,6 +345,15 @@ public class SelectStatement implements CQLStatement
         IDiskAtomFilter filter = makeFilter(options, limit);
         if (filter == null)
             return null;
+
+
+        if (!DatabaseDescriptor.getPartitioner().preservesOrder() && keys.size() > 1)
+        {
+            String warning = MessageFormatter.arrayFormat(MultiKeyWarning, new Object[]{ keys.size(), keyspace(), columnFamily() }).getMessage();
+            NoSpamLogger.getLogger(logger, 1, TimeUnit.MINUTES).warn(warning);
+            ClientWarn.warn(warning);
+        }
+
 
         // Note that we use the total limit for every key, which is potentially inefficient.
         // However, IN + LIMIT is not a very sensible choice.
