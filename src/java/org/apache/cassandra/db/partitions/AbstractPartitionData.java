@@ -364,6 +364,16 @@ public abstract class AbstractPartitionData implements Partition, Iterable<Row>
     }
 
     /**
+     * The maximum timestamp in this partition.
+     *
+     * @return the maximum timestamp in this partition.
+     */
+    public long maxTimestamp()
+    {
+        return maxTimestamp;
+    }
+
+    /**
      * An iterator over the rows of this partition that reuse the same row object.
      */
     private abstract class RowIterator extends UnmodifiableIterator<Row>

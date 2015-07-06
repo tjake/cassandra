@@ -369,16 +369,6 @@ public class PartitionUpdate extends AbstractPartitionData implements Sorting.So
     }
 
     /**
-     * The maximum timestamp used in this update.
-     *
-     * @return the maximum timestamp used in this update.
-     */
-    public long maxTimestamp()
-    {
-        return maxTimestamp;
-    }
-
-    /**
      * For an update on a counter table, returns a list containing a {@code CounterMark} for
      * every counter contained in the update.
      *

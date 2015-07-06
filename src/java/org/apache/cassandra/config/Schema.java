@@ -66,6 +66,8 @@ public class Schema
     /* metadata map for faster ColumnFamily lookup */
     private final ConcurrentBiMap<Pair<String, String>, UUID> cfIdMap = new ConcurrentBiMap<>();
 
+    private final Set<Pair<String,String>> materializedViewList = Sets.newConcurrentHashSet();
+
     private volatile UUID version;
 
     // 59adb24e-f3cd-3e02-97f0-5b395827453f
@@ -342,6 +344,9 @@ public class Schema
 
         logger.debug("Adding {} to cfIdMap", cfm);
         cfIdMap.put(key, cfm.cfId);
+
+        for (MaterializedViewDefinition definition : cfm.getMaterializedViews().values())
+            materializedViewList.add(Pair.create(cfm.ksName, definition.viewName));
     }
 
     /**
@@ -351,6 +356,9 @@ public class Schema
      */
     public void purge(CFMetaData cfm)
     {
+        for (MaterializedViewDefinition definition : cfm.getMaterializedViews().values())
+            materializedViewList.remove(Pair.create(cfm.ksName, definition.viewName));
+
         cfIdMap.remove(Pair.create(cfm.ksName, cfm.cfName));
         cfm.markPurged();
     }
@@ -514,6 +522,9 @@ public class Schema
         assert cfm != null;
         boolean columnsDidChange = cfm.reload();
 
+        for (MaterializedViewDefinition definition : cfm.getMaterializedViews().values())
+            materializedViewList.add(Pair.create(cfm.ksName, definition.viewName));
+
         Keyspace keyspace = Keyspace.open(cfm.ksName);
         keyspace.getColumnFamilyStore(cfm.cfName).reload();
         MigrationManager.instance.notifyUpdateColumnFamily(cfm, columnsDidChange);
@@ -608,4 +619,10 @@ public class Schema
 
         return transformed;
     }
+
+    public boolean isMaterializedView(String keyspace, String viewname)
+    {
+        return materializedViewList.contains(Pair.create(keyspace, viewname));
+    }
+
 }

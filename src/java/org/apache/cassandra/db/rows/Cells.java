@@ -131,9 +131,6 @@ public abstract class Cells
         {
             if (update != null)
             {
-                // It's inefficient that we call maybeIndex (which is for primary key indexes) on every cell, but
-                // we'll need to fix that damn 2ndary index API to avoid that.
-                updatePKIndexes(clustering, update, nowInSec, indexUpdater);
                 indexUpdater.insert(clustering, update);
                 update.writeTo(writer);
             }
@@ -147,19 +144,11 @@ public abstract class Cells
         Cell reconciled = reconcile(existing, update, nowInSec);
         reconciled.writeTo(writer);
 
-        // Note that this test rely on reconcile returning either 'existing' or 'update'. That's not true for counters but we don't index them
         if (reconciled == update)
         {
-            updatePKIndexes(clustering, update, nowInSec, indexUpdater);
             indexUpdater.update(clustering, existing, reconciled);
         }
         return Math.abs(existing.livenessInfo().timestamp() - update.livenessInfo().timestamp());
-    }
-
-    private static void updatePKIndexes(Clustering clustering, Cell cell, int nowInSec, SecondaryIndexManager.Updater indexUpdater)
-    {
-        if (indexUpdater != SecondaryIndexManager.nullUpdater && cell.isLive(nowInSec))
-            indexUpdater.maybeIndex(clustering, cell.livenessInfo().timestamp(), cell.livenessInfo().ttl(), DeletionTime.LIVE);
     }
 
     /**

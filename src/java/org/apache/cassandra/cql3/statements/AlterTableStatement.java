@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.cassandra.cql3.statements;
 
 import java.util.ArrayList;
@@ -24,7 +25,10 @@ import java.util.Map;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.MaterializedViewDefinition;
+import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
@@ -76,6 +80,10 @@ public class AlterTableStatement extends SchemaAlteringStatement
 
     public boolean announceMigration(boolean isLocalOnly) throws RequestValidationException
     {
+        if (oType != Type.OPTS && Schema.instance.isMaterializedView(keyspace(), columnFamily()))
+            throw new InvalidRequestException("Materialized views can not be directly altered, except for table options");
+
+
         CFMetaData meta = validateColumnFamily(keyspace(), columnFamily());
         CFMetaData cfm = meta.copy();
 
@@ -87,6 +95,9 @@ public class AlterTableStatement extends SchemaAlteringStatement
             columnName = rawColumnName.prepare(cfm);
             def = cfm.getColumnDefinition(columnName);
         }
+
+        List<CFMetaData> materializedViewUpdates = null;
+        List<CFMetaData> materializedViewDrops = null;
 
         switch (oType)
         {
@@ -134,14 +145,31 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     // We could have type == null for old dropped columns, in which case we play it safe and refuse
                     if (dropped != null && (dropped.type == null || (dropped.type instanceof CollectionType && !type.isCompatibleWith(dropped.type))))
                         throw new InvalidRequestException(String.format("Cannot add a collection with the name %s " +
-                                    "because a collection with the same name and a different type%s has already been used in the past",
-                                    columnName, dropped.type == null ? "" : " (" + dropped.type.asCQL3Type() + ")"));
+                                                                        "because a collection with the same name and a different type%s has already been used in the past",
+                                                                        columnName, dropped.type == null ? "" : " (" + dropped.type.asCQL3Type() + ")"));
                 }
 
                 Integer componentIndex = cfm.isCompound() ? cfm.comparator.size() : null;
                 cfm.addColumnDefinition(isStatic
                                         ? ColumnDefinition.staticDef(cfm, columnName.bytes, type, componentIndex)
                                         : ColumnDefinition.regularDef(cfm, columnName.bytes, type, componentIndex));
+
+                // Adding a column to a table which has a SELECT * materialized view requires the column to be
+                // added to the materialized view as well
+                for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
+                {
+                    if (mv.included.isEmpty())
+                    {
+                        CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
+                        componentIndex = indexCfm.isCompound() ? indexCfm.comparator.size() : null;
+                        indexCfm.addColumnDefinition(isStatic
+                                                     ? ColumnDefinition.staticDef(indexCfm, columnName.bytes, type, componentIndex)
+                                                     : ColumnDefinition.regularDef(indexCfm, columnName.bytes, type, componentIndex));
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
+                    }
+                }
                 break;
 
             case ALTER:
@@ -191,6 +219,19 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 }
                 // In any case, we update the column definition
                 cfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
+
+                // We have to alter the schema of the materialized view table as well; it doesn't affect the definition however
+                for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
+                {
+                    if (!mv.selects(columnName)) continue;
+                    // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
+                    CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
+                    indexCfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
+
+                    if (materializedViewUpdates == null)
+                        materializedViewUpdates = new ArrayList<>();
+                    materializedViewUpdates.add(indexCfm);
+                }
                 break;
 
             case DROP:
@@ -221,6 +262,27 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         cfm.recordColumnDrop(toDelete);
                         break;
                 }
+
+                // If a column is dropped which is the target of a materialized view,
+                // then we need to drop the view.
+                // If a column is dropped which was selected into a materialized view,
+                // we need to drop that column from the included materialzied view table
+                // and definition.
+                boolean rejectAlter = false;
+                StringBuilder builder = new StringBuilder();
+                for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
+                {
+                    if (!mv.selects(columnName)) continue;
+                    if (rejectAlter)
+                        builder.append(',');
+                    rejectAlter = true;
+                    builder.append(mv.viewName);
+                }
+                if (rejectAlter)
+                    throw new InvalidRequestException(String.format("Cannot drop column %s, depended on by materialized views (%s.{%s})",
+                                                                    columnName.toString(),
+                                                                    keyspace(),
+                                                                    builder.toString()));
                 break;
             case OPTS:
                 if (cfProps == null)
@@ -239,8 +301,38 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     ColumnIdentifier from = entry.getKey().prepare(cfm);
                     ColumnIdentifier to = entry.getValue().prepare(cfm);
                     cfm.renameColumn(from, to);
+
+                    // If the materialized view includes a renamed column, it must be renamed in the index table and the definition.
+                    for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
+                    {
+                        if (!mv.selects(from)) continue;
+
+                        CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
+                        ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);
+                        ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
+                        indexCfm.renameColumn(indexFrom, indexTo);
+
+                        MaterializedViewDefinition giCopy = mv.copy();
+                        mv.renameColumn(from, to);
+
+                        cfm.replaceMaterializedView(mv);
+
+                        if (materializedViewUpdates == null)
+                            materializedViewUpdates = new ArrayList<>();
+                        materializedViewUpdates.add(indexCfm);
+                    }
                 }
-                break;
+        }
+
+        if (materializedViewUpdates != null)
+        {
+            for (CFMetaData mvUpdates : materializedViewUpdates)
+                MigrationManager.announceColumnFamilyUpdate(mvUpdates, false, isLocalOnly);
+        }
+        if (materializedViewDrops != null)
+        {
+            for (CFMetaData mvDrops : materializedViewDrops)
+                MigrationManager.announceColumnFamilyDrop(mvDrops.ksName, mvDrops.cfName, isLocalOnly);
         }
 
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);

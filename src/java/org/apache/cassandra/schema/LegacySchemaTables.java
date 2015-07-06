@@ -66,11 +66,12 @@ public final class LegacySchemaTables
     public static final String COLUMNFAMILIES = "schema_columnfamilies";
     public static final String COLUMNS = "schema_columns";
     public static final String TRIGGERS = "schema_triggers";
+    public static final String MATERIALIZEDVIEWS = "schema_materializedviews";
     public static final String USERTYPES = "schema_usertypes";
     public static final String FUNCTIONS = "schema_functions";
     public static final String AGGREGATES = "schema_aggregates";
 
-    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, USERTYPES, FUNCTIONS, AGGREGATES);
+    public static final List<String> ALL = Arrays.asList(KEYSPACES, COLUMNFAMILIES, COLUMNS, TRIGGERS, MATERIALIZEDVIEWS, USERTYPES, FUNCTIONS, AGGREGATES);
 
     private static final CFMetaData Keyspaces =
         compile(KEYSPACES,
@@ -141,6 +142,18 @@ public final class LegacySchemaTables
                 + "trigger_options map<text, text>,"
                 + "PRIMARY KEY ((keyspace_name), columnfamily_name, trigger_name))");
 
+    private static final CFMetaData MaterializedViews =
+     compile(MATERIALIZEDVIEWS,
+             "materialized views definitions",
+             "CREATE TABLE %s ("
+              + "keyspace_name text,"
+              + "columnfamily_name text,"
+              + "view_name text,"
+              + "target_columns list<text>,"
+              + "clustering_columns list<text>,"
+              + "included_columns list<text>,"
+              + "PRIMARY KEY ((keyspace_name), columnfamily_name, view_name))");
+
     private static final CFMetaData Usertypes =
         compile(USERTYPES,
                 "user defined type definitions",
@@ -181,7 +194,7 @@ public final class LegacySchemaTables
                 + "state_type text,"
                 + "PRIMARY KEY ((keyspace_name), aggregate_name, signature))");
 
-    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, Usertypes, Functions, Aggregates);
+    public static final List<CFMetaData> All = Arrays.asList(Keyspaces, Columnfamilies, Columns, Triggers, MaterializedViews, Usertypes, Functions, Aggregates);
 
     private static CFMetaData compile(String name, String description, String schema)
     {
@@ -674,6 +687,8 @@ public final class LegacySchemaTables
         for (CFMetaData schemaTable : All)
             mutation.add(PartitionUpdate.fullPartitionDelete(schemaTable, mutation.key(), timestamp, nowInSec));
         mutation.add(PartitionUpdate.fullPartitionDelete(SystemKeyspace.BuiltIndexes, mutation.key(), timestamp, nowInSec));
+        mutation.add(PartitionUpdate.fullPartitionDelete(SystemKeyspace.BuiltMaterializedViews, mutation.key(), timestamp, nowInSec));
+        mutation.add(PartitionUpdate.fullPartitionDelete(SystemKeyspace.MaterializedViewsBuilds, mutation.key(), timestamp, nowInSec));
         return mutation;
     }
 
@@ -849,6 +864,9 @@ public final class LegacySchemaTables
 
             for (TriggerDefinition trigger : table.getTriggers().values())
                 addTriggerToSchemaMutation(table, trigger, timestamp, mutation);
+
+            for (MaterializedViewDefinition materializedView: table.getMaterializedViews().values())
+                addMaterializedViewToSchemaMutation(table, materializedView, timestamp, mutation);
         }
 
         adder.build();
@@ -896,6 +914,16 @@ public final class LegacySchemaTables
         for (TriggerDefinition trigger : triggerDiff.entriesOnlyOnRight().values())
             addTriggerToSchemaMutation(newTable, trigger, timestamp, mutation);
 
+        MapDifference<String, MaterializedViewDefinition> materializedViewDiff = Maps.difference(oldTable.getMaterializedViews(), newTable.getMaterializedViews());
+
+        // dropped materialized views
+        for (MaterializedViewDefinition materializedView : materializedViewDiff.entriesOnlyOnLeft().values())
+            dropMaterializedViewFromSchemaMutation(oldTable, materializedView, timestamp, mutation);
+
+        // newly created materialized views
+        for (MaterializedViewDefinition materializedView : materializedViewDiff.entriesOnlyOnRight().values())
+            addMaterializedViewToSchemaMutation(oldTable, materializedView, timestamp, mutation);
+
         return mutation;
     }
 
@@ -912,6 +940,8 @@ public final class LegacySchemaTables
         for (TriggerDefinition trigger : table.getTriggers().values())
             dropTriggerFromSchemaMutation(table, trigger, timestamp, mutation);
 
+        for (MaterializedViewDefinition materializedView: table.getMaterializedViews().values())
+            dropMaterializedViewFromSchemaMutation(table, materializedView, timestamp, mutation);
         // TODO: get rid of in #6717
         for (String indexName : Keyspace.open(keyspace.name).getColumnFamilyStore(table.cfName).getBuiltIndexes())
             RowUpdateBuilder.deleteRow(SystemKeyspace.BuiltIndexes, timestamp, mutation, indexName);
@@ -973,6 +1003,10 @@ public final class LegacySchemaTables
 
         readSchemaPartitionForTableAndApply(TRIGGERS, ksName, cfName,
             partition -> { createTriggersFromTriggersPartition(partition).forEach(trigger -> cfm.addTriggerDefinition(trigger)); return null; }
+        );
+
+        readSchemaPartitionForTableAndApply(MATERIALIZEDVIEWS, ksName, cfName,
+            partition -> { createMaterializedViewsFromMaterializedViewsPartition(partition).forEach(materializedView -> cfm.addMaterializedView(materializedView)); return null; }
         );
 
         return cfm;
@@ -1274,6 +1308,82 @@ public final class LegacySchemaTables
             triggers.add(new TriggerDefinition(name, classOption));
         }
         return triggers;
+    }
+
+    /*
+     * Global Index metadata serialization/deserialization.
+     */
+
+    private static void addMaterializedViewToSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
+    {
+        RowUpdateBuilder builder = new RowUpdateBuilder(MaterializedViews, timestamp, mutation)
+            .clustering(table.cfName, materializedView.viewName);
+
+        for (ColumnIdentifier partitionColumn : materializedView.partitionColumns)
+            builder.addListEntry("target_columns", partitionColumn.toString());
+        for (ColumnIdentifier clusteringColumn : materializedView.clusteringColumns)
+            builder = builder.addListEntry("clustering_columns", clusteringColumn.toString());
+        for (ColumnIdentifier includedColumn : materializedView.included)
+            builder = builder.addListEntry("included_columns", includedColumn.toString());
+
+        builder.build();
+    }
+
+    private static void dropMaterializedViewFromSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
+    {
+        RowUpdateBuilder.deleteRow(MaterializedViews, timestamp, mutation, table.cfName, materializedView.viewName);
+        RowUpdateBuilder.deleteRow(SystemKeyspace.MaterializedViewsBuilds, timestamp, mutation, materializedView.viewName);
+        RowUpdateBuilder.deleteRow(SystemKeyspace.BuiltMaterializedViews, timestamp, mutation, materializedView.viewName);
+    }
+
+    /**
+     * Deserialize materialized views from storage-level representation.
+     *
+     * @param partition storage-level partition containing the materialized view definitions
+     * @return the list of processed MaterializedViewDefinitions
+     */
+    private static Collection<MaterializedViewDefinition> createMaterializedViewsFromMaterializedViewsPartition(RowIterator partition)
+    {
+        List<MaterializedViewDefinition> views = new ArrayList<>();
+        String query = String.format("SELECT * FROM %s.%s", SystemKeyspace.NAME, MATERIALIZEDVIEWS);
+        for (UntypedResultSet.Row row : QueryProcessor.resultify(query, partition))
+            views.add(createMaterializedViewFromMaterializedViewRow(row));
+        return views;
+    }
+
+    private static MaterializedViewDefinition createMaterializedViewFromMaterializedViewRow(UntypedResultSet.Row row)
+    {
+        String name = row.getString("view_name");
+        List<String> partitionColumnNames = row.getList("target_columns", UTF8Type.instance);
+
+        String cfName = row.getString("columnfamily_name");
+        List<String> clusteringColumnNames = row.getList("clustering_columns", UTF8Type.instance);
+
+        List<ColumnIdentifier> partitionColumns = new ArrayList<>();
+        for (String columnName : partitionColumnNames)
+        {
+            partitionColumns.add(ColumnIdentifier.getInterned(columnName, true));
+        }
+
+        List<ColumnIdentifier> clusteringColumns = new ArrayList<>();
+        for (String columnName : clusteringColumnNames)
+        {
+            clusteringColumns.add(ColumnIdentifier.getInterned(columnName, true));
+        }
+
+        List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
+        List<ColumnIdentifier> includedColumns = new ArrayList<>();
+        if (includedColumnNames != null)
+        {
+            for (String columnName : includedColumnNames)
+                includedColumns.add(ColumnIdentifier.getInterned(columnName, true));
+        }
+
+        return new MaterializedViewDefinition(cfName,
+                                              name,
+                                              partitionColumns,
+                                              clusteringColumns,
+                                              includedColumns);
     }
 
     /*

@@ -114,7 +114,7 @@ public class DeletionInfo implements IMeasurableMemory
      * @param cell the cell to check.
      * @return true if the cell is deleted, false otherwise
      */
-    private boolean isDeleted(Clustering clustering, Cell cell)
+    public boolean isDeleted(Clustering clustering, Cell cell)
     {
         // If we're live, don't consider anything deleted, even if the cell ends up having as timestamp Long.MIN_VALUE
         // (which shouldn't happen in practice, but it would invalid to consider it deleted if it does).
