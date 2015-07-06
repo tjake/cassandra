@@ -28,7 +28,6 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.*;
-import org.apache.cassandra.db.view.MaterializedView;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
@@ -223,7 +222,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 // We have to alter the schema of the materialized view table as well; it doesn't affect the definition however
                 for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
                 {
-                    if (!mv.selects(columnName)) continue;
+                    if (!mv.includes(columnName)) continue;
                     // We have to use the pre-adjusted CFM, otherwise we can't resolve the Index
                     CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
                     indexCfm.addOrReplaceColumnDefinition(def.withNewType(validatorType));
@@ -272,7 +271,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 StringBuilder builder = new StringBuilder();
                 for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
                 {
-                    if (!mv.selects(columnName)) continue;
+                    if (!mv.includes(columnName)) continue;
                     if (rejectAlter)
                         builder.append(',');
                     rejectAlter = true;
@@ -305,7 +304,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                     // If the materialized view includes a renamed column, it must be renamed in the index table and the definition.
                     for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
                     {
-                        if (!mv.selects(from)) continue;
+                        if (!mv.includes(from)) continue;
 
                         CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
                         ColumnIdentifier indexFrom = entry.getKey().prepare(indexCfm);

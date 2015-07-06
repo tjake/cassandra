@@ -62,7 +62,7 @@ public class DropMaterializedViewStatement extends SchemaAlteringStatement
         try
         {
             if (!Schema.instance.isMaterializedView(keyspace(), columnFamily()))
-                throw new InvalidRequestException(String.format("Cannot drop non materialized view '%s' in keyspace '%s'", columnFamily(), keyspace()));
+                throw new ConfigurationException(String.format("Cannot drop non materialized view '%s' in keyspace '%s'", columnFamily(), keyspace()));
 
             CFMetaData baseCfm = findBaseCf();
             if (baseCfm == null)

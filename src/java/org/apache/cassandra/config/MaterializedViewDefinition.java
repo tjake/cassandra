@@ -30,6 +30,7 @@ public class MaterializedViewDefinition
     public String viewName;
     public List<ColumnIdentifier> partitionColumns;
     public List<ColumnIdentifier> clusteringColumns;
+    public boolean includeAll;
     public Collection<ColumnIdentifier> included;
 
     public MaterializedViewDefinition(String baseCfName, String viewName, List<ColumnIdentifier> partitionColumns, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
@@ -39,33 +40,40 @@ public class MaterializedViewDefinition
         this.viewName = viewName;
         this.partitionColumns = partitionColumns;
         this.clusteringColumns = clusteringColumns;
+        this.includeAll = included.isEmpty();
         this.included = included;
     }
 
-    public boolean selects(ColumnIdentifier def)
+    /**
+     * @return true if the view specified by this definition will include the column, false otherwise
+     */
+    public boolean includes(ColumnIdentifier column)
     {
-        if (included.isEmpty())
+        if (includeAll)
             return true;
 
         for (ColumnIdentifier identifier : partitionColumns)
         {
-            if (identifier.bytes.compareTo(def.bytes) == 0)
+            if (identifier.bytes.compareTo(column.bytes) == 0)
                 return true;
         }
 
         for (ColumnIdentifier identifier: included)
         {
-            if (identifier.bytes.compareTo(def.bytes) == 0)
+            if (identifier.bytes.compareTo(column.bytes) == 0)
                 return true;
         }
 
         return false;
     }
 
+    /**
+     * Replace the column {@param from} with {@param to} in this materialized view definition's partition,
+     * clustering, or included columns.
+     */
     public void renameColumn(ColumnIdentifier from, ColumnIdentifier to)
     {
-
-        if (!included.isEmpty())
+        if (!includeAll)
         {
             Collection<ColumnIdentifier> columns = new ArrayList<>();
             for (ColumnIdentifier column: included)
@@ -89,9 +97,6 @@ public class MaterializedViewDefinition
         primaryKeyIndex = partitionColumns.indexOf(from);
         if (primaryKeyIndex >= 0)
             partitionColumns.set(primaryKeyIndex, to);
-
-
-
     }
 
     public MaterializedViewDefinition copy()
