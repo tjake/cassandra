@@ -96,7 +96,6 @@ public class AlterTableStatement extends SchemaAlteringStatement
         }
 
         List<CFMetaData> materializedViewUpdates = null;
-        List<CFMetaData> materializedViewDrops = null;
 
         switch (oType)
         {
@@ -327,11 +326,6 @@ public class AlterTableStatement extends SchemaAlteringStatement
         {
             for (CFMetaData mvUpdates : materializedViewUpdates)
                 MigrationManager.announceColumnFamilyUpdate(mvUpdates, false, isLocalOnly);
-        }
-        if (materializedViewDrops != null)
-        {
-            for (CFMetaData mvDrops : materializedViewDrops)
-                MigrationManager.announceColumnFamilyDrop(mvDrops.ksName, mvDrops.cfName, isLocalOnly);
         }
 
         MigrationManager.announceColumnFamilyUpdate(cfm, false, isLocalOnly);
