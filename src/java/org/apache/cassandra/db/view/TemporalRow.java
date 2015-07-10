@@ -37,9 +37,9 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.CBuilder;
 import org.apache.cassandra.db.Clustering;
-import org.apache.cassandra.db.ClusteringComparator;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Conflicts;
+import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.LivenessInfo;
 import org.apache.cassandra.db.Slice;
 import org.apache.cassandra.db.marshal.CompositeType;
@@ -51,21 +51,26 @@ import org.apache.cassandra.utils.FBUtilities;
 
 // This is a class that allows comparisons based on partition key and clustering columns, and resolves existing and
 // new mutation values
-public class LiveRowState
+public class TemporalRow
 {
+    public interface Resolver
+    {
+        TemporalCell resolve(Iterable<TemporalCell> cells);
+    }
+
     public static final Resolver oldValueIfUpdated = new Resolver()
     {
-        public LRSCell resolve(Iterable<LRSCell> cells)
+        public TemporalCell resolve(Iterable<TemporalCell> cells)
         {
-            Iterator<LRSCell> iterator = cells.iterator();
+            Iterator<TemporalCell> iterator = cells.iterator();
             if (!iterator.hasNext())
                 return null;
 
-            LRSCell initial = iterator.next();
+            TemporalCell initial = iterator.next();
             if (initial.isNew || !iterator.hasNext())
                 return null;
 
-            LRSCell value = initial;
+            TemporalCell value = initial;
             while (iterator.hasNext())
                 value = value.reconcile(iterator.next());
 
@@ -75,16 +80,16 @@ public class LiveRowState
 
     public static final Resolver newValueIfUpdated = new Resolver()
     {
-        public LRSCell resolve(Iterable<LRSCell> cells)
+        public TemporalCell resolve(Iterable<TemporalCell> cells)
         {
-            Iterator<LRSCell> iterator = cells.iterator();
+            Iterator<TemporalCell> iterator = cells.iterator();
             if (!iterator.hasNext())
                 return null;
-            LRSCell initial = iterator.next();
+            TemporalCell initial = iterator.next();
             if (!iterator.hasNext())
                 return initial;
 
-            LRSCell value = initial;
+            TemporalCell value = initial;
             while (iterator.hasNext())
                 value = value.reconcile(iterator.next());
 
@@ -94,9 +99,9 @@ public class LiveRowState
 
     public static final Resolver earliest = new Resolver()
     {
-        public LRSCell resolve(Iterable<LRSCell> cells)
+        public TemporalCell resolve(Iterable<TemporalCell> cells)
         {
-            Iterator<LRSCell> iterator = cells.iterator();
+            Iterator<TemporalCell> iterator = cells.iterator();
             if (!iterator.hasNext())
                 return null;
             return iterator.next();
@@ -105,12 +110,12 @@ public class LiveRowState
 
     public static final Resolver latest = new Resolver()
     {
-        public LRSCell resolve(Iterable<LRSCell> cells)
+        public TemporalCell resolve(Iterable<TemporalCell> cells)
         {
-            Iterator<LRSCell> iterator = cells.iterator();
+            Iterator<TemporalCell> iterator = cells.iterator();
             if (!iterator.hasNext())
                 return null;
-            LRSCell value = iterator.next();
+            TemporalCell value = iterator.next();
             while (iterator.hasNext())
                 value = value.reconcile(iterator.next());
 
@@ -118,88 +123,44 @@ public class LiveRowState
         }
     };
 
-    public Clustering viewClustering(ClusteringComparator comparator, List<ColumnDefinition> clusteringColumns, Resolver resolver)
-    {
-        Object[] clusterings = new Object[clusteringColumns.size()];
-
-        for (int i = 0; i < clusterings.length; i++)
-        {
-            clusterings[i] = clusteringValue(clusteringColumns.get(i), resolver);
-        }
-
-        return comparator.make(clusterings);
-    }
-
-    public Clustering baseClustering(Resolver resolver)
-    {
-        Object[] clusterings = new Object[baseCfs.metadata.clusteringColumns().size()];
-
-        for (int i = 0; i < clusterings.length; i++)
-        {
-            clusterings[i] = clusteringValue(baseCfs.metadata.clusteringColumns().get(i), resolver);
-        }
-
-        return baseCfs.getComparator().make(clusterings);
-    }
-
-    private interface PrivateResolver
-    {
-        LRSCell resolve(Iterable<LRSCell> cells);
-    }
-
-    private static class LRSCell
+    private static class TemporalCell
     {
         public final ByteBuffer value;
         private final LivenessInfo liveness;
         public final boolean isNew;
-        private LRSCell(Cell cell, boolean isNew)
-        {
-            this(cell.value(), cell.livenessInfo(), isNew);
-        }
 
-        private LRSCell(ByteBuffer value, LivenessInfo liveness, boolean isNew)
+        private TemporalCell(ByteBuffer value, LivenessInfo liveness, boolean isNew)
         {
             this.value = value;
             this.liveness = liveness;
             this.isNew = isNew;
         }
 
-        public LRSCell reconcile(LRSCell cell)
+        public TemporalCell reconcile(TemporalCell that)
         {
             int now = FBUtilities.nowInSeconds();
-            Conflicts.Resolution resolution = Conflicts.resolveRegular(cell.liveness.timestamp(),
-                                     cell.liveness.isLive(now),
-                                     cell.liveness.localDeletionTime(),
-                                     cell.value,
-                                     this.liveness.timestamp(),
-                                     this.liveness.isLive(now),
-                                     this.liveness.localDeletionTime(),
-                                     this.value);
+            Conflicts.Resolution resolution = Conflicts.resolveRegular(that.liveness.timestamp(),
+                                                                       that.liveness.isLive(now),
+                                                                       that.liveness.localDeletionTime(),
+                                                                       that.value,
+                                                                       this.liveness.timestamp(),
+                                                                       this.liveness.isLive(now),
+                                                                       this.liveness.localDeletionTime(),
+                                                                       this.value);
             assert resolution != Conflicts.Resolution.MERGE;
             if (resolution == Conflicts.Resolution.LEFT_WINS)
-                return cell;
+                return that;
             return this;
         }
-    }
-
-    public interface Resolver extends PrivateResolver
-    {
     }
 
     final ColumnFamilyStore baseCfs;
     private final ByteBuffer basePartitionKey;
     public final Map<ColumnIdentifier, ByteBuffer> clusteringColumns;
-    private final Map<ColumnIdentifier, Map<CellPath, SortedMap<Long, LRSCell>>> columnValues = new HashMap<>();
+    private final Map<ColumnIdentifier, Map<CellPath, SortedMap<Long, TemporalCell>>> columnValues = new HashMap<>();
     public int ttl;
 
-    LiveRowState(ColumnFamilyStore baseCfs, ByteBuffer key, Map<ColumnIdentifier, ByteBuffer> clusteringColumns)
-    {
-        this.baseCfs = baseCfs;
-        this.basePartitionKey = key;
-        this.clusteringColumns = clusteringColumns;
-    }
-
-    LiveRowState(ColumnFamilyStore baseCfs, ByteBuffer key, Row row, boolean isNew)
+    TemporalRow(ColumnFamilyStore baseCfs, ByteBuffer key, Row row, boolean isNew)
     {
         this.baseCfs = baseCfs;
         this.basePartitionKey = key;
@@ -221,7 +182,7 @@ public class LiveRowState
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        LiveRowState that = (LiveRowState) o;
+        TemporalRow that = (TemporalRow) o;
 
         if (!clusteringColumns.equals(that.clusteringColumns)) return false;
         if (!basePartitionKey.equals(that.basePartitionKey)) return false;
@@ -242,7 +203,7 @@ public class LiveRowState
         if (!columnValues.containsKey(identifier))
             columnValues.put(identifier, new HashMap<>());
 
-        Map<CellPath, SortedMap<Long, LRSCell>> innerMap = columnValues.get(identifier);
+        Map<CellPath, SortedMap<Long, TemporalCell>> innerMap = columnValues.get(identifier);
 
         if (!innerMap.containsKey(cellPath))
             innerMap.put(cellPath, new TreeMap<>());
@@ -250,10 +211,10 @@ public class LiveRowState
         if (liveness.hasTTL())
             ttl = Math.max(liveness.ttl(), ttl);
 
-        innerMap.get(cellPath).put(liveness.timestamp(), new LRSCell(value, liveness, isNew));
+        innerMap.get(cellPath).put(liveness.timestamp(), new TemporalCell(value, liveness, isNew));
     }
 
-    public void addColumnValue(Cell cell, boolean isNew)
+    public void addColumnValue(org.apache.cassandra.db.rows.Cell cell, boolean isNew)
     {
         addColumnValue(cell.column().name, cell.path(), cell.livenessInfo(), cell.value(), isNew);
     }
@@ -283,26 +244,26 @@ public class LiveRowState
             if (clusteringColumns.containsKey(columnIdentifier))
                 return clusteringColumns.get(columnIdentifier);
 
-            Collection<Cell> val = values(definition, resolver, 1L);
+            Collection<org.apache.cassandra.db.rows.Cell> val = values(definition, resolver, 1L);
             if (val != null && val.size() == 1)
                 return Iterables.getOnlyElement(val).value();
         }
         return null;
     }
 
-    public Collection<Cell> values(ColumnDefinition definition, Resolver resolver, final long newTimeStamp)
+    public Collection<org.apache.cassandra.db.rows.Cell> values(ColumnDefinition definition, Resolver resolver, final long newTimeStamp)
     {
-        Map<CellPath, SortedMap<Long, LRSCell>> innerMap = columnValues.get(definition.name);
+        Map<CellPath, SortedMap<Long, TemporalCell>> innerMap = columnValues.get(definition.name);
         if (innerMap == null)
         {
 
             return Collections.emptyList();
         }
 
-        Collection<Cell> value = new ArrayList<>();
-        for (Map.Entry<CellPath, SortedMap<Long, LRSCell>> pathAndCells : innerMap.entrySet())
+        Collection<org.apache.cassandra.db.rows.Cell> value = new ArrayList<>();
+        for (Map.Entry<CellPath, SortedMap<Long, TemporalCell>> pathAndCells : innerMap.entrySet())
         {
-            LRSCell cell = resolver.resolve(pathAndCells.getValue().values());
+            TemporalCell cell = resolver.resolve(pathAndCells.getValue().values());
 
 
             if (cell != null)
@@ -310,7 +271,7 @@ public class LiveRowState
                 final LivenessInfo liveness = cell.isNew ? cell.liveness.withUpdatedTimestamp(newTimeStamp)
                                                          : cell.liveness.withUpdatedTimestamp(newTimeStamp - 1);
 
-                value.add(new Cell()
+                value.add(new org.apache.cassandra.db.rows.Cell()
                 {
                     public ColumnDefinition column()
                     {
@@ -372,7 +333,7 @@ public class LiveRowState
                         return cell.value.remaining();
                     }
 
-                    public Cell takeAlias()
+                    public org.apache.cassandra.db.rows.Cell takeAlias()
                     {
                         return this;
                     }
@@ -397,63 +358,49 @@ public class LiveRowState
         return builder.buildSlice();
     }
 
-    static class Set implements Iterable<LiveRowState>
+    static class Set implements Iterable<TemporalRow>
     {
         private final ColumnFamilyStore baseCfs;
-        private final Map<LiveRowState, LiveRowState> mutationUnits;
+        private final ByteBuffer key;
+        public final DecoratedKey dk;
+        private final Map<Clustering, TemporalRow> clusteringToRow;
 
-        Set(ColumnFamilyStore baseCfs)
+        Set(ColumnFamilyStore baseCfs, ByteBuffer key)
         {
             this.baseCfs = baseCfs;
-            this.mutationUnits = new HashMap<>();
+            this.key = key;
+            this.dk = baseCfs.partitioner.decorateKey(key);
+            this.clusteringToRow = new HashMap<>();
         }
 
-        Set(LiveRowState single)
+        public Iterator<TemporalRow> iterator()
         {
-            this(single.baseCfs);
-            mutationUnits.put(single, single);
+            return clusteringToRow.values().iterator();
         }
 
-        public Iterator<LiveRowState> iterator()
+        public TemporalRow getExistingUnit(Row row)
         {
-            return mutationUnits.values().iterator();
+            return clusteringToRow.get(row.clustering());
         }
 
-        public LiveRowState getExistingUnit(ByteBuffer key, Row row)
+        public void addRow(Row row, boolean isNew)
         {
-            LiveRowState liveRowState = new LiveRowState(baseCfs, key, row, false);
-
-            return mutationUnits.get(liveRowState);
-        }
-
-        private LiveRowState getInternedUnit(ByteBuffer key, Row row, boolean isNew)
-        {
-            LiveRowState liveRowState = new LiveRowState(baseCfs, key, row, isNew);
-
-            LiveRowState existingUnit = mutationUnits.get(liveRowState);
-            if (existingUnit == null)
+            TemporalRow temporalRow = clusteringToRow.get(row.clustering());
+            if (temporalRow == null)
             {
-                existingUnit = liveRowState;
-                mutationUnits.put(liveRowState, liveRowState);
+                temporalRow = new TemporalRow(baseCfs, key, row, isNew);
+                clusteringToRow.put(row.clustering(), temporalRow);
             }
 
-            return existingUnit;
-        }
-
-        public void addUnit(ByteBuffer key, Row row, boolean isNew)
-        {
-            LiveRowState liveRowState = getInternedUnit(key, row, isNew);
-
-            Iterator<Cell> cellIterator = row.iterator();
-            while (cellIterator.hasNext())
+            for (org.apache.cassandra.db.rows.Cell aRow : row)
             {
-                liveRowState.addColumnValue(cellIterator.next(), isNew);
+                temporalRow.addColumnValue(aRow, isNew);
             }
         }
 
         public int size()
         {
-            return mutationUnits.size();
+            return clusteringToRow.size();
         }
     }
 }

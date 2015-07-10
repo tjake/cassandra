@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.ReadOrderGroup;
@@ -88,7 +87,7 @@ public class MaterializedViewBuilder extends CompactionInfo.Holder
 
                try (RowIterator rowIterator = partitionIterator.next())
                {
-                   Collection<Mutation> mutations = view.createMutations(key.getKey(), FilteredPartition.create(rowIterator), ConsistencyLevel.ONE, true);
+                   Collection<Mutation> mutations = view.createMutations(key.getKey(), FilteredPartition.create(rowIterator), true);
 
                    if (mutations != null)
                    {

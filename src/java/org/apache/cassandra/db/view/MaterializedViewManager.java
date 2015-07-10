@@ -30,20 +30,14 @@ import java.util.concurrent.locks.Lock;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Striped;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.MaterializedViewDefinition;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.IMutation;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.SystemKeyspace;
-import org.apache.cassandra.db.WriteType;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
-import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.exceptions.OverloadedException;
 import org.apache.cassandra.exceptions.UnavailableException;
 import org.apache.cassandra.exceptions.WriteTimeoutException;
@@ -53,7 +47,6 @@ import org.apache.cassandra.service.StorageService;
 public class MaterializedViewManager
 {
     private static final Striped<Lock> LOCKS = Striped.lazyWeakLock(DatabaseDescriptor.getConcurrentWriters() * 1024);
-    private static final Logger logger = LoggerFactory.getLogger(MaterializedViewManager.class);
 
     private final ConcurrentNavigableMap<String, MaterializedView> viewsByName;
 
@@ -64,6 +57,22 @@ public class MaterializedViewManager
         this.viewsByName = new ConcurrentSkipListMap<>();
 
         this.baseCfs = baseCfs;
+    }
+
+    public Iterable<MaterializedView> allViews()
+    {
+        return viewsByName.values();
+    }
+
+    public void init()
+    {
+        reload();
+    }
+
+    public void invalidate()
+    {
+        for (MaterializedView view: allViews())
+            removeMaterializedView(view.name);
     }
 
     public void reload()
@@ -86,13 +95,17 @@ public class MaterializedViewManager
                 addMaterializedView(entry.getValue());
         }
 
-        for (MaterializedView view: viewsByName.values())
-            view.reload();
+        for (MaterializedView view : allViews())
+        {
+            view.build();
+            // We provide the new definition from the base metadata
+            view.updateDefinition(newViewsByName.get(view.name));
+        }
     }
 
-    public void buildIfRequired()
+    public void buildAllViews()
     {
-        for (MaterializedView view: viewsByName.values())
+        for (MaterializedView view : allViews())
             view.build();
     }
 
@@ -103,7 +116,7 @@ public class MaterializedViewManager
         if (view == null)
             return;
 
-        SystemKeyspace.setIndexRemoved(baseCfs.metadata.ksName, view.name);
+        SystemKeyspace.setMaterializedViewRemoved(baseCfs.metadata.ksName, view.name);
     }
 
     public void addMaterializedView(MaterializedViewDefinition definition)
@@ -120,9 +133,9 @@ public class MaterializedViewManager
         if (!StorageService.instance.isJoined()) return;
 
         List<Mutation> mutations = null;
-        for (MaterializedView view: viewsByName.values())
+        for (MaterializedView view : allViews())
         {
-            Collection<Mutation> viewMutations = view.createMutations(key, cf, ConsistencyLevel.ONE, false);
+            Collection<Mutation> viewMutations = view.createMutations(key, cf, false);
             if (viewMutations != null && !viewMutations.isEmpty())
             {
                 if (mutations == null)
@@ -138,17 +151,12 @@ public class MaterializedViewManager
 
     public boolean cfModifiesSelectedColumn(PartitionUpdate upd)
     {
-        for (MaterializedView view : viewsByName.values())
+        for (MaterializedView view : allViews())
         {
             if (view.cfModifiesSelectedColumn(upd))
                 return true;
         }
         return false;
-    }
-
-    public Iterable<? extends MaterializedView> allViews()
-    {
-        return viewsByName.values();
     }
 
     public static Lock acquireLockFor(ByteBuffer key)
@@ -175,10 +183,5 @@ public class MaterializedViewManager
         }
 
         return false;
-    }
-
-    public void init()
-    {
-        reload();
     }
 }

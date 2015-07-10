@@ -270,10 +270,10 @@ public final class SystemKeyspace
                 "materialized views builds current progress",
                 "CREATE TABLE %s ("
                 + "keyspace_name text,"
-                + "index_name text,"
+                + "view_name text,"
                 + "last_token varchar,"
                 + "generation_number int,"
-                + "PRIMARY KEY ((keyspace_name), index_name))");
+                + "PRIMARY KEY ((keyspace_name), view_name))");
 
     public static final CFMetaData BuiltMaterializedViews =
     compile(BUILT_MATERIALIZEDVIEWS,
@@ -488,38 +488,50 @@ public final class SystemKeyspace
         forceBlockingFlush(BUILT_MATERIALIZEDVIEWS);
     }
 
-    public static void beginMaterializedViewBuild(String ksname, String indexname, int generationNumber)
+
+    public static void setMaterializedViewRemoved(String keyspaceName, String viewName)
     {
-        executeInternal(String.format("INSERT INTO system.%s (keyspace_name, index_name, generation_number) VALUES (?, ?, ?)", MATERIALIZEDVIEW_BUILDS),
+        String buildReq = "DELETE FROM %S.%s WHERE keyspace_name = ? AND view_name = ?";
+        executeInternal(String.format(buildReq, NAME, MATERIALIZEDVIEW_BUILDS), keyspaceName, viewName);
+        forceBlockingFlush(MATERIALIZEDVIEW_BUILDS);
+
+        String builtReq = "DELETE FROM %s.\"%s\" WHERE keyspace_name = ? AND view_name = ?";
+        executeInternal(String.format(builtReq, NAME, BUILT_MATERIALIZEDVIEWS), keyspaceName, viewName);
+        forceBlockingFlush(BUILT_MATERIALIZEDVIEWS);
+    }
+
+    public static void beginMaterializedViewBuild(String ksname, String viewName, int generationNumber)
+    {
+        executeInternal(String.format("INSERT INTO system.%s (keyspace_name, view_name, generation_number) VALUES (?, ?, ?)", MATERIALIZEDVIEW_BUILDS),
                         ksname,
-                        indexname,
+                        viewName,
                         generationNumber);
     }
 
-    public static void finishMaterializedViewBuildStatus(String ksname, String indexname)
+    public static void finishMaterializedViewBuildStatus(String ksname, String viewName)
     {
         // We flush the view built first, because if we fail now, we'll restart at the last place we checkpointed
         // materialized view build.
         // If we flush the delete first, we'll have to restart from the beginning.
         // Also, if the build succeeded, but the materailized view build failed, we will be able to skip the
         // materialized view build check next boot.
-        setMaterializedViewBuilt(ksname, indexname);
+        setMaterializedViewBuilt(ksname, viewName);
         forceBlockingFlush(BUILT_MATERIALIZEDVIEWS);
-        executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND index_name = ?", MATERIALIZEDVIEW_BUILDS), ksname, indexname);
+        executeInternal(String.format("DELETE FROM system.%s WHERE keyspace_name = ? AND view_name = ?", MATERIALIZEDVIEW_BUILDS), ksname, viewName);
         forceBlockingFlush(MATERIALIZEDVIEW_BUILDS);
     }
 
-    public static void updateMaterializedViewBuildStatus(String ksname, String indexname, Token token)
+    public static void updateMaterializedViewBuildStatus(String ksname, String viewName, Token token)
     {
-        String req = "INSERT INTO system.%s (keyspace_name, index_name, last_token) VALUES (?, ?, ?)";
+        String req = "INSERT INTO system.%s (keyspace_name, view_name, last_token) VALUES (?, ?, ?)";
         Token.TokenFactory factory = StorageService.getPartitioner().getTokenFactory();
-        executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, indexname, factory.toString(token));
+        executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, viewName, factory.toString(token));
     }
 
-    public static Pair<Integer, Token> getMaterializedViewBuildStatus(String ksname, String indexname)
+    public static Pair<Integer, Token> getMaterializedViewBuildStatus(String ksname, String viewName)
     {
-        String req = "SELECT generation_number, last_token FROM system.%s WHERE keyspace_name = ? AND index_name = ?";
-        UntypedResultSet queryResultSet = executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, indexname);
+        String req = "SELECT generation_number, last_token FROM system.%s WHERE keyspace_name = ? AND view_name = ?";
+        UntypedResultSet queryResultSet = executeInternal(String.format(req, MATERIALIZEDVIEW_BUILDS), ksname, viewName);
         if (queryResultSet == null || queryResultSet.isEmpty())
             return null;
 

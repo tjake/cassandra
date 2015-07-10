@@ -159,6 +159,8 @@ public class MaterializedViewLongTest extends CQLTester
         {
             throw new AssertionError(String.format("Single row had c = %d, expected %d", rows.get(0).getInt("c"), value));
         }
+
+        dropTable("DROP MATERIALIZED VIEW " + keyspace() + ".mv");
     }
 
     @Test
@@ -184,5 +186,7 @@ public class MaterializedViewLongTest extends CQLTester
         List<Row> results = executeNet(protocolVersion, "SELECT d FROM " + keyspace() + ".mv WHERE c = 2 AND a = 1 AND b = 1").all();
         assert results.size() == 1;
         assert results.get(0).isNull(0);
+
+        dropTable("DROP MATERIALIZED VIEW " + keyspace() + ".mv");
     }
 }

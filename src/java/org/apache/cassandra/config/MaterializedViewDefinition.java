@@ -19,23 +19,38 @@
 package org.apache.cassandra.config;
 
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
 
 public class MaterializedViewDefinition
 {
-    public String baseCfName;
-    public String viewName;
-    public List<ColumnIdentifier> partitionColumns;
-    public List<ColumnIdentifier> clusteringColumns;
-    public boolean includeAll;
-    public Collection<ColumnIdentifier> included;
+    public final String baseCfName;
+    public final String viewName;
+    // The order of partititon columns and clustering columns is important, so we cannot switch these two to sets
+    public final List<ColumnIdentifier> partitionColumns;
+    public final List<ColumnIdentifier> clusteringColumns;
+    public final Set<ColumnIdentifier> included;
+    public final boolean includeAll;
 
-    public MaterializedViewDefinition(String baseCfName, String viewName, List<ColumnIdentifier> partitionColumns, List<ColumnIdentifier> clusteringColumns, Collection<ColumnIdentifier> included)
+    public MaterializedViewDefinition(MaterializedViewDefinition def)
+    {
+        this(def.baseCfName, def.viewName, new ArrayList<>(def.partitionColumns), new ArrayList<>(def.clusteringColumns), new HashSet<>(def.included));
+    }
+
+    /**
+     * @param baseCfName        Name of the column family from which this view is based
+     * @param viewName          Name of the view
+     * @param partitionColumns  List of all of the partition columns, in the order they are defined
+     * @param clusteringColumns List of all of the clustering columns, in the order they are defined
+     * @param included
+     */
+    public MaterializedViewDefinition(String baseCfName, String viewName, List<ColumnIdentifier> partitionColumns, List<ColumnIdentifier> clusteringColumns, Set<ColumnIdentifier> included)
     {
         assert partitionColumns != null && !partitionColumns.isEmpty();
+        assert included != null;
         this.baseCfName = baseCfName;
         this.viewName = viewName;
         this.partitionColumns = partitionColumns;
@@ -49,22 +64,10 @@ public class MaterializedViewDefinition
      */
     public boolean includes(ColumnIdentifier column)
     {
-        if (includeAll)
-            return true;
-
-        for (ColumnIdentifier identifier : partitionColumns)
-        {
-            if (identifier.bytes.compareTo(column.bytes) == 0)
-                return true;
-        }
-
-        for (ColumnIdentifier identifier: included)
-        {
-            if (identifier.bytes.compareTo(column.bytes) == 0)
-                return true;
-        }
-
-        return false;
+        return includeAll
+               || partitionColumns.contains(column)
+               || clusteringColumns.contains(column)
+               || included.contains(column);
     }
 
     /**
@@ -73,38 +76,18 @@ public class MaterializedViewDefinition
      */
     public void renameColumn(ColumnIdentifier from, ColumnIdentifier to)
     {
-        if (!includeAll)
+        if (!includeAll && included.contains(from))
         {
-            Collection<ColumnIdentifier> columns = new ArrayList<>();
-            for (ColumnIdentifier column: included)
-            {
-                if (column.bytes.compareTo(to.bytes) == 0)
-                {
-                    columns.add(to);
-                }
-                else
-                {
-                    columns.add(column);
-                }
-            }
-            included = columns;
+            included.remove(from);
+            included.add(to);
         }
 
-        int primaryKeyIndex = clusteringColumns.indexOf(from);
-        if (primaryKeyIndex >= 0)
-            clusteringColumns.set(primaryKeyIndex, to);
+        int partitionIndex = partitionColumns.indexOf(from);
+        if (partitionIndex >= 0)
+            partitionColumns.set(partitionIndex, to);
 
-        primaryKeyIndex = partitionColumns.indexOf(from);
-        if (primaryKeyIndex >= 0)
-            partitionColumns.set(primaryKeyIndex, to);
-    }
-
-    public MaterializedViewDefinition copy()
-    {
-        List<ColumnIdentifier> copyPartitionColumns = new ArrayList<>(partitionColumns);
-        List<ColumnIdentifier> copyClusteringColumns = new ArrayList<>(clusteringColumns);
-        Collection<ColumnIdentifier> copyIncluded = new ArrayList<>(included);
-
-        return new MaterializedViewDefinition(baseCfName, viewName, copyPartitionColumns, copyClusteringColumns, copyIncluded);
+        int clusteringIndex = clusteringColumns.indexOf(from);
+        if (clusteringIndex >= 0)
+            clusteringColumns.set(clusteringIndex, to);
     }
 }

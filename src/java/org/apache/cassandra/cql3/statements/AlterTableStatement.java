@@ -156,7 +156,7 @@ public class AlterTableStatement extends SchemaAlteringStatement
                 // added to the materialized view as well
                 for (MaterializedViewDefinition mv : cfm.getMaterializedViews().values())
                 {
-                    if (mv.included.isEmpty())
+                    if (mv.includeAll)
                     {
                         CFMetaData indexCfm = Schema.instance.getCFMetaData(keyspace(), mv.viewName).copy();
                         componentIndex = indexCfm.isCompound() ? indexCfm.comparator.size() : null;
@@ -310,10 +310,10 @@ public class AlterTableStatement extends SchemaAlteringStatement
                         ColumnIdentifier indexTo = entry.getValue().prepare(indexCfm);
                         indexCfm.renameColumn(indexFrom, indexTo);
 
-                        MaterializedViewDefinition giCopy = mv.copy();
-                        mv.renameColumn(from, to);
+                        MaterializedViewDefinition mvCopy = new MaterializedViewDefinition(mv);
+                        mvCopy.renameColumn(from, to);
 
-                        cfm.replaceMaterializedView(mv);
+                        cfm.replaceMaterializedView(mvCopy);
 
                         if (materializedViewUpdates == null)
                             materializedViewUpdates = new ArrayList<>();

@@ -296,6 +296,7 @@ public final class CFMetaData
     {
         return materializedViews;
     }
+
     public static CFMetaData create(String ksName,
                                     String name,
                                     UUID cfId,
@@ -755,8 +756,7 @@ public final class CFMetaData
             && Objects.equal(speculativeRetry, other.speculativeRetry)
             && Objects.equal(droppedColumns, other.droppedColumns)
             && Objects.equal(triggers, other.triggers)
-            && Objects.equal(materializedViews, other.materializedViews)
-            && Objects.equal(triggers, other.triggers);
+            && Objects.equal(materializedViews, other.materializedViews);
     }
 
     @Override

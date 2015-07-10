@@ -19,6 +19,7 @@
 package org.apache.cassandra.cql3.statements;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.apache.cassandra.cql3.ColumnIdentifier;
@@ -28,7 +29,7 @@ import org.apache.cassandra.db.marshal.ReversedType;
 public class CFProperties
 {
     public final CFPropDefs properties = new CFPropDefs();
-    final Map<ColumnIdentifier, Boolean> definedOrdering = new HashMap<>();
+    final Map<ColumnIdentifier, Boolean> definedOrdering = new LinkedHashMap<>(); // Insertion ordering is important
     boolean useCompactStorage = false;
 
     public void validate()

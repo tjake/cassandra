@@ -924,6 +924,12 @@ public final class LegacySchemaTables
         for (MaterializedViewDefinition materializedView : materializedViewDiff.entriesOnlyOnRight().values())
             addMaterializedViewToSchemaMutation(oldTable, materializedView, timestamp, mutation);
 
+        // updated materialized views need to be updated
+        for (MapDifference.ValueDifference<MaterializedViewDefinition> diff : materializedViewDiff.entriesDiffering().values())
+        {
+            addUpdatedMaterializedViewDefinitionToSchemaMutation(oldTable, diff.rightValue(), timestamp, mutation);
+        }
+
         return mutation;
     }
 
@@ -1336,6 +1342,26 @@ public final class LegacySchemaTables
         RowUpdateBuilder.deleteRow(SystemKeyspace.BuiltMaterializedViews, timestamp, mutation, materializedView.viewName);
     }
 
+    private static void addUpdatedMaterializedViewDefinitionToSchemaMutation(CFMetaData table, MaterializedViewDefinition materializedView, long timestamp, Mutation mutation)
+    {
+        RowUpdateBuilder builder = new RowUpdateBuilder(MaterializedViews, timestamp, mutation)
+                                   .clustering(table.cfName, materializedView.viewName);
+
+        builder.resetCollection("target_columns");
+        for (ColumnIdentifier partitionColumn : materializedView.partitionColumns)
+            builder.addListEntry("target_columns", partitionColumn.toString());
+
+        builder.resetCollection("clustering_columns");
+        for (ColumnIdentifier clusteringColumn : materializedView.clusteringColumns)
+            builder = builder.addListEntry("clustering_columns", clusteringColumn.toString());
+
+        builder.resetCollection("included_columns");
+        for (ColumnIdentifier includedColumn : materializedView.included)
+            builder = builder.addListEntry("included_columns", includedColumn.toString());
+
+        builder.build();
+    }
+
     /**
      * Deserialize materialized views from storage-level representation.
      *
@@ -1372,7 +1398,7 @@ public final class LegacySchemaTables
         }
 
         List<String> includedColumnNames = row.getList("included_columns", UTF8Type.instance);
-        List<ColumnIdentifier> includedColumns = new ArrayList<>();
+        Set<ColumnIdentifier> includedColumns = new HashSet<>();
         if (includedColumnNames != null)
         {
             for (String columnName : includedColumnNames)

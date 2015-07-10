@@ -79,14 +79,12 @@ public class MaterializedViewTest extends CQLTester
 
         try
         {
-            executeNet(protocolVersion, "INSERT INTO mv1_test(k,asciival,bigintval)VALUES(?,?,?)", 1, "foo", 2L);
+            executeNet(protocolVersion, "INSERT INTO mv1_test(k,asciival,bigintval) VALUES(?,?,?)", 1, "foo", 2L);
             Assert.fail("Shouldn't be able to modify a MV directly");
         }
         catch (Exception e)
         {
-
         }
-
 
         try
         {
@@ -95,7 +93,6 @@ public class MaterializedViewTest extends CQLTester
         }
         catch (Exception e)
         {
-
         }
 
         executeNet(protocolVersion, "ALTER TABLE mv1_test WITH compaction = { 'class' : 'LeveledCompactionStrategy' }");

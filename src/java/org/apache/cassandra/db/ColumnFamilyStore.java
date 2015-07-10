@@ -39,7 +39,6 @@ import org.apache.cassandra.db.lifecycle.View;
 import org.apache.cassandra.db.lifecycle.Tracker;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
 import org.apache.cassandra.io.FSWriteError;
-import org.apache.cassandra.utils.memory.MemtablePool;
 import org.json.simple.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +60,6 @@ import org.apache.cassandra.dht.*;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.io.FSReadError;
-import org.apache.cassandra.io.FSWriteError;
 import org.apache.cassandra.io.compress.CompressionParameters;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.*;
@@ -457,16 +455,12 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
         }
 
-        for (MaterializedViewDefinition definition : metadata.getMaterializedViews().values())
-        {
-            materializedViewManager.removeMaterializedView(definition.viewName);
-        }
-
         latencyCalculator.cancel(false);
         compactionStrategyManager.shutdown();
         SystemKeyspace.removeTruncationRecord(metadata.cfId);
         data.dropSSTables();
         indexManager.invalidate();
+        materializedViewManager.invalidate();
 
         invalidateCaches();
     }
