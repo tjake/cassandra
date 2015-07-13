@@ -1559,6 +1559,7 @@ class Shell(cmd.Cmd):
                 return 0
 
         current_record = None
+
         try:
             if header:
                 linesource.next()
@@ -1576,11 +1577,12 @@ class Shell(cmd.Cmd):
             except NotImplementedError:
                 num_processes = 1
 
+            table_meta = self.get_table_meta(ks, cf)
             processes, pipes = [], [],
             for i in range(num_processes):
                 parent_conn, child_conn = Pipe()
                 pipes.append(parent_conn)
-                processes.append(Process(target=self.multiproc_import, args=(child_conn, ks, cf, columns, nullval)))
+                processes.append(ImportProcess(self, child_conn, table_meta, columns, nullval))
 
             for process in processes:
                 process.start()
@@ -1658,135 +1660,6 @@ class Shell(cmd.Cmd):
                                   "as well." % (current_record,))
                     return False
         return True
-
-    def multiproc_import(self, pipe, ks, cf, columns, nullval):
-        """
-        This method is where child processes start when doing a COPY FROM
-        operation.  The child process will open one connection to the node and
-        interact directly with the connection, bypassing most of the driver
-        code.  Because we don't need retries, connection pooling, thread safety,
-        and other fancy features, this is okay.
-        """
-
-        # open a new connection for this subprocess
-        new_cluster = Cluster(
-                contact_points=(self.hostname,),
-                port=self.port,
-                cql_version=self.conn.cql_version,
-                protocol_version=DEFAULT_PROTOCOL_VERSION,
-                auth_provider=self.auth_provider,
-                ssl_options=sslhandling.ssl_settings(self.hostname, CONFIG_FILE) if self.ssl else None,
-                load_balancing_policy=WhiteListRoundRobinPolicy([self.hostname]),
-                compression=None,
-                connect_timeout=self.conn.connect_timeout)
-        session = new_cluster.connect(self.keyspace)
-        conn = session._pools.values()[0]._connection
-
-        # pre-build as much of the query as we can
-        table_meta = self.get_table_meta(ks, cf)
-        pk_cols = [col.name for col in table_meta.primary_key]
-        cqltypes = [table_meta.columns[name].typestring for name in columns]
-        pk_indexes = [columns.index(col.name) for col in table_meta.primary_key]
-        query = 'INSERT INTO %s.%s (%s) VALUES (%%s)' % (
-            protect_name(ks),
-            protect_name(cf),
-            ', '.join(protect_names(columns)))
-
-        # we need to handle some types specially
-        should_escape = [t in ('ascii', 'text', 'timestamp', 'date', 'time', 'inet') for t in cqltypes]
-
-        insert_timestamp = int(time.time() * 1e6)
-
-        def callback(record_num, response):
-            # This is the callback we register for all inserts.  Because this
-            # is run on the event-loop thread, we need to hold a lock when
-            # adjusting in_flight.
-            with conn.lock:
-                conn.in_flight -= 1
-
-            if not isinstance(response, ResultMessage):
-                # It's an error. Notify the parent process and let it send
-                # a stop signal to all child processes (including this one).
-                pipe.send((record_num, str(response)))
-                if isinstance(response, Exception) and self.debug:
-                    traceback.print_exc(response)
-
-        current_record = 0
-        insert_num = 0
-        try:
-            while True:
-                # To avoid totally maxing out the connection,
-                # defer to the reactor thread when we're close
-                # to capacity
-                if conn.in_flight > (conn.max_request_id * 0.9):
-                    conn._readable = True
-                    time.sleep(0.05)
-                    continue
-
-                try:
-                    (current_record, row) = pipe.recv()
-                except EOFError:
-                    # the pipe was closed and there's nothing to receive
-                    sys.stdout.write('Failed to read from pipe:\n\n')
-                    sys.stdout.flush()
-                    conn._writable = True
-                    conn._readable = True
-                    break
-
-                # see if the parent process has signaled that we are done
-                if (current_record, row) == (None, None):
-                    conn._writable = True
-                    conn._readable = True
-                    pipe.close()
-                    break
-
-                # format the values in the row
-                for i, value in enumerate(row):
-                    if value != nullval:
-                        if should_escape[i]:
-                            row[i] = protect_value(value)
-                    elif i in pk_indexes:
-                        # By default, nullval is an empty string. See CASSANDRA-7792 for details.
-                        message = "Cannot insert null value for primary key column '%s'." % (pk_cols[i],)
-                        if nullval == '':
-                            message += " If you want to insert empty strings, consider using " \
-                                       "the WITH NULL=<marker> option for COPY."
-                        pipe.send((current_record, message))
-                        return
-                    else:
-                        row[i] = 'null'
-
-                full_query = query % (','.join(row),)
-                query_message = QueryMessage(
-                    full_query, self.consistency_level, serial_consistency_level=None,
-                    fetch_size=None, paging_state=None, timestamp=insert_timestamp)
-
-                request_id = conn.get_request_id()
-                binary_message = query_message.to_binary(
-                    stream_id=request_id, protocol_version=DEFAULT_PROTOCOL_VERSION, compression=None)
-
-                # add the message directly to the connection's queue
-                with conn.lock:
-                    conn.in_flight += 1
-                conn._callbacks[request_id] = partial(callback, current_record)
-                conn.deque.append(binary_message)
-
-                # every 50 records, clear the pending writes queue and read
-                # any responses we have
-                if insert_num % 50 == 0:
-                    conn._writable = True
-                    conn._readable = True
-
-                insert_num += 1
-        except Exception, exc:
-            pipe.send((current_record, exc))
-        finally:
-            # wait for any pending requests to finish
-            while conn.in_flight > 0:
-                conn._readable = True
-                time.sleep(0.01)
-
-            new_cluster.shutdown()
 
     def perform_csv_export(self, ks, cf, columns, fname, opts):
         dialect_options = self.csv_dialect_defaults.copy()
@@ -2199,6 +2072,147 @@ class Shell(cmd.Cmd):
         if shownum:
             text = '%s:%d:%s' % (self.stdin.name, self.lineno, text)
         self.writeresult(text, color, newline=newline, out=sys.stderr)
+
+import multiprocessing
+class ImportProcess(multiprocessing.Process):
+    def __init__(self, parent, pipe, table_meta, columns, nullval):
+        multiprocessing.Process.__init__(self)
+        self.pipe = pipe
+        self.nullval = nullval
+        self.table_meta = table_meta
+        self.columns = columns
+        self.consistency_level = parent.consistency_level
+        self.connect_timeout = parent.conn.connect_timeout
+        self.hostname = parent.hostname
+        self.port = parent.port
+        self.ssl = parent.ssl
+        self.auth_provider = parent.auth_provider
+        self.cql_version = parent.conn.cql_version
+        self.debug = parent.debug
+
+    def run(self):
+        new_cluster = Cluster(
+                contact_points=(self.hostname,),
+                port=self.port,
+                cql_version=self.cql_version,
+                protocol_version=DEFAULT_PROTOCOL_VERSION,
+                auth_provider=self.auth_provider,
+                ssl_options=sslhandling.ssl_settings(hostname, CONFIG_FILE) if self.ssl else None,
+                load_balancing_policy=WhiteListRoundRobinPolicy([self.hostname]),
+                compression=None,
+                connect_timeout=self.connect_timeout)
+        session = new_cluster.connect(self.table_meta.keyspace.name)
+
+        conn = session._pools.values()[0]._connection
+
+        pk_cols = [col.name for col in self.table_meta.primary_key]
+        cqltypes = [self.table_meta.columns[name].typestring for name in self.columns]
+        pk_indexes = [self.columns.index(col.name) for col in self.table_meta.primary_key]
+        query = 'INSERT INTO %s.%s (%s) VALUES (%%s)' % (
+            protect_name(self.table_meta.keyspace.name),
+            protect_name(self.table_meta.name),
+            ', '.join(protect_names(self.columns)))
+
+        # we need to handle some types specially
+        should_escape = [t in ('ascii', 'text', 'timestamp', 'date', 'time', 'inet') for t in cqltypes]
+
+        insert_timestamp = int(time.time() * 1e6)
+
+        def callback(record_num, response):
+            # This is the callback we register for all inserts.  Because this
+            # is run on the event-loop thread, we need to hold a lock when
+            # adjusting in_flight.
+            with conn.lock:
+                conn.in_flight -= 1
+
+            if not isinstance(response, ResultMessage):
+                # It's an error. Notify the parent process and let it send
+                # a stop signal to all child processes (including this one).
+                self.pipe.send((record_num, str(response)))
+                if isinstance(response, Exception) and self.debug:
+                    traceback.print_exc(response)
+
+        current_record = 0
+        insert_num = 0
+        try:
+            while True:
+                # To avoid totally maxing out the connection,
+                # defer to the reactor thread when we're close
+                # to capacity
+                if conn.in_flight > (conn.max_request_id * 0.9):
+                    conn._readable = True
+                    time.sleep(0.05)
+                    continue
+
+                try:
+                    (current_record, row) = self.pipe.recv()
+                except EOFError:
+                    # the pipe was closed and there's nothing to receive
+                    sys.stdout.write('Failed to read from pipe:\n\n')
+                    sys.stdout.flush()
+                    conn._writable = True
+                    conn._readable = True
+                    break
+
+                # see if the parent process has signaled that we are done
+                if (current_record, row) == (None, None):
+                    conn._writable = True
+                    conn._readable = True
+                    self.pipe.close()
+                    break
+
+                # format the values in the row
+                for i, value in enumerate(row):
+                    if value != self.nullval:
+                        if should_escape[i]:
+                            row[i] = protect_value(value)
+                    elif i in pk_indexes:
+                        # By default, nullval is an empty string. See CASSANDRA-7792 for details.
+                        message = "Cannot insert null value for primary key column '%s'." % (pk_cols[i],)
+                        if self.nullval == '':
+                            message += " If you want to insert empty strings, consider using " \
+                                       "the WITH NULL=<marker> option for COPY."
+                        self.pipe.send((current_record, message))
+                        return
+                    else:
+                        row[i] = 'null'
+
+                full_query = query % (','.join(row),)
+                query_message = QueryMessage(
+                        full_query, self.consistency_level, serial_consistency_level=None,
+                        fetch_size=None, paging_state=None, timestamp=insert_timestamp)
+
+                request_id = conn.get_request_id()
+                binary_message = query_message.to_binary(
+                    stream_id=request_id, protocol_version=DEFAULT_PROTOCOL_VERSION, compression=None)
+
+                # add the message directly to the connection's queue
+                with conn.lock:
+                    conn.in_flight += 1
+
+                conn._callbacks[request_id] = partial(callback, current_record)
+                conn.deque.append(binary_message)
+
+                # every 50 records, clear the pending writes queue and read
+                # any responses we have
+                if insert_num % 50 == 0:
+                    conn._writable = True
+                    conn._readable = True
+
+                insert_num += 1
+        except Exception, exc:
+            self.pipe.send((current_record, str(exc)))
+        finally:
+            # wait for any pending requests to finish
+            while conn.in_flight > 0:
+                conn._readable = True
+                time.sleep(0.1)
+
+            new_cluster.shutdown()
+
+    def stop(self):
+        self.terminate()
+
 
 
 class RateMeter(object):
