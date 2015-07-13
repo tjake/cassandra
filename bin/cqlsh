@@ -1577,12 +1577,11 @@ class Shell(cmd.Cmd):
             except NotImplementedError:
                 num_processes = 1
 
-            table_meta = self.get_table_meta(ks, cf)
             processes, pipes = [], [],
             for i in range(num_processes):
                 parent_conn, child_conn = Pipe()
                 pipes.append(parent_conn)
-                processes.append(ImportProcess(self, child_conn, table_meta, columns, nullval))
+                processes.append(ImportProcess(self, child_conn, ks, cf, columns, nullval))
 
             for process in processes:
                 process.start()
@@ -2075,11 +2074,16 @@ class Shell(cmd.Cmd):
 
 import multiprocessing
 class ImportProcess(multiprocessing.Process):
-    def __init__(self, parent, pipe, table_meta, columns, nullval):
+    def __init__(self, parent, pipe, ks, cf, columns, nullval):
         multiprocessing.Process.__init__(self)
         self.pipe = pipe
         self.nullval = nullval
-        self.table_meta = table_meta
+        self.ks = ks
+        self.cf = cf
+
+        #validate we can fetch metdata but don't store it since win32 needs to pickle
+        parent.get_table_meta(ks, cf)
+
         self.columns = columns
         self.consistency_level = parent.consistency_level
         self.connect_timeout = parent.conn.connect_timeout
@@ -2101,16 +2105,17 @@ class ImportProcess(multiprocessing.Process):
                 load_balancing_policy=WhiteListRoundRobinPolicy([self.hostname]),
                 compression=None,
                 connect_timeout=self.connect_timeout)
-        session = new_cluster.connect(self.table_meta.keyspace.name)
-
+        session = new_cluster.connect(self.ks)
         conn = session._pools.values()[0]._connection
 
-        pk_cols = [col.name for col in self.table_meta.primary_key]
-        cqltypes = [self.table_meta.columns[name].typestring for name in self.columns]
-        pk_indexes = [self.columns.index(col.name) for col in self.table_meta.primary_key]
+        table_meta = new_cluster.metadata.keyspaces[self.ks].tables[self.cf]
+
+        pk_cols = [col.name for col in table_meta.primary_key]
+        cqltypes = [table_meta.columns[name].typestring for name in self.columns]
+        pk_indexes = [self.columns.index(col.name) for col in table_meta.primary_key]
         query = 'INSERT INTO %s.%s (%s) VALUES (%%s)' % (
-            protect_name(self.table_meta.keyspace.name),
-            protect_name(self.table_meta.name),
+            protect_name(table_meta.keyspace.name),
+            protect_name(table_meta.name),
             ', '.join(protect_names(self.columns)))
 
         # we need to handle some types specially
