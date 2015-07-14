@@ -649,7 +649,8 @@ public class StorageProxy implements StorageProxyMBean
 
             ConsistencyLevel consistencyLevel = ConsistencyLevel.ONE;
 
-            final Collection<InetAddress> batchlogEndpoints = getBatchlogEndpoints(localDataCenter, consistencyLevel);
+            //Since the base -> view replication is 1:1 we only need to store the BL locally
+            final Collection<InetAddress> batchlogEndpoints = Collections.singleton(FBUtilities.getBroadcastAddress());
             final UUID batchUUID = UUIDGen.getTimeUUID();
             BatchlogResponseHandler.BatchlogCleanup cleanup = new BatchlogResponseHandler.BatchlogCleanup(mutations.size(),
                                                                                                           new BatchlogResponseHandler.BatchlogCleanupCallback()
@@ -715,7 +716,7 @@ public class StorageProxy implements StorageProxyMBean
     throws WriteTimeoutException, WriteFailureException, UnavailableException, OverloadedException, InvalidRequestException
     {
         Collection<Mutation> augmented = TriggerExecutor.instance.execute(mutations);
-        boolean touchedMaterializedView = MaterializedViewManager.touchesSelectedColumn(mutations);
+        boolean touchedMaterializedView = MaterializedViewManager.touchesSelectedColumn(mutations, true);
 
         if (augmented != null)
             mutateAtomically(augmented, consistencyLevel, touchedMaterializedView);
@@ -849,7 +850,6 @@ public class StorageProxy implements StorageProxyMBean
             }
             else
             {
-                logger.error("HERE");
                 MessagingService.instance().sendRR(BatchlogManager.getBatchlogMutationFor(mutations, uuid, targetVersion)
                                                                   .createMessage(MessagingService.Verb.BATCHLOG_MUTATION),
                                                    target,
@@ -890,8 +890,11 @@ public class StorageProxy implements StorageProxyMBean
             sendToHintedEndpoints(wrapper.mutation, endpoints, wrapper.handler, localDataCenter, stage);
         }
 
-        for (WriteResponseHandlerWrapper wrapper : wrappers)
-            wrapper.handler.get();
+        if (stage != Stage.MATERIALIZED_VIEW_MUTATION)
+        {
+            for (WriteResponseHandlerWrapper wrapper : wrappers)
+                wrapper.handler.get();
+        }
     }
 
     /**

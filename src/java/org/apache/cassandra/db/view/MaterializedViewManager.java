@@ -169,12 +169,15 @@ public class MaterializedViewManager
         return null;
     }
 
-    public static boolean touchesSelectedColumn(Collection<? extends IMutation> mutations)
+    public static boolean touchesSelectedColumn(Collection<? extends IMutation> mutations, boolean ignoreRf1)
     {
         for (IMutation mutation : mutations)
         {
             for (PartitionUpdate cf : mutation.getPartitionUpdates())
             {
+                if (ignoreRf1 && Keyspace.open(cf.metadata().ksName).getReplicationStrategy().getReplicationFactor() == 1)
+                    continue;
+
                 MaterializedViewManager viewManager = Keyspace.open(cf.metadata().ksName)
                                                               .getColumnFamilyStore(cf.metadata().cfId).materializedViewManager;
                 if (viewManager.cfModifiesSelectedColumn(cf))

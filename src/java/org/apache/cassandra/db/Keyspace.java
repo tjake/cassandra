@@ -393,15 +393,16 @@ public class Keyspace
             throw new RuntimeException("Testing write failures");
 
         Lock lock = null;
-        if (updateIndexes && MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation)))
+        if (updateIndexes && MaterializedViewManager.touchesSelectedColumn(Collections.singleton(mutation), false))
         {
             lock = MaterializedViewManager.acquireLockFor(mutation.key().getKey());
 
             if (lock == null)
             {
-                if ((System.nanoTime() - mutation.createdAt) > DatabaseDescriptor.getWriteRpcTimeout())
+                if ((System.currentTimeMillis() - mutation.createdAt) > DatabaseDescriptor.getWriteRpcTimeout())
                 {
-                    logger.info("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(mutation.key().getKey()));
+                    logger.debug("Could not acquire lock for {}", ByteBufferUtil.bytesToHex(mutation.key().getKey()));
+                    Tracing.trace("Could not acquire MV lock");
                     throw new WriteTimeoutException(WriteType.MATERIALIZED_VIEW, ConsistencyLevel.LOCAL_ONE, 0, 1);
                 }
                 else
