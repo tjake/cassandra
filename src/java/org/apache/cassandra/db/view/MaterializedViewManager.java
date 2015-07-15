@@ -133,9 +133,9 @@ public class MaterializedViewManager
         if (!StorageService.instance.isJoined()) return;
 
         List<Mutation> mutations = null;
-        for (MaterializedView view : allViews())
+        for (Map.Entry<String, MaterializedView> view : viewsByName.entrySet())
         {
-            Collection<Mutation> viewMutations = view.createMutations(key, cf, false);
+            Collection<Mutation> viewMutations = view.getValue().createMutations(key, cf, false);
             if (viewMutations != null && !viewMutations.isEmpty())
             {
                 if (mutations == null)

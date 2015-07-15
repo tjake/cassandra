@@ -653,13 +653,7 @@ public class StorageProxy implements StorageProxyMBean
             final Collection<InetAddress> batchlogEndpoints = Collections.singleton(FBUtilities.getBroadcastAddress());
             final UUID batchUUID = UUIDGen.getTimeUUID();
             BatchlogResponseHandler.BatchlogCleanup cleanup = new BatchlogResponseHandler.BatchlogCleanup(mutations.size(),
-                                                                                                          new BatchlogResponseHandler.BatchlogCleanupCallback()
-                                                                                                          {
-                                                                                                              public void invoke()
-                                                                                                              {
-                                                                                                                  asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID);
-                                                                                                              }
-                                                                                                          });
+                                                                                                          () -> asyncRemoveFromBatchlog(batchlogEndpoints, batchUUID));
 
             // add a handler for each mutation - includes checking availability, but doesn't initiate any writes, yet
             for (Mutation mutation : mutations)
@@ -677,10 +671,11 @@ public class StorageProxy implements StorageProxyMBean
                 // exit early if we can't fulfill the CL at this time.
                 wrapper.handler.assureSufficientLiveNodes();
                 wrappers.add(wrapper);
-            }
 
-            // write to the batchlog
-            syncWriteToBatchlog(mutations, batchlogEndpoints, batchUUID);
+
+                //Apply to local batchlog memtable in this thread
+                BatchlogManager.getBatchlogMutationFor(mutations, batchUUID, MessagingService.current_version).apply();
+            }
 
             // now actually perform the writes and wait for them to complete
             syncWriteBatchedMutations(wrappers, localDataCenter, Stage.MATERIALIZED_VIEW_MUTATION);
