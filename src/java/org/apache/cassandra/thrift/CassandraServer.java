@@ -1210,12 +1210,20 @@ public class CassandraServer implements Cassandra.Iface
         {
             if (del.super_column == null)
             {
-                addRange(cfm,
-                         delInfo,
-                         LegacyLayout.decodeBound(cfm, del.predicate.getSlice_range().start, true).bound,
-                         LegacyLayout.decodeBound(cfm, del.predicate.getSlice_range().finish, false).bound,
-                         del.timestamp,
-                         nowInSec);
+                if (ByteBufferUtil.compareUnsigned(del.predicate.getSlice_range().start, del.predicate.getSlice_range().finish) == 0)
+                {
+                    addRange(cfm,
+                             delInfo,
+                             LegacyLayout.decodeBound(cfm, del.predicate.getSlice_range().start, true).bound,
+                             LegacyLayout.decodeBound(cfm, del.predicate.getSlice_range().finish, false).bound,
+                             del.timestamp,
+                             nowInSec);
+                }
+                else
+                {
+                    //See comment below
+                    throw new InvalidRequestException("Cannot delete a range of columns");
+                }
             }
             else
             {

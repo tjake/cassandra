@@ -1172,6 +1172,11 @@ public abstract class LegacyLayout
 
         public Row getRow()
         {
+            //If the calls to addCell and addRangeTombstone above fail we can fail to get
+            //valid clustering in which case we skip the result.
+            if (builder.clustering() == null)
+                return null;
+
             return builder.build();
         }
     }
