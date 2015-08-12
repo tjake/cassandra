@@ -59,26 +59,37 @@ public class CommitLogArchiver
     public long restorePointInTime;
     public final TimeUnit precision;
 
-    public CommitLogArchiver()
+    public CommitLogArchiver(String archiveCommand, String restoreCommand, String restoreDirectories,
+            long restorePointInTime, TimeUnit precision)
+    {
+        this.archiveCommand = archiveCommand;
+        this.restoreCommand = restoreCommand;
+        this.restoreDirectories = restoreDirectories;
+        this.restorePointInTime = restorePointInTime;
+        this.precision = precision;
+    }
+
+    public static CommitLogArchiver disabled()
+    {
+        return new CommitLogArchiver(null, null, null, Long.MAX_VALUE, TimeUnit.MICROSECONDS);
+    }
+
+    public static CommitLogArchiver construct()
     {
         Properties commitlog_commands = new Properties();
-        try (InputStream stream = getClass().getClassLoader().getResourceAsStream("commitlog_archiving.properties"))
+        try (InputStream stream = CommitLogArchiver.class.getClassLoader().getResourceAsStream("commitlog_archiving.properties"))
         {
             if (stream == null)
             {
                 logger.debug("No commitlog_archiving properties found; archive + pitr will be disabled");
-                archiveCommand = null;
-                restoreCommand = null;
-                restoreDirectories = null;
-                restorePointInTime = Long.MAX_VALUE;
-                precision = TimeUnit.MICROSECONDS;
+                return disabled();
             }
             else
             {
                 commitlog_commands.load(stream);
-                archiveCommand = commitlog_commands.getProperty("archive_command");
-                restoreCommand = commitlog_commands.getProperty("restore_command");
-                restoreDirectories = commitlog_commands.getProperty("restore_directories");
+                String archiveCommand = commitlog_commands.getProperty("archive_command");
+                String restoreCommand = commitlog_commands.getProperty("restore_command");
+                String restoreDirectories = commitlog_commands.getProperty("restore_directories");
                 if (restoreDirectories != null && !restoreDirectories.isEmpty())
                 {
                     for (String dir : restoreDirectories.split(DELIMITER))
@@ -94,7 +105,8 @@ public class CommitLogArchiver
                     }
                 }
                 String targetTime = commitlog_commands.getProperty("restore_point_in_time");
-                precision = TimeUnit.valueOf(commitlog_commands.getProperty("precision", "MICROSECONDS"));
+                TimeUnit precision = TimeUnit.valueOf(commitlog_commands.getProperty("precision", "MICROSECONDS"));
+                long restorePointInTime;
                 try
                 {
                     restorePointInTime = Strings.isNullOrEmpty(targetTime) ? Long.MAX_VALUE : format.parse(targetTime).getTime();
@@ -103,6 +115,7 @@ public class CommitLogArchiver
                 {
                     throw new RuntimeException("Unable to parse restore target time", e);
                 }
+                return new CommitLogArchiver(archiveCommand, restoreCommand, restoreDirectories, restorePointInTime, precision);
             }
         }
         catch (IOException e)
