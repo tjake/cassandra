@@ -663,7 +663,8 @@ public class StorageProxy implements StorageProxyMBean
             {
                 String keyspaceName = mutation.getKeyspaceName();
                 Token tk = mutation.key().getToken();
-                List<InetAddress> naturalEndpoints = Lists.newArrayList(MaterializedViewUtils.getViewNaturalEndpoint(keyspaceName, baseToken, tk));
+                InetAddress pairedEndpoint = MaterializedViewUtils.getViewNaturalEndpoint(keyspaceName, baseToken, tk);
+                List<InetAddress> naturalEndpoints = Lists.newArrayList(pairedEndpoint);
 
                 WriteResponseHandlerWrapper wrapper = wrapMVBatchResponseHandler(mutation,
                                                                                  consistencyLevel,
@@ -672,14 +673,27 @@ public class StorageProxy implements StorageProxyMBean
                                                                                  WriteType.BATCH,
                                                                                  cleanup);
 
-                wrappers.add(wrapper);
-
-                //Apply to local batchlog memtable in this thread
-                BatchlogManager.getBatchlogMutationFor(mutations, batchUUID, MessagingService.current_version).apply();
+                //When local node is the endpoint and there are no pending nodes we can
+                // Just apply the mutation locally.
+                if (pairedEndpoint.equals(FBUtilities.getBroadcastAddress()) &&
+                    wrapper.handler.pendingEndpoints.isEmpty())
+                {
+                    mutation.apply();
+                }
+                else
+                {
+                    wrappers.add(wrapper);
+                }
             }
 
-            // now actually perform the writes and wait for them to complete
-            asyncWriteBatchedMutations(wrappers, localDataCenter, Stage.MATERIALIZED_VIEW_MUTATION);
+            if (!wrappers.isEmpty())
+            {
+                //Apply to local batchlog memtable in this thread
+                BatchlogManager.getBatchlogMutationFor(mutations, batchUUID, MessagingService.current_version).apply();
+
+                // now actually perform the writes and wait for them to complete
+                asyncWriteBatchedMutations(wrappers, localDataCenter, Stage.MATERIALIZED_VIEW_MUTATION);
+            }
         }
         catch (WriteTimeoutException ex)
         {
