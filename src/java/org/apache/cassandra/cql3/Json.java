@@ -120,7 +120,6 @@ public class Json
             this.columnMap = columnMap;
         }
 
-        @Override
         public Term.Raw getRawTermForColumn(ColumnDefinition def)
         {
             Term value = columnMap.get(def.name);
@@ -144,7 +143,6 @@ public class Json
             this.columns = columns;
         }
 
-        @Override
         public DelayedColumnValue getRawTermForColumn(ColumnDefinition def)
         {
             return new DelayedColumnValue(this, def);
