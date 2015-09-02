@@ -778,11 +778,21 @@ public abstract class ModificationStatement implements CQLStatement
          */
         private Conditions prepareConditions(CFMetaData metadata, VariableSpecifications boundNames)
         {
+            // To have both 'IF EXISTS'/'IF NOT EXISTS' and some other conditions doesn't make sense.
+            // So far this is enforced by the parser, but let's assert it for sanity if ever the parse changes.
             if (ifExists)
+            {
+                assert conditions.isEmpty();
+                assert !ifNotExists;
                 return Conditions.IF_EXISTS_CONDITION;
+            }
 
             if (ifNotExists)
+            {
+                assert conditions.isEmpty();
+                assert !ifExists;
                 return Conditions.IF_NOT_EXISTS_CONDITION;
+            }
 
             if (conditions.isEmpty())
                 return Conditions.EMPTY_CONDITION;
