@@ -218,7 +218,7 @@ public class UpdateStatement extends ModificationStatement
                                                         Conditions conditions,
                                                         Attributes attrs)
         {
-            checkFalse(cfm.isCounter(), "INSERT statement are not allowed on counter tables, use UPDATE instead");
+            checkFalse(cfm.isCounter(), "INSERT statements are not allowed on counter tables, use UPDATE instead");
 
             Collection<ColumnDefinition> defs = cfm.allColumns();
             Json.Prepared prepared = jsonValue.prepareAndCollectMarkers(cfm, defs, boundNames);
