@@ -18,7 +18,6 @@
 package org.apache.cassandra.db;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -195,8 +194,7 @@ public abstract class CBuilder
         {
             assert size+1 <= type.size();
 
-            ByteBuffer[] newValues = new ByteBuffer[type.size()];
-            System.arraycopy(values, 0, newValues, 0, size);
+            ByteBuffer[] newValues = Arrays.copyOf(values, type.size());
             newValues[size] = value;
             return new Clustering(newValues);
         }
@@ -204,8 +202,7 @@ public abstract class CBuilder
         public Clustering buildWith(List<ByteBuffer> newValues)
         {
             assert size + newValues.size() <= type.size();
-            ByteBuffer[] buffers = new ByteBuffer[type.size()];
-            System.arraycopy(values, 0, buffers, 0, size);
+            ByteBuffer[] buffers = Arrays.copyOf(values, type.size());
             int newSize = size;
             for (ByteBuffer value : newValues)
                 buffers[newSize++] = value;
