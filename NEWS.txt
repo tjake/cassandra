@@ -18,9 +18,11 @@ using the provided 'sstableupgrade' tool.
 
 New features
 ------------
-   - Support for IN restrictions on any partition key component or clustering key as well as support for EQ and IN
-     multicolumn restrictions has been added to UPDATE and DELETE statement
-   - Support for single-column and multi-colum slice restrictions (>, >=, <= and <) has been added to DELETE statements
+   - Support for IN restrictions on any partition key component or clustering key
+     as well as support for EQ and IN multicolumn restrictions has been added to
+     UPDATE and DELETE statement.
+   - Support for single-column and multi-colum slice restrictions (>, >=, <= and <)
+     has been added to DELETE statements
    - Materialized Views, which allow for server-side denormalization, is now
      available. Materialized views provide an alternative to secondary indexes
      for non-primary key queries, and perform much better for indexing high
