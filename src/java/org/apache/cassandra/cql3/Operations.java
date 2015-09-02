@@ -47,7 +47,7 @@ public final class Operations implements Iterable<Operation>
      *
      * @return <code>true</code> if some of the operations apply to static columns, <code>false</code> otherwise.
      */
-    public boolean applyToStaticColumns()
+    public boolean appliesToStaticColumns()
     {
         return !staticOperations.isEmpty();
     }
@@ -57,7 +57,7 @@ public final class Operations implements Iterable<Operation>
      *
      * @return <code>true</code> if some of the operations apply to regular columns, <code>false</code> otherwise.
      */
-    public boolean applyToRegularColumns()
+    public boolean appliesToRegularColumns()
     {
         return !regularOperations.isEmpty();
     }

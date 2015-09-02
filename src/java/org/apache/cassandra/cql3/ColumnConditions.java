@@ -57,13 +57,13 @@ public final class ColumnConditions extends AbstractConditions
     }
 
     @Override
-    public boolean applyToStaticColumns()
+    public boolean appliesToStaticColumns()
     {
         return !staticConditions.isEmpty();
     }
 
     @Override
-    public boolean applyToRegularColumns()
+    public boolean appliesToRegularColumns()
     {
         return !columnConditions.isEmpty();
     }

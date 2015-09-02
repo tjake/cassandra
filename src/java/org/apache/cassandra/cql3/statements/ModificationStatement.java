@@ -246,7 +246,7 @@ public abstract class ModificationStatement implements CQLStatement
 
     public boolean updatesStaticRow()
     {
-        return operations.applyToStaticColumns();
+        return operations.appliesToStaticColumns();
     }
 
     public List<Operation> getRegularOperations()
@@ -288,7 +288,7 @@ public abstract class ModificationStatement implements CQLStatement
     public NavigableSet<Clustering> createClustering(QueryOptions options)
     throws InvalidRequestException
     {
-        if (applyOnlyToStaticColumns() && !restrictions.hasClusteringColumnsRestriction())
+        if (appliesOnlyToStaticColumns() && !restrictions.hasClusteringColumnsRestriction())
             return FBUtilities.singleton(CBuilder.STATIC_BUILDER.build(), cfm.comparator);
 
         return restrictions.getClusteringColumns(options);
@@ -298,9 +298,9 @@ public abstract class ModificationStatement implements CQLStatement
      * Checks that the modification only apply to static columns.
      * @return <code>true</code> if the modification only apply to static columns, <code>false</code> otherwise.
      */
-    private boolean applyOnlyToStaticColumns()
+    private boolean appliesOnlyToStaticColumns()
     {
-        return applyOnlyToStaticColumns(operations, conditions);
+        return appliesOnlyToStaticColumns(operations, conditions);
     }
 
     /**
@@ -308,10 +308,10 @@ public abstract class ModificationStatement implements CQLStatement
      * @return <code>true</code> if the specified operations and conditions only apply to static columns,
      * <code>false</code> otherwise.
      */
-    public static boolean applyOnlyToStaticColumns(Operations operation, Conditions conditions)
+    public static boolean appliesOnlyToStaticColumns(Operations operation, Conditions conditions)
     {
-        return !operation.applyToRegularColumns() && !conditions.applyToRegularColumns()
-                && (operation.applyToStaticColumns() || conditions.applyToStaticColumns());
+        return !operation.appliesToRegularColumns() && !conditions.appliesToRegularColumns()
+                && (operation.appliesToStaticColumns() || conditions.appliesToStaticColumns());
     }
 
     public boolean requiresRead()
@@ -841,7 +841,7 @@ public abstract class ModificationStatement implements CQLStatement
                                                                List<Relation> relations,
                                                                Conditions conditions)
         {
-            boolean applyOnlyToStaticColumns = applyOnlyToStaticColumns(operations, conditions);
+            boolean applyOnlyToStaticColumns = appliesOnlyToStaticColumns(operations, conditions);
             return new StatementRestrictions(type, cfm, relations, boundNames, applyOnlyToStaticColumns, false, false);
         }
 

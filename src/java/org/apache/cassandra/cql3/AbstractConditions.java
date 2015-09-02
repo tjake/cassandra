@@ -47,13 +47,13 @@ abstract class AbstractConditions implements Conditions
     }
 
     @Override
-    public boolean applyToStaticColumns()
+    public boolean appliesToStaticColumns()
     {
         return false;
     }
 
     @Override
-    public boolean applyToRegularColumns()
+    public boolean appliesToRegularColumns()
     {
         return false;
     }

@@ -78,14 +78,14 @@ public interface Conditions
      *
      * @return <code>true</code> if some of the conditions apply to static columns, <code>false</code> otherwise.
      */
-    boolean applyToStaticColumns();
+    boolean appliesToStaticColumns();
 
     /**
      * Checks if some of the conditions apply to regular columns.
      *
      * @return <code>true</code> if some of the conditions apply to regular columns, <code>false</code> otherwise.
      */
-    boolean applyToRegularColumns();
+    boolean appliesToRegularColumns();
 
     /**
      * Adds the conditions to the specified CAS request.
