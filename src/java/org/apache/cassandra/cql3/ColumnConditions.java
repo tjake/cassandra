@@ -24,12 +24,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.google.common.collect.Iterables;
-
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.CQL3CasRequest;
 import org.apache.cassandra.db.Clustering;
+
+import static java.util.stream.StreamSupport.stream;
 
 /**
  * A set of <code>ColumnCondition</code>s.
@@ -102,15 +102,9 @@ public final class ColumnConditions extends AbstractConditions
     @Override
     public Iterable<Function> getFunctions()
     {
-        List<Function> functions = new ArrayList<>();
-
-        for (ColumnCondition columnCondition : this.columnConditions)
-            Iterables.addAll(functions, columnCondition.getFunctions());
-
-        for (ColumnCondition columnCondition : this.staticConditions)
-            Iterables.addAll(functions, columnCondition.getFunctions());
-
-        return functions;
+        return Stream.concat(columnConditions.stream(), staticConditions.stream())
+                     .flatMap(e -> stream(e.getFunctions().spliterator(), false))
+                     .collect(Collectors.toList());
     }
 
     /**
