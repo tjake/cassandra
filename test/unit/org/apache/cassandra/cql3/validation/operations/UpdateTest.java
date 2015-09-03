@@ -213,7 +213,53 @@ public class UpdateTest extends CQLTester
                                                         : "Predicates on the non-primary-key column (value) of a COMPACT table are not yet supported";
             assertInvalidMessage(expectedMsg,
                                  "UPDATE %s SET value = ? WHERE partitionKey = ? AND clustering_1 = ? AND value = ?", 7, 0, 1, 3);
+
+            assertInvalidMessage("Slice restrictions are not supported on the clustering columns in UPDATE statements",
+                                 "UPDATE %s SET value = ? WHERE partitionKey = ? AND clustering_1 > ?", 7, 0, 1);
         }
+    }
+
+    @Test
+    public void testUpdateWithSecondaryIndices() throws Throwable
+    {
+        testUpdateWithSecondaryIndices(false);
+        testUpdateWithSecondaryIndices(true);
+    }
+
+    private void testUpdateWithSecondaryIndices(boolean forceFlush) throws Throwable
+    {
+        createTable("CREATE TABLE %s (partitionKey int," +
+                "clustering_1 int," +
+                "value int," +
+                "values set<int>," +
+                " PRIMARY KEY (partitionKey, clustering_1))");
+
+        createIndex("CREATE INDEX ON %s (value)");
+        createIndex("CREATE INDEX ON %s (clustering_1)");
+        createIndex("CREATE INDEX ON %s (values)");
+
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 0, 0, {0})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 1, 1, {0, 1})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 2, 2, {0, 1, 2})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 3, 3, {0, 1, 2, 3})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (1, 0, 4, {0, 1, 2, 3, 4})");
+
+        flush(forceFlush);
+
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: value",
+                             "UPDATE %s SET values= {6} WHERE partitionKey = ? AND clustering_1 = ? AND value = ?", 3, 3, 3);
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: values",
+                             "UPDATE %s SET value= ? WHERE partitionKey = ? AND clustering_1 = ? AND values CONTAINS ?", 6, 3, 3, 3);
+        assertInvalidMessage("Some clustering keys are missing: clustering_1",
+                             "UPDATE %s SET values= {6} WHERE partitionKey = ? AND value = ?", 3, 3);
+        assertInvalidMessage("Some clustering keys are missing: clustering_1",
+                             "UPDATE %s SET value= ? WHERE partitionKey = ? AND values CONTAINS ?", 6, 3, 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "UPDATE %s SET values= {6} WHERE clustering_1 = ?", 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "UPDATE %s SET values= {6} WHERE value = ?", 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "UPDATE %s SET value= ? WHERE values CONTAINS ?", 6, 3);
     }
 
     @Test
@@ -356,6 +402,12 @@ public class UpdateTest extends CQLTester
                                                         : "Predicates on the non-primary-key column (value) of a COMPACT table are not yet supported";
             assertInvalidMessage(expectedMsg,
                                  "UPDATE %s SET value = ? WHERE partitionKey = ? AND clustering_1 = ? AND clustering_2 = ? AND value = ?", 7, 0, 1, 1, 3);
+
+            assertInvalidMessage("Slice restrictions are not supported on the clustering columns in UPDATE statements",
+                                 "UPDATE %s SET value = ? WHERE partitionKey = ? AND clustering_1 > ?", 7, 0, 1);
+
+            assertInvalidMessage("Slice restrictions are not supported on the clustering columns in UPDATE statements",
+                                 "UPDATE %s SET value = ? WHERE partitionKey = ? AND (clustering_1, clustering_2) > (?, ?)", 7, 0, 1, 1);
         }
     }
 

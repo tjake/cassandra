@@ -26,7 +26,6 @@ import java.util.List;
 import org.junit.Test;
 
 import org.apache.cassandra.cql3.CQLTester;
-
 import static org.apache.commons.lang3.StringUtils.isEmpty;
 import static org.junit.Assert.assertEquals;
 
@@ -956,6 +955,49 @@ public class DeleteTest extends CQLTester
         assertInvalidMessage("Invalid restrictions on clustering columns since the DELETE statement modifies only static columns",
                              "DELETE staticValue FROM %s WHERE partitionKey = ? AND (clustering_1, clustering_2) >= (?, ?)",
                              0, 0, 1);
+    }
+
+    @Test
+    public void testDeleteWithSecondaryIndices() throws Throwable
+    {
+        testDeleteWithSecondaryIndices(false);
+        testDeleteWithSecondaryIndices(true);
+    }
+
+    private void testDeleteWithSecondaryIndices(boolean forceFlush) throws Throwable
+    {
+        createTable("CREATE TABLE %s (partitionKey int," +
+                "clustering_1 int," +
+                "value int," +
+                "values set<int>," +
+                " PRIMARY KEY (partitionKey, clustering_1))");
+
+        createIndex("CREATE INDEX ON %s (value)");
+        createIndex("CREATE INDEX ON %s (clustering_1)");
+        createIndex("CREATE INDEX ON %s (values)");
+
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 0, 0, {0})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 1, 1, {0, 1})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 2, 2, {0, 1, 2})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (0, 3, 3, {0, 1, 2, 3})");
+        execute("INSERT INTO %s (partitionKey, clustering_1, value, values) VALUES (1, 0, 4, {0, 1, 2, 3, 4})");
+
+        flush(forceFlush);
+
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: value",
+                             "DELETE FROM %s WHERE partitionKey = ? AND clustering_1 = ? AND value = ?", 3, 3, 3);
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: values",
+                             "DELETE FROM %s WHERE partitionKey = ? AND clustering_1 = ? AND values CONTAINS ?", 3, 3, 3);
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: value",
+                             "DELETE FROM %s WHERE partitionKey = ? AND value = ?", 3, 3);
+        assertInvalidMessage("Non PRIMARY KEY columns found in where clause: values",
+                             "DELETE FROM %s WHERE partitionKey = ? AND values CONTAINS ?", 3, 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "DELETE FROM %s WHERE clustering_1 = ?", 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "DELETE FROM %s WHERE value = ?", 3);
+        assertInvalidMessage("Some partition key parts are missing: partitionkey",
+                             "DELETE FROM %s WHERE values CONTAINS ?", 3);
     }
 
     private void flush(boolean forceFlush)
