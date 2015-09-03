@@ -367,7 +367,10 @@ public final class StatementRestrictions
                                                       boolean selectsOnlyStaticColumns,
                                                       boolean selectACollection)
     {
-       if (!type.allowClusteringColumnSlices()
+        checkFalse(!type.allowClusteringColumnSlices() && clusteringColumnsRestrictions.isSlice(),
+                   "Slice restrictions are not supported on the clustering columns in %s statements", type);
+
+        if (!type.allowClusteringColumnSlices()
                && (!cfm.isCompactTable() || (cfm.isCompactTable() && !hasClusteringColumnsRestriction())))
         {
             if (!selectsOnlyStaticColumns && hasUnrestrictedClusteringColumns())
