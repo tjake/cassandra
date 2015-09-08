@@ -181,6 +181,7 @@ public class SerializationHeader
     {
         writeTimestamp(dt.markedForDeleteAt(), out);
         writeLocalDeletionTime(dt.localDeletionTime(), out);
+        out.writeBoolean(dt.isViewCleanup);
     }
 
     public long readTimestamp(DataInputPlus in) throws IOException
@@ -202,7 +203,8 @@ public class SerializationHeader
     {
         long markedAt = readTimestamp(in);
         int localDeletionTime = readLocalDeletionTime(in);
-        return new DeletionTime(markedAt, localDeletionTime);
+        boolean isViewCleanup = in.readBoolean();
+        return new DeletionTime(markedAt, localDeletionTime, isViewCleanup);
     }
 
     public long timestampSerializedSize(long timestamp)
@@ -223,7 +225,8 @@ public class SerializationHeader
     public long deletionTimeSerializedSize(DeletionTime dt)
     {
         return timestampSerializedSize(dt.markedForDeleteAt())
-             + localDeletionTimeSerializedSize(dt.localDeletionTime());
+             + localDeletionTimeSerializedSize(dt.localDeletionTime())
+             + 1; //view flag
     }
 
     public void skipTimestamp(DataInputPlus in) throws IOException
@@ -245,6 +248,7 @@ public class SerializationHeader
     {
         skipTimestamp(in);
         skipLocalDeletionTime(in);
+        in.readBoolean();
     }
 
     public Component toComponent()

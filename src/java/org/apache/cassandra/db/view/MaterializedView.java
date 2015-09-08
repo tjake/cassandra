@@ -342,7 +342,7 @@ public class MaterializedView
         TemporalRow.Resolver resolver = TemporalRow.earliest;
         return createTombstone(temporalRow,
                                viewPartitionKey(temporalRow, resolver),
-                               new DeletionTime(temporalRow.viewClusteringTimestamp(), temporalRow.nowInSec),
+                               new DeletionTime(temporalRow.viewClusteringTimestamp(), temporalRow.nowInSec, true),
                                resolver,
                                temporalRow.nowInSec);
     }

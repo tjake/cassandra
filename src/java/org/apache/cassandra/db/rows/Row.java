@@ -375,6 +375,11 @@ public interface Row extends Unfiltered, Collection<ColumnData>
             else
                 activeDeletion = rowDeletion;
 
+            //If view cleanup tombstone we check if the row marker timestamp is supersedes the view cleanup
+            //meaning there is no longer a need for the cleanup. We can ignore this cleanup timestamp
+            if (activeDeletion.isViewCleanup && rowInfo.timestamp() >= activeDeletion.markedForDeleteAt())
+                    activeDeletion = DeletionTime.LIVE;
+
             if (activeDeletion.deletes(rowInfo))
                 rowInfo = LivenessInfo.EMPTY;
 

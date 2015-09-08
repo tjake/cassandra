@@ -238,11 +238,16 @@ public abstract class Rows
         long timeDelta = Math.abs(existingInfo.timestamp() - mergedInfo.timestamp());
 
         DeletionTime deletion = existing.deletion().supersedes(update.deletion()) ? existing.deletion() : update.deletion();
-
         if (deletion.deletes(mergedInfo))
             mergedInfo = LivenessInfo.EMPTY;
 
         builder.addPrimaryKeyLivenessInfo(mergedInfo);
+
+        //If view cleanup tombstone we check if the row marker timestamp is supersedes the view cleanup
+        //meaning there is no longer a need for the cleanup. We can ignore this cleanup timestamp
+        if (deletion.isViewCleanup && mergedInfo.timestamp() >= deletion.markedForDeleteAt())
+            deletion = DeletionTime.LIVE;
+        
         builder.addRowDeletion(deletion);
 
         Iterator<ColumnData> a = existing.iterator();

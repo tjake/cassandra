@@ -161,7 +161,6 @@ public class BufferCell extends AbstractCell
         {
             if (purger.shouldPurge(timestamp, localDeletionTime))
                 return null;
-
             // We slightly hijack purging to convert expired but not purgeable columns to tombstones. The reason we do that is
             // that once a column has expired it is equivalent to a tombstone but actually using a tombstone is more compact since
             // we don't keep the column value. The reason we do it here is that 1) it's somewhat related to dealing with tombstones

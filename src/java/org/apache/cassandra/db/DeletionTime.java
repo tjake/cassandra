@@ -47,11 +47,18 @@ public class DeletionTime implements Comparable<DeletionTime>, IMeasurableMemory
 
     private final long markedForDeleteAt;
     private final int localDeletionTime;
+    public final boolean isViewCleanup;
 
     public DeletionTime(long markedForDeleteAt, int localDeletionTime)
     {
+        this(markedForDeleteAt, localDeletionTime, false);
+    }
+
+    public DeletionTime(long markedForDeleteAt, int localDeletionTime, boolean isViewCleanup)
+    {
         this.markedForDeleteAt = markedForDeleteAt;
         this.localDeletionTime = localDeletionTime;
+        this.isViewCleanup = isViewCleanup;
     }
 
     /**
@@ -146,7 +153,7 @@ public class DeletionTime implements Comparable<DeletionTime>, IMeasurableMemory
 
     public int dataSize()
     {
-        return 12;
+        return 13;
     }
 
     public long unsharedHeapSize()
@@ -160,26 +167,30 @@ public class DeletionTime implements Comparable<DeletionTime>, IMeasurableMemory
         {
             out.writeInt(delTime.localDeletionTime());
             out.writeLong(delTime.markedForDeleteAt());
+            out.writeBoolean(delTime.isViewCleanup);
         }
 
         public DeletionTime deserialize(DataInputPlus in) throws IOException
         {
             int ldt = in.readInt();
             long mfda = in.readLong();
+            boolean isvc = in.readBoolean();
+
             return mfda == Long.MIN_VALUE && ldt == Integer.MAX_VALUE
                  ? LIVE
-                 : new DeletionTime(mfda, ldt);
+                 : new DeletionTime(mfda, ldt, isvc);
         }
 
         public void skip(DataInputPlus in) throws IOException
         {
-            FileUtils.skipBytesFully(in, 4 + 8);
+            FileUtils.skipBytesFully(in, 4 + 8 + 1);
         }
 
         public long serializedSize(DeletionTime delTime)
         {
             return TypeSizes.sizeof(delTime.localDeletionTime())
-                 + TypeSizes.sizeof(delTime.markedForDeleteAt());
+                 + TypeSizes.sizeof(delTime.markedForDeleteAt())
+                 + TypeSizes.sizeof(delTime.isViewCleanup);
         }
     }
 }
