@@ -104,7 +104,7 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
         int state = this.state;
         int index = seekTo(target, forwards, (state & (ON_ITEM | BEFORE_FIRST)) != 0);
         boolean found = index >= 0;
-        if (!found) index = -1 -index;
+        if (!found) index = -2 -index;
 
         V next = null;
         if (state == BEFORE_FIRST && compareToFirst(index) < 0)
