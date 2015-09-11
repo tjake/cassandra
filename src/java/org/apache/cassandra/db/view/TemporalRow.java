@@ -301,13 +301,25 @@ public class TemporalRow
                                int localDeletionTime,
                                ByteBuffer value,  boolean isNew)
     {
-        if (!columnValues.containsKey(identifier))
-            columnValues.put(identifier, new HashMap<>());
-
         Map<CellPath, TemporalCell.Versions> innerMap = columnValues.get(identifier);
+        TemporalCell.Versions cellPathVersions;
 
-        if (!innerMap.containsKey(cellPath))
-            innerMap.put(cellPath, new TemporalCell.Versions());
+        if (innerMap == null)
+        {
+            innerMap = new HashMap<>();
+            columnValues.put(identifier, innerMap);
+            cellPathVersions = new TemporalCell.Versions();
+            innerMap.put(cellPath, cellPathVersions);
+        }
+        else
+        {
+            cellPathVersions = innerMap.get(cellPath);
+            if (cellPathVersions == null)
+            {
+                cellPathVersions = new TemporalCell.Versions();
+                innerMap.put(cellPath, cellPathVersions);
+            }
+        }
 
         // If this column is part of the view's primary keys
         if (viewPrimaryKey.contains(identifier))
@@ -317,7 +329,7 @@ public class TemporalRow
             this.viewClusteringLocalDeletionTime = minValueIfSet(this.viewClusteringLocalDeletionTime, localDeletionTime, NO_DELETION_TIME);
         }
 
-        innerMap.get(cellPath).setVersion(new TemporalCell(value, timestamp, ttl, localDeletionTime, isNew));
+        cellPathVersions.setVersion(new TemporalCell(value, timestamp, ttl, localDeletionTime, isNew));
     }
 
     private static int minValueIfSet(int existing, int update, int defaultValue)
