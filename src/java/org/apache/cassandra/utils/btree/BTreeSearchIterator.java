@@ -103,7 +103,7 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
 
         int state = this.state;
         boolean found = seekTo(target, forwards, (state & (ON_ITEM | BEFORE_FIRST)) != 0);
-        int index = globalIndex();
+        int index = cur.globalIndex();
 
         V next = null;
         if (state == BEFORE_FIRST && compareToFirst(index) < 0)
