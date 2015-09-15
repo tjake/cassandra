@@ -172,26 +172,23 @@ JVM_OPTS="$JVM_OPTS -Xmx${MAX_HEAP_SIZE}"
 # Per-thread stack size.
 JVM_OPTS="$JVM_OPTS -Xss256k"
 
-# Use the Hotspot garbage-first collector.
-JVM_OPTS="$JVM_OPTS -XX:+UseG1GC"
 
-# Have the JVM do less remembered set work during STW, instead
-# preferring concurrent GC. Reduces p99.9 latency.
-JVM_OPTS="$JVM_OPTS -XX:G1RSetUpdatingPauseTimePercent=5"
+# Larger interned string table, for gossip's benefit (CASSANDRA-6410)
+JVM_OPTS="$JVM_OPTS -XX:StringTableSize=1000003"
 
-# The JVM maximum is 8 PGC threads and 1/4 of that for ConcGC.
-# Machines with > 10 cores may need additional threads. Increase to <= full cores.
-#JVM_OPTS="$JVM_OPTS -XX:ParallelGCThreads=16"
-#JVM_OPTS="$JVM_OPTS -XX:ConcGCThreads=16"
+# GC tuning options
+JVM_OPTS="$JVM_OPTS -XX:+UseParNewGC"
+JVM_OPTS="$JVM_OPTS -XX:+UseConcMarkSweepGC"
+JVM_OPTS="$JVM_OPTS -XX:+CMSParallelRemarkEnabled"
+JVM_OPTS="$JVM_OPTS -XX:SurvivorRatio=8"
+JVM_OPTS="$JVM_OPTS -XX:MaxTenuringThreshold=1"
+JVM_OPTS="$JVM_OPTS -XX:CMSInitiatingOccupancyFraction=75"
+JVM_OPTS="$JVM_OPTS -XX:+UseCMSInitiatingOccupancyOnly"
+JVM_OPTS="$JVM_OPTS -XX:+UseTLAB"
+JVM_OPTS="$JVM_OPTS -XX:+PerfDisableSharedMem"
+JVM_OPTS="$JVM_OPTS -XX:CompileCommandFile=$CASSANDRA_CONF/hotspot_compiler"
+JVM_OPTS="$JVM_OPTS -XX:CMSWaitDuration=10000"
 
-# Main G1GC tunable: lowering the pause target will lower throughput and vise versa.
-# 200ms is the JVM default and lowest viable setting
-# 1000ms increases throughput. Keep it smaller than the timeouts in cassandra.yaml.
-JVM_OPTS="$JVM_OPTS -XX:MaxGCPauseMillis=500"
-
-# Save CPU time on large (>= 16GB) heaps by delaying region scanning
-# until the heap is 70% full. The default in Hotspot 8u40 is 40%.
-#JVM_OPTS="$JVM_OPTS -XX:InitiatingHeapOccupancyPercent=70"
 
 # Make sure all memory is faulted and zeroed on startup.
 # This helps prevent soft faults in containers and makes
@@ -200,13 +197,6 @@ JVM_OPTS="$JVM_OPTS -XX:+AlwaysPreTouch"
 
 # Biased locking does not benefit Cassandra.
 JVM_OPTS="$JVM_OPTS -XX:-UseBiasedLocking"
-
-# Larger interned string table, for gossip's benefit (CASSANDRA-6410)
-JVM_OPTS="$JVM_OPTS -XX:StringTableSize=1000003"
-
-# Enable thread-local allocation blocks and allow the JVM to automatically
-# resize them at runtime.
-JVM_OPTS="$JVM_OPTS -XX:+UseTLAB -XX:+ResizeTLAB"
 
 # http://www.evanjones.ca/jvm-mmap-pause.html
 JVM_OPTS="$JVM_OPTS -XX:+PerfDisableSharedMem"
