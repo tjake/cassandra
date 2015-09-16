@@ -159,7 +159,7 @@ public class SerializationHeader
 
     public AbstractType<?> getType(ColumnDefinition column)
     {
-        return typeMap == null ? column.type : typeMap.get(column.name.bytes);
+        return column.type; //typeMap == null ? column.type : typeMap.get(column.name.bytes);
     }
 
     public void writeTimestamp(long timestamp, DataOutputPlus out) throws IOException
