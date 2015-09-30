@@ -28,6 +28,7 @@ import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.CBUtil;
 import org.apache.cassandra.transport.Message;
 import org.apache.cassandra.transport.ProtocolException;
+import rx.Observable;
 
 /**
  * Message to indicate that the server is ready to receive requests.
@@ -70,7 +71,7 @@ public class CredentialsMessage extends Message.Request
         this.credentials = credentials;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -79,10 +80,10 @@ public class CredentialsMessage extends Message.Request
         }
         catch (AuthenticationException e)
         {
-            return ErrorMessage.fromException(e);
+            return Observable.just(ErrorMessage.fromException(e));
         }
 
-        return new ReadyMessage();
+        return Observable.just(new ReadyMessage());
     }
 
     @Override

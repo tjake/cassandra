@@ -27,10 +27,11 @@ import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.MD5Digest;
+import rx.Observable;
 
 public interface QueryHandler
 {
-    ResultMessage process(String query,
+    Observable<ResultMessage> process(String query,
                           QueryState state,
                           QueryOptions options,
                           Map<String, ByteBuffer> customPayload) throws RequestExecutionException, RequestValidationException;
@@ -43,12 +44,12 @@ public interface QueryHandler
 
     ParsedStatement.Prepared getPreparedForThrift(Integer id);
 
-    ResultMessage processPrepared(CQLStatement statement,
+    Observable<ResultMessage> processPrepared(CQLStatement statement,
                                   QueryState state,
                                   QueryOptions options,
                                   Map<String, ByteBuffer> customPayload) throws RequestExecutionException, RequestValidationException;
 
-    ResultMessage processBatch(BatchStatement statement,
+    Observable<ResultMessage> processBatch(BatchStatement statement,
                                QueryState state,
                                BatchQueryOptions options,
                                Map<String, ByteBuffer> customPayload) throws RequestExecutionException, RequestValidationException;

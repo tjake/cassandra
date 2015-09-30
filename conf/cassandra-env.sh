@@ -209,7 +209,7 @@ JVM_OPTS="$JVM_OPTS -XX:StringTableSize=1000003"
 JVM_OPTS="$JVM_OPTS -XX:+UseTLAB -XX:+ResizeTLAB"
 
 # http://www.evanjones.ca/jvm-mmap-pause.html
-JVM_OPTS="$JVM_OPTS -XX:+PerfDisableSharedMem"
+#JVM_OPTS="$JVM_OPTS -XX:+PerfDisableSharedMem"
 
 # provides hints to the JIT compiler
 JVM_OPTS="$JVM_OPTS -XX:CompileCommandFile=$CASSANDRA_CONF/hotspot_compiler"
@@ -253,7 +253,7 @@ fi
 
 # uncomment to have Cassandra JVM log internal method compilation (developers only)
 # JVM_OPTS="$JVM_OPTS -XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation"
-# JVM_OPTS="$JVM_OPTS -XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
+JVM_OPTS="$JVM_OPTS -XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
 
 # Prefer binding to IPv4 network intefaces (when net.ipv6.bindv6only=1). See
 # http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6342561 (short version:

@@ -84,7 +84,6 @@ public class Server implements CassandraDaemon.Server
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private EventLoopGroup workerGroup;
-    private EventExecutor eventExecutorGroup;
 
     private Server (Builder builder)
     {
@@ -101,8 +100,7 @@ public class Server implements CassandraDaemon.Server
             else
                 workerGroup = new NioEventLoopGroup();
         }
-        if (builder.eventExecutorGroup != null)
-            eventExecutorGroup = builder.eventExecutorGroup;
+
         EventNotifier notifier = new EventNotifier(this);
         StorageService.instance.register(notifier);
         MigrationManager.instance.register(notifier);
@@ -175,7 +173,6 @@ public class Server implements CassandraDaemon.Server
     public static class Builder
     {
         private EventLoopGroup workerGroup;
-        private EventExecutor eventExecutorGroup;
         private boolean useSSL = false;
         private InetAddress hostAddr;
         private int port = -1;
@@ -190,12 +187,6 @@ public class Server implements CassandraDaemon.Server
         public Builder withEventLoopGroup(EventLoopGroup eventLoopGroup)
         {
             this.workerGroup = eventLoopGroup;
-            return this;
-        }
-
-        public Builder withEventExecutor(EventExecutor eventExecutor)
-        {
-            this.eventExecutorGroup = eventExecutor;
             return this;
         }
 
@@ -319,10 +310,7 @@ public class Server implements CassandraDaemon.Server
             pipeline.addLast("messageDecoder", messageDecoder);
             pipeline.addLast("messageEncoder", messageEncoder);
 
-            if (server.eventExecutorGroup != null)
-                pipeline.addLast(server.eventExecutorGroup, "executor", dispatcher);
-            else
-                pipeline.addLast("executor", dispatcher);
+            pipeline.addLast("executor", dispatcher);
         }
     }
 
