@@ -28,6 +28,7 @@ import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.*;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.UUIDGen;
+import rx.Observable;
 
 public class PrepareMessage extends Message.Request
 {
@@ -58,7 +59,7 @@ public class PrepareMessage extends Message.Request
         this.query = query;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -80,12 +81,12 @@ public class PrepareMessage extends Message.Request
             if (tracingId != null)
                 response.setTracingId(tracingId);
 
-            return response;
+            return Observable.just(response);
         }
         catch (Exception e)
         {
             JVMStabilityInspector.inspectThrowable(e);
-            return ErrorMessage.fromException(e);
+            return Observable.just(ErrorMessage.fromException(e));
         }
         finally
         {

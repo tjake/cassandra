@@ -203,6 +203,38 @@ if [ "$JVM_ARCH" = "64-Bit" ] && [ $USING_CMS -eq 0 ]; then
     JVM_OPTS="$JVM_OPTS -XX:+UseCondCardMark"
 fi
 
+# The JVM maximum is 8 PGC threads and 1/4 of that for ConcGC.
+# Machines with > 10 cores may need additional threads. Increase to <= full cores.
+#JVM_OPTS="$JVM_OPTS -XX:ParallelGCThreads=16"
+#JVM_OPTS="$JVM_OPTS -XX:ConcGCThreads=16"
+
+# Main G1GC tunable: lowering the pause target will lower throughput and vise versa.
+# 200ms is the JVM default and lowest viable setting
+# 1000ms increases throughput. Keep it smaller than the timeouts in cassandra.yaml.
+JVM_OPTS="$JVM_OPTS -XX:MaxGCPauseMillis=500"
+
+# Save CPU time on large (>= 16GB) heaps by delaying region scanning
+# until the heap is 70% full. The default in Hotspot 8u40 is 40%.
+#JVM_OPTS="$JVM_OPTS -XX:InitiatingHeapOccupancyPercent=70"
+
+# Make sure all memory is faulted and zeroed on startup.
+# This helps prevent soft faults in containers and makes
+# transparent hugepage allocation more effective.
+JVM_OPTS="$JVM_OPTS -XX:+AlwaysPreTouch"
+
+# Biased locking does not benefit Cassandra.
+JVM_OPTS="$JVM_OPTS -XX:-UseBiasedLocking"
+
+# Larger interned string table, for gossip's benefit (CASSANDRA-6410)
+JVM_OPTS="$JVM_OPTS -XX:StringTableSize=1000003"
+
+# Enable thread-local allocation blocks and allow the JVM to automatically
+# resize them at runtime.
+JVM_OPTS="$JVM_OPTS -XX:+UseTLAB -XX:+ResizeTLAB"
+
+# http://www.evanjones.ca/jvm-mmap-pause.html
+JVM_OPTS="$JVM_OPTS -XX:+PerfDisableSharedMem"
+
 # provides hints to the JIT compiler
 JVM_OPTS="$JVM_OPTS -XX:CompileCommandFile=$CASSANDRA_CONF/hotspot_compiler"
 
@@ -213,6 +245,36 @@ JVM_OPTS="$JVM_OPTS -javaagent:$CASSANDRA_HOME/lib/jamm-0.3.0.jar"
 if [ "x$CASSANDRA_HEAPDUMP_DIR" != "x" ]; then
     JVM_OPTS="$JVM_OPTS -XX:HeapDumpPath=$CASSANDRA_HEAPDUMP_DIR/cassandra-`date +%s`-pid$$.hprof"
 fi
+
+# GC logging options -- uncomment to enable
+# JVM_OPTS="$JVM_OPTS -XX:+PrintGCDetails"
+# JVM_OPTS="$JVM_OPTS -XX:+PrintGCDateStamps"
+# JVM_OPTS="$JVM_OPTS -XX:+PrintHeapAtGC"
+# JVM_OPTS="$JVM_OPTS -XX:+PrintTenuringDistribution"
+# JVM_OPTS="$JVM_OPTS -XX:+PrintGCApplicationStoppedTime"
+# JVM_OPTS="$JVM_OPTS -XX:+PrintPromotionFailure"
+# JVM_OPTS="$JVM_OPTS -XX:PrintFLSStatistics=1"
+# JVM_OPTS="$JVM_OPTS -Xloggc:/var/log/cassandra/gc.log"
+# JVM_OPTS="$JVM_OPTS -XX:+UseGCLogFileRotation"
+# JVM_OPTS="$JVM_OPTS -XX:NumberOfGCLogFiles=10"
+# JVM_OPTS="$JVM_OPTS -XX:GCLogFileSize=10M"
+
+# Configure the following for JEMallocAllocator and if jemalloc is not available in the system 
+# library path (Example: /usr/local/lib/). Usually "make install" will do the right thing. 
+# export LD_LIBRARY_PATH=<JEMALLOC_HOME>/lib/
+# JVM_OPTS="$JVM_OPTS -Djava.library.path=<JEMALLOC_HOME>/lib/"
+
+# uncomment to have Cassandra JVM listen for remote debuggers/profilers on port 1414
+# JVM_OPTS="$JVM_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=1414"
+
+# uncomment to have Cassandra JVM log internal method compilation (developers only)
+# JVM_OPTS="$JVM_OPTS -XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation"
+# JVM_OPTS="$JVM_OPTS -XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
+
+# Prefer binding to IPv4 network intefaces (when net.ipv6.bindv6only=1). See
+# http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6342561 (short version:
+# comment out this entry to enable IPv6 support).
+JVM_OPTS="$JVM_OPTS -Djava.net.preferIPv4Stack=true"
 
 # jmx: metrics and administration interface
 #

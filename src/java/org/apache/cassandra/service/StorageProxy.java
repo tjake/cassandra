@@ -71,6 +71,7 @@ import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.triggers.TriggerExecutor;
 import org.apache.cassandra.utils.*;
 import org.apache.cassandra.utils.AbstractIterator;
+import rx.*;
 
 import static com.google.common.collect.Iterables.contains;
 

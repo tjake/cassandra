@@ -43,14 +43,12 @@ import org.apache.cassandra.transport.Server;
  */
 public class NativeTransportService
 {
-
     private static final Logger logger = LoggerFactory.getLogger(NativeTransportService.class);
 
     private Collection<Server> servers = Collections.emptyList();
 
     private boolean initialized = false;
     private EventLoopGroup workerGroup;
-    private EventExecutor eventExecutorGroup;
 
     /**
      * Creates netty thread pools and event loops.
@@ -61,8 +59,6 @@ public class NativeTransportService
         if (initialized)
             return;
 
-        // prepare netty resources
-        eventExecutorGroup = new RequestThreadPoolExecutor();
 
         if (useEpoll())
         {
@@ -80,7 +76,6 @@ public class NativeTransportService
         InetAddress nativeAddr = DatabaseDescriptor.getRpcAddress();
 
         org.apache.cassandra.transport.Server.Builder builder = new org.apache.cassandra.transport.Server.Builder()
-                                                                .withEventExecutor(eventExecutorGroup)
                                                                 .withEventLoopGroup(workerGroup)
                                                                 .withHost(nativeAddr);
 
@@ -155,9 +150,6 @@ public class NativeTransportService
         {
             Thread.currentThread().interrupt();
         }
-
-        // shutdownGracefully not implemented yet in RequestThreadPoolExecutor
-        eventExecutorGroup.shutdown();
     }
 
     /**
@@ -183,12 +175,6 @@ public class NativeTransportService
     EventLoopGroup getWorkerGroup()
     {
         return workerGroup;
-    }
-
-    @VisibleForTesting
-    EventExecutor getEventExecutor()
-    {
-        return eventExecutorGroup;
     }
 
     @VisibleForTesting

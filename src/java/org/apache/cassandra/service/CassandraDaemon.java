@@ -71,6 +71,10 @@ import org.apache.cassandra.cql3.functions.ThreadAwareSecurityManager;
 import org.apache.cassandra.thrift.ThriftServer;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.*;
+import rx.Scheduler;
+import rx.plugins.RxJavaErrorHandler;
+import rx.plugins.RxJavaPlugins;
+import rx.plugins.RxJavaSchedulersHook;
 
 /**
  * The <code>CassandraDaemon</code> is an abstraction for a Cassandra daemon
@@ -159,6 +163,36 @@ public class CassandraDaemon
             WindowsFailedSnapshotTracker.deleteOldSnapshots();
 
         ThreadAwareSecurityManager.install();
+
+        RxJavaPlugins.getInstance().registerSchedulersHook(new RxJavaSchedulersHook()
+        {
+            @Override
+            public Scheduler getComputationScheduler()
+            {
+                return CustomRxScheduler.instance;
+            }
+
+            @Override
+            public Scheduler getIOScheduler()
+            {
+                return null;
+            }
+
+            @Override
+            public Scheduler getNewThreadScheduler()
+            {
+                return null;
+            }
+        });
+
+        RxJavaPlugins.getInstance().registerErrorHandler(new RxJavaErrorHandler()
+        {
+            @Override
+            public void handleError(Throwable e)
+            {
+                logger.error("RxJava unexpected Exception ", e);
+            }
+        });
 
         logSystemInfo();
 

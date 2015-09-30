@@ -25,6 +25,7 @@ import org.apache.cassandra.cql3.statements.ParsedStatement;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.MD5Digest;
+import rx.Observable;
 
 /**
  * Custom QueryHandler that sends custom request payloads back with the result.
@@ -35,14 +36,16 @@ public class CustomPayloadMirroringQueryHandler implements QueryHandler
 {
     static QueryProcessor queryProcessor = QueryProcessor.instance;
 
-    public ResultMessage process(String query,
+    public Observable<ResultMessage> process(String query,
                                  QueryState state,
                                  QueryOptions options,
                                  Map<String, ByteBuffer> customPayload)
     {
-        ResultMessage result = queryProcessor.process(query, state, options, customPayload);
-        result.setCustomPayload(customPayload);
-        return result;
+        return queryProcessor.process(query, state, options, customPayload)
+                             .map(result -> {
+                                 result.setCustomPayload(customPayload);
+                                 return result;
+                             });
     }
 
     public ResultMessage.Prepared prepare(String query, QueryState state, Map<String, ByteBuffer> customPayload)
@@ -62,23 +65,27 @@ public class CustomPayloadMirroringQueryHandler implements QueryHandler
         return queryProcessor.getPreparedForThrift(id);
     }
 
-    public ResultMessage processPrepared(CQLStatement statement,
+    public Observable<ResultMessage> processPrepared(CQLStatement statement,
                                          QueryState state,
                                          QueryOptions options,
                                          Map<String, ByteBuffer> customPayload)
     {
-        ResultMessage result = queryProcessor.processPrepared(statement, state, options, customPayload);
-        result.setCustomPayload(customPayload);
-        return result;
+        return queryProcessor.processPrepared(statement, state, options, customPayload)
+                             .map(result -> {
+                                 result.setCustomPayload(customPayload);
+                                 return result;
+                             });
     }
 
-    public ResultMessage processBatch(BatchStatement statement,
+    public Observable<ResultMessage> processBatch(BatchStatement statement,
                                       QueryState state,
                                       BatchQueryOptions options,
                                       Map<String, ByteBuffer> customPayload)
     {
-        ResultMessage result = queryProcessor.processBatch(statement, state, options, customPayload);
-        result.setCustomPayload(customPayload);
-        return result;
+        return queryProcessor.processBatch(statement, state, options, customPayload)
+                             .map(result -> {
+                                 result.setCustomPayload(customPayload);
+                                 return result;
+                             });
     }
 }
