@@ -33,6 +33,7 @@ import org.apache.cassandra.transport.Message;
 import org.apache.cassandra.transport.ProtocolException;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.UUIDGen;
+import rx.Observable;
 
 /**
  * A CQL query
@@ -82,7 +83,7 @@ public class QueryMessage extends Message.Request
         this.options = options;
     }
 
-    public Message.Response execute(QueryState state)
+    public Observable<Message.Response> execute(QueryState state)
     {
         try
         {
@@ -95,6 +96,8 @@ public class QueryMessage extends Message.Request
                 tracingId = UUIDGen.getTimeUUID();
                 state.prepareTracingSession(tracingId);
             }
+
+            final UUID finalTracingId = tracingId;
 
             if (state.traceNextQuery())
             {
@@ -112,21 +115,25 @@ public class QueryMessage extends Message.Request
                 Tracing.instance.begin("Execute CQL3 query", state.getClientAddress(), builder.build());
             }
 
-            Message.Response response = ClientState.getCQLQueryHandler().process(query, state, options, getCustomPayload());
-            if (options.skipMetadata() && response instanceof ResultMessage.Rows)
-                ((ResultMessage.Rows)response).result.metadata.setSkipMetadata();
+            return ClientState.getCQLQueryHandler()
+                              .process(query, state, options, getCustomPayload())
+                              .map( response -> {
+                                  if (options.skipMetadata() && response instanceof ResultMessage.Rows)
+                                      ((ResultMessage.Rows) response).result.metadata.setSkipMetadata();
 
-            if (tracingId != null)
-                response.setTracingId(tracingId);
+                                  if (finalTracingId != null)
+                                      response.setTracingId(finalTracingId);
 
-            return response;
+                                  return response;
+                              });
+
         }
         catch (Exception e)
         {
             JVMStabilityInspector.inspectThrowable(e);
             if (!((e instanceof RequestValidationException) || (e instanceof RequestExecutionException)))
                 logger.error("Unexpected error during query", e);
-            return ErrorMessage.fromException(e);
+            return Observable.just(ErrorMessage.fromException(e));
         }
         finally
         {
