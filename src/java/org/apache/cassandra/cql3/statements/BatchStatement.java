@@ -42,6 +42,8 @@ import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.NoSpamLogger;
 import org.apache.cassandra.utils.Pair;
+import rx.*;
+import rx.Observable;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
 
@@ -336,9 +338,9 @@ public class BatchStatement implements CQLStatement
         return Range.isInRanges(update.partitionKey().getToken(), localRanges);
     }
 
-    public ResultMessage execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public rx.Observable<ResultMessage> execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
-        return execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options));
+        return Observable.just(execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options)));
     }
 
     public ResultMessage execute(QueryState queryState, BatchQueryOptions options) throws RequestExecutionException, RequestValidationException

@@ -26,6 +26,8 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.transform.Transformation;
 import org.apache.cassandra.utils.FBUtilities;
+import rx.*;
+import rx.Observable;
 
 /**
  * Static methods to work with row iterators.

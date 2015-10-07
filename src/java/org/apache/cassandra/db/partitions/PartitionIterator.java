@@ -19,6 +19,7 @@ package org.apache.cassandra.db.partitions;
 
 import java.util.Iterator;
 
+import org.apache.cassandra.db.AsObservable;
 import org.apache.cassandra.db.rows.*;
 
 /**

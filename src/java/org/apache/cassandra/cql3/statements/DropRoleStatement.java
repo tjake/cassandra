@@ -23,6 +23,7 @@ import org.apache.cassandra.cql3.RoleName;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class DropRoleStatement extends AuthenticationStatement
 {
@@ -60,16 +61,16 @@ public class DropRoleStatement extends AuthenticationStatement
             throw new InvalidRequestException("Cannot DROP primary role for current login");
     }
 
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         // not rejected in validate()
         if (ifExists && !DatabaseDescriptor.getRoleManager().isExistingRole(role))
-            return null;
+            return Observable.empty();
 
         // clean up grants and permissions of/on the dropped role.
         DatabaseDescriptor.getRoleManager().dropRole(state.getUser(), role);
         DatabaseDescriptor.getAuthorizer().revokeAllFrom(role);
         DatabaseDescriptor.getAuthorizer().revokeAllOn(role);
-        return null;
+        return Observable.empty();
     }
 }

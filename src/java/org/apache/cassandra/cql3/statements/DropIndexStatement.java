@@ -30,6 +30,7 @@ import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class DropIndexStatement extends SchemaAlteringStatement
 {
@@ -64,10 +65,10 @@ public class DropIndexStatement extends SchemaAlteringStatement
     }
 
     @Override
-    public ResultMessage execute(QueryState state, QueryOptions options) throws RequestValidationException
+    public Observable<ResultMessage> execute(QueryState state, QueryOptions options) throws RequestValidationException
     {
         Event.SchemaChange ce = announceMigration(false);
-        return ce == null ? null : new ResultMessage.SchemaChange(ce);
+        return ce == null ? Observable.empty() : Observable.just(new ResultMessage.SchemaChange(ce));
     }
 
     public Event.SchemaChange announceMigration(boolean isLocalOnly) throws InvalidRequestException, ConfigurationException

@@ -81,7 +81,7 @@ public class ListPermissionsStatement extends AuthorizationStatement
     }
 
     // TODO: Create a new ResultMessage type (?). Rows will do for now.
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public rx.Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         List<PermissionDetails> details = new ArrayList<PermissionDetails>();
 
@@ -96,7 +96,7 @@ public class ListPermissionsStatement extends AuthorizationStatement
         }
 
         Collections.sort(details);
-        return resultMessage(details);
+        return rx.Observable.just(resultMessage(details));
     }
 
     private Set<PermissionDetails> list(ClientState state, IResource resource)

@@ -27,6 +27,7 @@ import org.apache.cassandra.exceptions.UnauthorizedException;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public abstract class AuthenticationStatement extends ParsedStatement implements CQLStatement
 {
@@ -41,13 +42,13 @@ public abstract class AuthenticationStatement extends ParsedStatement implements
         return 0;
     }
 
-    public ResultMessage execute(QueryState state, QueryOptions options)
+    public Observable<ResultMessage> execute(QueryState state, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         return execute(state.getClientState());
     }
 
-    public abstract ResultMessage execute(ClientState state) throws RequestExecutionException, RequestValidationException;
+    public abstract Observable<ResultMessage> execute(ClientState state) throws RequestExecutionException, RequestValidationException;
 
     public ResultMessage executeInternal(QueryState state, QueryOptions options)
     {

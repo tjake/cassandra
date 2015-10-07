@@ -21,6 +21,7 @@ import com.google.common.collect.UnmodifiableIterator;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
+import rx.Observable;
 
 /**
  * Abstract class to make writing unfiltered iterators that wrap another iterator
@@ -83,6 +84,11 @@ public abstract class WrappingUnfilteredRowIterator extends UnmodifiableIterator
     public Unfiltered next()
     {
         return wrapped.next();
+    }
+
+    public Observable<Unfiltered> asObservable()
+    {
+        return wrapped.asObservable();
     }
 
     public void close()

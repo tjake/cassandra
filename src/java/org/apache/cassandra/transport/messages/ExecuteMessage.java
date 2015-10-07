@@ -128,7 +128,7 @@ public class ExecuteMessage extends Message.Request
             // Some custom QueryHandlers are interested by the bound names. We provide them this information
             // by wrapping the QueryOptions.
             QueryOptions queryOptions = QueryOptions.addColumnSpecifications(options, prepared.boundNames);
-            Observable<ResultMessage> obs = handler.processPrepared(statement, state, queryOptions, getCustomPayload());
+            Observable<? extends ResultMessage> obs = handler.processPrepared(statement, state, queryOptions, getCustomPayload());
             final UUID finalTracingId = tracingId;
             return obs.map(response -> {
                 if (options.skipMetadata() && response instanceof ResultMessage.Rows)

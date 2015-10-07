@@ -509,7 +509,6 @@ public abstract class Message
                 logger.trace("Received: {}, v={}", request, connection.getVersion());
 
                 request.execute(qstate)
-                       .single()
                        .subscribe(response -> {
                                       response.setStreamId(request.getStreamId());
                                       response.setWarnings(ClientWarn.getWarnings());

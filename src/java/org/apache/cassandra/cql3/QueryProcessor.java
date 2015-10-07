@@ -198,7 +198,7 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
-    public Observable<ResultMessage> processStatement(CQLStatement statement, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> processStatement(CQLStatement statement, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         logger.trace("Process {} @CL.{}", statement, options.getConsistency());
@@ -206,17 +206,19 @@ public class QueryProcessor implements QueryHandler
         statement.checkAccess(clientState);
         statement.validate(clientState);
 
-        ResultMessage result = statement.execute(queryState, options);
-        return Observable.just(result == null ? new ResultMessage.Void() : result);
+        return statement.execute(queryState, options)
+                        .filter(result ->  result != null)
+                        .cast(ResultMessage.class)  //Deal with generics madness
+                        .defaultIfEmpty(new ResultMessage.Void());
     }
 
-    public static Observable<ResultMessage> process(String queryString, ConsistencyLevel cl, QueryState queryState)
+    public static Observable<? extends ResultMessage> process(String queryString, ConsistencyLevel cl, QueryState queryState)
     throws RequestExecutionException, RequestValidationException
     {
         return instance.process(queryString, queryState, QueryOptions.forInternalCalls(cl, Collections.<ByteBuffer>emptyList()));
     }
 
-    public Observable<ResultMessage> process(String query,
+    public Observable<? extends ResultMessage> process(String query,
                                  QueryState state,
                                  QueryOptions options,
                                  Map<String, ByteBuffer> customPayload)
@@ -225,7 +227,7 @@ public class QueryProcessor implements QueryHandler
         return process(query, state, options);
     }
 
-    public Observable<ResultMessage> process(String queryString, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> process(String queryString, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         ParsedStatement.Prepared p = getStatement(queryString, queryState.getClientState());
@@ -252,7 +254,7 @@ public class QueryProcessor implements QueryHandler
 
     public static Observable<UntypedResultSet> process(String query, ConsistencyLevel cl, List<ByteBuffer> values) throws RequestExecutionException
     {
-        Observable<ResultMessage> obs = instance.process(query, QueryState.forInternalCalls(), QueryOptions.forInternalCalls(cl, values));
+        Observable<? extends ResultMessage> obs = instance.process(query, QueryState.forInternalCalls(), QueryOptions.forInternalCalls(cl, values));
 
         return obs.flatMap( result -> {
             if (result instanceof ResultMessage.Rows)
@@ -311,7 +313,8 @@ public class QueryProcessor implements QueryHandler
         try
         {
             ParsedStatement.Prepared prepared = prepareInternal(query);
-            ResultMessage result = prepared.statement.execute(state, makeInternalOptions(prepared, values));
+            ResultMessage result = prepared.statement.execute(state, makeInternalOptions(prepared, values))
+                                                     .toBlocking().single();
             if (result instanceof ResultMessage.Rows)
                 return UntypedResultSet.create(((ResultMessage.Rows)result).result);
             else
@@ -446,7 +449,7 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
-    public Observable<ResultMessage> processPrepared(CQLStatement statement,
+    public Observable<? extends ResultMessage> processPrepared(CQLStatement statement,
                                          QueryState state,
                                          QueryOptions options,
                                          Map<String, ByteBuffer> customPayload)
@@ -455,7 +458,7 @@ public class QueryProcessor implements QueryHandler
         return processPrepared(statement, state, options);
     }
 
-    public Observable<ResultMessage> processPrepared(CQLStatement statement, QueryState queryState, QueryOptions options)
+    public Observable<? extends ResultMessage> processPrepared(CQLStatement statement, QueryState queryState, QueryOptions options)
     throws RequestExecutionException, RequestValidationException
     {
         List<ByteBuffer> variables = options.getValues();

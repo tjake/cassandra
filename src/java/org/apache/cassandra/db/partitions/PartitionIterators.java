@@ -27,6 +27,9 @@ import org.apache.cassandra.utils.AbstractIterator;
 
 import org.apache.cassandra.db.SinglePartitionReadCommand;
 import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.io.util.FileUtils;
+import rx.*;
+import rx.Observable;
 
 public abstract class PartitionIterators
 {
@@ -142,6 +145,11 @@ public abstract class PartitionIterators
 
             returned = true;
             return iterator;
+        }
+
+        public Observable<RowIterator> asObservable()
+        {
+            return Observable.just(iterator);
         }
 
         public void close()

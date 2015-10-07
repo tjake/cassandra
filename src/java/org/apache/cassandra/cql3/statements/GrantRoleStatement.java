@@ -23,6 +23,7 @@ import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class GrantRoleStatement extends RoleManagementStatement
 {
@@ -31,9 +32,9 @@ public class GrantRoleStatement extends RoleManagementStatement
         super(name, grantee);
     }
 
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         DatabaseDescriptor.getRoleManager().grantRole(state.getUser(), role, grantee);
-        return null;
+        return Observable.empty();
     }
 }
