@@ -23,6 +23,7 @@ import org.apache.cassandra.cql3.RoleName;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class CreateRoleStatement extends AuthenticationStatement
 {
@@ -61,15 +62,15 @@ public class CreateRoleStatement extends AuthenticationStatement
             throw new InvalidRequestException(String.format("%s already exists", role.getRoleName()));
     }
 
-    public ResultMessage execute(ClientState state) throws RequestExecutionException, RequestValidationException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestExecutionException, RequestValidationException
     {
         // not rejected in validate()
         if (ifNotExists && DatabaseDescriptor.getRoleManager().isExistingRole(role))
-            return null;
+            return Observable.empty();
 
         DatabaseDescriptor.getRoleManager().createRole(state.getUser(), role, opts);
         grantPermissionsToCreator(state);
-        return null;
+        return Observable.empty();
     }
 
     /**

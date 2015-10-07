@@ -24,6 +24,8 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.PartitionColumns;
 import org.apache.cassandra.db.rows.*;
+import rx.Observable;
+import rx.Subscriber;
 
 public class FilteredPartition extends ImmutableBTreePartition
 {
@@ -48,6 +50,17 @@ public class FilteredPartition extends ImmutableBTreePartition
         final Iterator<Row> iter = iterator();
         return new RowIterator()
         {
+            public Observable<Row> asObservable()
+            {
+                return Observable.create(subscriber -> {
+
+                    while (hasNext())
+                        subscriber.onNext(next());
+
+                    subscriber.onCompleted();
+                });
+            }
+
             public CFMetaData metadata()
             {
                 return metadata;

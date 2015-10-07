@@ -34,6 +34,8 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.IMergeIterator;
 import org.apache.cassandra.utils.MergeIterator;
 import org.apache.cassandra.utils.memory.AbstractAllocator;
+import rx.*;
+import rx.Observable;
 
 /**
  * Static methods to work with atom iterators.
@@ -146,6 +148,11 @@ public abstract class UnfilteredRowIterators
             public Unfiltered next()
             {
                 throw new NoSuchElementException();
+            }
+
+            public Observable<Unfiltered> asObservable()
+            {
+                return Observable.empty();
             }
 
             public void remove()
@@ -637,6 +644,16 @@ public abstract class UnfilteredRowIterators
         public void close()
         {
             iter.close();
+        }
+
+        public Observable<Row> asObservable()
+        {
+            return Observable.create(subscriber -> {
+                while (hasNext())
+                    subscriber.onNext(next());
+
+                subscriber.onCompleted();
+            });
         }
     }
 }

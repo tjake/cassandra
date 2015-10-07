@@ -21,6 +21,7 @@ import com.google.common.collect.UnmodifiableIterator;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
+import rx.Observable;
 
 /**
  * Abstract class to make writing atom iterators that wrap another iterator
@@ -75,5 +76,10 @@ public abstract class WrappingRowIterator extends UnmodifiableIterator<Row>  imp
     public void close()
     {
         wrapped.close();
+    }
+
+    public Observable<Row> asObservable()
+    {
+        return wrapped.asObservable();
     }
 }

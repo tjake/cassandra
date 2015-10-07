@@ -23,7 +23,10 @@ import java.util.NoSuchElementException;
 
 import com.google.common.collect.PeekingIterator;
 
-public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterator<V>
+import org.apache.cassandra.db.AsObservable;
+import rx.Observable;
+
+public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterator<V>, AsObservable<V>
 {
 
     private static enum State { MUST_FETCH, HAS_NEXT, DONE, FAILED }
@@ -37,6 +40,16 @@ public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterato
     }
 
     protected abstract V computeNext();
+
+    public Observable<V> asObservable()
+    {
+        return Observable.create(subscriber -> {
+            while(hasNext())
+                subscriber.onNext(next());
+
+            subscriber.onCompleted();
+        });
+    }
 
     public boolean hasNext()
     {

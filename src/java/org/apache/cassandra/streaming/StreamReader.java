@@ -45,6 +45,7 @@ import org.apache.cassandra.streaming.messages.FileMessageHeader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.BytesReadTracker;
 import org.apache.cassandra.utils.Pair;
+import rx.Observable;
 
 
 /**
@@ -280,5 +281,16 @@ public class StreamReader
         public void close()
         {
         }
+
+        public Observable<Unfiltered> asObservable()
+        {
+            return Observable.create(subscriber -> {
+                while(hasNext())
+                    subscriber.onNext(next());
+
+                subscriber.onCompleted();
+            });
+        }
+
     }
 }

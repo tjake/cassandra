@@ -507,7 +507,6 @@ public abstract class Message
                 QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
                 request.execute(qstate)
-                       .single()
                        .subscribe(response -> {
                                       response.setStreamId(request.getStreamId());
                                       response.setWarnings(ClientWarn.getWarnings());

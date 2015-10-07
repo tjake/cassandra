@@ -46,7 +46,7 @@ import org.apache.cassandra.db.*;
  * the returned objects for longer than the iteration, it must make a copy of
  * it explicitly.
  */
-public interface UnfilteredRowIterator extends Iterator<Unfiltered>, AutoCloseable
+public interface UnfilteredRowIterator extends Iterator<Unfiltered>, AutoCloseable, AsObservable<Unfiltered>
 {
     /**
      * The metadata for the table this iterator on.

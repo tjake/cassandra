@@ -31,7 +31,7 @@ import rx.Observable;
 
 public interface QueryHandler
 {
-    Observable<ResultMessage> process(String query,
+    Observable<? extends ResultMessage> process(String query,
                           QueryState state,
                           QueryOptions options,
                           Map<String, ByteBuffer> customPayload) throws RequestExecutionException, RequestValidationException;
@@ -44,7 +44,7 @@ public interface QueryHandler
 
     ParsedStatement.Prepared getPreparedForThrift(Integer id);
 
-    Observable<ResultMessage> processPrepared(CQLStatement statement,
+    Observable<? extends ResultMessage> processPrepared(CQLStatement statement,
                                   QueryState state,
                                   QueryOptions options,
                                   Map<String, ByteBuffer> customPayload) throws RequestExecutionException, RequestValidationException;
