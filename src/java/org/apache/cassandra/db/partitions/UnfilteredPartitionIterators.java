@@ -35,6 +35,8 @@ import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.MergeIterator;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.*;
+import rx.*;
+import rx.Observable;
 
 /**
  * Static methods to work with partition iterators.
@@ -123,7 +125,18 @@ public abstract class UnfilteredPartitionIterators
     {
         return new PartitionIterator()
         {
+
             private RowIterator next;
+
+            public Observable<RowIterator> asObservable()
+            {
+                return Observable.create(subscriber -> {
+                    while(hasNext())
+                        subscriber.onNext(next());
+
+                    subscriber.onCompleted();
+                });
+            }
 
             public boolean hasNext()
             {

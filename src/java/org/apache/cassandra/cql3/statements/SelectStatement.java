@@ -196,7 +196,7 @@ public class SelectStatement implements CQLStatement
         // Nothing to do, all validation has been done by RawStatement.prepare()
     }
 
-    public ResultMessage.Rows execute(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public Observable<ResultMessage.Rows> execute(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         ConsistencyLevel cl = options.getConsistency();
         checkNotNull(cl, "Invalid empty consistency level");
@@ -212,7 +212,7 @@ public class SelectStatement implements CQLStatement
             return execute(query, options, state, nowInSec);
 
         QueryPager pager = query.getPager(options.getPagingState(), options.getProtocolVersion());
-        return execute(Pager.forDistributedQuery(pager, cl, state.getClientState()), options, pageSize, nowInSec);
+        return Observable.just(execute(Pager.forDistributedQuery(pager, cl, state.getClientState()), options, pageSize, nowInSec));
     }
 
     private int getPageSize(QueryOptions options)
@@ -237,7 +237,7 @@ public class SelectStatement implements CQLStatement
         return getSliceCommands(options, limit, nowInSec);
     }
 
-    private ResultMessage.Rows execute(ReadQuery query, QueryOptions options, QueryState state, int nowInSec) throws RequestValidationException, RequestExecutionException
+    private Observable<ResultMessage.Rows> execute(ReadQuery query, QueryOptions options, QueryState state, int nowInSec) throws RequestValidationException, RequestExecutionException
     {
         try (PartitionIterator data = query.execute(options.getConsistency(), state.getClientState()))
         {
@@ -326,7 +326,7 @@ public class SelectStatement implements CQLStatement
         ResultMessage.Rows msg;
         try (PartitionIterator page = pager.fetchPage(pageSize))
         {
-            msg = processResults(page, options, nowInSec);
+            msg = processResults(page, options, nowInSec).toBlocking().single();
         }
 
         // Please note that the isExhausted state of the pager only gets updated when we've closed the page, so this
@@ -368,10 +368,9 @@ public class SelectStatement implements CQLStatement
         return new ResultMessage.Rows(result.build(options.getProtocolVersion()));
     }
 
-    private ResultMessage.Rows processResults(PartitionIterator partitions, QueryOptions options, int nowInSec) throws RequestValidationException
+    private Observable<ResultMessage.Rows> processResults(PartitionIterator partitions, QueryOptions options, int nowInSec) throws RequestValidationException
     {
-        ResultSet rset = process(partitions, options, nowInSec);
-        return new ResultMessage.Rows(rset);
+        return process(partitions, options, nowInSec).flatMap(resultSet -> Observable.just(new ResultMessage.Rows(resultSet)));
     }
 
     public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
@@ -386,7 +385,7 @@ public class SelectStatement implements CQLStatement
             {
                 try (PartitionIterator data = query.executeInternal(orderGroup))
                 {
-                    return processResults(data, options, nowInSec);
+                    return processResults(data, options, nowInSec).toBlocking().single();
                 }
             }
             else
@@ -399,7 +398,7 @@ public class SelectStatement implements CQLStatement
 
     public ResultSet process(PartitionIterator partitions, int nowInSec) throws InvalidRequestException
     {
-        return process(partitions, QueryOptions.DEFAULT, nowInSec);
+        return process(partitions, QueryOptions.DEFAULT, nowInSec).toBlocking().single();
     }
 
     public String keyspace()
@@ -606,22 +605,24 @@ public class SelectStatement implements CQLStatement
         return filter;
     }
 
-    private ResultSet process(PartitionIterator partitions, QueryOptions options, int nowInSec) throws InvalidRequestException
+    private Observable<ResultSet> process(PartitionIterator partitions, final QueryOptions options, final int nowInSec) throws InvalidRequestException
     {
-        Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
-        while (partitions.hasNext())
-        {
-            try (RowIterator partition = partitions.next())
-            {
-                processPartition(partition, options, result, nowInSec);
-            }
-        }
+        return Observable.defer(() -> {
 
-        ResultSet cqlRows = result.build(options.getProtocolVersion());
+            final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
-        orderResults(cqlRows);
+            partitions.asObservable()
+                      .map(partition -> {
+                          processPartition(partition, options, result, nowInSec);
+                          return partition;
+                      }).subscribe();
 
-        return cqlRows;
+            ResultSet cqlRows = result.build(options.getProtocolVersion());
+
+            orderResults(cqlRows);
+
+            return Observable.just(cqlRows);
+        });
     }
 
     public static ByteBuffer[] getComponents(CFMetaData cfm, DecoratedKey dk)

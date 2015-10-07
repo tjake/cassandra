@@ -26,6 +26,8 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.utils.FBUtilities;
+import rx.*;
+import rx.Observable;
 
 /**
  * Static methods to work with row iterators.
@@ -58,6 +60,16 @@ public abstract class RowIterators
     {
         return new RowIterator()
         {
+            public Observable<Row> asObservable()
+            {
+                return Observable.create(subscriber -> {
+                   while (hasNext())
+                       subscriber.onNext(next());
+
+                    subscriber.onCompleted();
+                });
+            }
+
             public CFMetaData metadata()
             {
                 return cfm;

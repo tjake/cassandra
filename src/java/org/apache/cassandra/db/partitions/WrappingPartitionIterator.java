@@ -18,6 +18,7 @@
 package org.apache.cassandra.db.partitions;
 
 import org.apache.cassandra.db.rows.RowIterator;
+import rx.Observable;
 
 public abstract class WrappingPartitionIterator implements PartitionIterator
 {
@@ -41,6 +42,11 @@ public abstract class WrappingPartitionIterator implements PartitionIterator
     public void remove()
     {
         wrapped.remove();
+    }
+
+    public Observable<RowIterator> asObservable()
+    {
+        return wrapped.asObservable();
     }
 
     public void close()

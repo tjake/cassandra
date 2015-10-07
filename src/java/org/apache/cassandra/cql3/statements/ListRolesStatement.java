@@ -33,6 +33,7 @@ import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.exceptions.*;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import rx.Observable;
 
 public class ListRolesStatement extends AuthorizationStatement
 {
@@ -73,7 +74,7 @@ public class ListRolesStatement extends AuthorizationStatement
     {
     }
 
-    public ResultMessage execute(ClientState state) throws RequestValidationException, RequestExecutionException
+    public Observable<ResultMessage> execute(ClientState state) throws RequestValidationException, RequestExecutionException
     {
         // If the executing user has DESCRIBE permission on the root roles resource, let them list any and all roles
         boolean hasRootLevelSelect = DatabaseDescriptor.getAuthorizer()
@@ -98,14 +99,14 @@ public class ListRolesStatement extends AuthorizationStatement
         }
     }
 
-    private ResultMessage resultMessage(Set<RoleResource> roles)
+    private Observable<ResultMessage> resultMessage(Set<RoleResource> roles)
     {
         if (roles.isEmpty())
-            return new ResultMessage.Void();
+            return Observable.empty();
 
         List<RoleResource> sorted = Lists.newArrayList(roles);
         Collections.sort(sorted);
-        return formatResults(sorted);
+        return Observable.just(formatResults(sorted));
     }
 
     // overridden in ListUsersStatement to include legacy metadata

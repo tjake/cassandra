@@ -34,7 +34,7 @@ import org.apache.cassandra.db.*;
  * reverse clustering order if isReverseOrder is true), and the Row objects returned
  * by next() are only valid until the next call to hasNext() or next().
  */
-public interface RowIterator extends Iterator<Row>, AutoCloseable
+public interface RowIterator extends Iterator<Row>, AutoCloseable, AsObservable<Row>
 {
     /**
      * The metadata for the table this iterator on.

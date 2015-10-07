@@ -32,6 +32,7 @@ import org.apache.cassandra.io.sstable.IndexHelper;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import rx.Observable;
 
 abstract class AbstractSSTableIterator implements SliceableUnfilteredRowIterator
 {
@@ -266,6 +267,16 @@ abstract class AbstractSSTableIterator implements SliceableUnfilteredRowIterator
             reader.close();
 
         isClosed = true;
+    }
+
+    public Observable<Unfiltered> asObservable()
+    {
+        return Observable.create(subscriber -> {
+            while (hasNext())
+                subscriber.onNext(next());
+
+            subscriber.onCompleted();
+        });
     }
 
     public void close()

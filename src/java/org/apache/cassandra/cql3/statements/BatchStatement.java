@@ -42,6 +42,8 @@ import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.NoSpamLogger;
 import org.apache.cassandra.utils.Pair;
+import rx.*;
+import rx.Observable;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
 
@@ -255,7 +257,7 @@ public class BatchStatement implements CQLStatement
     /**
      * Checks batch size to ensure threshold is met. If not, a warning is logged.
      *
-     * @param cfs ColumnFamilies that will store the batch's mutations.
+     * @param updates ColumnFamilies that will store the batch's mutations.
      */
     public static void verifyBatchSize(Iterable<PartitionUpdate> updates) throws InvalidRequestException
     {
@@ -310,9 +312,9 @@ public class BatchStatement implements CQLStatement
         }
     }
 
-    public ResultMessage execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
+    public rx.Observable<ResultMessage> execute(QueryState queryState, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
-        return execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options));
+        return Observable.just(execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options)));
     }
 
     public ResultMessage execute(QueryState queryState, BatchQueryOptions options) throws RequestExecutionException, RequestValidationException

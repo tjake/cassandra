@@ -142,7 +142,8 @@ public class PasswordAuthenticator implements IAuthenticator
     {
         ResultMessage.Rows rows = authenticationStatement.execute(QueryState.forInternalCalls(),
                                                                   QueryOptions.forInternalCalls(consistencyForRole(username),
-                                                                                                Lists.newArrayList(ByteBufferUtil.bytes(username))));
+                                                                                                Lists.newArrayList(ByteBufferUtil.bytes(username))))
+                                                         .toBlocking().single();
         UntypedResultSet result = UntypedResultSet.create(rows.result);
 
         if ((result.isEmpty() || !result.one().has(SALTED_HASH)) || !BCrypt.checkpw(password, result.one().getString(SALTED_HASH)))

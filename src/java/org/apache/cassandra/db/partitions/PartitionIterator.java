@@ -19,6 +19,7 @@ package org.apache.cassandra.db.partitions;
 
 import java.util.Iterator;
 
+import org.apache.cassandra.db.AsObservable;
 import org.apache.cassandra.db.rows.*;
 
 /**
@@ -33,7 +34,7 @@ import org.apache.cassandra.db.rows.*;
  * reference on the returned objects for longer than the iteration, it must
  * make a copy of it explicitely.
  */
-public interface PartitionIterator extends Iterator<RowIterator>, AutoCloseable
+public interface PartitionIterator extends Iterator<RowIterator>, AutoCloseable, AsObservable<RowIterator>
 {
     public void close();
 }
