@@ -369,7 +369,7 @@ public abstract class ModificationStatement implements CQLStatement
             }
         }
 
-        try (PartitionIterator iter = group.execute(cl, null))
+        try (PartitionIterator iter = group.execute(cl, null).toBlocking().single())
         {
             return asMaterializedMap(iter);
         }

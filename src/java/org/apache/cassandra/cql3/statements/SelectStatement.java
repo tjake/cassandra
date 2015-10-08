@@ -239,10 +239,8 @@ public class SelectStatement implements CQLStatement
 
     private Observable<ResultMessage.Rows> execute(ReadQuery query, QueryOptions options, QueryState state, int nowInSec) throws RequestValidationException, RequestExecutionException
     {
-        try (PartitionIterator data = query.execute(options.getConsistency(), state.getClientState()))
-        {
-            return processResults(data, options, nowInSec);
-        }
+        Observable<PartitionIterator> data = query.execute(options.getConsistency(), state.getClientState());
+        return processResults(data, options, nowInSec);
     }
 
     // Simple wrapper class to avoid some code duplication
@@ -326,7 +324,7 @@ public class SelectStatement implements CQLStatement
         ResultMessage.Rows msg;
         try (PartitionIterator page = pager.fetchPage(pageSize))
         {
-            msg = processResults(page, options, nowInSec).toBlocking().single();
+            msg = processResults(Observable.just(page), options, nowInSec).toBlocking().single();
         }
 
         // Please note that the isExhausted state of the pager only gets updated when we've closed the page, so this
@@ -368,7 +366,7 @@ public class SelectStatement implements CQLStatement
         return new ResultMessage.Rows(result.build(options.getProtocolVersion()));
     }
 
-    private Observable<ResultMessage.Rows> processResults(PartitionIterator partitions, QueryOptions options, int nowInSec) throws RequestValidationException
+    private Observable<ResultMessage.Rows> processResults(Observable<PartitionIterator> partitions, QueryOptions options, int nowInSec) throws RequestValidationException
     {
         return process(partitions, options, nowInSec).flatMap(resultSet -> Observable.just(new ResultMessage.Rows(resultSet)));
     }
@@ -385,7 +383,7 @@ public class SelectStatement implements CQLStatement
             {
                 try (PartitionIterator data = query.executeInternal(executionController))
                 {
-                    return processResults(data, options, nowInSec).toBlocking().single();
+                    return processResults(Observable.just(data), options, nowInSec).toBlocking().single();
                 }
             }
             else
@@ -398,7 +396,7 @@ public class SelectStatement implements CQLStatement
 
     public ResultSet process(PartitionIterator partitions, int nowInSec) throws InvalidRequestException
     {
-        return process(partitions, QueryOptions.DEFAULT, nowInSec).toBlocking().single();
+        return process(Observable.just(partitions), QueryOptions.DEFAULT, nowInSec).toBlocking().single();
     }
 
     public String keyspace()
@@ -605,23 +603,24 @@ public class SelectStatement implements CQLStatement
         return filter;
     }
 
-    private Observable<ResultSet> process(PartitionIterator partitions, final QueryOptions options, final int nowInSec) throws InvalidRequestException
+    private Observable<ResultSet> process(Observable<PartitionIterator> partitions, final QueryOptions options, final int nowInSec) throws InvalidRequestException
     {
         return Observable.defer(() -> {
 
             final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
-            partitions.asObservable()
-                      .map(partition -> {
-                          processPartition(partition, options, result, nowInSec);
-                          return partition;
-                      }).subscribe();
+            return partitions.flatMap(AsObservable::asObservable)
+                             .map(rowiterator -> {
+                                 processPartition(rowiterator, options, result, nowInSec);
+                                 return rowiterator;
+                             })
+                             .toList()
+                             .map(rows -> {
+                                 ResultSet cqlRows = result.build(options.getProtocolVersion());
+                                 orderResults(cqlRows);
 
-            ResultSet cqlRows = result.build(options.getProtocolVersion());
-
-            orderResults(cqlRows);
-
-            return Observable.just(cqlRows);
+                                 return cqlRows;
+                             });
         });
     }
 
