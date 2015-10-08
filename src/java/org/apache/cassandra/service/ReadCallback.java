@@ -45,6 +45,7 @@ import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.SimpleCondition;
+import rx.functions.Action0;
 
 public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
 {
@@ -93,6 +94,11 @@ public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
 
         if (logger.isTraceEnabled())
             logger.trace(String.format("Blockfor is %s; setting up requests to %s", blockfor, StringUtils.join(this.endpoints, ",")));
+    }
+
+    public void onSignaledAction(Action0 signaledAction)
+    {
+        condition.setSignalAction(signaledAction);
     }
 
     public boolean await(long timePastStart, TimeUnit unit)

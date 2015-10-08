@@ -65,7 +65,7 @@ abstract class AbstractQueryPager implements QueryPager
             return PartitionIterators.EMPTY;
 
         pageSize = Math.min(pageSize, remaining);
-        return new PagerIterator(nextPageReadCommand(pageSize).execute(consistency, clientState), limits.forPaging(pageSize), command.nowInSec());
+        return new PagerIterator(nextPageReadCommand(pageSize).execute(consistency, clientState).toBlocking().single(), limits.forPaging(pageSize), command.nowInSec());
     }
 
     public PartitionIterator fetchPageInternal(int pageSize, ReadOrderGroup orderGroup) throws RequestValidationException, RequestExecutionException

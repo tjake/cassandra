@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Condition;
 
+import rx.functions.Action0;
+
 // fulfils the Condition interface without spurious wakeup problems
 // (or lost notify problems either: that is, even if you call await()
 // _after_ signal(), it will work as desired.)
@@ -31,6 +33,16 @@ public class SimpleCondition implements Condition
 
     private volatile WaitQueue waiting;
     private volatile boolean signaled = false;
+    private volatile Action0 signalAction;
+
+    public void setSignalAction(Action0 signalAction)
+    {
+        assert this.signalAction == null;
+        this.signalAction = signalAction;
+
+        if (signaled)
+            signalAction.call();
+    }
 
     public void await() throws InterruptedException
     {
@@ -78,6 +90,9 @@ public class SimpleCondition implements Condition
         signaled = true;
         if (waiting != null)
             waiting.signalAll();
+
+        if (signalAction != null)
+            signalAction.call();
     }
 
     public void awaitUninterruptibly()

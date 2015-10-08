@@ -47,6 +47,7 @@ import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.thrift.ThriftResultsMerger;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.FBUtilities;
+import rx.Observable;
 
 /**
  * A read command that selects a (part of a) range of partitions.
@@ -157,9 +158,9 @@ public class PartitionRangeReadCommand extends ReadCommand
         return rowFilter().clusteringKeyRestrictionsAreSatisfiedBy(clustering);
     }
 
-    public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+    public Observable<PartitionIterator> execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
-        return StorageProxy.getRangeSlice(this, consistency);
+        return Observable.just(StorageProxy.getRangeSlice(this, consistency));
     }
 
     public QueryPager getPager(PagingState pagingState, int protocolVersion)

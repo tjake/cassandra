@@ -45,6 +45,8 @@ import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.pager.*;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.concurrent.OpOrder;
+import rx.*;
+import rx.Observable;
 
 /**
  * A read command that selects a (part of a) single partition.
@@ -234,7 +236,7 @@ public abstract class SinglePartitionReadCommand<F extends ClusteringIndexFilter
                       lastReturned == null ? clusteringIndexFilter() : clusteringIndexFilter.forPaging(metadata().comparator, lastReturned, false));
     }
 
-    public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+    public Observable<PartitionIterator> execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
     {
         return StorageProxy.read(Group.one(this), consistency, clientState);
     }
@@ -467,7 +469,7 @@ public abstract class SinglePartitionReadCommand<F extends ClusteringIndexFilter
             return new Group(Collections.<SinglePartitionReadCommand<?>>singletonList(command), command.limits());
         }
 
-        public PartitionIterator execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
+        public rx.Observable<PartitionIterator> execute(ConsistencyLevel consistency, ClientState clientState) throws RequestExecutionException
         {
             return StorageProxy.read(this, consistency, clientState);
         }
