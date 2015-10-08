@@ -22,6 +22,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Condition;
 
+import rx.Scheduler;
+import rx.functions.Action0;
+import rx.schedulers.Schedulers;
+
 // fulfils the Condition interface without spurious wakeup problems
 // (or lost notify problems either: that is, even if you call await()
 // _after_ signal(), it will work as desired.)
@@ -31,6 +35,18 @@ public class SimpleCondition implements Condition
 
     private volatile WaitQueue waiting;
     private volatile boolean signaled = false;
+    private volatile Action0 signalAction;
+    private volatile Scheduler scheduler;
+
+    public void setSignalAction(Scheduler scheduler, Action0 signalAction)
+    {
+        assert this.signalAction == null;
+        this.scheduler = scheduler;
+        this.signalAction = signalAction;
+
+        if (signaled)
+            scheduler.createWorker().schedule(signalAction::call);
+    }
 
     public void await() throws InterruptedException
     {
@@ -78,6 +94,10 @@ public class SimpleCondition implements Condition
         signaled = true;
         if (waiting != null)
             waiting.signalAll();
+
+        if (signalAction != null)
+            scheduler.createWorker().schedule(signalAction::call);
+
     }
 
     public void awaitUninterruptibly()

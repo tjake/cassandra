@@ -33,6 +33,7 @@ import org.apache.cassandra.db.transform.Transformation;
 import org.apache.cassandra.index.transactions.CompactionTransaction;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.metrics.CompactionMetrics;
+import rx.Observable;
 
 /**
  * Merge multiple iterators over the content of sstable into a "compacted" iterator.
@@ -252,6 +253,11 @@ public class CompactionIterator extends CompactionInfo.Holder implements Unfilte
     public String toString()
     {
         return this.getCompactionInfo().toString();
+    }
+
+    public Observable<UnfilteredRowIterator> asObservable()
+    {
+        return null;
     }
 
     private class Purger extends PurgeFunction

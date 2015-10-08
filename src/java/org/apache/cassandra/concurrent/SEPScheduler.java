@@ -1,6 +1,10 @@
 package org.apache.cassandra.concurrent;
 
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import com.google.common.util.concurrent.AbstractFuture;
+
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
@@ -13,17 +17,21 @@ import rx.plugins.RxJavaPlugins;
 import rx.plugins.RxJavaSchedulersHook;
 import rx.subscriptions.Subscriptions;
 
-import java.util.concurrent.*;
-
 /**
  * RX scheduler based on our SEP executor
  */
-public class CustomRxScheduler extends Scheduler
+public class SEPScheduler extends Scheduler
 {
-    public static final CustomRxScheduler instance = new CustomRxScheduler();
+    public static final SEPScheduler compute = new SEPScheduler(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "compute");
+    public static final SEPScheduler io = new SEPScheduler(DatabaseDescriptor.getConcurrentReaders(), Integer.MAX_VALUE, "worker", "io");
 
     final HashedWheelTimer wheelTimer = new HashedWheelTimer();
-    final TracingAwareExecutorService executor = SharedExecutorPool.SHARED.newExecutor(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "rxjava");
+    final LocalAwareExecutorService executor;
+
+    private SEPScheduler(int maxThreads, int maxQueued, String jmxPath, String name)
+    {
+        executor = SharedExecutorPool.SHARED.newExecutor(maxThreads, maxQueued, jmxPath, name);
+    }
 
     @Override
     public Worker createWorker()

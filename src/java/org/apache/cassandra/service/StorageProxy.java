@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
+import org.apache.cassandra.concurrent.SEPScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -72,6 +73,9 @@ import org.apache.cassandra.triggers.TriggerExecutor;
 import org.apache.cassandra.utils.*;
 import org.apache.cassandra.utils.AbstractIterator;
 import rx.*;
+import rx.Observable;
+import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
 import static com.google.common.collect.Iterables.contains;
 
@@ -1495,7 +1499,7 @@ public class StorageProxy implements StorageProxyMBean
     public static RowIterator readOne(SinglePartitionReadCommand command, ConsistencyLevel consistencyLevel, ClientState state)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
-        return PartitionIterators.getOnlyElement(read(SinglePartitionReadCommand.Group.one(command), consistencyLevel, state), command);
+        return PartitionIterators.getOnlyElement(read(SinglePartitionReadCommand.Group.one(command), consistencyLevel, state).toBlocking().single(), command);
     }
 
     public static PartitionIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
@@ -1503,14 +1507,14 @@ public class StorageProxy implements StorageProxyMBean
     {
         // When using serial CL, the ClientState should be provided
         assert !consistencyLevel.isSerialConsistency();
-        return read(group, consistencyLevel, null);
+        return read(group, consistencyLevel, null).toBlocking().single();
     }
 
     /**
      * Performs the actual reading of a row out of the StorageService, fetching
      * a specific set of column names from a given column family.
      */
-    public static PartitionIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
+    public static Observable<PartitionIterator> read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, ClientState state)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
         if (StorageService.instance.isBootstrapMode() && !systemKeyspaceQuery(group.commands))
@@ -1520,7 +1524,7 @@ public class StorageProxy implements StorageProxyMBean
         }
 
         return consistencyLevel.isSerialConsistency()
-             ? readWithPaxos(group, consistencyLevel, state)
+             ? Observable.just(readWithPaxos(group, consistencyLevel, state))
              : readRegular(group, consistencyLevel);
     }
 
@@ -1564,7 +1568,7 @@ public class StorageProxy implements StorageProxyMBean
                 throw new ReadFailureException(consistencyLevel, e.received, e.failures, e.blockFor, false);
             }
 
-            result = fetchRows(group.commands, consistencyForCommitOrFetch);
+            result = fetchRows(group.commands, consistencyForCommitOrFetch).toBlocking().single();
         }
         catch (UnavailableException e)
         {
@@ -1596,18 +1600,21 @@ public class StorageProxy implements StorageProxyMBean
     }
 
     @SuppressWarnings("resource")
-    private static PartitionIterator readRegular(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
+    private static Observable<PartitionIterator> readRegular(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
         long start = System.nanoTime();
         try
         {
-            PartitionIterator result = fetchRows(group.commands, consistencyLevel);
+            Observable<PartitionIterator> resultObs = fetchRows(group.commands, consistencyLevel);
             // If we have more than one command, then despite each read command honoring the limit, the total result
             // might not honor it and so we should enforce it
-            if (group.commands.size() > 1)
-                result = group.limits().filter(result, group.nowInSec());
-            return result;
+            return resultObs.map( result -> {
+                if (group.commands.size() > 1)
+                    result = group.limits().filter(result, group.nowInSec());
+
+                return result;
+            });
         }
         catch (UnavailableException e)
         {
@@ -1645,36 +1652,14 @@ public class StorageProxy implements StorageProxyMBean
      * 4. If the digests (if any) match the data return the data
      * 5. else carry out read repair by getting data from all the nodes.
      */
-    private static PartitionIterator fetchRows(List<SinglePartitionReadCommand> commands, ConsistencyLevel consistencyLevel)
+    private static Observable<PartitionIterator> fetchRows(List<SinglePartitionReadCommand> commands, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
-        int cmdCount = commands.size();
-
-        SinglePartitionReadLifecycle[] reads = new SinglePartitionReadLifecycle[cmdCount];
-        for (int i = 0; i < cmdCount; i++)
-            reads[i] = new SinglePartitionReadLifecycle(commands.get(i), consistencyLevel);
-
-        for (int i = 0; i < cmdCount; i++)
-            reads[i].doInitialQueries();
-
-        for (int i = 0; i < cmdCount; i++)
-            reads[i].maybeTryAdditionalReplicas();
-
-        for (int i = 0; i < cmdCount; i++)
-            reads[i].awaitResultsAndRetryOnDigestMismatch();
-
-        for (int i = 0; i < cmdCount; i++)
-            if (!reads[i].isDone())
-                reads[i].maybeAwaitFullDataRead();
-
-        List<PartitionIterator> results = new ArrayList<>(cmdCount);
-        for (int i = 0; i < cmdCount; i++)
-        {
-            assert reads[i].isDone();
-            results.add(reads[i].getResult());
-        }
-
-        return PartitionIterators.concat(results);
+        return Observable.from(commands)
+                         .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
+                         .flatMap(reader -> reader.getPartitionIterator(SEPScheduler.compute))
+                         .toList()
+                         .map(PartitionIterators::concat);
     }
 
     private static class SinglePartitionReadLifecycle
@@ -1708,6 +1693,89 @@ public class StorageProxy implements StorageProxyMBean
             executor.maybeTryAdditionalReplicas();
         }
 
+        Observable<PartitionIterator> getPartitionIterator(Scheduler scheduler)
+        {
+            final PartitionIterator[] partitionIterator = new PartitionIterator[1];
+
+            return Observable.defer(() -> {
+
+                //Create observable based on callback
+                Observable<PartitionIterator> obs = Observable.create(subscriber -> {
+                    executor.handler.onSignaledAction(scheduler, () -> {
+                        try
+                        {
+                            if (!subscriber.isUnsubscribed())
+                            {
+                                partitionIterator[0] = executor.handler.get();
+                                subscriber.onNext(partitionIterator[0]);
+                                subscriber.onCompleted();
+                            }
+                        }
+                        catch (DigestMismatchException e)
+                        {
+                            retryOnDigestMismatch(scheduler, () -> {
+                                try
+                                {
+                                    if (!subscriber.isUnsubscribed())
+                                    {
+                                        partitionIterator[0] = repairHandler.get();
+                                        subscriber.onNext(partitionIterator[0]);
+                                    }
+                                }
+                                catch (DigestMismatchException e1)
+                                {
+                                    subscriber.onError(new RuntimeException("Encountered a digest mismatch during a read repair", e1));
+                                }
+                                finally
+                                {
+                                    if (!subscriber.isUnsubscribed())
+                                        subscriber.onCompleted();
+                                }
+                            });
+                        }
+                    });
+
+                });
+
+                doInitialQueries();
+
+                //FIXME: Needs to become async
+                //maybeTryAdditionalReplicas();
+
+
+                return obs;
+            }).doOnUnsubscribe(() -> {
+                if (partitionIterator[0] != null)
+                    partitionIterator[0].close();
+            });
+        }
+
+        void retryOnDigestMismatch(Scheduler scheduler, Action0 onRepairAction) throws ReadFailureException, ReadTimeoutException
+        {
+
+            ReadRepairMetrics.repairedBlocking.mark();
+
+            // Do a full data read to resolve the correct response (and repair node that need be)
+            Keyspace keyspace = Keyspace.open(command.metadata().ksName);
+            DataResolver resolver = new DataResolver(keyspace, command, ConsistencyLevel.ALL, executor.handler.endpoints.size());
+            repairHandler = new ReadCallback(resolver,
+                                             ConsistencyLevel.ALL,
+                                             executor.getContactedReplicas().size(),
+                                             command,
+                                             keyspace,
+                                             executor.handler.endpoints);
+
+            if (onRepairAction != null)
+                repairHandler.onSignaledAction(scheduler, onRepairAction);
+
+            for (InetAddress endpoint : executor.getContactedReplicas())
+            {
+                MessageOut<ReadCommand> message = command.createMessage(MessagingService.instance().getVersion(endpoint));
+                Tracing.trace("Enqueuing full data read to {}", endpoint);
+                MessagingService.instance().sendRRWithFailure(message, endpoint, repairHandler);
+            }
+        }
+
         void awaitResultsAndRetryOnDigestMismatch() throws ReadFailureException, ReadTimeoutException
         {
             try
@@ -1718,24 +1786,7 @@ public class StorageProxy implements StorageProxyMBean
             {
                 Tracing.trace("Digest mismatch: {}", ex);
 
-                ReadRepairMetrics.repairedBlocking.mark();
-
-                // Do a full data read to resolve the correct response (and repair node that need be)
-                Keyspace keyspace = Keyspace.open(command.metadata().ksName);
-                DataResolver resolver = new DataResolver(keyspace, command, ConsistencyLevel.ALL, executor.handler.endpoints.size());
-                repairHandler = new ReadCallback(resolver,
-                                                 ConsistencyLevel.ALL,
-                                                 executor.getContactedReplicas().size(),
-                                                 command,
-                                                 keyspace,
-                                                 executor.handler.endpoints);
-
-                for (InetAddress endpoint : executor.getContactedReplicas())
-                {
-                    MessageOut<ReadCommand> message = command.createMessage(MessagingService.instance().getVersion(endpoint));
-                    Tracing.trace("Enqueuing full data read to {}", endpoint);
-                    MessagingService.instance().sendRRWithFailure(message, endpoint, repairHandler);
-                }
+                retryOnDigestMismatch(null, null);
             }
         }
 
@@ -1814,6 +1865,8 @@ public class StorageProxy implements StorageProxyMBean
             }
             catch (Throwable t)
             {
+
+                logger.error("Error on read", t);
                 handler.onFailure(FBUtilities.getBroadcastAddress());
                 if (t instanceof TombstoneOverwhelmingException)
                     logger.error(t.getMessage());

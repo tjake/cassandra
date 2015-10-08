@@ -18,7 +18,17 @@
 package org.apache.cassandra.cql3.statements;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Optional;
+import java.util.SortedSet;
 
 import com.google.common.base.Objects;
 import com.google.common.base.Predicate;
@@ -29,13 +39,40 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
-import org.apache.cassandra.cql3.*;
+import org.apache.cassandra.cql3.CFName;
+import org.apache.cassandra.cql3.CQLStatement;
+import org.apache.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.cql3.ColumnSpecification;
+import org.apache.cassandra.cql3.QueryOptions;
+import org.apache.cassandra.cql3.QueryProcessor;
+import org.apache.cassandra.cql3.ResultSet;
+import org.apache.cassandra.cql3.Term;
+import org.apache.cassandra.cql3.VariableSpecifications;
+import org.apache.cassandra.cql3.WhereClause;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.restrictions.StatementRestrictions;
 import org.apache.cassandra.cql3.selection.RawSelector;
 import org.apache.cassandra.cql3.selection.Selection;
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.filter.*;
+import org.apache.cassandra.db.AsObservable;
+import org.apache.cassandra.db.Clustering;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.ConsistencyLevel;
+import org.apache.cassandra.db.DataRange;
+import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.Keyspace;
+import org.apache.cassandra.db.PartitionPosition;
+import org.apache.cassandra.db.PartitionRangeReadCommand;
+import org.apache.cassandra.db.ReadExecutionController;
+import org.apache.cassandra.db.ReadQuery;
+import org.apache.cassandra.db.SinglePartitionReadCommand;
+import org.apache.cassandra.db.Slice;
+import org.apache.cassandra.db.Slices;
+import org.apache.cassandra.db.filter.ClusteringIndexFilter;
+import org.apache.cassandra.db.filter.ClusteringIndexNamesFilter;
+import org.apache.cassandra.db.filter.ClusteringIndexSliceFilter;
+import org.apache.cassandra.db.filter.ColumnFilter;
+import org.apache.cassandra.db.filter.DataLimits;
+import org.apache.cassandra.db.filter.RowFilter;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.db.marshal.Int32Type;
@@ -45,8 +82,11 @@ import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.view.View;
 import org.apache.cassandra.dht.AbstractBounds;
-import org.apache.cassandra.exceptions.*;
-import org.apache.cassandra.index.Index;
+import org.apache.cassandra.exceptions.InvalidRequestException;
+import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.exceptions.RequestValidationException;
+import org.apache.cassandra.exceptions.UnauthorizedException;
+import org.apache.cassandra.exceptions.UnrecognizedEntityException;
 import org.apache.cassandra.index.SecondaryIndexManager;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.service.ClientState;
@@ -58,7 +98,6 @@ import org.apache.cassandra.thrift.ThriftValidation;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
-import rx.*;
 import rx.Observable;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
@@ -250,10 +289,8 @@ public class SelectStatement implements CQLStatement
                                        int nowInSec,
                                        int userLimit) throws RequestValidationException, RequestExecutionException
     {
-        try (PartitionIterator data = query.execute(options.getConsistency(), state.getClientState()))
-        {
-            return processResults(data, options, nowInSec, userLimit);
-        }
+        Observable<PartitionIterator> data = query.execute(options.getConsistency(), state.getClientState());
+        return processResults(data, options, nowInSec, userLimit);
     }
 
     // Simple wrapper class to avoid some code duplication
@@ -340,7 +377,7 @@ public class SelectStatement implements CQLStatement
         ResultMessage.Rows msg;
         try (PartitionIterator page = pager.fetchPage(pageSize))
         {
-            msg = processResults(page, options, nowInSec, userLimit).toBlocking().single();
+            msg = processResults(Observable.just(page), options, nowInSec, userLimit).toBlocking().single();
         }
 
         // Please note that the isExhausted state of the pager only gets updated when we've closed the page, so this
@@ -382,13 +419,12 @@ public class SelectStatement implements CQLStatement
         return new ResultMessage.Rows(result.build(options.getProtocolVersion()));
     }
 
-    private Observable<ResultMessage.Rows> processResults(PartitionIterator partitions,
+    private Observable<ResultMessage.Rows> processResults(Observable<PartitionIterator> partitions,
                                               QueryOptions options,
                                               int nowInSec,
                                               int userLimit) throws RequestValidationException
     {
-        ResultSet rset = process(partitions, options, nowInSec, userLimit).toBlocking().single();
-        return Observable.just(new ResultMessage.Rows(rset));
+        return process(partitions, options, nowInSec, userLimit).flatMap(resultSet -> Observable.just(new ResultMessage.Rows(resultSet)));
     }
 
     public ResultMessage.Rows executeInternal(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
@@ -404,7 +440,7 @@ public class SelectStatement implements CQLStatement
             {
                 try (PartitionIterator data = query.executeInternal(executionController))
                 {
-                    return processResults(data, options, nowInSec, userLimit).toBlocking().single();
+                    return processResults(Observable.just(data), options, nowInSec, userLimit).toBlocking().single();
                 }
             }
             else
@@ -415,9 +451,9 @@ public class SelectStatement implements CQLStatement
         }
     }
 
-    public Observable<ResultSet> process(PartitionIterator partitions, int nowInSec) throws InvalidRequestException
+    public ResultSet process(PartitionIterator partitions, int nowInSec) throws InvalidRequestException
     {
-        return process(partitions, QueryOptions.DEFAULT, nowInSec, getLimit(QueryOptions.DEFAULT));
+        return process(Observable.just(partitions), QueryOptions.DEFAULT, nowInSec, getLimit(QueryOptions.DEFAULT)).toBlocking().single();
     }
 
     public String keyspace()
@@ -654,7 +690,7 @@ public class SelectStatement implements CQLStatement
         return filter;
     }
 
-    private Observable<ResultSet> process(PartitionIterator partitions,
+    private Observable<ResultSet> process(Observable<PartitionIterator> partitions,
                               QueryOptions options,
                               int nowInSec,
                               int userLimit) throws InvalidRequestException
@@ -663,19 +699,21 @@ public class SelectStatement implements CQLStatement
 
             final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
-            partitions.asObservable()
-                      .map(partition -> {
-                          processPartition(partition, options, result, nowInSec);
-                          return partition;
-                      }).subscribe();
+            return partitions.flatMap(AsObservable::asObservable)
+                             .map(rowiterator -> {
+                                 //FIXME: this should be made iterable
+                                 processPartition(rowiterator, options, result, nowInSec);
+                                 rowiterator.close();
+                                 return 1;
+                             })
+                             .toList()
+                             .map(rows -> {
+                                 ResultSet cqlRows = result.build(options.getProtocolVersion());
+                                 orderResults(cqlRows);
+                                 cqlRows.trim(userLimit);
 
-            ResultSet cqlRows = result.build(options.getProtocolVersion());
-
-            orderResults(cqlRows);
-
-            cqlRows.trim(userLimit);
-            
-            return Observable.just(cqlRows);
+                                 return cqlRows;
+                             });
         });
     }
 

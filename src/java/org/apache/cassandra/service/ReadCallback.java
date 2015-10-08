@@ -45,6 +45,8 @@ import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.SimpleCondition;
+import rx.Scheduler;
+import rx.functions.Action0;
 
 public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
 {
@@ -95,6 +97,11 @@ public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
             logger.trace(String.format("Blockfor is %s; setting up requests to %s", blockfor, StringUtils.join(this.endpoints, ",")));
     }
 
+    public void onSignaledAction(Scheduler scheduler, Action0 signaledAction)
+    {
+        condition.setSignalAction(scheduler, signaledAction);
+    }
+
     public boolean await(long timePastStart, TimeUnit unit)
     {
         long time = unit.toNanos(timePastStart) - (System.nanoTime() - start);
@@ -134,7 +141,8 @@ public class ReadCallback implements IAsyncCallbackWithFailure<ReadResponse>
 
     public PartitionIterator get() throws ReadFailureException, ReadTimeoutException, DigestMismatchException
     {
-        awaitResults();
+        if (!condition.isSignaled())
+            awaitResults();
 
         PartitionIterator result = blockfor == 1 ? resolver.getData() : resolver.resolve();
         if (logger.isTraceEnabled())

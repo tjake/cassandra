@@ -4,6 +4,7 @@ import org.apache.cassandra.db.partitions.BasePartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.rows.RowIterator;
+import rx.Observable;
 
 public final class FilteredPartitions extends BasePartitions<RowIterator, BasePartitionIterator<?>> implements PartitionIterator
 {
@@ -36,5 +37,16 @@ public final class FilteredPartitions extends BasePartitions<RowIterator, BasePa
         if (iterator instanceof UnfilteredPartitions)
             return new FilteredPartitions(filter, (UnfilteredPartitions) iterator);
         return new FilteredPartitions(iterator, filter);
+    }
+
+    public Observable<RowIterator> asObservable()
+    {
+        return Observable.create(subscriber -> {
+            while(hasNext())
+                subscriber.onNext(next());
+
+            subscriber.onCompleted();
+            close();
+        });
     }
 }

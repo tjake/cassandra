@@ -25,6 +25,7 @@ import org.apache.cassandra.db.partitions.BasePartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.rows.*;
+import rx.Observable;
 
 public class EmptyIterators
 {
@@ -78,6 +79,11 @@ public class EmptyIterators
         private EmptyPartitionIterator()
         {
             super();
+        }
+
+        public Observable<RowIterator> asObservable()
+        {
+            return Observable.empty();
         }
     }
 
@@ -166,6 +172,11 @@ public class EmptyIterators
         public EncodingStats stats()
         {
             return EncodingStats.NO_STATS;
+        }
+
+        public Observable<Unfiltered> asObservable()
+        {
+            return Observable.empty();
         }
     }
 
