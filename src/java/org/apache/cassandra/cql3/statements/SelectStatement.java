@@ -211,6 +211,7 @@ public class SelectStatement implements CQLStatement
         if (pageSize <= 0 || query.limits().count() <= pageSize)
             return execute(query, options, state, nowInSec);
 
+        logger.info(query.toString());
         QueryPager pager = query.getPager(options.getPagingState(), options.getProtocolVersion());
         return Observable.just(execute(Pager.forDistributedQuery(pager, cl, state.getClientState()), options, pageSize, nowInSec));
     }

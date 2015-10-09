@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
+import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -71,6 +72,7 @@ import org.apache.cassandra.utils.AbstractIterator;
 import rx.*;
 import rx.Observable;
 import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
 public class StorageProxy implements StorageProxyMBean
 {
@@ -1543,7 +1545,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         return Observable.from(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(SinglePartitionReadLifecycle::getPartitionIterator)
+                         .flatMap(reader -> reader.getPartitionIterator(Schedulers.immediate()))
                          .toList()
                          .map(PartitionIterators::concat);
 
@@ -1580,7 +1582,7 @@ public class StorageProxy implements StorageProxyMBean
             executor.maybeTryAdditionalReplicas();
         }
 
-        Observable<PartitionIterator> getPartitionIterator()
+        Observable<PartitionIterator> getPartitionIterator(Scheduler scheduler)
         {
 
             final PartitionIterator[] partitionIterator = new PartitionIterator[1];
@@ -1589,7 +1591,7 @@ public class StorageProxy implements StorageProxyMBean
 
                 //Create
                 Observable<PartitionIterator> obs = Observable.create(subscriber -> {
-                    executor.handler.onSignaledAction(() -> {
+                    executor.handler.onSignaledAction(scheduler, () -> {
                         try
                         {
                             if (!subscriber.isUnsubscribed())
@@ -1601,7 +1603,7 @@ public class StorageProxy implements StorageProxyMBean
                         }
                         catch (DigestMismatchException e)
                         {
-                            retryOnDigestMismatch(() -> {
+                            retryOnDigestMismatch(scheduler, () -> {
                                 try
                                 {
                                     if (!subscriber.isUnsubscribed())
@@ -1638,7 +1640,7 @@ public class StorageProxy implements StorageProxyMBean
             });
         }
 
-        void retryOnDigestMismatch(Action0 onRepairAction) throws ReadFailureException, ReadTimeoutException
+        void retryOnDigestMismatch(Scheduler scheduler, Action0 onRepairAction) throws ReadFailureException, ReadTimeoutException
         {
 
             ReadRepairMetrics.repairedBlocking.mark();
@@ -1654,7 +1656,7 @@ public class StorageProxy implements StorageProxyMBean
                                              executor.handler.endpoints);
 
             if (onRepairAction != null)
-                repairHandler.onSignaledAction(onRepairAction);
+                repairHandler.onSignaledAction(scheduler, onRepairAction);
 
             for (InetAddress endpoint : executor.getContactedReplicas())
             {
@@ -1674,7 +1676,7 @@ public class StorageProxy implements StorageProxyMBean
             {
                 Tracing.trace("Digest mismatch: {}", ex);
 
-                retryOnDigestMismatch(null);
+                retryOnDigestMismatch(null, null);
             }
         }
 
@@ -1738,6 +1740,8 @@ public class StorageProxy implements StorageProxyMBean
             }
             catch (Throwable t)
             {
+
+                logger.error("Error on read", t);
                 handler.onFailure(FBUtilities.getBroadcastAddress());
                 if (t instanceof TombstoneOverwhelmingException)
                     logger.error(t.getMessage());

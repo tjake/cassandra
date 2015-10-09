@@ -169,13 +169,13 @@ public class CassandraDaemon
             @Override
             public Scheduler getComputationScheduler()
             {
-                return CustomRxScheduler.instance;
+                return CustomRxScheduler.compute;
             }
 
             @Override
             public Scheduler getIOScheduler()
             {
-                return null;
+                return CustomRxScheduler.io;
             }
 
             @Override

@@ -494,9 +494,9 @@ public abstract class Message
         @Override
         public void channelRead0(ChannelHandlerContext ctx, Request request)
         {
-            Scheduler.Worker worker = CustomRxScheduler.instance.createWorker();
+            //Scheduler.Worker worker = CustomRxScheduler.compute.createWorker();
 
-            worker.schedule(() -> {
+            //worker.schedule(() -> {
                 final ServerConnection connection;
 
                 assert request.connection() instanceof ServerConnection;
@@ -524,7 +524,7 @@ public abstract class Message
                                   () -> {
                                       ClientWarn.resetWarnings();
                                   });
-            });
+            //});
         }
 
         private void flush(FlushItem item)
