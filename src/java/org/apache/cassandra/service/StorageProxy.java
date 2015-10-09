@@ -1555,10 +1555,9 @@ public class StorageProxy implements StorageProxyMBean
     {
         return Observable.from(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(reader -> reader.getPartitionIterator(Schedulers.immediate()))
+                         .flatMap(reader -> reader.getPartitionIterator(CustomRxScheduler.compute))
                          .toList()
                          .map(PartitionIterators::concat);
-
     }
 
     private static class SinglePartitionReadLifecycle
