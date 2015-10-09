@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Condition;
 
+import rx.Scheduler;
 import rx.functions.Action0;
 
 // fulfils the Condition interface without spurious wakeup problems
@@ -34,14 +35,16 @@ public class SimpleCondition implements Condition
     private volatile WaitQueue waiting;
     private volatile boolean signaled = false;
     private volatile Action0 signalAction;
+    private volatile Scheduler scheduler;
 
-    public void setSignalAction(Action0 signalAction)
+    public void setSignalAction(Scheduler scheduler, Action0 signalAction)
     {
         assert this.signalAction == null;
+        this.scheduler = scheduler;
         this.signalAction = signalAction;
 
         if (signaled)
-            signalAction.call();
+            scheduler.createWorker().schedule(signalAction::call);
     }
 
     public void await() throws InterruptedException
@@ -92,7 +95,7 @@ public class SimpleCondition implements Condition
             waiting.signalAll();
 
         if (signalAction != null)
-            signalAction.call();
+            scheduler.createWorker().schedule(signalAction::call);
     }
 
     public void awaitUninterruptibly()
