@@ -18,15 +18,15 @@ import java.util.concurrent.*;
 /**
  * RX scheduler based on our SEP executor
  */
-public class CustomRxScheduler extends Scheduler
+public class SEPScheduler extends Scheduler
 {
-    public static final CustomRxScheduler compute = new CustomRxScheduler(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "compute");
-    public static final CustomRxScheduler io = new CustomRxScheduler(DatabaseDescriptor.getConcurrentReaders(), Integer.MAX_VALUE, "worker", "io");
+    public static final SEPScheduler compute = new SEPScheduler(DatabaseDescriptor.getNativeTransportMaxThreads(), 128, "worker", "compute");
+    public static final SEPScheduler io = new SEPScheduler(DatabaseDescriptor.getConcurrentReaders(), Integer.MAX_VALUE, "worker", "io");
 
     final HashedWheelTimer wheelTimer = new HashedWheelTimer();
     final TracingAwareExecutorService executor;
 
-    private CustomRxScheduler(int maxThreads, int maxQueued, String jmxPath, String name)
+    private SEPScheduler(int maxThreads, int maxQueued, String jmxPath, String name)
     {
         executor = SharedExecutorPool.SHARED.newExecutor(maxThreads, maxQueued, jmxPath, name);
     }

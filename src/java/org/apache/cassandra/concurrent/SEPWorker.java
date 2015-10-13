@@ -67,7 +67,6 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
         SEPExecutor assigned = null;
         Runnable task = null;
-        String currentName = Thread.currentThread().getName();
         try
         {
             while (true)
@@ -103,7 +102,6 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
-                    Thread.currentThread().setName(assigned.name + " | " + currentName);
                     task.run();
 
 
@@ -128,7 +126,6 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         }
         catch (Throwable t)
         {
-            Thread.currentThread().setName(currentName);
             JVMStabilityInspector.inspectThrowable(t);
             while (true)
             {

@@ -24,6 +24,7 @@ import java.util.concurrent.locks.Condition;
 
 import rx.Scheduler;
 import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
 // fulfils the Condition interface without spurious wakeup problems
 // (or lost notify problems either: that is, even if you call await()
@@ -96,6 +97,7 @@ public class SimpleCondition implements Condition
 
         if (signalAction != null)
             scheduler.createWorker().schedule(signalAction::call);
+
     }
 
     public void awaitUninterruptibly()

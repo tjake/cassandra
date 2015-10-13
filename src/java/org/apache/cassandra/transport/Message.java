@@ -42,14 +42,11 @@ import com.google.common.collect.ImmutableSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.concurrent.CustomRxScheduler;
 import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.transport.messages.*;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.utils.JVMStabilityInspector;
-import org.apache.cassandra.utils.Pair;
 import rx.Observable;
-import rx.Scheduler;
 
 /**
  * A message from the CQL binary protocol.
@@ -494,37 +491,33 @@ public abstract class Message
         @Override
         public void channelRead0(ChannelHandlerContext ctx, Request request)
         {
-            //Scheduler.Worker worker = CustomRxScheduler.compute.createWorker();
+            final ServerConnection connection;
 
-            //worker.schedule(() -> {
-                final ServerConnection connection;
+            assert request.connection() instanceof ServerConnection;
+            connection = (ServerConnection) request.connection();
+            if (connection.getVersion() >= Server.VERSION_4)
+                ClientWarn.captureWarnings();
 
-                assert request.connection() instanceof ServerConnection;
-                connection = (ServerConnection) request.connection();
-                if (connection.getVersion() >= Server.VERSION_4)
-                    ClientWarn.captureWarnings();
+            QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
 
-                QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
+            request.execute(qstate)
+                   .subscribe(response -> {
+                                  response.setStreamId(request.getStreamId());
+                                  response.setWarnings(ClientWarn.getWarnings());
+                                  response.attach(connection);
+                                  connection.applyStateTransition(request.type, response.type);
 
-                request.execute(qstate)
-                       .subscribe(response -> {
-                                      response.setStreamId(request.getStreamId());
-                                      response.setWarnings(ClientWarn.getWarnings());
-                                      response.attach(connection);
-                                      connection.applyStateTransition(request.type, response.type);
-
-                                      logger.trace("Responding: {}, v={}", response, connection.getVersion());
-                                      flush(new FlushItem(ctx, response, request.getSourceFrame()));
-                                  },
-                                  t -> {
-                                      JVMStabilityInspector.inspectThrowable(t);
-                                      UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                                      flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
-                                  },
-                                  () -> {
-                                      ClientWarn.resetWarnings();
-                                  });
-            //});
+                                  logger.trace("Responding: {}, v={}", response, connection.getVersion());
+                                  flush(new FlushItem(ctx, response, request.getSourceFrame()));
+                              },
+                              t -> {
+                                  JVMStabilityInspector.inspectThrowable(t);
+                                  UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
+                                  flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                              },
+                              () -> {
+                                  ClientWarn.resetWarnings();
+                              });
         }
 
         private void flush(FlushItem item)
