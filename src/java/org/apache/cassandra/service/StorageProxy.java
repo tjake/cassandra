@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
-import org.apache.cassandra.concurrent.CustomRxScheduler;
+import org.apache.cassandra.concurrent.SEPScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -1545,7 +1545,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         return Observable.from(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(reader -> reader.getPartitionIterator(CustomRxScheduler.compute))
+                         .flatMap(reader -> reader.getPartitionIterator(SEPScheduler.compute))
                          .toList()
                          .map(PartitionIterators::concat);
     }
@@ -1583,12 +1583,11 @@ public class StorageProxy implements StorageProxyMBean
 
         Observable<PartitionIterator> getPartitionIterator(Scheduler scheduler)
         {
-
             final PartitionIterator[] partitionIterator = new PartitionIterator[1];
 
             return Observable.defer(() -> {
 
-                //Create
+                //Create observable based on callback
                 Observable<PartitionIterator> obs = Observable.create(subscriber -> {
                     executor.handler.onSignaledAction(scheduler, () -> {
                         try
