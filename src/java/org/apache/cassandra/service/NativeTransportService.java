@@ -61,6 +61,7 @@ public class NativeTransportService
         if (useEpoll())
         {
             workerGroup = new EpollEventLoopGroup();
+            ((EpollEventLoopGroup) workerGroup).setIoRatio(10);
             logger.info("Netty using native Epoll event loop");
         }
         else

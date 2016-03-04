@@ -26,14 +26,13 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.concurrent.Stage;
-import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.config.ReadRepairDecision;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
+import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.ReadCommand;
 import org.apache.cassandra.db.SinglePartitionReadCommand;
-import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.ReadFailureException;
 import org.apache.cassandra.exceptions.ReadTimeoutException;
@@ -114,7 +113,8 @@ public abstract class AbstractReadExecutor
         if (hasLocalEndpoint)
         {
             logger.trace("reading {} locally", readCommand.isDigestQuery() ? "digest" : "data");
-            StageManager.getStage(Stage.READ).maybeExecuteImmediately(new LocalReadRunnable(command, handler));
+            NettyRxScheduler.instance().createWorker().schedule(() -> new LocalReadRunnable(command, handler).runMayThrow());
+            //StageManager.getStage(Stage.READ).maybeExecuteImmediately(new LocalReadRunnable(command, handler));
         }
     }
 

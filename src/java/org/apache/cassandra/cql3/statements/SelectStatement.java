@@ -99,6 +99,7 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import rx.Observable;
+import rx.schedulers.Schedulers;
 
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkFalse;
 import static org.apache.cassandra.cql3.statements.RequestValidations.checkNotNull;
@@ -440,7 +441,7 @@ public class SelectStatement implements CQLStatement
             {
                 try (PartitionIterator data = query.executeInternal(executionController))
                 {
-                    return processResults(Observable.just(data), options, nowInSec, userLimit).toBlocking().single();
+                    return processResults(Observable.just(data), options, nowInSec, userLimit).subscribeOn(Schedulers.io()).toBlocking().single();
                 }
             }
             else

@@ -24,13 +24,13 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableSet;
@@ -47,6 +47,7 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.AuthChallenge;
@@ -68,6 +69,7 @@ import org.apache.cassandra.transport.messages.StartupMessage;
 import org.apache.cassandra.transport.messages.SupportedMessage;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
+import rx.internal.util.unsafe.SpscLinkedQueue;
 
 /**
  * A message from the CQL binary protocol.
@@ -439,8 +441,9 @@ public abstract class Message
         private static final class Flusher implements Runnable
         {
             final EventLoop eventLoop;
-            final ConcurrentLinkedQueue<FlushItem> queued = new ConcurrentLinkedQueue<>();
-            final AtomicBoolean running = new AtomicBoolean(false);
+            final Queue<FlushItem> queued = new SpscLinkedQueue<>();
+            boolean running = false;
+            ScheduledFuture scheduledFuture = null;
             final HashSet<ChannelHandlerContext> channels = new HashSet<>();
             final List<FlushItem> flushed = new ArrayList<>();
             int runsSinceFlush = 0;
@@ -449,22 +452,29 @@ public abstract class Message
             {
                 this.eventLoop = eventLoop;
             }
+
             void start()
             {
-                if (!running.get() && running.compareAndSet(false, true))
+                if (!running || scheduledFuture != null )
                 {
-                    this.eventLoop.execute(this);
+                    if (scheduledFuture != null && !scheduledFuture.isDone())
+                    {
+                        scheduledFuture.cancel(false);
+                        scheduledFuture = null;
+                    }
+
+                    run();
                 }
             }
+
             public void run()
             {
-
+                running = true;
                 boolean doneWork = false;
                 FlushItem flush;
                 while ( null != (flush = queued.poll()) )
                 {
                     channels.add(flush.ctx);
-                    flush.ctx.write(flush.response, flush.ctx.voidPromise());
                     flushed.add(flush);
                     doneWork = true;
                 }
@@ -473,13 +483,17 @@ public abstract class Message
 
                 if (!doneWork || runsSinceFlush > 2 || flushed.size() > 50)
                 {
-                    for (ChannelHandlerContext channel : channels)
-                        channel.flush();
-                    for (FlushItem item : flushed)
-                        item.sourceFrame.release();
+                    if (!channels.isEmpty() && !flushed.isEmpty())
+                    {
+                        for (ChannelHandlerContext channel : channels)
+                            channel.flush();
+                        for (FlushItem item : flushed)
+                            item.sourceFrame.release();
 
-                    channels.clear();
-                    flushed.clear();
+                        channels.clear();
+                        flushed.clear();
+                    }
+
                     runsSinceFlush = 0;
                 }
 
@@ -492,13 +506,15 @@ public abstract class Message
                     // either reschedule or cancel
                     if (++runsWithNoWork > 5)
                     {
-                        running.set(false);
-                        if (queued.isEmpty() || !running.compareAndSet(false, true))
+                        running = false;
+                        if (queued.isEmpty())
                             return;
                     }
                 }
 
-                eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
+                //We should only have one scheduled at a time
+                if (scheduledFuture == null || scheduledFuture.isCancelled() || scheduledFuture.isDone())
+                    scheduledFuture = eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
             }
         }
 
@@ -512,9 +528,6 @@ public abstract class Message
         @Override
         public void channelRead0(ChannelHandlerContext ctx, Request request)
         {
-            //Scheduler.Worker worker = CustomRxScheduler.compute.createWorker();
-
-            //worker.schedule(() -> {
             final ServerConnection connection;
 
             assert request.connection() instanceof ServerConnection;
@@ -523,33 +536,41 @@ public abstract class Message
                 ClientWarn.instance.captureWarnings();
 
             QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
-
             logger.trace("Received: {}, v={}", request, connection.getVersion());
 
             request.execute(qstate)
+                   .subscribeOn(NettyRxScheduler.instance(ctx.channel().eventLoop()))
                    .subscribe(response -> {
                                   response.setStreamId(request.getStreamId());
+
                                   response.setWarnings(ClientWarn.instance.getWarnings());
                                   response.attach(connection);
                                   connection.applyStateTransition(request.type, response.type);
 
                                   logger.trace("Responding: {}, v={}", response, connection.getVersion());
+                                  ctx.write(response, ctx.voidPromise());
                                   flush(new FlushItem(ctx, response, request.getSourceFrame()));
                               },
                               t -> {
                                   JVMStabilityInspector.inspectThrowable(t);
                                   UnexpectedChannelExceptionHandler handler = new UnexpectedChannelExceptionHandler(ctx.channel(), true);
-                                  flush(new FlushItem(ctx, ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId()), request.getSourceFrame()));
+                                  Message response = ErrorMessage.fromException(t, handler).setStreamId(request.getStreamId());
+                                  ctx.write(response, ctx.voidPromise());
+                                  flush(new FlushItem(ctx, response, request.getSourceFrame()));
                               },
                               () -> {
                                   ClientWarn.instance.resetWarnings();
                               });
-            //});
         }
 
+        /** Aggregates writes from this event loop to be flushed at once
+         * This method will only be called from the eventloop itself so is threadsafe
+         * @param item
+         */
         private void flush(FlushItem item)
         {
             EventLoop loop = item.ctx.channel().eventLoop();
+            assert loop.inEventLoop();
             Flusher flusher = flusherLookup.get(loop);
             if (flusher == null)
             {

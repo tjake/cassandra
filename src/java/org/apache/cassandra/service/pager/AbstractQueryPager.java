@@ -25,6 +25,7 @@ import org.apache.cassandra.db.transform.Transformation;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.service.ClientState;
+import rx.schedulers.Schedulers;
 
 abstract class AbstractQueryPager implements QueryPager
 {
@@ -64,7 +65,7 @@ abstract class AbstractQueryPager implements QueryPager
 
         pageSize = Math.min(pageSize, remaining);
         Pager pager = new Pager(limits.forPaging(pageSize), command.nowInSec());
-        return Transformation.apply(nextPageReadCommand(pageSize).execute(consistency, clientState).toBlocking().single(), pager);
+        return Transformation.apply(nextPageReadCommand(pageSize).execute(consistency, clientState).subscribeOn(Schedulers.io()).toBlocking().single(), pager);
     }
 
     public PartitionIterator fetchPageInternal(int pageSize, ReadExecutionController executionController) throws RequestValidationException, RequestExecutionException
