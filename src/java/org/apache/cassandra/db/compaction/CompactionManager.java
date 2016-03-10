@@ -876,6 +876,7 @@ public class CompactionManager implements CompactionManagerMBean
             // flush to ensure we don't lose the tombstones on a restart, since they are not commitlog'd
             cfs.indexManager.flushAllIndexesBlocking();
 
+            txn.obsoleteOriginals();
             finished = writer.finish();
         }
 
