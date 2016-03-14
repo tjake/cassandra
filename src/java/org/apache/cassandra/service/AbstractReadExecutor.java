@@ -26,7 +26,6 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.config.ReadRepairDecision;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
@@ -44,6 +43,7 @@ import org.apache.cassandra.schema.SpeculativeRetryParam;
 import org.apache.cassandra.service.StorageProxy.LocalReadRunnable;
 import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
+import rx.schedulers.Schedulers;
 
 /**
  * Sends a read request to the replicas needed to satisfy a given ConsistencyLevel.
@@ -113,7 +113,7 @@ public abstract class AbstractReadExecutor
         if (hasLocalEndpoint)
         {
             logger.trace("reading {} locally", readCommand.isDigestQuery() ? "digest" : "data");
-            NettyRxScheduler.instance().createWorker().schedule(() -> new LocalReadRunnable(command, handler).runMayThrow());
+            Schedulers.trampoline().createWorker().schedule(() -> new LocalReadRunnable(command, handler).runMayThrow());
             //StageManager.getStage(Stage.READ).maybeExecuteImmediately(new LocalReadRunnable(command, handler));
         }
     }

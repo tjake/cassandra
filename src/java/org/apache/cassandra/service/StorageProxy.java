@@ -63,7 +63,6 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
-import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -146,6 +145,7 @@ import org.apache.cassandra.utils.UUIDSerializer;
 import rx.Observable;
 import rx.Scheduler;
 import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
 public class StorageProxy implements StorageProxyMBean
 {
@@ -1725,7 +1725,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         return Observable.from(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(reader -> reader.getPartitionIterator(NettyRxScheduler.instance()))
+                         .flatMap(reader -> reader.getPartitionIterator(Schedulers.trampoline()))
                          .toList()
                          .map(PartitionIterators::concat);
     }

@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -47,7 +48,6 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
-import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.AuthChallenge;
@@ -69,7 +69,7 @@ import org.apache.cassandra.transport.messages.StartupMessage;
 import org.apache.cassandra.transport.messages.SupportedMessage;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
-import rx.internal.util.unsafe.SpscLinkedQueue;
+import rx.schedulers.Schedulers;
 
 /**
  * A message from the CQL binary protocol.
@@ -441,7 +441,7 @@ public abstract class Message
         private static final class Flusher implements Runnable
         {
             final EventLoop eventLoop;
-            final Queue<FlushItem> queued = new SpscLinkedQueue<>();
+            final Queue<FlushItem> queued = new LinkedList<>();
             boolean running = false;
             ScheduledFuture scheduledFuture = null;
             final HashSet<ChannelHandlerContext> channels = new HashSet<>();
@@ -514,7 +514,7 @@ public abstract class Message
 
                 //We should only have one scheduled at a time
                 if (scheduledFuture == null || scheduledFuture.isCancelled() || scheduledFuture.isDone())
-                    scheduledFuture = eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
+                  scheduledFuture = eventLoop.schedule(this, 10000, TimeUnit.NANOSECONDS);
             }
         }
 
@@ -538,8 +538,11 @@ public abstract class Message
             QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
             logger.trace("Received: {}, v={}", request, connection.getVersion());
 
+            //Scheduler s = NettyRxScheduler.instance(ctx.channel().eventLoop());
             request.execute(qstate)
-                   .subscribeOn(NettyRxScheduler.instance(ctx.channel().eventLoop()))
+                   .subscribeOn(Schedulers.trampoline())
+                   .observeOn(Schedulers.trampoline())
+                   .unsubscribeOn(Schedulers.trampoline())
                    .subscribe(response -> {
                                   response.setStreamId(request.getStreamId());
 
