@@ -48,6 +48,7 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.messages.AuthChallenge;
@@ -69,7 +70,7 @@ import org.apache.cassandra.transport.messages.StartupMessage;
 import org.apache.cassandra.transport.messages.SupportedMessage;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import rx.Observable;
-import rx.schedulers.Schedulers;
+import rx.Scheduler;
 
 /**
  * A message from the CQL binary protocol.
@@ -538,11 +539,11 @@ public abstract class Message
             QueryState qstate = connection.validateNewMessage(request.type, connection.getVersion(), request.getStreamId());
             logger.trace("Received: {}, v={}", request, connection.getVersion());
 
-            //Scheduler s = NettyRxScheduler.instance(ctx.channel().eventLoop());
+            Scheduler s = NettyRxScheduler.instance(ctx.channel().eventLoop());
+
             request.execute(qstate)
-                   .subscribeOn(Schedulers.trampoline())
-                   .observeOn(Schedulers.trampoline())
-                   .unsubscribeOn(Schedulers.trampoline())
+                   .subscribeOn(s)
+                   .unsubscribeOn(s)
                    .subscribe(response -> {
                                   response.setStreamId(request.getStreamId());
 

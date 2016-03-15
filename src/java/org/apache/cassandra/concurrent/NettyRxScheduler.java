@@ -22,6 +22,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import rx.Scheduler;
@@ -45,7 +46,7 @@ public class NettyRxScheduler extends Scheduler
         }
     };
 
-    final EventExecutor eventLoop;
+    final EventExecutorGroup eventLoop;
 
     public static NettyRxScheduler instance()
     {
@@ -57,6 +58,7 @@ public class NettyRxScheduler extends Scheduler
         NettyRxScheduler scheduler = localNettyEventLoop.get();
         if (scheduler == null || scheduler.eventLoop != loop)
         {
+            assert loop.inEventLoop();
             scheduler = new NettyRxScheduler(loop);
             localNettyEventLoop.set(scheduler);
         }
@@ -64,21 +66,29 @@ public class NettyRxScheduler extends Scheduler
         return scheduler;
     }
 
-    private NettyRxScheduler(EventExecutor eventLoop)
+    private NettyRxScheduler(EventExecutorGroup eventLoop)
     {
+        assert eventLoop != null;
         this.eventLoop = eventLoop;
-        localNettyEventLoop.set(this);
+    }
+
+    public NettyRxScheduler asGroup()
+    {
+        if (eventLoop instanceof GlobalEventExecutor)
+            return this;
+
+        return new NettyRxScheduler( ((EventExecutor)eventLoop).parent());
     }
 
     @Override
     public Worker createWorker()
     {
-        return new Worker(eventLoop.next());
+        return new Worker(eventLoop);
     }
 
     public static class Worker extends Scheduler.Worker
     {
-        private final EventExecutor nettyEventLoop;
+        private final EventExecutorGroup nettyEventLoop;
 
         private final SubscriptionList serial;
         private final CompositeSubscription timed;
@@ -86,7 +96,7 @@ public class NettyRxScheduler extends Scheduler
 
         volatile boolean isUnsubscribed;
 
-        public Worker(EventExecutor nettyEventLoop)
+        public Worker(EventExecutorGroup nettyEventLoop)
         {
             this.nettyEventLoop = nettyEventLoop;
 
