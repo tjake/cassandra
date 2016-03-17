@@ -26,6 +26,10 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.Scheduler;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -40,10 +44,6 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
-import rx.Observable;
-import rx.Observer;
-import rx.Scheduler;
-import rx.schedulers.Schedulers;
 
 
 /**
@@ -84,9 +84,9 @@ public class EventLoopBench {
             Scheduler s1 = Schedulers.from(loop1);
             Scheduler s2 = Schedulers.from(loop2);
 
-            rx1 = Observable.from(arr).subscribeOn(Schedulers.trampoline()).observeOn(Schedulers.trampoline());
-            rx2 = Observable.from(arr).subscribeOn(NettyRxScheduler.instance()).observeOn(NettyRxScheduler.instance());
-            rx3 = Observable.from(arr).subscribeOn(s1).observeOn(s2);
+            rx1 = Observable.fromArray(arr).subscribeOn(Schedulers.computation()).observeOn(Schedulers.computation());
+            rx2 = Observable.fromArray(arr).subscribeOn(NettyRxScheduler.instance()).observeOn(NettyRxScheduler.instance());
+            rx3 = Observable.fromArray(arr).subscribeOn(s1).observeOn(s2);
         }
 
         @TearDown
@@ -177,7 +177,8 @@ public class EventLoopBench {
         for (int i = 0; i < c; i++) {
             int j = i;
             fj.submit(() -> {
-                if (j == c - 1) {
+                if (j == c - 1)
+                {
                     cdl.countDown();
                 }
             });
@@ -186,9 +187,8 @@ public class EventLoopBench {
         await(c, cdl);
     }
 
-    public class LatchedObserver<T> implements Observer<T>
+    public class LatchedObserver<T> extends Observer<T>
     {
-
         public CountDownLatch latch = new CountDownLatch(1);
         private final Blackhole bh;
 
@@ -197,7 +197,7 @@ public class EventLoopBench {
         }
 
         @Override
-        public void onCompleted() {
+        public void onComplete() {
             latch.countDown();
         }
 
@@ -207,9 +207,9 @@ public class EventLoopBench {
         }
 
         @Override
-        public void onNext(T t) {
+        public void onNext(T t)
+        {
             bh.consume(t);
         }
-
     }
 }

@@ -22,6 +22,7 @@ import java.util.UUID;
 import com.google.common.collect.ImmutableMap;
 
 import io.netty.buffer.ByteBuf;
+import io.reactivex.Observable;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
@@ -33,7 +34,6 @@ import org.apache.cassandra.transport.Message;
 import org.apache.cassandra.transport.ProtocolException;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.UUIDGen;
-import rx.Observable;
 
 /**
  * A CQL query
@@ -83,7 +83,7 @@ public class QueryMessage extends Message.Request
         this.options = options;
     }
 
-    public Observable<Message.Response> execute(QueryState state)
+    public Observable<Response> execute(QueryState state)
     {
         try
         {

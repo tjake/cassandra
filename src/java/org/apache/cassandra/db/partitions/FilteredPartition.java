@@ -19,13 +19,13 @@ package org.apache.cassandra.db.partitions;
 
 import java.util.Iterator;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionInfo;
 import org.apache.cassandra.db.PartitionColumns;
-import org.apache.cassandra.db.rows.*;
-import rx.Observable;
-import rx.Subscriber;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.RowIterator;
 
 public class FilteredPartition extends ImmutableBTreePartition
 {
@@ -57,7 +57,7 @@ public class FilteredPartition extends ImmutableBTreePartition
                     while (hasNext())
                         subscriber.onNext(next());
 
-                    subscriber.onCompleted();
+                    subscriber.onComplete();
                 });
             }
 

@@ -23,8 +23,8 @@ import java.util.NoSuchElementException;
 
 import com.google.common.collect.PeekingIterator;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.db.AsObservable;
-import rx.Observable;
 
 public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterator<V>, AsObservable<V>
 {
@@ -47,7 +47,7 @@ public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterato
             while(hasNext())
                 subscriber.onNext(next());
 
-            subscriber.onCompleted();
+            subscriber.onComplete();
         });
     }
 

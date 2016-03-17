@@ -21,17 +21,33 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.ClusteringComparator;
+import org.apache.cassandra.db.Columns;
+import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.DeletionTime;
+import org.apache.cassandra.db.LegacyLayout;
+import org.apache.cassandra.db.PartitionColumns;
+import org.apache.cassandra.db.RowIndexEntry;
+import org.apache.cassandra.db.Slice;
+import org.apache.cassandra.db.Slices;
+import org.apache.cassandra.db.UnfilteredDeserializer;
 import org.apache.cassandra.db.filter.ColumnFilter;
-import org.apache.cassandra.db.rows.*;
-import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.db.rows.EncodingStats;
+import org.apache.cassandra.db.rows.RangeTombstoneMarker;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.Rows;
+import org.apache.cassandra.db.rows.SerializationHelper;
+import org.apache.cassandra.db.rows.Unfiltered;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredSerializer;
 import org.apache.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.io.sstable.IndexHelper;
+import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.utils.ByteBufferUtil;
-import rx.Observable;
 
 abstract class AbstractSSTableIterator implements UnfilteredRowIterator
 {
@@ -289,7 +305,7 @@ abstract class AbstractSSTableIterator implements UnfilteredRowIterator
             while (hasNext())
                 subscriber.onNext(next());
 
-            subscriber.onCompleted();
+            subscriber.onComplete();
         });
     }
 

@@ -18,7 +18,8 @@
 
 package org.apache.cassandra.db;
 
-import rx.Observable;
+
+import io.reactivex.Observable;
 
 /**
  * Created by jake on 9/28/15.

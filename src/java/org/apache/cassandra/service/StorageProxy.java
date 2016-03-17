@@ -60,6 +60,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.reactivex.Observable;
+import io.reactivex.Scheduler;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
@@ -143,9 +145,7 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
 import org.apache.cassandra.utils.UUIDSerializer;
-import rx.Observable;
-import rx.Scheduler;
-import rx.functions.Action0;
+
 
 public class StorageProxy implements StorageProxyMBean
 {
@@ -1723,7 +1723,7 @@ public class StorageProxy implements StorageProxyMBean
     private static Observable<PartitionIterator> fetchRows(List<SinglePartitionReadCommand> commands, ConsistencyLevel consistencyLevel)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
-        return Observable.from(commands)
+        return Observable.fromIterable(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
                          .flatMap(reader -> reader.getPartitionIterator(NettyRxScheduler.instance()))
                          .toList()
@@ -1772,23 +1772,18 @@ public class StorageProxy implements StorageProxyMBean
                     executor.handler.onSignaledAction(scheduler, () -> {
                         try
                         {
-                            if (!subscriber.isUnsubscribed())
-                            {
                                 partitionIterator[0] = executor.handler.get();
                                 subscriber.onNext(partitionIterator[0]);
-                                subscriber.onCompleted();
-                            }
+                                subscriber.onComplete();
+
                         }
                         catch (DigestMismatchException e)
                         {
                             retryOnDigestMismatch(scheduler, () -> {
                                 try
                                 {
-                                    if (!subscriber.isUnsubscribed())
-                                    {
                                         partitionIterator[0] = repairHandler.get();
                                         subscriber.onNext(partitionIterator[0]);
-                                    }
                                 }
                                 catch (DigestMismatchException e1)
                                 {
@@ -1796,8 +1791,7 @@ public class StorageProxy implements StorageProxyMBean
                                 }
                                 finally
                                 {
-                                    if (!subscriber.isUnsubscribed())
-                                        subscriber.onCompleted();
+                                    subscriber.onComplete();
                                 }
                             });
                         }
@@ -1812,13 +1806,13 @@ public class StorageProxy implements StorageProxyMBean
 
 
                 return obs;
-            }).doOnUnsubscribe(() -> {
+            }).finallyDo(() -> {
                 if (partitionIterator[0] != null)
                     partitionIterator[0].close();
             });
         }
 
-        void retryOnDigestMismatch(Scheduler scheduler, Action0 onRepairAction) throws ReadFailureException, ReadTimeoutException
+        void retryOnDigestMismatch(Scheduler scheduler, Runnable onRepairAction) throws ReadFailureException, ReadTimeoutException
         {
 
             ReadRepairMetrics.repairedBlocking.mark();

@@ -17,13 +17,13 @@
  */
 package org.apache.cassandra.db;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.db.filter.DataLimits;
-import org.apache.cassandra.db.partitions.*;
+import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.service.ClientState;
-import org.apache.cassandra.service.pager.QueryPager;
 import org.apache.cassandra.service.pager.PagingState;
-import rx.Observable;
+import org.apache.cassandra.service.pager.QueryPager;
 
 /**
  * Generic abstraction for read queries.

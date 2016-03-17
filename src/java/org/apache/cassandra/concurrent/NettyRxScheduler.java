@@ -19,19 +19,24 @@
 package org.apache.cassandra.concurrent;
 
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.GlobalEventExecutor;
-import rx.Scheduler;
-import rx.Subscription;
-import rx.functions.Action0;
-import rx.internal.schedulers.ScheduledAction;
-import rx.internal.util.SubscriptionList;
-import rx.subscriptions.CompositeSubscription;
-import rx.subscriptions.Subscriptions;
+import io.reactivex.Scheduler;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.disposables.Disposables;
+import io.reactivex.internal.disposables.ArrayCompositeResource;
+import io.reactivex.internal.disposables.CompositeResource;
+import io.reactivex.internal.disposables.EmptyDisposable;
+import io.reactivex.internal.disposables.ListCompositeResource;
+import io.reactivex.internal.disposables.SetCompositeResource;
+import io.reactivex.internal.schedulers.ScheduledRunnable;
+import io.reactivex.plugins.RxJavaPlugins;
+
 
 /**
  *
@@ -90,70 +95,87 @@ public class NettyRxScheduler extends Scheduler
     {
         private final EventExecutorGroup nettyEventLoop;
 
-        private final SubscriptionList serial;
-        private final CompositeSubscription timed;
-        private final SubscriptionList both;
+        private final ListCompositeResource<Disposable> serial;
+        private final SetCompositeResource<Disposable> timed;
+        private final ArrayCompositeResource<Disposable> both;
 
-        volatile boolean isUnsubscribed;
+        volatile boolean disposed;
 
-        public Worker(EventExecutorGroup nettyEventLoop)
+        Worker(EventExecutorGroup nettyEventLoop)
         {
             this.nettyEventLoop = nettyEventLoop;
-
-            serial = new SubscriptionList();
-            timed = new CompositeSubscription();
-            both = new SubscriptionList(serial, timed);
+            this.serial = new ListCompositeResource<>(Disposables.consumeAndDispose());
+            this.timed = new SetCompositeResource<>(Disposables.consumeAndDispose());
+            this.both = new ArrayCompositeResource<>(2, Disposables.consumeAndDispose());
+            this.both.lazySet(0, serial);
+            this.both.lazySet(1, timed);
         }
 
         @Override
-        public Subscription schedule(final Action0 action) {
-            return schedule(action, 0, TimeUnit.HOURS);
-        }
-
-        @Override
-        public Subscription schedule(final Action0 action, long delayTime, TimeUnit unit) {
-            if (isUnsubscribed) {
-                return Subscriptions.empty();
-            }
-            return scheduleActual(action, delayTime, unit);
-        }
-
-        /**
-         * @warn javadoc missing
-         * @param action
-         * @param delayTime
-         * @param unit
-         * @return
-         */
-        public ScheduledAction scheduleActual(final Action0 action, long delayTime, TimeUnit unit) {
-
-            ScheduledAction run;
-            if (delayTime <= 0) {
-                run = new ScheduledAction(action, serial);
-                serial.add(run);
-                nettyEventLoop.next().submit(run);
-            } else
+        public void dispose()
+        {
+            if (!disposed)
             {
-                run = new ScheduledAction(action, timed);
-                timed.add(run);
+                disposed = true;
+                both.dispose();
+            }
+        }
 
-                final Future<?> result = nettyEventLoop.next().schedule(run, delayTime, unit);
-                Subscription cancelFuture = Subscriptions.create(() -> result.cancel(false));
-
-                run.add(cancelFuture); /*An unsubscribe of the returned sub should cancel the future*/
+        @Override
+        public Disposable schedule(Runnable action)
+        {
+            if (disposed)
+            {
+                return EmptyDisposable.INSTANCE;
             }
 
-            return run;
+            return scheduleActual(action, 0, null, serial);
         }
 
         @Override
-        public void unsubscribe() {
-            both.unsubscribe();
+        public Disposable schedule(Runnable action, long delayTime, TimeUnit unit)
+        {
+            if (disposed)
+            {
+                return EmptyDisposable.INSTANCE;
+            }
+
+            return scheduleActual(action, delayTime, unit, timed);
         }
 
-        @Override
-        public boolean isUnsubscribed() {
-            return both.isUnsubscribed();
+        public ScheduledRunnable scheduleActual(final Runnable run, long delayTime, TimeUnit unit, CompositeResource<Disposable> parent)
+        {
+            Runnable decoratedRun = RxJavaPlugins.onSchedule(run);
+
+            ScheduledRunnable sr = new ScheduledRunnable(decoratedRun, parent);
+
+            if (parent != null)
+            {
+                if (!parent.add(sr))
+                {
+                    return sr;
+                }
+            }
+
+            Future<?> f;
+            try
+            {
+                if (delayTime <= 0)
+                {
+                    f = nettyEventLoop.submit(sr);
+                }
+                else
+                {
+                    f = nettyEventLoop.schedule(sr, delayTime, unit);
+                }
+                sr.setFuture(f);
+            }
+            catch (RejectedExecutionException ex)
+            {
+                RxJavaPlugins.onError(ex);
+            }
+
+            return sr;
         }
     }
 }

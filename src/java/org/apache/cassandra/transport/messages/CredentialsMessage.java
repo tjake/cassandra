@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.netty.buffer.ByteBuf;
+import io.reactivex.Observable;
 import org.apache.cassandra.auth.AuthenticatedUser;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.exceptions.AuthenticationException;
@@ -28,7 +29,6 @@ import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.transport.CBUtil;
 import org.apache.cassandra.transport.Message;
 import org.apache.cassandra.transport.ProtocolException;
-import rx.Observable;
 
 /**
  * Message to indicate that the server is ready to receive requests.
@@ -71,7 +71,7 @@ public class CredentialsMessage extends Message.Request
         this.credentials = credentials;
     }
 
-    public Observable<Message.Response> execute(QueryState state)
+    public Observable<Response> execute(QueryState state)
     {
         try
         {

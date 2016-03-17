@@ -48,6 +48,8 @@ import com.addthis.metrics3.reporter.config.ReporterConfig;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistryListener;
 import com.codahale.metrics.SharedMetricRegistries;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
 import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.CFMetaData;
@@ -79,11 +81,7 @@ import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.Mx4jTool;
 import org.apache.cassandra.utils.RMIServerSocketFactoryImpl;
 import org.apache.cassandra.utils.WindowsTimer;
-import rx.Scheduler;
-import rx.plugins.RxJavaErrorHandler;
-import rx.plugins.RxJavaPlugins;
-import rx.plugins.RxJavaSchedulersHook;
-import rx.schedulers.Schedulers;
+
 
 /**
  * The <code>CassandraDaemon</code> is an abstraction for a Cassandra daemon
@@ -173,23 +171,8 @@ public class CassandraDaemon
 
         ThreadAwareSecurityManager.install();
 
-        RxJavaPlugins.getInstance().registerSchedulersHook(new RxJavaSchedulersHook()
-        {
-            @Override
-            public Scheduler getIOScheduler()
-            {
-                return Schedulers.from(Executors.newFixedThreadPool(DatabaseDescriptor.getConcurrentWriters()));
-            }
-        });
-
-        RxJavaPlugins.getInstance().registerErrorHandler(new RxJavaErrorHandler()
-        {
-            @Override
-            public void handleError(Throwable e)
-            {
-                logger.error("RxJava unexpected Exception ", e);
-            }
-        });
+        RxJavaPlugins.initIOScheduler(Schedulers.from(Executors.newFixedThreadPool(DatabaseDescriptor.getConcurrentWriters())));
+        RxJavaPlugins.setErrorHandler(t -> logger.error("RxJava unexpected Exception ", t));
 
         logSystemInfo();
 

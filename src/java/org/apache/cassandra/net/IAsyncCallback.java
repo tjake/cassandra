@@ -22,7 +22,6 @@ import java.net.InetAddress;
 import com.google.common.base.Predicate;
 
 import org.apache.cassandra.gms.FailureDetector;
-import rx.Observable;
 
 /**
  * implementors of IAsyncCallback need to make sure that any public methods

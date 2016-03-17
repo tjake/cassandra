@@ -19,9 +19,11 @@ package org.apache.cassandra.db.rows;
 
 import com.google.common.collect.UnmodifiableIterator;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.config.CFMetaData;
-import org.apache.cassandra.db.*;
-import rx.Observable;
+import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.DeletionTime;
+import org.apache.cassandra.db.PartitionColumns;
 
 /**
  * Abstract class to make writing unfiltered iterators that wrap another iterator

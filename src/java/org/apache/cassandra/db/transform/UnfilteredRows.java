@@ -1,10 +1,10 @@
 package org.apache.cassandra.db.transform;
 
+import io.reactivex.Observable;
 import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.db.rows.EncodingStats;
 import org.apache.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.db.rows.UnfilteredRowIterator;
-import rx.Observable;
 
 final class UnfilteredRows extends BaseRows<Unfiltered, UnfilteredRowIterator> implements UnfilteredRowIterator
 {
@@ -45,7 +45,7 @@ final class UnfilteredRows extends BaseRows<Unfiltered, UnfilteredRowIterator> i
             while(hasNext())
                 subscriber.onNext(next());
 
-            subscriber.onCompleted();
+            subscriber.onComplete();
         });
     }
 }
