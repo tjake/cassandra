@@ -57,6 +57,7 @@ import org.apache.cassandra.streaming.messages.FileMessageHeader;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.BytesReadTracker;
 import org.apache.cassandra.utils.Pair;
+import org.reactivestreams.Subscription;
 
 
 /**
@@ -306,6 +307,19 @@ public class StreamReader
         public Observable<Unfiltered> asObservable()
         {
             return Observable.create(subscriber -> {
+                subscriber.onSubscribe(new Subscription()
+                {
+                    public void request(long l)
+                    {
+
+                    }
+
+                    public void cancel()
+                    {
+
+                    }
+                });
+
                 while(hasNext())
                     subscriber.onNext(next());
 

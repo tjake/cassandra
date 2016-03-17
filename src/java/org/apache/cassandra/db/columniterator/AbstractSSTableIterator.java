@@ -48,6 +48,7 @@ import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.FileMark;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.reactivestreams.Subscription;
 
 abstract class AbstractSSTableIterator implements UnfilteredRowIterator
 {
@@ -302,6 +303,19 @@ abstract class AbstractSSTableIterator implements UnfilteredRowIterator
     public Observable<Unfiltered> asObservable()
     {
         return Observable.create(subscriber -> {
+            subscriber.onSubscribe(new Subscription()
+            {
+                public void request(long l)
+                {
+
+                }
+
+                public void cancel()
+                {
+
+                }
+            });
+
             while (hasNext())
                 subscriber.onNext(next());
 

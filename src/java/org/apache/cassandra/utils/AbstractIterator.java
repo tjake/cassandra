@@ -25,6 +25,7 @@ import com.google.common.collect.PeekingIterator;
 
 import io.reactivex.Observable;
 import org.apache.cassandra.db.AsObservable;
+import org.reactivestreams.Subscription;
 
 public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterator<V>, AsObservable<V>
 {
@@ -44,6 +45,19 @@ public abstract class AbstractIterator<V> implements Iterator<V>, PeekingIterato
     public Observable<V> asObservable()
     {
         return Observable.create(subscriber -> {
+            subscriber.onSubscribe(new Subscription()
+            {
+                public void request(long l)
+                {
+
+                }
+
+                public void cancel()
+                {
+
+                }
+            });
+
             while(hasNext())
                 subscriber.onNext(next());
 

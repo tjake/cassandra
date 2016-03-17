@@ -691,12 +691,12 @@ public class SelectStatement implements CQLStatement
         return filter;
     }
 
-    private Observable<ResultSet> process(Observable<PartitionIterator> partitions,
+    private Observable<ResultSet> process(final Observable<PartitionIterator> partitions,
                               QueryOptions options,
                               int nowInSec,
                               int userLimit) throws InvalidRequestException
     {
-        return Observable.defer(() -> {
+       return Observable.defer(() -> {
 
             final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
@@ -714,7 +714,7 @@ public class SelectStatement implements CQLStatement
                                  cqlRows.trim(userLimit);
 
                                  return cqlRows;
-                             });
+                             }).defaultIfEmpty(result.build(options.getProtocolVersion()));
         });
     }
 

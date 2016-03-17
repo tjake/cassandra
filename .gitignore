@@ -6,7 +6,7 @@ src/gen-java/
 src/resources/org/apache/cassandra/config/
 logs/
 data/
-conf/hotspot_compiler
+#conf/hotspot_compiler
 doc/cql3/CQL.html
 
 # C* debs

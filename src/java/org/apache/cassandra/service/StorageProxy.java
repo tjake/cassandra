@@ -145,6 +145,7 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
 import org.apache.cassandra.utils.UUIDSerializer;
+import org.reactivestreams.Subscription;
 
 
 public class StorageProxy implements StorageProxyMBean
@@ -1772,18 +1773,29 @@ public class StorageProxy implements StorageProxyMBean
                     executor.handler.onSignaledAction(scheduler, () -> {
                         try
                         {
-                                partitionIterator[0] = executor.handler.get();
-                                subscriber.onNext(partitionIterator[0]);
-                                subscriber.onComplete();
+                            partitionIterator[0] = executor.handler.get();
+                            subscriber.onSubscribe(new Subscription()
+                            {
+                                public void request(long l)
+                                {
 
+                                }
+
+                                public void cancel()
+                                {
+
+                                }
+                            });
+                            subscriber.onNext(partitionIterator[0]);
+                            subscriber.onComplete();
                         }
                         catch (DigestMismatchException e)
                         {
                             retryOnDigestMismatch(scheduler, () -> {
                                 try
                                 {
-                                        partitionIterator[0] = repairHandler.get();
-                                        subscriber.onNext(partitionIterator[0]);
+                                    partitionIterator[0] = repairHandler.get();
+                                    subscriber.onNext(partitionIterator[0]);
                                 }
                                 catch (DigestMismatchException e1)
                                 {

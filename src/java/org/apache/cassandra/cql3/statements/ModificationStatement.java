@@ -463,7 +463,7 @@ public abstract class ModificationStatement implements CQLStatement
         if (!mutations.isEmpty())
             StorageProxy.mutateWithTriggers(mutations, cl, false);
 
-        return null;
+        return new ResultMessage.Void();
     }
 
     public ResultMessage executeWithCondition(QueryState queryState, QueryOptions options)

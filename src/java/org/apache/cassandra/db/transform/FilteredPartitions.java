@@ -5,6 +5,7 @@ import org.apache.cassandra.db.partitions.BasePartitionIterator;
 import org.apache.cassandra.db.partitions.PartitionIterator;
 import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.db.rows.RowIterator;
+import org.reactivestreams.Subscription;
 
 public final class FilteredPartitions extends BasePartitions<RowIterator, BasePartitionIterator<?>> implements PartitionIterator
 {
@@ -42,6 +43,20 @@ public final class FilteredPartitions extends BasePartitions<RowIterator, BasePa
     public Observable<RowIterator> asObservable()
     {
         return Observable.create(subscriber -> {
+
+            subscriber.onSubscribe(new Subscription()
+            {
+                public void request(long l)
+                {
+
+                }
+
+                public void cancel()
+                {
+
+                }
+            });
+
             while(hasNext())
                 subscriber.onNext(next());
 
