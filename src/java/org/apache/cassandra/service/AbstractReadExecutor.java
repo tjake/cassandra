@@ -113,7 +113,7 @@ public abstract class AbstractReadExecutor
         if (hasLocalEndpoint)
         {
             logger.trace("reading {} locally", readCommand.isDigestQuery() ? "digest" : "data");
-            NettyRxScheduler.instance().asGroup().createWorker().schedule(() -> new LocalReadRunnable(command, handler).runMayThrow());
+            NettyRxScheduler.instance().createWorker().schedule(() -> new LocalReadRunnable(command, handler).runMayThrow());
             //StageManager.getStage(Stage.READ).maybeExecuteImmediately(new LocalReadRunnable(command, handler));
         }
     }

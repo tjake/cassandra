@@ -61,12 +61,13 @@ public class NativeTransportService
         if (useEpoll())
         {
             workerGroup = new EpollEventLoopGroup();
-            ((EpollEventLoopGroup) workerGroup).setIoRatio(10);
+            ((EpollEventLoopGroup) workerGroup).setIoRatio(5);
             logger.info("Netty using native Epoll event loop");
         }
         else
         {
             workerGroup = new NioEventLoopGroup();
+            ((NioEventLoopGroup) workerGroup).setIoRatio(5);
             logger.info("Netty using Java NIO event loop");
         }
 
