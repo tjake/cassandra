@@ -65,7 +65,7 @@ import io.reactivex.Scheduler;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
-import org.apache.cassandra.concurrent.NettyRxScheduler;
+import org.apache.cassandra.concurrent.MonitoredTPCRxScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -1726,7 +1726,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         return Observable.fromIterable(commands)
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(reader -> reader.getPartitionIterator(NettyRxScheduler.instance()))
+                         .flatMap(reader -> reader.getPartitionIterator(MonitoredTPCRxScheduler.any()))
                          .toList()
                          .map(PartitionIterators::concat);
     }

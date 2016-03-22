@@ -32,6 +32,7 @@ import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.Future;
+import net.openhft.affinity.AffinitySupport;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.metrics.ClientMetrics;
 import org.apache.cassandra.transport.Server;
@@ -61,13 +62,11 @@ public class NativeTransportService
         if (useEpoll())
         {
             workerGroup = new EpollEventLoopGroup();
-            ((EpollEventLoopGroup) workerGroup).setIoRatio(5);
             logger.info("Netty using native Epoll event loop");
         }
         else
         {
             workerGroup = new NioEventLoopGroup();
-            ((NioEventLoopGroup) workerGroup).setIoRatio(5);
             logger.info("Netty using Java NIO event loop");
         }
 
@@ -120,6 +119,18 @@ public class NativeTransportService
     public void start()
     {
         initialize();
+
+        int nettyThreads = Integer.valueOf(System.getProperty("io.netty.eventLoopThreads", "2"));
+
+        for (int i = 0; i < nettyThreads; i++)
+        {
+            final int cpuId = i;
+            workerGroup.next().schedule(() -> {
+                logger.info("Locking {} netty thread", cpuId);
+                AffinitySupport.setAffinity(1L << cpuId);
+            }, 0, TimeUnit.SECONDS);
+        }
+
         servers.forEach(Server::start);
     }
 

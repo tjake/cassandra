@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
@@ -30,7 +31,8 @@ import io.reactivex.Observable;
 import io.reactivex.Observer;
 import io.reactivex.Scheduler;
 import io.reactivex.schedulers.Schedulers;
-import org.apache.cassandra.concurrent.NettyRxScheduler;
+import org.apache.cassandra.concurrent.MonitoredTPCExecutorService;
+import org.apache.cassandra.concurrent.MonitoredTPCRxScheduler;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -56,10 +58,35 @@ import org.openjdk.jmh.infra.Blackhole;
 @Fork(value = 1)
 @State(Scope.Thread)
 public class EventLoopBench {
+    @State(Scope.Thread)
+    public static class MonitoredState {
+        @Param({"1000000"})
+        public int count;
+
+        Observable<Integer> rxMonitored;
+
+        @Setup
+        public void setup() {
+
+            Integer[] arr = new Integer[count];
+            Arrays.fill(arr, 777);
+
+            MonitoredTPCRxScheduler scheduler = new MonitoredTPCRxScheduler();
+
+            rxMonitored = Observable.fromArray(arr).subscribeOn(scheduler.any())
+                                    .observeOn(scheduler.any());
+        }
+        @TearDown
+        public void teardown() {
+            MonitoredTPCExecutorService.instance().shutdown();
+        }
+    }
+
 
     @State(Scope.Thread)
     public static class ExecutorState {
-        @Param({"1", "1000", "1000000"})
+
+        @Param({"1000000"})
         public int count;
 
         private ExecutorService exec1;
@@ -68,7 +95,6 @@ public class EventLoopBench {
 
         Observable<Integer> rx1;
         Observable<Integer> rx2;
-        Observable<Integer> rx3;
 
 
         @Setup
@@ -85,8 +111,7 @@ public class EventLoopBench {
             Scheduler s2 = Schedulers.from(loop2);
 
             rx1 = Observable.fromArray(arr).subscribeOn(Schedulers.computation()).observeOn(Schedulers.computation());
-            rx2 = Observable.fromArray(arr).subscribeOn(NettyRxScheduler.instance()).observeOn(NettyRxScheduler.instance());
-            rx3 = Observable.fromArray(arr).subscribeOn(s1).observeOn(s2);
+            rx2 = Observable.fromArray(arr).subscribeOn(s1).observeOn(s2);
         }
 
         @TearDown
@@ -97,24 +122,6 @@ public class EventLoopBench {
         }
     }
 
-    @State(Scope.Thread)
-    public static class ReactorState {
-        @Param({"1", "1000", "1000000"})
-        public int count;
-
-        @Setup
-        public void setup() {
-            Integer[] arr = new Integer[count];
-            Arrays.fill(arr, 777);
-        }
-
-        @TearDown
-        public void teardown() {
-
-        }
-    }
-
-
     static void await(int count, CountDownLatch latch) throws Exception {
         if (count < 1000) {
             while (latch.getCount() != 0) ;
@@ -123,8 +130,7 @@ public class EventLoopBench {
         }
     }
 
-
-    @Benchmark
+    //@Benchmark
     public void executor(ExecutorState state, Blackhole bh) throws Exception {
 
         CountDownLatch cdl = new CountDownLatch(1);
@@ -143,15 +149,16 @@ public class EventLoopBench {
     }
 
     @Benchmark
-    public void rx1(ExecutorState state, Blackhole bh) throws Exception {
+    public void rxDefault(ExecutorState state, Blackhole bh) throws Exception {
         LatchedObserver<Integer> o = new LatchedObserver<>(bh);
         state.rx1.subscribe(o);
 
         await(state.count, o.latch);
     }
 
+
     @Benchmark
-    public void rx2(ExecutorState state, Blackhole bh) throws Exception {
+    public void rxNetty(ExecutorState state, Blackhole bh) throws Exception {
         LatchedObserver<Integer> o = new LatchedObserver<>(bh);
         state.rx2.subscribe(o);
 
@@ -159,12 +166,33 @@ public class EventLoopBench {
     }
 
     @Benchmark
-    public void rx3(ExecutorState state, Blackhole bh) throws Exception {
+    public void rxMonitored(MonitoredState state, Blackhole bh) throws Exception {
         LatchedObserver<Integer> o = new LatchedObserver<>(bh);
-        state.rx3.subscribe(o);
+        state.rxMonitored.subscribe(o);
 
         await(state.count, o.latch);
     }
+
+
+    @Benchmark
+    public void monitored(MonitoredState state, Blackhole bh) throws Exception {
+
+        CountDownLatch cdl = new CountDownLatch(1);
+
+        MonitoredTPCExecutorService.SingleCoreExecutor e = MonitoredTPCExecutorService.instance().one(1);
+
+        int c = state.count;
+        for (int i = 0; i < c; i++) {
+            int j = i;
+            e.addTask(new FutureTask<>(()-> {
+                if (j == c - 1)
+                    cdl.countDown();
+            }, null));
+        }
+
+        await(c, cdl);
+    }
+
 
     @Benchmark
     public void forkjoin(ExecutorState state, Blackhole bh) throws Exception {

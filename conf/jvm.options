@@ -133,11 +133,13 @@
 -XX:+UnlockCommercialFeatures
 -XX:+FlightRecorder
 
+
 # uncomment to have Cassandra JVM listen for remote debuggers/profilers on port 1414
 #-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=1414
 
 # uncomment to have Cassandra JVM log internal method compilation (developers only)
-#-XX:+UnlockDiagnosticVMOptions
+-XX:+UnlockDiagnosticVMOptions
+-XX:+DebugNonSafepoints
 #-XX:+LogCompilation
 
 #################
@@ -183,6 +185,7 @@
 #################
 
 ### CMS Settings
+-XX:+UseNUMA
 
 -XX:+UseParNewGC
 -XX:+UseConcMarkSweepGC
