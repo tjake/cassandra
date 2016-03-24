@@ -42,7 +42,8 @@ public class ReadCommandVerbHandler implements IVerbHandler<ReadCommand>
 
         ReadCommand command = message.payload;
         ReadResponse response;
-        try (ReadOrderGroup opGroup = command.startOrderGroup(); UnfilteredPartitionIterator iterator = command.executeLocally(opGroup))
+        try (ReadOrderGroup opGroup = command.startOrderGroup();
+             UnfilteredPartitionIterator iterator = command.executeLocally(opGroup))
         {
             response = command.createResponse(iterator);
         }

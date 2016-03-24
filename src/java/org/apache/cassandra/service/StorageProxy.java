@@ -49,6 +49,7 @@ import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.TombstoneOverwhelmingException;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.rows.RowIterator;
+import org.apache.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.db.view.ViewUtils;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.exceptions.*;
@@ -1787,7 +1788,8 @@ public class StorageProxy implements StorageProxyMBean
         {
             try
             {
-                try (ReadOrderGroup orderGroup = command.startOrderGroup(); UnfilteredPartitionIterator iterator = command.executeLocally(orderGroup))
+                try (ReadOrderGroup orderGroup = command.startOrderGroup();
+                     UnfilteredPartitionIterator iterator = command.executeLocally(orderGroup))
                 {
                     handler.response(command.createResponse(iterator));
                 }

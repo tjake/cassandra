@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -118,13 +119,55 @@ public abstract class ReadResponse
             return true;
         }
     }
-
+    
     // built on the owning node responding to a query
     private static class LocalDataResponse extends DataResponse
     {
+        final List<ImmutableBTreePartition> rows;
+
         private LocalDataResponse(UnfilteredPartitionIterator iter, ReadCommand command)
         {
-            super(command, build(iter, command.columnFilter()), SerializationHelper.Flag.LOCAL);
+            super(command, null, SerializationHelper.Flag.LOCAL);
+
+            rows = new ArrayList<>(3);
+            while (iter.hasNext())
+            {
+                rows.add(ImmutableBTreePartition.create(iter.next()));
+            }
+        }
+
+        @Override
+        public UnfilteredPartitionIterator makeIterator(ReadCommand command)
+        {
+            final Iterator<ImmutableBTreePartition> btree = rows.iterator();
+
+            return new UnfilteredPartitionIterator()
+            {
+                public boolean isForThrift()
+                {
+                    return false;
+                }
+
+                public CFMetaData metadata()
+                {
+                    return null;
+                }
+
+                public void close()
+                {
+
+                }
+
+                public boolean hasNext()
+                {
+                    return btree.hasNext();
+                }
+
+                public UnfilteredRowIterator next()
+                {
+                    return btree.next().sliceableUnfilteredIterator(command.columnFilter(), false);
+                }
+            };
         }
 
         private static ByteBuffer build(UnfilteredPartitionIterator iter, ColumnFilter selection)
