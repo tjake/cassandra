@@ -696,11 +696,12 @@ public class SelectStatement implements CQLStatement
                               int nowInSec,
                               int userLimit) throws InvalidRequestException
     {
-       return Observable.defer(() -> {
+       //return Observable.defer(() -> {
 
             final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
-            return partitions.flatMap(AsObservable::asObservable)
+            return partitions.observeOn(Schedulers.trampoline())
+                             .flatMap(AsObservable::asObservable)
                              .map(rowiterator -> {
                                  //FIXME: this should be made iterable
                                  processPartition(rowiterator, options, result, nowInSec);
@@ -715,7 +716,7 @@ public class SelectStatement implements CQLStatement
 
                                  return cqlRows;
                              }).defaultIfEmpty(result.build(options.getProtocolVersion()));
-        });
+        //});
     }
 
     public static ByteBuffer[] getComponents(CFMetaData cfm, DecoratedKey dk)

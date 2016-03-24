@@ -35,7 +35,7 @@ import net.openhft.affinity.CpuLayout;
 import net.openhft.affinity.impl.VanillaCpuLayout;
 import org.apache.cassandra.utils.FBUtilities;
 import org.jctools.queues.MessagePassingQueue;
-import org.jctools.queues.MpscCompoundQueue;
+import org.jctools.queues.MpscChunkedArrayQueue;
 
 /**
  * Created by jake on 3/22/16.
@@ -149,7 +149,7 @@ public class MonitoredTPCExecutorService
             this.cpuId = cpuId;
             this.coreId = coreId;
             this.socketId = socketId;
-            this.runQueue = new MpscCompoundQueue<>(1 << 20);
+            this.runQueue = new MpscChunkedArrayQueue<>(1 << 20);
             this.state = CoreState.WORKING;
         }
 
@@ -227,11 +227,10 @@ public class MonitoredTPCExecutorService
                     if (state == CoreState.WORKING)
                     {
                         int spins = 0;
-                        int processed;
+                        int processed = 0;
                         do
                         {
                             processed = runQueue.drain(FutureTask::run);
-
                         } while (processed > 0 || ++spins < maxExtraSpins);
                     }
 

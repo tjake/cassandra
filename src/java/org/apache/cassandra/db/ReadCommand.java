@@ -29,7 +29,7 @@ import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.concurrent.MonitoredTPCRxScheduler;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -490,7 +490,7 @@ public abstract class ReadCommand extends MonitorableImpl implements ReadQuery
             public void onClose()
             {
                 //Don't block responding for this
-                MonitoredTPCRxScheduler.any().createWorker().schedule(() -> {
+                Schedulers.trampoline().createWorker().schedule(() -> {
                     recordLatency(metric, System.nanoTime() - startTimeNanos);
 
                     metric.tombstoneScannedHistogram.update(tombstones);

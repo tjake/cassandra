@@ -48,6 +48,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import io.reactivex.Observable;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.cassandra.concurrent.MonitoredTPCRxScheduler;
 import org.apache.cassandra.service.ClientWarn;
 import org.apache.cassandra.service.QueryState;
@@ -602,7 +603,7 @@ public abstract class Message
 
             request.execute(qstate)
                    .subscribeOn(MonitoredTPCRxScheduler.any())
-                   .unsubscribeOn(MonitoredTPCRxScheduler.any())
+                   .unsubscribeOn(Schedulers.trampoline())
                    .subscribe(response -> {
                                   response.setStreamId(request.getStreamId());
 

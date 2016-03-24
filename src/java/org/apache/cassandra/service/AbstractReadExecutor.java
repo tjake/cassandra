@@ -112,7 +112,17 @@ public abstract class AbstractReadExecutor
         if (hasLocalEndpoint)
         {
             logger.trace("reading {} locally", readCommand.isDigestQuery() ? "digest" : "data");
-            MonitoredTPCRxScheduler.any().createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
+
+            if (command instanceof SinglePartitionReadCommand)
+            {
+                Long token = (Long)((SinglePartitionReadCommand) command).partitionKey().getToken().getTokenValue();
+
+                MonitoredTPCRxScheduler.forCpu(token.intValue() & 0xFF).createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
+            }
+            else
+            {
+                MonitoredTPCRxScheduler.any().createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
+            }
         }
     }
 
