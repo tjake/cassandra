@@ -26,7 +26,7 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.concurrent.MonitoredTPCRxScheduler;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.config.ReadRepairDecision;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
@@ -113,16 +113,16 @@ public abstract class AbstractReadExecutor
         {
             logger.trace("reading {} locally", readCommand.isDigestQuery() ? "digest" : "data");
 
-            if (command instanceof SinglePartitionReadCommand)
-            {
-                Long token = (Long)((SinglePartitionReadCommand) command).partitionKey().getToken().getTokenValue();
+            //if (command instanceof SinglePartitionReadCommand)
+            //{
+            //    Long token = (Long)((SinglePartitionReadCommand) command).partitionKey().getToken().getTokenValue();
 
-                MonitoredTPCRxScheduler.forCpu(token.intValue() & 0xFF).createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
-            }
-            else
-            {
-                MonitoredTPCRxScheduler.any().createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
-            }
+            //    MonitoredTPCRxScheduler.forCpu(token.intValue() & 0xFF).createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
+            //}
+            //else
+            //{
+                NettyRxScheduler.instance().createWorker().schedule(() -> new StorageProxy.LocalReadRunnable(command, handler).runMayThrow());
+            //}
         }
     }
 

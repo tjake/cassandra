@@ -46,6 +46,9 @@ public class NativeTransportService
 
     private Collection<Server> servers = Collections.emptyList();
 
+    private static Integer pIO = Integer.valueOf(System.getProperty("io.netty.ratioIO", "50"));
+    private static Boolean affinity = Boolean.valueOf(System.getProperty("io.netty.affinity","false"));
+
     private boolean initialized = false;
     private EventLoopGroup workerGroup;
 
@@ -126,9 +129,25 @@ public class NativeTransportService
         {
             final int cpuId = i;
             workerGroup.next().schedule(() -> {
-                logger.info("Locking {} netty thread", cpuId);
-                AffinitySupport.setAffinity(1L << cpuId);
+                if (affinity)
+                {
+                    logger.info("Locking {} netty thread to {}", cpuId, Thread.currentThread().getName());
+                    AffinitySupport.setAffinity(1L << cpuId);
+                }
+                {
+                    logger.info("Allocated netty thread to {}", Thread.currentThread().getName());
+                }
             }, 0, TimeUnit.SECONDS);
+        }
+
+        logger.info("Netting ioWork ration to {}", pIO);
+        if (useEpoll())
+        {
+            ((EpollEventLoopGroup)workerGroup).setIoRatio(pIO);
+        }
+        else
+        {
+            ((NioEventLoopGroup)workerGroup).setIoRatio(pIO);
         }
 
         servers.forEach(Server::start);

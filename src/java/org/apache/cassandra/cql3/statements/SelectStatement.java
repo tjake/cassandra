@@ -700,8 +700,7 @@ public class SelectStatement implements CQLStatement
 
             final Selection.ResultSetBuilder result = selection.resultSetBuilder(parameters.isJson);
 
-            return partitions.observeOn(Schedulers.trampoline())
-                             .flatMap(AsObservable::asObservable)
+            return partitions.flatMap(AsObservable::asObservable)
                              .map(rowiterator -> {
                                  //FIXME: this should be made iterable
                                  processPartition(rowiterator, options, result, nowInSec);

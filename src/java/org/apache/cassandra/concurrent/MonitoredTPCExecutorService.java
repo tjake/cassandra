@@ -29,7 +29,6 @@ import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.openhft.affinity.AffinityLock;
 import net.openhft.affinity.AffinitySupport;
 import net.openhft.affinity.CpuLayout;
 import net.openhft.affinity.impl.VanillaCpuLayout;
@@ -219,7 +218,7 @@ public class MonitoredTPCExecutorService
             try
             {
                 logger.info("Assigning {} to cpu {} on core {} on socket {}", Thread.currentThread().getName(), cpuId, coreId, socketId);
-                AffinitySupport.setAffinity(1L << cpuId);
+                //AffinitySupport.setAffinity(1L << cpuId);
 
                 while (true)
                 {
@@ -240,7 +239,7 @@ public class MonitoredTPCExecutorService
             }
             finally
             {
-                AffinitySupport.setAffinity(AffinityLock.BASE_AFFINITY);
+                //AffinitySupport.setAffinity(AffinityLock.BASE_AFFINITY);
                 logger.info("Shutting down event loop");
             }
         }

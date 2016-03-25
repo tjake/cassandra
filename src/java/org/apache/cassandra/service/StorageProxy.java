@@ -62,10 +62,10 @@ import org.slf4j.LoggerFactory;
 
 import io.reactivex.Observable;
 import io.reactivex.Scheduler;
-import io.reactivex.schedulers.Schedulers;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.batchlog.LegacyBatchlogMigrator;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
@@ -1678,7 +1678,7 @@ public class StorageProxy implements StorageProxyMBean
             Observable<PartitionIterator> resultObs = fetchRows(group.commands, consistencyLevel);
             // If we have more than one command, then despite each read command honoring the limit, the total result
             // might not honor it and so we should enforce it
-            return resultObs.observeOn(Schedulers.trampoline()).map(result -> {
+            return resultObs.map(result -> {
                 if (group.commands.size() > 1)
                     result = group.limits().filter(result, group.nowInSec());
 
@@ -1725,9 +1725,8 @@ public class StorageProxy implements StorageProxyMBean
     throws UnavailableException, ReadFailureException, ReadTimeoutException
     {
         return Observable.fromIterable(commands)
-                         .observeOn(Schedulers.trampoline())
                          .map(command -> new SinglePartitionReadLifecycle(command, consistencyLevel))
-                         .flatMap(reader -> reader.getPartitionIterator(Schedulers.trampoline()))
+                         .flatMap(reader -> reader.getPartitionIterator(NettyRxScheduler.instance()))
                          .toList()
                          .map(PartitionIterators::concat);
     }
@@ -1767,7 +1766,6 @@ public class StorageProxy implements StorageProxyMBean
         {
             final PartitionIterator[] partitionIterator = new PartitionIterator[1];
 
-            //return Observable.defer(() -> {
 
                 //Create observable based on callback
                 Observable<PartitionIterator> obs = Observable.create(subscriber -> {
@@ -1824,10 +1822,6 @@ public class StorageProxy implements StorageProxyMBean
 
 
                 return obs;
-           // }).finallyDo(() -> {
-           //     if (partitionIterator[0] != null)
-           //         partitionIterator[0].close();
-           // });
         }
 
         void retryOnDigestMismatch(Scheduler scheduler, Runnable onRepairAction) throws ReadFailureException, ReadTimeoutException
