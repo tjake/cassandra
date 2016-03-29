@@ -27,12 +27,14 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.channel.EventLoop;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.Future;
 import net.openhft.affinity.AffinitySupport;
+import org.apache.cassandra.concurrent.NettyRxScheduler;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.metrics.ClientMetrics;
 import org.apache.cassandra.transport.Server;
@@ -128,7 +130,11 @@ public class NativeTransportService
         for (int i = 0; i < nettyThreads; i++)
         {
             final int cpuId = i;
-            workerGroup.next().schedule(() -> {
+            EventLoop loop = workerGroup.next();
+
+            loop.schedule(() -> {
+                NettyRxScheduler.instance(loop);
+
                 if (affinity)
                 {
                     logger.info("Locking {} netty thread to {}", cpuId, Thread.currentThread().getName());
