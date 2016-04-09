@@ -20,12 +20,20 @@ package org.apache.cassandra.db;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 
 import com.google.common.primitives.Ints;
 
+import io.netty.util.Recycler;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.rows.*;
+import org.apache.cassandra.db.rows.RangeTombstoneMarker;
+import org.apache.cassandra.db.rows.Row;
+import org.apache.cassandra.db.rows.Unfiltered;
+import org.apache.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.db.rows.UnfilteredSerializer;
 import org.apache.cassandra.io.ISerializer;
 import org.apache.cassandra.io.sstable.IndexInfo;
 import org.apache.cassandra.io.sstable.format.SSTableFlushObserver;
@@ -39,27 +47,34 @@ import org.apache.cassandra.utils.ByteBufferUtil;
  * For index entries that exceed {@link org.apache.cassandra.config.Config#column_index_cache_size_in_kb},
  * this uses the serialization logic as in {@link RowIndexEntry}.
  */
-public class ColumnIndex
+public class ColumnIndex implements AutoCloseable
 {
+
+    private static final Recycler<ColumnIndex> recycler = new Recycler<ColumnIndex>()
+    {
+        protected ColumnIndex newObject(Handle handle)
+        {
+            return new ColumnIndex(handle);
+        }
+    };
 
     // used, if the row-index-entry reaches config column_index_cache_size_in_kb
     private DataOutputBuffer buffer;
     // used to track the size of the serialized size of row-index-entry (unused for buffer)
     private int indexSamplesSerializedSize;
     // used, until the row-index-entry reaches config column_index_cache_size_in_kb
-    public List<IndexInfo> indexSamples = new ArrayList<>();
+    private List<IndexInfo> indexSamples = new ArrayList<>();
 
     public int columnIndexCount;
     private int[] indexOffsets;
 
-    private final SerializationHeader header;
-    private final int version;
-    private final SequentialWriter writer;
-    private final long initialPosition;
-    private final ISerializer<IndexInfo> idxSerializer;
-    public long headerLength = -1;
-
-    private long startPosition = -1;
+    private SerializationHeader header;
+    private int version;
+    private SequentialWriter writer;
+    private long initialPosition;
+    private  ISerializer<IndexInfo> idxSerializer;
+    public long headerLength;
+    private long startPosition;
 
     private int written;
     private long previousRowStart;
@@ -69,20 +84,49 @@ public class ColumnIndex
 
     private DeletionTime openMarker;
 
-    private final Collection<SSTableFlushObserver> observers;
+    private Collection<SSTableFlushObserver> observers;
 
-    public ColumnIndex(SerializationHeader header,
+    private final Recycler.Handle recycleHandle;
+
+    public static ColumnIndex create(SerializationHeader header,
                        SequentialWriter writer,
                        Version version,
                        Collection<SSTableFlushObserver> observers,
                        ISerializer<IndexInfo> indexInfoSerializer)
     {
-        this.header = header;
-        this.idxSerializer = indexInfoSerializer;
-        this.writer = writer;
-        this.version = version.correspondingMessagingVersion();
-        this.observers = observers;
-        this.initialPosition = writer.position();
+
+        ColumnIndex index = recycler.get();
+
+        index.header = header;
+        index.idxSerializer = indexInfoSerializer;
+        index.writer = writer;
+        index.version = version.correspondingMessagingVersion();
+        index.observers = observers;
+        index.initialPosition = writer.position();
+        index.headerLength = -1;
+        index.startPosition = -1;
+        index.previousRowStart = 0;
+        index.columnIndexCount = 0;
+        index.written = 0;
+        index.indexSamplesSerializedSize = 0;
+
+        return index;
+    }
+
+    public ColumnIndex(Recycler.Handle handle)
+    {
+        this.recycleHandle = handle;
+    }
+
+    public void close()
+    {
+        indexSamples.clear();
+        firstClustering = null;
+        lastClustering = null;
+        openMarker = null;
+        buffer = null;
+
+        recycler.recycle(this, recycleHandle);
     }
 
     public void buildRowIndex(UnfilteredRowIterator iterator) throws IOException
@@ -93,7 +137,7 @@ public class ColumnIndex
         while (iterator.hasNext())
             add(iterator.next());
 
-        close();
+        finish();
     }
 
     private void writePartitionHeader(UnfilteredRowIterator iterator) throws IOException
@@ -120,6 +164,16 @@ public class ColumnIndex
         return buffer != null ? buffer.buffer() : null;
     }
 
+    public List<IndexInfo> indexSamples()
+    {
+        if (indexSamplesSerializedSize + columnIndexCount * TypeSizes.sizeof(0) <= DatabaseDescriptor.getColumnIndexCacheSize())
+        {
+            return indexSamples;
+        }
+
+        return null;
+    }
+
     public int[] offsets()
     {
         return indexOffsets != null
@@ -136,7 +190,7 @@ public class ColumnIndex
                                              openMarker);
 
         // indexOffsets is used for both shallow (ShallowIndexedEntry) and non-shallow IndexedEntry.
-        // For shallow ones, we need it to serialize the offsts in close().
+        // For shallow ones, we need it to serialize the offsts in finish().
         // For non-shallow ones, the offsts are passed into IndexedEntry, so we don't have to
         // calculate the offsets again.
 
@@ -149,10 +203,20 @@ public class ColumnIndex
         {
             if (columnIndexCount >= indexOffsets.length)
                 indexOffsets = Arrays.copyOf(indexOffsets, indexOffsets.length + 10);
-            indexOffsets[columnIndexCount] =
+
+            //This object is recycled so we need to ensure
+            //the 0th element is always 0
+            if (columnIndexCount == 0)
+            {
+                indexOffsets[columnIndexCount] = 0;
+            }
+            else
+            {
+                indexOffsets[columnIndexCount] =
                 buffer != null
-                    ? Ints.checkedCast(buffer.position())
-                    : indexSamplesSerializedSize;
+                ? Ints.checkedCast(buffer.position())
+                : indexSamplesSerializedSize;
+            }
         }
         columnIndexCount++;
 
@@ -168,7 +232,6 @@ public class ColumnIndex
                 {
                     idxSerializer.serialize(indexSample, buffer);
                 }
-                indexSamples = null;
             }
             else
             {
@@ -216,7 +279,7 @@ public class ColumnIndex
             addIndexBlock();
     }
 
-    private void close() throws IOException
+    private void finish() throws IOException
     {
         UnfilteredSerializer.serializer.writeEndOfPartition(writer);
 
