@@ -35,8 +35,8 @@ import static org.apache.cassandra.utils.btree.BTree.*;
 class NodeCursor<K>
 {
     // TODO: consider splitting forwards from backwards
-    final NodeCursor<K> parent, child;
-    final Comparator<? super K> comparator;
+    NodeCursor<K> parent, child;
+    Comparator<? super K> comparator;
 
     boolean inChild;
     // if !inChild, this is the key position we are currently on;
@@ -44,6 +44,11 @@ class NodeCursor<K>
     int position;
     Object[] node;
     int nodeOffset;
+
+    NodeCursor()
+    {
+
+    }
 
     NodeCursor(Object[] node, NodeCursor<K> parent, Comparator<? super K> comparator)
     {
@@ -59,6 +64,18 @@ class NodeCursor<K>
     {
         this.node = node;
         this.nodeOffset = nodeOffset;
+    }
+
+    void recycle(Object[] node, NodeCursor<K> parent, Comparator<? super K> comparator)
+    {
+        this.node = node;
+        this.nodeOffset = 0;
+        this.parent = parent;
+        this.comparator = comparator;
+
+        // a well formed b-tree (text book, or ours) must be balanced, so by building a stack following the left-most branch
+        // we have a stack capable of visiting any path in the tree
+        this.child = BTree.isLeaf(node) ? null : new NodeCursor<>((Object[]) node[getChildStart(node)], this, comparator);
     }
 
     /**

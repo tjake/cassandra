@@ -19,7 +19,6 @@
 package org.apache.cassandra.utils.btree;
 
 import java.util.Arrays;
-import java.util.Comparator;
 
 import static org.apache.cassandra.utils.btree.BTree.*;
 
@@ -40,9 +39,8 @@ class TreeCursor<K> extends NodeCursor<K>
 
     NodeCursor<K> cur;
 
-    TreeCursor(Comparator<? super K> comparator, Object[] node)
+    TreeCursor()
     {
-        super(node, null, comparator);
     }
 
     /**
@@ -98,7 +96,6 @@ class TreeCursor<K> extends NodeCursor<K>
     boolean seekTo(K key, boolean forwards, boolean skipOne)
     {
         NodeCursor<K> cur = this.cur;
-
         /**
          * decide if we will "try one" value by itself, as a sequential access;
          * we actually *require* that we try the "current key" for any node before we call seekInNode on it.

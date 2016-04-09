@@ -67,7 +67,7 @@ public class ColumnIndex
 
     private DeletionTime openMarker;
 
-    private final Collection<SSTableFlushObserver> observers;
+    private Collection<SSTableFlushObserver> observers;
 
     public ColumnIndex(SerializationHeader header,
                         SequentialWriter writer,

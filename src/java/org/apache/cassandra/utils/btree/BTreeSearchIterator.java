@@ -19,22 +19,26 @@
 package org.apache.cassandra.utils.btree;
 
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import io.netty.util.Recycler;
+import org.apache.cassandra.utils.CloseableIterator;
 import org.apache.cassandra.utils.IndexedSearchIterator;
 
 import static org.apache.cassandra.utils.btree.BTree.size;
 
-public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedSearchIterator<K, V>, Iterator<V>
+public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedSearchIterator<K, V>, CloseableIterator<V>
 {
-    private final boolean forwards;
+    private final Recycler.Handle recycleHandler;
+    private boolean wasRecycled;
+
+    private boolean forwards;
 
     // for simplicity, we just always use the index feature of the btree to maintain our bounds within the tree,
     // whether or not they are constrained
     private int index;
     private byte state;
-    private final int lowerBound, upperBound; // inclusive
+    private int lowerBound, upperBound; // inclusive
 
     private static final int MIDDLE = 0; // only "exists" as an absence of other states
     private static final int ON_ITEM = 1; // may only co-exist with LAST (or MIDDLE, which is 0)
@@ -42,18 +46,38 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
     private static final int LAST = 4; // may co-exist with ON_ITEM, in which case we are also at END
     private static final int END = 5; // equal to LAST | ON_ITEM
 
-    public BTreeSearchIterator(Object[] btree, Comparator<? super K> comparator, BTree.Dir dir)
+    private BTreeSearchIterator(Recycler.Handle handler)
     {
-        this(btree, comparator, dir, 0, size(btree)-1);
+        super();
+        this.recycleHandler = handler;
+        this.wasRecycled = false;
     }
 
-    BTreeSearchIterator(Object[] btree, Comparator<? super K> comparator, BTree.Dir dir, int lowerBound, int upperBound)
+    private final static Recycler<BTreeSearchIterator> recycler = new Recycler<BTreeSearchIterator>()
     {
-        super(comparator, btree);
-        this.forwards = dir == BTree.Dir.ASC;
-        this.lowerBound = lowerBound;
-        this.upperBound = upperBound;
-        rewind();
+        protected BTreeSearchIterator newObject(Handle handle)
+        {
+            return new BTreeSearchIterator(handle);
+        }
+    };
+
+    public static <K, V> BTreeSearchIterator<K,V> newInstance(Object[] btree, Comparator<? super K> comparator, BTree.Dir dir)
+    {
+        return newInstance(btree, comparator, dir, 0, size(btree) - 1);
+    }
+
+    public static <K, V> BTreeSearchIterator<K,V> newInstance(Object[] btree, Comparator<? super K> comparator, BTree.Dir dir, int lowerBound, int upperBound)
+    {
+        BTreeSearchIterator iterator = new BTreeSearchIterator(null); //recycler.get();
+        iterator.forwards = dir == BTree.Dir.ASC;
+        iterator.lowerBound = lowerBound;
+        iterator.upperBound = upperBound;
+        iterator.index = 0;
+        iterator.recycle(btree, null, comparator);
+        iterator.rewind();
+        iterator.wasRecycled = false;
+
+        return iterator;
     }
 
     /**
@@ -71,6 +95,9 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
 
     public boolean hasNext()
     {
+        if (state == END)
+            close();
+
         return state != END;
     }
 
@@ -129,7 +156,7 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
     /**
      * Reset this Iterator to its starting position
      */
-    public void rewind()
+    private void rewind()
     {
         if (upperBound < lowerBound)
         {
@@ -159,5 +186,14 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
     {
         checkOnItem();
         return compareToFirst(index);
+    }
+
+    public void close()
+    {
+        if (!wasRecycled)
+        {
+            //recycler.recycle(this, recycleHandler);
+            wasRecycled = true;
+        }
     }
 }

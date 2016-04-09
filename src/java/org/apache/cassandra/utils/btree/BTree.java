@@ -25,6 +25,8 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.Ordering;
 
 import io.netty.util.Recycler;
+import org.apache.cassandra.utils.ClosableIterable;
+import org.apache.cassandra.utils.CloseableIterator;
 import org.apache.cassandra.utils.ObjectSizes;
 
 import static com.google.common.collect.Iterables.concat;
@@ -191,29 +193,29 @@ public class BTree
         return update(tree1, comparator, new BTreeSet<K>(tree2, comparator), updateF);
     }
 
-    public static <V> Iterator<V> iterator(Object[] btree)
+    public static <V> CloseableIterator<V> iterator(Object[] btree)
     {
         return iterator(btree, Dir.ASC);
     }
 
-    public static <V> Iterator<V> iterator(Object[] btree, Dir dir)
+    public static <V> CloseableIterator<V> iterator(Object[] btree, Dir dir)
     {
-        return new BTreeSearchIterator<>(btree, null, dir);
+        return BTreeSearchIterator.newInstance(btree, null, dir);
     }
 
-    public static <V> Iterator<V> iterator(Object[] btree, int lb, int ub, Dir dir)
+    public static <V> CloseableIterator<V> iterator(Object[] btree, int lb, int ub, Dir dir)
     {
-        return new BTreeSearchIterator<>(btree, null, dir, lb, ub);
+        return BTreeSearchIterator.newInstance(btree, null, dir, lb, ub);
     }
 
-    public static <V> Iterable<V> iterable(Object[] btree)
+    public static <V> ClosableIterable<V> iterable(Object[] btree)
     {
         return iterable(btree, Dir.ASC);
     }
 
-    public static <V> Iterable<V> iterable(Object[] btree, Dir dir)
+    public static <V> ClosableIterable<V> iterable(Object[] btree, Dir dir)
     {
-        return () -> iterator(btree, dir);
+        return new ClosableIterable<>(iterator(btree, dir));
     }
 
     public static <V> Iterable<V> iterable(Object[] btree, int lb, int ub, Dir dir)
@@ -231,7 +233,7 @@ public class BTree
      */
     public static <K, V> BTreeSearchIterator<K, V> slice(Object[] btree, Comparator<? super K> comparator, Dir dir)
     {
-        return new BTreeSearchIterator<>(btree, comparator, dir);
+        return BTreeSearchIterator.newInstance(btree, comparator, dir);
     }
 
     /**
@@ -267,7 +269,7 @@ public class BTree
                                       end == null ? Integer.MAX_VALUE
                                                   : endInclusive ? floorIndex(btree, comparator, end)
                                                                  : lowerIndex(btree, comparator, end));
-        return new BTreeSearchIterator<>(btree, comparator, dir, inclusiveLowerBound, inclusiveUpperBound);
+        return BTreeSearchIterator.newInstance(btree, comparator, dir, inclusiveLowerBound, inclusiveUpperBound);
     }
 
     /**

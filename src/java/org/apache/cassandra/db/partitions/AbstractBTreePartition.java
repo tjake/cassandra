@@ -136,7 +136,7 @@ public abstract class AbstractBTreePartition implements Partition, Iterable<Row>
         final Holder current = holder();
         return new SearchIterator<Clustering, Row>()
         {
-            private final SearchIterator<Clustering, Row> rawIter = new BTreeSearchIterator<>(current.tree, metadata.comparator, desc(reversed));
+            private final SearchIterator<Clustering, Row> rawIter = BTreeSearchIterator.newInstance(current.tree, metadata.comparator, desc(reversed));
             private final DeletionTime partitionDeletion = current.deletionInfo.getPartitionDeletion();
 
             public boolean hasNext()

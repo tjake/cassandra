@@ -357,7 +357,25 @@ public class Columns extends AbstractCollection<ColumnDefinition> implements Col
     public Predicate<ColumnDefinition> inOrderInclusionTester()
     {
         SearchIterator<ColumnDefinition, ColumnDefinition> iter = BTree.slice(columns, Comparator.naturalOrder(), BTree.Dir.ASC);
-        return column -> iter.next(column) != null;
+
+        //Once the iterator is finished it's recycled
+        //so we need to track the end state otherwise
+        //we can end up with bugs if this tester is called
+        //multiple times after its reached the end
+        boolean[] reachedEnd = new boolean[]{false};
+
+        return column -> {
+            if (reachedEnd[0])
+                return false;
+
+            if (!iter.hasNext())
+            {
+                reachedEnd[0] = true;
+                return false;
+            }
+
+            return iter.next(column) != null;
+        };
     }
 
     public void digest(MessageDigest digest)
