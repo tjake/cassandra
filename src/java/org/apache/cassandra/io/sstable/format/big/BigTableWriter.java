@@ -76,11 +76,11 @@ public class BigTableWriter extends SSTableWriter
 {
     private static final Logger logger = LoggerFactory.getLogger(BigTableWriter.class);
 
+    private ColumnIndex columnIndexWriter;
     private final IndexWriter iwriter;
     private final SegmentedFile.Builder dbuilder;
     protected final SequentialWriter dataFile;
     private DecoratedKey lastWrittenKey;
-
     private DataPosition dataMark;
     private long lastEarlyOpenLength = 0;
 
@@ -173,27 +173,33 @@ public class BigTableWriter extends SSTableWriter
         long startPosition = beforeAppend(key);
         observers.forEach((o) -> o.startPartition(key, iwriter.indexFile.position()));
 
-        try (UnfilteredRowIterator collecting = Transformation.apply(iterator, new StatsCollector(metadataCollector));
-             ColumnIndex columnIndex = ColumnIndex.create(header, dataFile, descriptor.version, observers, getRowIndexEntrySerializer().indexInfoSerializer()))
+        if (columnIndexWriter == null)
+            columnIndexWriter = ColumnIndex.create(header, dataFile, descriptor.version, observers, getRowIndexEntrySerializer().indexInfoSerializer());
+        else
+            columnIndexWriter.reuse(header, dataFile, descriptor.version, observers, getRowIndexEntrySerializer().indexInfoSerializer());
+
+        try (UnfilteredRowIterator collecting = Transformation.apply(iterator, new StatsCollector(metadataCollector)))
         {
-            columnIndex.buildRowIndex(collecting);
+            columnIndexWriter.buildRowIndex(collecting);
 
             // afterAppend() writes the partition key before the first RowIndexEntry - so we have to add it's
             // serialized size to the index-writer position
             long indexFilePosition = ByteBufferUtil.serializedSizeWithShortLength(key.getKey()) + iwriter.indexFile.position();
 
             RowIndexEntry entry = RowIndexEntry.create(startPosition, indexFilePosition,
-                                                       collecting.partitionLevelDeletion(), columnIndex.headerLength, columnIndex.columnIndexCount,
-                                                       columnIndex.indexInfoSerializedSize(),
-                                                       columnIndex.indexSamples(),
-                                                       columnIndex.offsets(),
+                                                       collecting.partitionLevelDeletion(),
+                                                       columnIndexWriter.headerLength,
+                                                       columnIndexWriter.columnIndexCount,
+                                                       columnIndexWriter.indexInfoSerializedSize(),
+                                                       columnIndexWriter.indexSamples(),
+                                                       columnIndexWriter.offsets(),
                                                        getRowIndexEntrySerializer().indexInfoSerializer());
 
             long endPosition = dataFile.position();
             long rowSize = endPosition - startPosition;
             maybeLogLargePartitionWarning(key, rowSize);
             metadataCollector.addPartitionSizeInBytes(rowSize);
-            afterAppend(key, endPosition, entry, columnIndex.buffer());
+            afterAppend(key, endPosition, entry, columnIndexWriter.buffer());
             return entry;
         }
         catch (IOException e)

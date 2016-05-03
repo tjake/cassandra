@@ -177,7 +177,6 @@ public class RowIndexEntryTest extends CQLTester
 
         public void close() throws Exception
         {
-            columnIndex.close();
             dataWriterNew.close();
             dataWriterOld.close();
         }

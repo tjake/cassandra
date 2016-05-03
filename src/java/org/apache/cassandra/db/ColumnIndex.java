@@ -27,7 +27,6 @@ import java.util.List;
 
 import com.google.common.primitives.Ints;
 
-import io.netty.util.Recycler;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.db.rows.Row;
@@ -47,17 +46,8 @@ import org.apache.cassandra.utils.ByteBufferUtil;
  * For index entries that exceed {@link org.apache.cassandra.config.Config#column_index_cache_size_in_kb},
  * this uses the serialization logic as in {@link RowIndexEntry}.
  */
-public class ColumnIndex implements AutoCloseable
+public class ColumnIndex
 {
-
-    private static final Recycler<ColumnIndex> recycler = new Recycler<ColumnIndex>()
-    {
-        protected ColumnIndex newObject(Handle handle)
-        {
-            return new ColumnIndex(handle);
-        }
-    };
-
     // used, if the row-index-entry reaches config column_index_cache_size_in_kb
     private DataOutputBuffer buffer;
     // used to track the size of the serialized size of row-index-entry (unused for buffer)
@@ -86,8 +76,6 @@ public class ColumnIndex implements AutoCloseable
 
     private Collection<SSTableFlushObserver> observers;
 
-    private final Recycler.Handle recycleHandle;
-
     public static ColumnIndex create(SerializationHeader header,
                        SequentialWriter writer,
                        Version version,
@@ -95,38 +83,40 @@ public class ColumnIndex implements AutoCloseable
                        ISerializer<IndexInfo> indexInfoSerializer)
     {
 
-        ColumnIndex index = recycler.get();
-
-        index.header = header;
-        index.idxSerializer = indexInfoSerializer;
-        index.writer = writer;
-        index.version = version.correspondingMessagingVersion();
-        index.observers = observers;
-        index.initialPosition = writer.position();
-        index.headerLength = -1;
-        index.startPosition = -1;
-        index.previousRowStart = 0;
-        index.columnIndexCount = 0;
-        index.written = 0;
-        index.indexSamplesSerializedSize = 0;
+        ColumnIndex index = new ColumnIndex();
+        index.reuse(header, writer, version, observers, indexInfoSerializer);
 
         return index;
     }
 
-    public ColumnIndex(Recycler.Handle handle)
+    private ColumnIndex()
     {
-        this.recycleHandle = handle;
     }
 
-    public void close()
+    public void reuse(SerializationHeader header,
+                        SequentialWriter writer,
+                        Version version,
+                        Collection<SSTableFlushObserver> observers,
+                        ISerializer<IndexInfo> indexInfoSerializer)
     {
-        indexSamples.clear();
-        firstClustering = null;
-        lastClustering = null;
-        openMarker = null;
-        buffer = null;
 
-        recycler.recycle(this, recycleHandle);
+        this.header = header;
+        this.idxSerializer = indexInfoSerializer;
+        this.writer = writer;
+        this.version = version.correspondingMessagingVersion();
+        this.observers = observers;
+        this.initialPosition = writer.position();
+        this.headerLength = -1;
+        this.startPosition = -1;
+        this.previousRowStart = 0;
+        this.columnIndexCount = 0;
+        this.written = 0;
+        this.indexSamplesSerializedSize = 0;
+        this.indexSamples.clear();
+        this.firstClustering = null;
+        this.lastClustering = null;
+        this.openMarker = null;
+        this.buffer = null;
     }
 
     public void buildRowIndex(UnfilteredRowIterator iterator) throws IOException
@@ -204,7 +194,6 @@ public class ColumnIndex implements AutoCloseable
             if (columnIndexCount >= indexOffsets.length)
                 indexOffsets = Arrays.copyOf(indexOffsets, indexOffsets.length + 10);
 
-            //This object is recycled so we need to ensure
             //the 0th element is always 0
             if (columnIndexCount == 0)
             {
