@@ -21,7 +21,6 @@ package org.apache.cassandra.cql3.validation.entities;
 import org.junit.Test;
 
 import org.apache.cassandra.cql3.CQLTester;
-import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 
 public class CountersTest extends CQLTester
@@ -185,5 +184,15 @@ public class CountersTest extends CQLTester
             assertInvalidMessage("Invalid null value for counter increment/decrement",
                                  "SELECT * FROM %s WHERE b = null ALLOW FILTERING");
         }
+    }
+
+    /**
+     * Test for the validation bug of #9395.
+     */
+    @Test
+    public void testProhibitCounterAsPartOfPrimaryKey() throws Throwable
+    {
+        assertInvalidThrowMessage("counter type is not supported for PRIMARY KEY part a",
+                                  InvalidRequestException.class, String.format("CREATE TABLE %s.%s (a counter, b int, PRIMARY KEY (b, a));", KEYSPACE, createTableName()));
     }
 }
