@@ -394,7 +394,7 @@ class LogTransaction extends Transactional.AbstractTransactional implements Tran
      * @return true if the leftovers of all transaction logs found were removed, false otherwise.
      *
      */
-    static boolean removeUnfinishedLeftovers(CFMetaData metadata)
+    static boolean removeUnfinishedLeftovers(Directories directories)
     {
         return removeUnfinishedLeftovers(new Directories(metadata, ColumnFamilyStore.getInitialDirectories()).getCFDirectories());
     }
