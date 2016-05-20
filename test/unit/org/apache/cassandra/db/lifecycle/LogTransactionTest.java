@@ -424,7 +424,7 @@ public class LogTransactionTest extends AbstractTransactionalTest
         Assert.assertEquals(tmpFiles, getTemporaryFiles(sstableNew.descriptor.directory));
 
         // normally called at startup
-        LogTransaction.removeUnfinishedLeftovers(cfs.metadata);
+        LogTransaction.removeUnfinishedLeftovers(cfs.getDirectories());
 
         // sstableOld should be only table left
         Directories directories = new Directories(cfs.metadata);
@@ -464,7 +464,7 @@ public class LogTransactionTest extends AbstractTransactionalTest
         Assert.assertEquals(tmpFiles, getTemporaryFiles(sstableOld.descriptor.directory));
 
         // normally called at startup
-        LogTransaction.removeUnfinishedLeftovers(cfs.metadata);
+        LogTransaction.removeUnfinishedLeftovers(cfs.getDirectories());
 
         // sstableNew should be only table left
         Directories directories = new Directories(cfs.metadata);
@@ -1024,7 +1024,7 @@ public class LogTransactionTest extends AbstractTransactionalTest
         { // the corruption is recoverable but the commit record is unreadable so the transaction is still in progress
 
             //This should remove new files
-            LogTransaction.removeUnfinishedLeftovers(cfs.metadata);
+            LogTransaction.removeUnfinishedLeftovers(cfs.getDirectories());
 
             // make sure to exclude the old files that were deleted by the modifier
             assertFiles(dataFolder.getPath(), oldFiles);
@@ -1033,7 +1033,7 @@ public class LogTransactionTest extends AbstractTransactionalTest
         { // if an intermediate line was also modified, it should ignore the tx log file
 
             //This should not remove any files
-            LogTransaction.removeUnfinishedLeftovers(cfs.metadata);
+            LogTransaction.removeUnfinishedLeftovers(cfs.getDirectories());
 
             assertFiles(dataFolder.getPath(), Sets.newHashSet(Iterables.concat(newFiles,
                                                                                oldFiles,
@@ -1076,7 +1076,7 @@ public class LogTransactionTest extends AbstractTransactionalTest
         log.txnFile().commit();
 
         //This should not remove the old files
-        LogTransaction.removeUnfinishedLeftovers(cfs.metadata);
+        LogTransaction.removeUnfinishedLeftovers(cfs.getDirectories());
 
         assertFiles(dataFolder.getPath(), Sets.newHashSet(Iterables.concat(
                                                                           sstableNew.getAllFilePaths(),
