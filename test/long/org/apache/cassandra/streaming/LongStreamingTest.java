@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.io.Files;
+import com.google.common.util.concurrent.Uninterruptibles;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -166,6 +167,132 @@ public class LongStreamingTest
                                          (dataSize * 2 / (1 << 20) / (millis / 1000d)) * 8));
 
         UntypedResultSet rs = QueryProcessor.executeInternal("SELECT * FROM cql_keyspace.table1 limit 100;");
+        assertEquals(100, rs.size());
+    }
+
+    @Test
+    public void testWideCompressedStream() throws InvalidRequestException, IOException, ExecutionException, InterruptedException
+    {
+        String KS = "cql_keyspace";
+        String TABLE = "table2";
+
+        File tempdir = Files.createTempDir();
+        File dataDir = new File(tempdir.getAbsolutePath() + File.separator + KS + File.separator + TABLE);
+        assert dataDir.mkdirs();
+
+        String schema = "CREATE TABLE cql_keyspace.table2 ("
+                        + "  k1 int,"
+                        + "  k2 int,"
+                        + "  c1 int,"
+                        + "  c2 int,"
+                        + "  v1 text,"
+                        + "  v2 int,"
+                        + " PRIMARY KEY((k1, k2), c1, c2));";// with compression = {};";
+        String insert = "INSERT INTO cql_keyspace.table2 (k1,k2,c1,c2,v1,v2) VALUES (?, ?, ?, ?, ?, ?)";
+        CQLSSTableWriter writer = CQLSSTableWriter.builder()
+                                                  .sorted()
+                                                  .inDirectory(dataDir)
+                                                  .forTable(schema)
+                                                  .using(insert).build();
+        long start = System.nanoTime();
+
+        int count = 0;
+
+        finished:
+        if (count < 5_000_000)
+        {
+            for (int k1 = 0; k1 < 5; k1++)
+            {
+                for (int k2 = 0; k2 < 2; k2++)
+                {
+                    for (int c1 = 0; c1 < 10000; c1++)
+                    {
+                        for (int c2 = 0; c2 < 1000; c2++)
+                        {
+                            writer.addRow(k1, k2, c1, c2, "test1", 24);
+                            count++;
+                            if (count % 5_000_000 == 0)
+                                break finished;
+
+                        }
+                    }
+                }
+            }
+        }
+        writer.close();
+        System.err.println(String.format("Writer finished after %d seconds....", TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start)));
+
+        File[] dataFiles = dataDir.listFiles((dir, name) -> name.endsWith("-Data.db"));
+        long dataSize = 0l;
+        for (File file : dataFiles)
+        {
+            System.err.println("File : "+file.getAbsolutePath());
+            dataSize += file.length();
+        }
+
+        SSTableLoader loader = new SSTableLoader(dataDir, new SSTableLoader.Client()
+        {
+            private String ks;
+            public void init(String keyspace)
+            {
+                for (Range<Token> range : StorageService.instance.getLocalRanges("cql_keyspace"))
+                    addRangeForEndpoint(range, FBUtilities.getBroadcastAddress());
+
+                this.ks = keyspace;
+            }
+
+            public CFMetaData getTableMetadata(String cfName)
+            {
+                return Schema.instance.getCFMetaData(ks, cfName);
+            }
+        }, new OutputHandler.SystemOutput(false, false));
+
+        start = System.nanoTime();
+        loader.stream().get();
+
+        long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        System.err.println(String.format("Finished Streaming in %.2f seconds: %.2f Mb/sec",
+                                         millis/1000d,
+                                         (dataSize / (1 << 20) / (millis / 1000d)) * 8));
+
+
+        //Stream again
+        loader = new SSTableLoader(dataDir, new SSTableLoader.Client()
+        {
+            private String ks;
+            public void init(String keyspace)
+            {
+                for (Range<Token> range : StorageService.instance.getLocalRanges("cql_keyspace"))
+                    addRangeForEndpoint(range, FBUtilities.getBroadcastAddress());
+
+                this.ks = keyspace;
+            }
+
+            public CFMetaData getTableMetadata(String cfName)
+            {
+                return Schema.instance.getCFMetaData(ks, cfName);
+            }
+        }, new OutputHandler.SystemOutput(false, false));
+
+        start = System.nanoTime();
+        loader.stream().get();
+
+        millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        System.err.println(String.format("Finished Streaming in %.2f seconds: %.2f Mb/sec",
+                                         millis/1000d,
+                                         (dataSize / (1 << 20) / (millis / 1000d)) * 8));
+
+
+        //Compact them both
+        start = System.nanoTime();
+        Keyspace.open(KS).getColumnFamilyStore(TABLE).forceMajorCompaction();
+        millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+        System.err.println(String.format("Finished Compacting in %.2f seconds: %.2f Mb/sec",
+                                         millis / 1000d,
+                                         (dataSize * 2 / (1 << 20) / (millis / 1000d)) * 8));
+
+        UntypedResultSet rs = QueryProcessor.executeInternal("SELECT * FROM cql_keyspace.table2 limit 100;");
         assertEquals(100, rs.size());
     }
 }

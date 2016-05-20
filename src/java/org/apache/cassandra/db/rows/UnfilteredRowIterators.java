@@ -439,15 +439,25 @@ public abstract class UnfilteredRowIterators
             private final MergeListener listener;
 
             private Unfiltered.Kind nextKind;
+            private final boolean reversed;
+            private final int size;
 
             private final Row.Merger rowMerger;
-            private final RangeTombstoneMarker.Merger markerMerger;
+            private RangeTombstoneMarker.Merger markerMerger;
 
             private MergeReducer(int size, boolean reversed, int nowInSec, MergeListener listener)
             {
                 this.rowMerger = new Row.Merger(size, nowInSec, columns().regulars.hasComplex());
-                this.markerMerger = new RangeTombstoneMarker.Merger(size, partitionLevelDeletion(), reversed);
+                this.markerMerger = null;
+                this.reversed = reversed;
+                this.size = size;
                 this.listener = listener;
+            }
+
+            private void maybeInitMarkerMerger()
+            {
+                if (markerMerger == null)
+                    markerMerger = new RangeTombstoneMarker.Merger(size, partitionLevelDeletion(), reversed);
             }
 
             @Override
@@ -461,9 +471,12 @@ public abstract class UnfilteredRowIterators
             {
                 nextKind = current.kind();
                 if (nextKind == Unfiltered.Kind.ROW)
-                    rowMerger.add(idx, (Row)current);
+                    rowMerger.add(idx, (Row) current);
                 else
-                    markerMerger.add(idx, (RangeTombstoneMarker)current);
+                {
+                    maybeInitMarkerMerger();
+                    markerMerger.add(idx, (RangeTombstoneMarker) current);
+                }
             }
 
             protected Unfiltered getReduced()
@@ -477,6 +490,7 @@ public abstract class UnfilteredRowIterators
                 }
                 else
                 {
+                    maybeInitMarkerMerger();
                     RangeTombstoneMarker merged = markerMerger.merge();
                     if (merged != null && listener != null)
                         listener.onMergedRangeTombstoneMarkers(merged, markerMerger.mergedMarkers());
@@ -489,7 +503,10 @@ public abstract class UnfilteredRowIterators
                 if (nextKind == Unfiltered.Kind.ROW)
                     rowMerger.clear();
                 else
+                {
+                    maybeInitMarkerMerger();
                     markerMerger.clear();
+                }
             }
         }
     }
