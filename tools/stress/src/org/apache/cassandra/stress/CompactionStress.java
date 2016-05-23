@@ -131,17 +131,15 @@ public abstract class CompactionStress implements Runnable
         @Option(name = {"-c", "--compactors-threads"}, description = "number of compactor threads to use for bg compactions (default 4)")
         Integer threads = 4;
 
-        @Option(name = {"-v", "--vnodes"}, description = "generate local tokens (default: false)")
-        boolean generateTokens = false;
-
+        @Option(name = {"-v", "--vnodes"}, description = "number of local tokens to generate (default 256)")
+        Integer numTokens = 256;
 
         public void run()
         {
             Util.initDatabaseDescriptor();
             File outputDir = getDataDir();
 
-            if (generateTokens)
-                generateTokens(StorageService.instance.getTokenMetadata(), DatabaseDescriptor.getNumTokens());
+            generateTokens(StorageService.instance.getTokenMetadata(), numTokens);
 
             StressProfile stressProfile = getStressProfile();
 
