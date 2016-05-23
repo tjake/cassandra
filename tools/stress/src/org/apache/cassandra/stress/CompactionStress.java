@@ -20,6 +20,7 @@ package org.apache.cassandra.stress;
 
 import java.io.File;
 import java.io.IOError;
+import java.net.InetAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,23 +29,29 @@ import java.util.Set;
 import java.util.concurrent.*;
 import javax.inject.Inject;
 
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Uninterruptibles;
 
 import io.airlift.command.*;
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
+import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.CQLSSTableWriter;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.schema.KeyspaceParams;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.stress.generate.PartitionGenerator;
 import org.apache.cassandra.stress.generate.SeedManager;
 import org.apache.cassandra.stress.operations.userdefined.SchemaInsert;
@@ -124,11 +131,15 @@ public abstract class CompactionStress implements Runnable
         @Option(name = {"-c", "--compactors-threads"}, description = "number of compactor threads to use for bg compactions (default 4)")
         Integer threads = 4;
 
+        @Option(name = {"-v", "--vnodes"}, description = "number of local tokens to generate (default 256)")
+        Integer numTokens = 256;
 
         public void run()
         {
             Util.initDatabaseDescriptor();
             File outputDir = getDataDir();
+
+            generateTokens(StorageService.instance.getTokenMetadata(), numTokens);
 
             StressProfile stressProfile = getStressProfile();
 
@@ -208,6 +219,21 @@ public abstract class CompactionStress implements Runnable
             //Wait for cleanup to finish before forcing
             Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
             LifecycleTransaction.removeUnfinishedLeftovers(cfs);
+        }
+
+        private void generateTokens(TokenMetadata tokenMetadata, Integer numTokens)
+        {
+            IPartitioner p = tokenMetadata.partitioner;
+            tokenMetadata.clearUnsafe();
+            for (int i = 1; i <= numTokens; i++)
+            {
+                InetAddress addr = FBUtilities.getBroadcastAddress();
+                List<Token> tokens = Lists.newArrayListWithCapacity(numTokens);
+                for (int j = 0; j < numTokens; ++j)
+                    tokens.add(p.getRandomToken());
+
+                tokenMetadata.updateNormalTokens(tokens, addr);
+            }
         }
     }
 
