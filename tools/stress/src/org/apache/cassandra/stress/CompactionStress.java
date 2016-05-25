@@ -22,11 +22,9 @@ import java.io.File;
 import java.io.IOError;
 import java.net.InetAddress;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 
 import com.google.common.collect.Lists;
@@ -36,9 +34,11 @@ import io.airlift.command.*;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.cql3.statements.CreateTableStatement;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.Keyspace;
+import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
 import org.apache.cassandra.dht.IPartitioner;
@@ -70,92 +70,61 @@ public abstract class CompactionStress implements Runnable
     @Inject
     public HelpOption helpOption;
 
-    @Option(name = { "-p", "--profile" }, description = "a stress yaml file", required = true)
+    @Option(name = { "-p", "--profile" }, description = "Path to stress yaml file", required = true)
     String profile;
 
-    @Option(name = { "-d", "--datadir" }, description = "data directory", required = true)
-    String dataDir;
+    @Option(name = { "-d", "--datadir" }, description = "Data directory (can be used many times to specify multiple data dirs)", required = true)
+    List<String> dataDirs;
 
-    File getDataDir()
+    @Option(name = {"-v", "--vnodes"}, description = "number of local tokens to generate (default 256)")
+    Integer numTokens = 256;
+
+    List<File> getDataDirectories()
     {
-        File outputDir = new File(dataDir);
-
-        if (!outputDir.exists())
+        List<File> dataDirectories = new ArrayList<>(dataDirs.size());
+        for (String dataDir : dataDirs)
         {
-            System.err.print("Invalid output dir (missing): " + outputDir);
-            System.exit(1);
+            File outputDir = new File(dataDir);
+
+            if (!outputDir.exists())
+            {
+                System.err.println("Invalid output dir (missing): " + outputDir);
+                System.exit(1);
+            }
+
+            if (!outputDir.isDirectory())
+            {
+                System.err.println("Invalid output dir (not a directory): " + outputDir);
+                System.exit(2);
+            }
+
+            if (!outputDir.canWrite())
+            {
+                System.err.println("Invalid output dir (no write permissions): " + outputDir);
+                System.exit(3);
+            }
+
+            dataDirectories.add(outputDir);
         }
 
-        if (!outputDir.isDirectory())
-        {
-            System.err.print("Invalid output dir (not a directory): " + outputDir);
-            System.exit(2);
-        }
-
-        if (!outputDir.canWrite())
-        {
-            System.err.print("Invalid output dir (no write permissions): " + outputDir);
-            System.exit(3);
-        }
-
-        return outputDir;
+        return dataDirectories;
     }
 
-    StressProfile getStressProfile()
+    ColumnFamilyStore initCf(StressProfile stressProfile, boolean loadSSTables)
     {
-        try
+        Util.initDatabaseDescriptor();
+
+        generateTokens(stressProfile.seedStr, StorageService.instance.getTokenMetadata(), numTokens);
+
+        CreateTableStatement.RawStatement createStatement = stressProfile.getCreateStatement();
+        List<File> dataDirectories = getDataDirectories();
+
+        ColumnFamilyStore cfs = CQLSSTableWriter.Builder.createOfflineTable(createStatement, Collections.EMPTY_LIST, dataDirectories);
+
+        if (loadSSTables)
         {
-            File yamlFile = new File(profile);
-            return StressProfile.load(yamlFile.exists() ? yamlFile.toURI() : URI.create(profile));
-        }
-        catch ( IOError e)
-        {
-            e.printStackTrace();
-            System.err.print("Invalid profile URI : " + profile);
-            System.exit(4);
-        }
-
-        return null;
-    }
-
-    public abstract void run();
-
-
-    @Command(name = "compact", description = "compact data in directory")
-    public static class Compaction extends CompactionStress
-    {
-
-        @Option(name = {"-m", "--maximal"}, description = "force maximal compaction (default true)")
-        Boolean maximal = false;
-
-        @Option(name = {"-c", "--compactors-threads"}, description = "number of compactor threads to use for bg compactions (default 4)")
-        Integer threads = 4;
-
-        @Option(name = {"-v", "--vnodes"}, description = "number of local tokens to generate (default 256)")
-        Integer numTokens = 256;
-
-        public void run()
-        {
-            Util.initDatabaseDescriptor();
-            File outputDir = getDataDir();
-
-            generateTokens(StorageService.instance.getTokenMetadata(), numTokens);
-
-            StressProfile stressProfile = getStressProfile();
-
-            if (Schema.instance.getKSMetaData(stressProfile.keyspaceName) == null)
-                Schema.instance.load(KeyspaceMetadata.create(stressProfile.keyspaceName, KeyspaceParams.simple(1)));
-
-            CFMetaData metadata = stressProfile.getCFMetadata();
-            Directories directories = new Directories(metadata, new Directories.DataDirectory[]{ new Directories.DataDirectory(outputDir) });
-
-            Keyspace.setInitialized();
-            Keyspace ks = Keyspace.open(stressProfile.keyspaceName);
-            ColumnFamilyStore cfs = ColumnFamilyStore.createColumnFamilyStore(ks, stressProfile.tableName, metadata, directories, false);
-
             Directories.SSTableLister lister = cfs.getDirectories().sstableLister(Directories.OnTxnErr.IGNORE).skipTemporary(true);
             List<SSTableReader> sstables = new ArrayList<>();
-
 
             //Offline open sstables
             for (Map.Entry<Descriptor, Set<Component>> entry : lister.list().entrySet())
@@ -176,23 +145,88 @@ public abstract class CompactionStress implements Runnable
                 }
             }
 
+            cfs.disableAutoCompaction();
+
             //Register with cfs
             cfs.addSSTables(sstables);
-            cfs.getCompactionStrategyManager().compactionLogger.enable();
+        }
 
+        return cfs;
+    }
+
+    StressProfile getStressProfile()
+    {
+        try
+        {
+            File yamlFile = new File(profile);
+            return StressProfile.load(yamlFile.exists() ? yamlFile.toURI() : URI.create(profile));
+        }
+        catch ( IOError e)
+        {
+            e.printStackTrace();
+            System.err.print("Invalid profile URI : " + profile);
+            System.exit(4);
+        }
+
+        return null;
+    }
+
+    /**
+     * Populate tokenMetadata consistently across runs.
+     *
+     * We need consistency to write and compact the same data offline
+     * in the case of a range aware sstable writer.
+     */
+    private void generateTokens(String seed, TokenMetadata tokenMetadata, Integer numTokens)
+    {
+        Random random = new Random(seed.hashCode());
+
+        IPartitioner p = tokenMetadata.partitioner;
+        tokenMetadata.clearUnsafe();
+        for (int i = 1; i <= numTokens; i++)
+        {
+            InetAddress addr = FBUtilities.getBroadcastAddress();
+            List<Token> tokens = Lists.newArrayListWithCapacity(numTokens);
+            for (int j = 0; j < numTokens; ++j)
+                tokens.add(p.getRandomToken(random));
+
+            tokenMetadata.updateNormalTokens(tokens, addr);
+        }
+    }
+
+    public abstract void run();
+
+
+    @Command(name = "compact", description = "Compact data in directory")
+    public static class Compaction extends CompactionStress
+    {
+
+        @Option(name = {"-m", "--maximal"}, description = "Force maximal compaction (default true)")
+        Boolean maximal = false;
+
+        @Option(name = {"-t", "--threads"}, description = "Number of compactor threads to use for bg compactions (default 4)")
+        Integer threads = 4;
+
+        public void run()
+        {
             //Setup
+            SystemKeyspace.finishStartup(); //needed for early-open
             CompactionManager.instance.setMaximumCompactorThreads(threads);
             CompactionManager.instance.setCoreCompactorThreads(threads);
             CompactionManager.instance.setRate(0);
 
-            List<Future<?>> futures = new ArrayList<>();
+            StressProfile stressProfile = getStressProfile();
+            ColumnFamilyStore cfs = initCf(stressProfile, true);
+            cfs.getCompactionStrategyManager().compactionLogger.enable();
+
+            List<Future<?>> futures = new ArrayList<>(threads);
             if (maximal)
             {
-                cfs.disableAutoCompaction();
                 futures = CompactionManager.instance.submitMaximal(cfs, FBUtilities.nowInSeconds(), false);
             }
             else
             {
+                cfs.enableAutoCompaction();
                 cfs.getCompactionStrategyManager().enable();
                 for (int i = 0; i < threads; i++)
                     futures.addAll(CompactionManager.instance.submitBackground(cfs));
@@ -220,21 +254,6 @@ public abstract class CompactionStress implements Runnable
             Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
             LifecycleTransaction.removeUnfinishedLeftovers(cfs);
         }
-
-        private void generateTokens(TokenMetadata tokenMetadata, Integer numTokens)
-        {
-            IPartitioner p = tokenMetadata.partitioner;
-            tokenMetadata.clearUnsafe();
-            for (int i = 1; i <= numTokens; i++)
-            {
-                InetAddress addr = FBUtilities.getBroadcastAddress();
-                List<Token> tokens = Lists.newArrayListWithCapacity(numTokens);
-                for (int j = 0; j < numTokens; ++j)
-                    tokens.add(p.getRandomToken());
-
-                tokenMetadata.updateNormalTokens(tokens, addr);
-            }
-        }
     }
 
     void reportCompactionStats()
@@ -248,10 +267,12 @@ public abstract class CompactionStress implements Runnable
     @Command(name = "write", description = "write data directly to disk")
     public static class DataWriter extends CompactionStress
     {
+        private static double BYTES_IN_GB = 1024 * 1014 * 1024;
+
         @Option(name = { "-g", "--gbsize"}, description = "Total GB size on disk you wish to write", required = true)
         Integer totalSizeGb;
 
-        @Option(name = { "-t", "--threads" }, description = "Number of threads (default 2)")
+        @Option(name = { "-t", "--threads" }, description = "Number of sstable writer threads (default 2)")
         Integer threads = 2;
 
         @Option(name = { "-c", "--partition-count"}, description = "Number of partitions to loop over (default 1000000)")
@@ -262,8 +283,9 @@ public abstract class CompactionStress implements Runnable
 
         public void run()
         {
-            File outputDir = getDataDir();
             StressProfile stressProfile = getStressProfile();
+            ColumnFamilyStore cfs = initCf(stressProfile, false);
+            Directories directories = cfs.getDirectories();
 
             StressSettings settings = StressSettings.parse(new String[]{ "write", "-pop seq=1.." + partitions });
             SeedManager seedManager = new SeedManager(settings);
@@ -273,15 +295,11 @@ public abstract class CompactionStress implements Runnable
             ExecutorService executorService = Executors.newFixedThreadPool(threads);
             CountDownLatch finished = new CountDownLatch(threads);
 
-            CFMetaData metadata = stressProfile.getCFMetadata();
-            Directories directories = new Directories(metadata, new Directories.DataDirectory[]{ new Directories.DataDirectory(outputDir) });
-
-
             for (int i = 0; i < threads; i++)
             {
-                SchemaInsert insert = stressProfile.getOfflineInsert(null, generator, seedManager, settings);
-
-                final CQLSSTableWriter tableWriter = insert.createWriter(directories.getDirectoryForNewSSTables(), bufferSize);
+                //Every thread needs it's own writer
+                final SchemaInsert insert = stressProfile.getOfflineInsert(null, generator, seedManager, settings);
+                final CQLSSTableWriter tableWriter = insert.createWriter(cfs, bufferSize);
                 executorService.submit(() -> {
                     try
                     {
@@ -300,7 +318,7 @@ public abstract class CompactionStress implements Runnable
             }
 
             double currentSizeGB;
-            while ((currentSizeGB = ((double) FileUtils.folderSize(outputDir)) / (1024 * 1014 * 1024)) < totalSizeGb)
+            while ((currentSizeGB = directories.getRawDiretoriesSize() / BYTES_IN_GB) < totalSizeGb)
             {
                 if (finished.getCount() == 0)
                     break;
@@ -313,7 +331,7 @@ public abstract class CompactionStress implements Runnable
             workManager.stop();
             Uninterruptibles.awaitUninterruptibly(finished);
 
-            currentSizeGB = ((double) FileUtils.folderSize(outputDir)) / (1024 * 1024 * 1024);
+            currentSizeGB = directories.getRawDiretoriesSize() / BYTES_IN_GB;
             System.out.println(String.format("Finished writing %.2fGB", currentSizeGB));
         }
     }
