@@ -19,6 +19,7 @@ package org.apache.cassandra.io.sstable;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
 
 import com.google.common.base.Throwables;
 
@@ -44,9 +45,9 @@ class SSTableSimpleWriter extends AbstractSSTableSimpleWriter
 
     private SSTableTxnWriter writer;
 
-    protected SSTableSimpleWriter(File directory, CFMetaData metadata, PartitionColumns columns)
+    protected SSTableSimpleWriter(ColumnFamilyStore cfs, IPartitioner partitioner, PartitionColumns columns)
     {
-        super(directory, metadata, columns);
+        super(cfs, partitioner, columns);
     }
 
     private SSTableTxnWriter getOrCreateWriter()
@@ -68,7 +69,7 @@ class SSTableSimpleWriter extends AbstractSSTableSimpleWriter
             if (update != null)
                 writePartition(update);
             currentKey = key;
-            update = new PartitionUpdate(metadata, currentKey, columns, 4);
+            update = new PartitionUpdate(cfs.metadata, currentKey, columns, 4);
         }
 
         assert update != null;
