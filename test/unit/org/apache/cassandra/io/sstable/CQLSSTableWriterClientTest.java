@@ -95,7 +95,7 @@ public class CQLSSTableWriterClientTest
             }
         };
 
-        File[] dataFiles = this.testDirectory.listFiles(filter);
+        File[] dataFiles = writer.getInnermostDirectory().listFiles(filter);
         assertEquals(2, dataFiles.length);
     }
 }

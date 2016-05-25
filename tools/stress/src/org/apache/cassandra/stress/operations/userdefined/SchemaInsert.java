@@ -24,6 +24,7 @@ package org.apache.cassandra.stress.operations.userdefined;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -37,6 +38,7 @@ import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Statement;
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.io.sstable.CQLSSTableWriter;
 import org.apache.cassandra.stress.WorkManager;
@@ -180,10 +182,10 @@ public class SchemaInsert extends SchemaStatement
         timeWithRetry(new ThriftRun(client));
     }
 
-    public CQLSSTableWriter createWriter(File outputDir, int bufferSize)
+    public CQLSSTableWriter createWriter(ColumnFamilyStore cfs, int bufferSize)
     {
         return CQLSSTableWriter.builder()
-                               .inDirectory(outputDir)
+                               .withCfs(cfs)
                                .withBufferSizeInMB(bufferSize)
                                .forTable(tableSchema)
                                .using(insertStatement)

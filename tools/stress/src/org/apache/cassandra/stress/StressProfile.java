@@ -41,6 +41,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.statements.CreateKeyspaceStatement;
+import org.apache.cassandra.cql3.statements.CreateTableStatement;
 import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.exceptions.SyntaxException;
 import org.apache.cassandra.stress.generate.*;
@@ -60,12 +61,14 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.error.YAMLException;
 
+import static org.apache.cassandra.io.sstable.CQLSSTableWriter.parseStatement;
+
 public class StressProfile implements Serializable
 {
     private String keyspaceCql;
     private String tableCql;
     private List<String> extraSchemaDefinitions;
-    private String seedStr;
+    public final String seedStr = "seed for stress";
 
     public String keyspaceName;
     public String tableName;
@@ -99,7 +102,6 @@ public class StressProfile implements Serializable
         keyspaceCql = yaml.keyspace_definition;
         tableName = yaml.table;
         tableCql = yaml.table_definition;
-        seedStr = "seed for stress";
         queries = yaml.queries;
         tokenRangeQueries = yaml.token_range_queries;
         insert = yaml.insert;
@@ -395,10 +397,12 @@ public class StressProfile implements Serializable
         return new PartitionGenerator(partitionColumns, clusteringColumns, regularColumns, PartitionGenerator.Order.ARBITRARY);
     }
 
-    public CFMetaData getCFMetadata()
+    public CreateTableStatement.RawStatement getCreateStatement()
     {
-        assert tableCql != null;
-        return CFMetaData.compile(tableCql, keyspaceName);
+        CreateTableStatement.RawStatement createStatement = parseStatement(tableCql, CreateTableStatement.RawStatement.class, "CREATE TABLE");
+        createStatement.prepareKeyspace(keyspaceName);
+
+        return createStatement;
     }
 
     public SchemaInsert getOfflineInsert(Timer timer, PartitionGenerator generator, SeedManager seedManager, StressSettings settings)
