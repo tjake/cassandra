@@ -242,6 +242,8 @@ public abstract class CompactionStress implements Runnable
                     for (long i = working; i < threads; i++)
                         futures.addAll(CompactionManager.instance.submitBackground(cfs));
                 }
+                else
+                    cfs.getCompactionStrategyManager().getNextBackgroundTask(0); // make sure that pending compactions is updated
 
                 reportCompactionStats();
                 Uninterruptibles.sleepUninterruptibly(10, TimeUnit.SECONDS);
