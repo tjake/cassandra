@@ -198,7 +198,7 @@ public class SchemaInsert extends SchemaStatement
 
         while (true)
         {
-            if (!ready(workManager, null))
+            if (ready(workManager) == 0)
                 break;
 
             offline.run();

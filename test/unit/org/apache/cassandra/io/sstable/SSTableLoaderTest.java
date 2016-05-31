@@ -165,8 +165,9 @@ public class SSTableLoaderTest
         //make sure we have no tables...
         assertTrue(dataDir.listFiles().length == 0);
 
-        String schema = "CREATE TABLE %s.%s (key ascii, name ascii, val ascii, val1 ascii, PRIMARY KEY (key, name))";
-        String query = "INSERT INTO %s.%s (key, name, val) VALUES (?, ?, ?)";
+        //Since this is running in the same jvm we need to put it in a tmp keyspace
+        String schema = "CREATE TABLE \"%stmp\".\"%s\" (key ascii, name ascii, val ascii, val1 ascii, PRIMARY KEY (key, name)) with compression = {}";
+        String query = "INSERT INTO \"%stmp\".\"%s\" (key, name, val) VALUES (?, ?, ?)";
 
         CQLSSTableWriter writer = CQLSSTableWriter.builder()
                                                   .inDirectory(dataDir)
@@ -175,7 +176,7 @@ public class SSTableLoaderTest
                                                   .withBufferSizeInMB(1)
                                                   .build();
 
-        int NB_PARTITIONS = 5000; // Enough to write >1MB and get at least one completed sstable before we've closed the writer
+        int NB_PARTITIONS = 4200; // Enough to write >1MB and get at least one completed sstable before we've closed the writer
 
         for (int i = 0; i < NB_PARTITIONS; i++)
         {
@@ -187,11 +188,11 @@ public class SSTableLoaderTest
         cfs.forceBlockingFlush(); // wait for sstables to be on disk else we won't be able to stream them
 
         //make sure we have some tables...
-        assertTrue(dataDir.listFiles().length > 0);
+        assertTrue(writer.getInnermostDirectory().listFiles().length > 0);
 
         final CountDownLatch latch = new CountDownLatch(2);
         //writer is still open so loader should not load anything
-        SSTableLoader loader = new SSTableLoader(writer.getInnermostDirectory(), new TestClient(), new OutputHandler.SystemOutput(false, false));
+        SSTableLoader loader = new SSTableLoader(writer.getInnermostDirectory(), new TestClient(), new OutputHandler.SystemOutput(false, false), KEYSPACE1);
         loader.stream(Collections.emptySet(), completionStreamListener(latch)).get();
 
         List<FilteredPartition> partitions = Util.getAll(Util.cmd(cfs).build());
@@ -201,7 +202,7 @@ public class SSTableLoaderTest
         // now we complete the write and the second loader should load the last sstable as well
         writer.close();
 
-        loader = new SSTableLoader(writer.getInnermostDirectory(), new TestClient(), new OutputHandler.SystemOutput(false, false));
+        loader = new SSTableLoader(writer.getInnermostDirectory(), new TestClient(), new OutputHandler.SystemOutput(false, false), KEYSPACE1);
         loader.stream(Collections.emptySet(), completionStreamListener(latch)).get();
 
         partitions = Util.getAll(Util.cmd(Keyspace.open(KEYSPACE1).getColumnFamilyStore(CF_STANDARD2)).build());
