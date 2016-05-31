@@ -234,7 +234,7 @@ public abstract class CompactionStress implements Runnable
 
             long working;
             //Report compaction stats while working
-            while ((working = futures.stream().filter(f -> !f.isDone()).count()) > 0 || CompactionManager.instance.getActiveCompactions() > 0 || cfs.getCompactionStrategyManager().getEstimatedRemainingTasks() > 0)
+            while ((working = futures.stream().filter(f -> !f.isDone()).count()) > 0 || CompactionManager.instance.getActiveCompactions() > 0 || (!maximal && cfs.getCompactionStrategyManager().getEstimatedRemainingTasks() > 0))
             {
                 //Re-up any bg jobs
                 if (!maximal)
