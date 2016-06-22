@@ -19,8 +19,10 @@
 package org.apache.cassandra.utils.btree;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Ordering;
 
@@ -136,7 +138,8 @@ public class BTree
                 for (K k : source)
                     values[i++] = updateF.apply(k);
             }
-            updateF.allocated(ObjectSizes.sizeOfArray(values));
+            if (updateF != UpdateFunction.noOp())
+                updateF.allocated(ObjectSizes.sizeOfArray(values));
             return values;
         }
 
@@ -188,7 +191,7 @@ public class BTree
             tree1 = tree2;
             tree2 = tmp;
         }
-        return update(tree1, comparator, new BTreeSet<K>(tree2, comparator), updateF);
+        return update(tree1, comparator, new BTreeSet<>(tree2, comparator), updateF);
     }
 
     public static <V> Iterator<V> iterator(Object[] btree)
@@ -1158,5 +1161,152 @@ public class BTree
             previous = current;
         }
         return compare(cmp, previous, max) < 0;
+    }
+
+    /**
+     * Simple method to walk the btree forwards and apply a function till a stop condition it reached
+     *
+     * Public method
+     *
+     * @param btree
+     * @param function
+     * @param stopCondition
+     */
+    public static <V> void applyForwards(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    {
+        applyForwardsInner(btree, function, stopCondition);
+    }
+
+    /**
+    * Simple method to walk the btree forwards and apply a function to each element
+    *
+    * Public method
+    *
+    * @param btree
+    * @param function
+    */
+    public static <V> void applyForwards(Object[] btree, Consumer<V> function)
+    {
+        applyForwardsInner(btree, function, null);
+    }
+
+    /**
+     * Simple method to walk the btree forwards and apply a function till a stop condition it reached
+     *
+     * Private method
+     *
+     * @param btree
+     * @param function
+     * @param stopCondition
+     */
+    private static <V> boolean applyForwardsInner(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    {
+        boolean isLeaf = isLeaf(btree);
+        int childOffset = isLeaf ? Integer.MAX_VALUE : getChildStart(btree);
+        int limit = isLeaf ? getLeafKeyEnd(btree) : btree.length - 1;
+        for (int i = 0 ; i < limit ; i++)
+        {
+            // we want to visit in iteration order, so we visit our key nodes inbetween our children
+            int idx = isLeaf ? i : (i / 2) + (i % 2 == 0 ? childOffset : 0);
+            Object current = btree[idx];
+            if (idx < childOffset)
+            {
+                V castedCurrent = (V) current;
+                if (stopCondition != null && stopCondition.apply(castedCurrent))
+                    return true;
+
+                function.accept(castedCurrent);
+            }
+            else
+            {
+                if (applyForwardsInner((Object[]) current, function, stopCondition))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Simple method to walk the btree in reverse and apply a function till a stop condition it reached
+     *
+     * Public method
+     *
+     * @param btree
+     * @param function
+     * @param stopCondition
+     */
+    public static <V> void applyReverse(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    {
+        applyReverseInner(btree, function, stopCondition);
+    }
+
+    /**
+     * Simple method to walk the btree in reverse and apply a function to each element
+     *
+     * Public method
+     *
+     * @param btree
+     * @param function
+     */
+    public static <V> void applyReverse(Object[] btree, Consumer<V> function)
+    {
+        applyReverse(btree, function, null);
+    }
+
+    /**
+     * Simple method to walk the btree in reverse and apply a function till a stop condition it reached
+     *
+     * Private method
+     *
+     * @param btree
+     * @param function
+     * @param stopCondition
+     */
+    private static <V> boolean applyReverseInner(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    {
+        boolean isLeaf = isLeaf(btree);
+        int childOffset = isLeaf ? 0 : getChildStart(btree);
+        int limit = isLeaf ? getLeafKeyEnd(btree)  : btree.length - 1;
+        for (int i = limit - 1, visited = 0; i >= 0 ; i--, visited++)
+        {
+            int idx = i;
+
+            // we want to visit in reverse iteration order, so we visit our children nodes inbetween our keys
+            if (!isLeaf)
+            {
+                int typeOffset = visited / 2;
+
+                if (i % 2 == 0)
+                {
+                    // This is a child branch. Since children are in the second half of the array, we must
+                    // adjust for the key's we've visited along the way
+                    idx += typeOffset;
+                }
+                else
+                {
+                    // This is a key. Since the keys are in the first half of the array and we are iterating
+                    // in reverse we subtract the childOffset and adjust for children we've walked so far
+                    idx = i - childOffset + typeOffset;
+                }
+            }
+
+            Object current = btree[idx];
+            if (isLeaf || idx < childOffset)
+            {
+                V castedCurrent = (V) current;
+                if (stopCondition != null && stopCondition.apply(castedCurrent))
+                    return true;
+
+                function.accept(castedCurrent);
+            }
+            else
+            {
+                if (applyReverseInner((Object[]) current, function, stopCondition))
+                    return true;
+            }
+        }
+
+        return false;
     }
 }

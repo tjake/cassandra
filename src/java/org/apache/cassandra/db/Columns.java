@@ -59,7 +59,7 @@ public class Columns extends AbstractCollection<ColumnDefinition> implements Col
                              ColumnDefinition.NO_POSITION,
                              ColumnDefinition.Kind.REGULAR);
 
-    private final Object[] columns;
+    public final Object[] columns;
     private final int complexIdx; // Index of the first complex column
 
     private Columns(Object[] columns, int complexIdx)

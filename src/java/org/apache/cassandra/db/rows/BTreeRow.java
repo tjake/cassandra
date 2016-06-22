@@ -51,7 +51,7 @@ public class BTreeRow extends AbstractRow
     private final Deletion deletion;
 
     // The data for each columns present in this row in column sorted order.
-    private final Object[] btree;
+    public final Object[] btree;
 
     // We need to filter the tombstones of a row on every read (twice in fact: first to remove purgeable tombstone, and then after reconciliation to remove
     // all tombstone since we don't return them to the client) as well as on compaction. But it's likely that many rows won't have any tombstone at all, so
@@ -170,14 +170,12 @@ public class BTreeRow extends AbstractRow
 
     private static int minDeletionTime(Object[] btree, LivenessInfo info, DeletionTime rowDeletion)
     {
-        int min = Math.min(minDeletionTime(info), minDeletionTime(rowDeletion));
-        for (ColumnData cd : BTree.<ColumnData>iterable(btree))
-        {
-            min = Math.min(min, minDeletionTime(cd));
-            if (min == Integer.MIN_VALUE)
-                break;
-        }
-        return min;
+        //we have to wrap this for the lambda
+        final int min[] = new int[]{ Math.min(minDeletionTime(info), minDeletionTime(rowDeletion)) };
+
+        BTree.<ColumnData>applyForwards(btree, cd -> min[0] = Math.min(min[0], minDeletionTime(cd)), cd -> min[0] == Integer.MIN_VALUE);
+
+        return min[0];
     }
 
     public Clustering clustering()
@@ -324,17 +322,26 @@ public class BTreeRow extends AbstractRow
 
     public boolean hasComplexDeletion()
     {
+        final boolean result[] = new boolean[]{false};
+
         // We start by the end cause we know complex columns sort before simple ones
-        for (ColumnData cd : BTree.<ColumnData>iterable(btree, BTree.Dir.DESC))
-        {
-            if (cd.column().isSimple())
-                return false;
+        BTree.<ColumnData>applyReverse(btree, c -> {}, cd -> {
+            if (cd.column.isSimple())
+            {
+                result[0] = false;
+                return true;
+            }
 
             if (!((ComplexColumnData) cd).complexDeletion().isLive())
+            {
+                result[0] = true;
                 return true;
-        }
+            }
 
-        return false;
+            return false;
+        });
+
+        return result[0];
     }
 
     public Row markCounterLocalToBeCleared()

@@ -25,6 +25,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
 import io.netty.util.Recycler;
+import io.netty.util.concurrent.FastThreadLocal;
 import org.apache.cassandra.config.Config;
 
 /**
@@ -47,20 +48,17 @@ public class DataOutputBuffer extends BufferedDataOutputStreamPlus
 
     private static final int DEFAULT_INITIAL_BUFFER_SIZE = 128;
 
-    public static final Recycler<DataOutputBuffer> RECYCLER = new Recycler<DataOutputBuffer>()
+    /**
+     * Scratch buffers used mostly for serializing in memory. It's important to call #recycle() when finished
+     * to keep the memory overhead from being too large in the system.
+     */
+    public static final FastThreadLocal<DataOutputBuffer> scratchBuffer = new FastThreadLocal<DataOutputBuffer>()
     {
-        protected DataOutputBuffer newObject(Handle handle)
+        protected DataOutputBuffer initialValue() throws Exception
         {
-            return new DataOutputBuffer(handle);
+            return new DataOutputBuffer();
         }
     };
-
-    private final Recycler.Handle handle;
-
-    private DataOutputBuffer(Recycler.Handle handle)
-    {
-        this(DEFAULT_INITIAL_BUFFER_SIZE, handle);
-    }
 
     public DataOutputBuffer()
     {
@@ -69,28 +67,23 @@ public class DataOutputBuffer extends BufferedDataOutputStreamPlus
 
     public DataOutputBuffer(int size)
     {
-        this(size, null);
+        super(ByteBuffer.allocate(size));
     }
 
-    protected DataOutputBuffer(int size, Recycler.Handle handle)
-    {
-        this(ByteBuffer.allocate(size), handle);
-    }
-
-    protected DataOutputBuffer(ByteBuffer buffer, Recycler.Handle handle)
+    public DataOutputBuffer(ByteBuffer buffer)
     {
         super(buffer);
-        this.handle = handle;
     }
 
     public void recycle()
     {
-        assert handle != null;
-
-        if (buffer().capacity() <= MAX_RECYCLE_BUFFER_SIZE)
+        if (buffer.capacity() <= MAX_RECYCLE_BUFFER_SIZE)
         {
-            buffer.rewind();
-            RECYCLER.recycle(this, handle);
+            buffer.clear();
+        }
+        else
+        {
+            buffer = ByteBuffer.allocate(DEFAULT_INITIAL_BUFFER_SIZE);
         }
     }
 
