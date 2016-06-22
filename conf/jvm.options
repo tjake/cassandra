@@ -109,7 +109,7 @@
 # Make sure all memory is faulted and zeroed on startup.
 # This helps prevent soft faults in containers and makes
 # transparent hugepage allocation more effective.
--XX:+AlwaysPreTouch
+#-XX:+AlwaysPreTouch
 
 # Disable biased locking as it does not benefit Cassandra.
 -XX:-UseBiasedLocking
@@ -120,7 +120,7 @@
 -XX:+ResizeTLAB
 
 # http://www.evanjones.ca/jvm-mmap-pause.html
--XX:+PerfDisableSharedMem
+#-XX:+PerfDisableSharedMem
 
 # Prefer binding to IPv4 network intefaces (when net.ipv6.bindv6only=1). See
 # http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6342561 (short version:
