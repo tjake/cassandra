@@ -20,6 +20,7 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -116,7 +117,7 @@ public class SerializationHeader
 
     private static List<AbstractType<?>> typesOf(List<ColumnDefinition> columns)
     {
-        return ImmutableList.copyOf(Lists.transform(columns, column -> column.type));
+        return Lists.transform(columns, column -> column.type);
     }
 
     public PartitionColumns columns()
