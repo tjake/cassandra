@@ -68,7 +68,7 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
 
     public static <K, V> BTreeSearchIterator<K,V> newInstance(Object[] btree, Comparator<? super K> comparator, BTree.Dir dir, int lowerBound, int upperBound)
     {
-        BTreeSearchIterator iterator = new BTreeSearchIterator(null); //recycler.get();
+        BTreeSearchIterator iterator = recycler.get();
         iterator.forwards = dir == BTree.Dir.ASC;
         iterator.lowerBound = lowerBound;
         iterator.upperBound = upperBound;
@@ -192,7 +192,7 @@ public class BTreeSearchIterator<K, V> extends TreeCursor<K> implements IndexedS
     {
         if (!wasRecycled)
         {
-            //recycler.recycle(this, recycleHandler);
+            recycler.recycle(this, recycleHandler);
             wasRecycled = true;
         }
     }
