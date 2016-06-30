@@ -136,6 +136,25 @@ public class MessageOut<T>
         }
     }
 
+    public int serializedSize(int version)
+    {
+        int size = CompactEndpointSerializationHelper.serializedSize(from);
+
+        size += TypeSizes.sizeof(verb.ordinal());
+        size += TypeSizes.sizeof(parameters.size());
+        for (Map.Entry<String, byte[]> entry : parameters.entrySet())
+        {
+            size += TypeSizes.sizeof(entry.getKey());
+            size += TypeSizes.sizeof(entry.getValue().length);
+            size += entry.getValue().length;
+        }
+
+        long longSize = payloadSize(version);
+        assert longSize <= Integer.MAX_VALUE; // larger values are supported in sstables but not messages
+        size += TypeSizes.sizeof((int) longSize);
+        size += longSize;
+        return size;
+    }
 
     /**
      * Calculate the size of the payload of this message for the specified protocol version
