@@ -45,15 +45,15 @@ public class SerializationHeader
 {
     public static final Serializer serializer = new Serializer();
 
-    private final boolean isForSSTable;
+    private boolean isForSSTable;
 
-    private final AbstractType<?> keyType;
-    private final List<AbstractType<?>> clusteringTypes;
+    private AbstractType<?> keyType;
+    private List<AbstractType<?>> clusteringTypes;
 
-    private final PartitionColumns columns;
-    private final EncodingStats stats;
+    private PartitionColumns columns;
+    private EncodingStats stats;
 
-    private final Map<ByteBuffer, AbstractType<?>> typeMap;
+    private Map<ByteBuffer, AbstractType<?>> typeMap;
 
     private SerializationHeader(boolean isForSSTable,
                                 AbstractType<?> keyType,
@@ -115,9 +115,25 @@ public class SerializationHeader
              null);
     }
 
+    public void reuse(boolean isForSSTable, CFMetaData metadata,
+                      PartitionColumns columns, EncodingStats stats)
+    {
+        this.isForSSTable = isForSSTable;
+        this.keyType = metadata.getKeyValidator();
+        this.clusteringTypes = metadata.getClusteringTypes();
+        this.columns = columns;
+        this.stats = stats;
+        this.typeMap = null;
+    }
+
     private static List<AbstractType<?>> typesOf(List<ColumnDefinition> columns)
     {
-        return Lists.transform(columns, column -> column.type);
+        final int length = columns.size();
+        ArrayList<AbstractType<?>> types = new ArrayList<>(length);
+        for (int i = 0; i < length; i++)
+            types.add(columns.get(i).type);
+
+        return types;
     }
 
     public PartitionColumns columns()

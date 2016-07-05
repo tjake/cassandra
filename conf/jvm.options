@@ -186,6 +186,7 @@
 
 -XX:+UseParNewGC
 -XX:+UseConcMarkSweepGC
+-XX:+UseCondCardMark
 -XX:+CMSParallelRemarkEnabled
 -XX:SurvivorRatio=8
 -XX:MaxTenuringThreshold=1

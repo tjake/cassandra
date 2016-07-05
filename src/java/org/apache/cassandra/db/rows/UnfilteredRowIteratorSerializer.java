@@ -23,6 +23,7 @@ import java.io.IOError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.util.concurrent.FastThreadLocal;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
@@ -80,12 +81,26 @@ public class UnfilteredRowIteratorSerializer
     }
 
     // Should only be used for the on-wire format.
+
+    private static final FastThreadLocal<SerializationHeader> serializationHeader = new FastThreadLocal<>();
+
     public void serialize(UnfilteredRowIterator iterator, ColumnFilter selection, DataOutputPlus out, int version, int rowEstimate) throws IOException
     {
-        SerializationHeader header = new SerializationHeader(false,
-                                                             iterator.metadata(),
-                                                             iterator.columns(),
-                                                             iterator.stats());
+
+        SerializationHeader header = serializationHeader.get();
+        if (header == null)
+        {
+            header = new SerializationHeader(false,
+                                             iterator.metadata(),
+                                             iterator.columns(),
+                                             iterator.stats());
+            serializationHeader.set(header);
+        }
+        else
+        {
+            header.reuse(false, iterator.metadata(), iterator.columns(), iterator.stats());
+        }
+
         serialize(iterator, header, selection, out, version, rowEstimate);
     }
 

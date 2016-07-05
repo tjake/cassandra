@@ -169,7 +169,7 @@ public abstract class AbstractBTreePartition implements Partition, Iterable<Row>
 
     public UnfilteredRowIterator unfilteredIterator()
     {
-        return unfilteredIterator(ColumnFilter.all(metadata()), Slices.ALL, false);
+        return unfilteredIterator(metadata().getAllColumnFilter(), Slices.ALL, false);
     }
 
     public UnfilteredRowIterator unfilteredIterator(ColumnFilter selection, Slices slices, boolean reversed)
@@ -197,6 +197,62 @@ public abstract class AbstractBTreePartition implements Partition, Iterable<Row>
         ClusteringBound end = slice.end() == ClusteringBound.TOP ? null : slice.end();
         Iterator<Row> rowIter = BTree.slice(current.tree, metadata.comparator, start, true, end, true, desc(reversed));
         Iterator<RangeTombstone> deleteIter = current.deletionInfo.rangeIterator(slice, reversed);
+
+        if (!current.deletionInfo.hasRanges())
+        {
+            return new UnfilteredRowIterator()
+            {
+                public DeletionTime partitionLevelDeletion()
+                {
+                    return current.deletionInfo.getPartitionDeletion();
+                }
+
+                public EncodingStats stats()
+                {
+                    return current.stats;
+                }
+
+                public CFMetaData metadata()
+                {
+                    return metadata;
+                }
+
+                public boolean isReverseOrder()
+                {
+                    return reversed;
+                }
+
+                public PartitionColumns columns()
+                {
+                    return current.columns;
+                }
+
+                public DecoratedKey partitionKey()
+                {
+                    return partitionKey;
+                }
+
+                public Row staticRow()
+                {
+                    return staticRow;
+                }
+
+                public void close()
+                {
+                    ((BTreeSearchIterator)rowIter).close();
+                }
+
+                public boolean hasNext()
+                {
+                    return rowIter.hasNext();
+                }
+
+                public Unfiltered next()
+                {
+                    return rowIter.next();
+                }
+            };
+        }
 
         return merge(rowIter, deleteIter, selection, reversed, current, staticRow);
     }

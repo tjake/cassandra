@@ -75,7 +75,21 @@ class NodeCursor<K>
 
         // a well formed b-tree (text book, or ours) must be balanced, so by building a stack following the left-most branch
         // we have a stack capable of visiting any path in the tree
-        this.child = BTree.isLeaf(node) ? null : new NodeCursor<>((Object[]) node[getChildStart(node)], this, comparator);
+        if (BTree.isLeaf(node))
+        {
+            this.child = null;
+            return;
+        }
+
+        if (this.child != null)
+        {
+            this.child.comparator = comparator;
+            this.child.resetNode(node, getChildStart(node));
+        }
+        else
+        {
+            this.child = new NodeCursor<>((Object[]) node[getChildStart(node)], this, comparator);
+        }
     }
 
     /**

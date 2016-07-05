@@ -255,7 +255,7 @@ public class CommitLog implements CommitLogMBean
     {
         assert mutation != null;
 
-        DataOutputBuffer dob = DataOutputBuffer.RECYCLER.get();
+        DataOutputBuffer dob = DataOutputBuffer.scratchBuffer.get();
         try
         {
             Mutation.serializer.serialize(mutation, dob, MessagingService.current_version);

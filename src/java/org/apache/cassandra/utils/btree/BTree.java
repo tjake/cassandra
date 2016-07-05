@@ -138,7 +138,8 @@ public class BTree
                 for (K k : source)
                     values[i++] = updateF.apply(k);
             }
-            updateF.allocated(ObjectSizes.sizeOfArray(values));
+            if (updateF != UpdateFunction.noOp())
+                updateF.allocated(ObjectSizes.sizeOfArray(values));
             return values;
         }
 
