@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.db.filter.TombstoneOverwhelmingException;
+import org.apache.cassandra.db.monitoring.ApproximateTime;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.index.IndexNotAvailableException;
 
@@ -44,7 +45,7 @@ public class MessageDeliveryTask implements Runnable
     public void run()
     {
         MessagingService.Verb verb = message.verb;
-        long timeTaken = System.currentTimeMillis() - message.constructionTime.timestamp;
+        long timeTaken = ApproximateTime.currentTimeMillis() - message.constructionTime.timestamp;
         if (MessagingService.DROPPABLE_VERBS.contains(verb)
             && timeTaken > message.getTimeout())
         {

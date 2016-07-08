@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db;
 
+import org.apache.cassandra.db.monitoring.ApproximateTime;
 import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.io.IVersionedSerializer;
 import org.apache.cassandra.net.IVerbHandler;
@@ -53,7 +54,7 @@ public class ReadCommandVerbHandler implements IVerbHandler<ReadCommand>
         if (!command.complete())
         {
             Tracing.trace("Discarding partial response to {} (timed out)", message.from);
-            MessagingService.instance().incrementDroppedMessages(message, System.currentTimeMillis() - message.constructionTime.timestamp);
+            MessagingService.instance().incrementDroppedMessages(message, ApproximateTime.currentTimeMillis() - message.constructionTime.timestamp);
             return;
         }
 

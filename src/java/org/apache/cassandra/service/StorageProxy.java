@@ -48,6 +48,7 @@ import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.TombstoneOverwhelmingException;
+import org.apache.cassandra.db.monitoring.ApproximateTime;
 import org.apache.cassandra.db.monitoring.ConstructionTime;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.rows.RowIterator;
@@ -1814,7 +1815,7 @@ public class StorageProxy implements StorageProxyMBean
                 }
                 else
                 {
-                    MessagingService.instance().incrementDroppedMessages(verb, System.currentTimeMillis() - constructionTime);
+                    MessagingService.instance().incrementDroppedMessages(verb, ApproximateTime.currentTimeMillis() - constructionTime);
                     handler.onFailure(FBUtilities.getBroadcastAddress());
                 }
 
@@ -2456,14 +2457,14 @@ public class StorageProxy implements StorageProxyMBean
 
         public DroppableRunnable(MessagingService.Verb verb)
         {
-            this.constructionTime = System.currentTimeMillis();
+            this.constructionTime = ApproximateTime.currentTimeMillis();
             this.verb = verb;
             this.timeout = DatabaseDescriptor.getTimeout(verb);
         }
 
         public final void run()
         {
-            long timeTaken = System.currentTimeMillis() - constructionTime;
+            long timeTaken = ApproximateTime.currentTimeMillis() - constructionTime;
             if (timeTaken > timeout)
             {
                 MessagingService.instance().incrementDroppedMessages(verb, timeTaken);
@@ -2488,7 +2489,7 @@ public class StorageProxy implements StorageProxyMBean
      */
     private static abstract class LocalMutationRunnable implements Runnable
     {
-        private final long constructionTime = System.currentTimeMillis();
+        private final long constructionTime = ApproximateTime.currentTimeMillis();
 
         private final Optional<IMutation> mutationOpt;
 
@@ -2506,7 +2507,7 @@ public class StorageProxy implements StorageProxyMBean
         {
             final MessagingService.Verb verb = verb();
             long mutationTimeout = DatabaseDescriptor.getTimeout(verb);
-            long timeTaken = System.currentTimeMillis() - constructionTime;
+            long timeTaken = ApproximateTime.currentTimeMillis() - constructionTime;
             if (timeTaken > mutationTimeout)
             {
                 if (MessagingService.DROPPABLE_VERBS.contains(verb))

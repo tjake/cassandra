@@ -45,6 +45,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.SerializationHeader;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.monitoring.ApproximateTime;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.LocalPartitioner;
 import org.apache.cassandra.dht.Range;
@@ -359,7 +360,7 @@ public class FBUtilities
 
     public static int nowInSeconds()
     {
-        return (int) (System.currentTimeMillis() / 1000);
+        return (int) (ApproximateTime.currentTimeMillis() / 1000);
     }
 
     public static <T> List<T> waitOnFutures(Iterable<? extends Future<? extends T>> futures)

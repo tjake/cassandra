@@ -30,6 +30,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.monitoring.ApproximateTime;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.db.rows.SerializationHelper;
 import org.apache.cassandra.io.IVersionedSerializer;
@@ -57,7 +58,7 @@ public class Mutation implements IMutation
     private final Map<UUID, PartitionUpdate> modifications;
 
     // Time at which this mutation was instantiated
-    public final long createdAt = System.currentTimeMillis();
+    public final long createdAt = ApproximateTime.currentTimeMillis();
     // keep track of when mutation has started waiting for a MV partition lock
     public final AtomicLong viewLockAcquireStart = new AtomicLong(0);
 
