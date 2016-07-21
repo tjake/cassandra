@@ -281,6 +281,9 @@ public abstract class CompactionStress implements Runnable
         @Option(name = { "-b", "--buffer-size-mb"}, description = "Buffer in MB writes before writing new sstable (default 128)")
         Integer bufferSize = 128;
 
+        @Option(name = { "-r", "--range-aware"}, description = "Write one file per vnode range (default false)")
+        Boolean makeRangeAware = false;
+
         public void run()
         {
             StressProfile stressProfile = getStressProfile();
@@ -299,7 +302,7 @@ public abstract class CompactionStress implements Runnable
             {
                 //Every thread needs it's own writer
                 final SchemaInsert insert = stressProfile.getOfflineInsert(null, generator, seedManager, settings);
-                final CQLSSTableWriter tableWriter = insert.createWriter(cfs, bufferSize);
+                final CQLSSTableWriter tableWriter = insert.createWriter(cfs, bufferSize, makeRangeAware);
                 executorService.submit(() -> {
                     try
                     {

@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 
 import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.TypeCodec;
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Config;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -351,6 +352,8 @@ public class CQLSSTableWriter implements Closeable
 
         protected SSTableFormat.Type formatType = null;
 
+        private Boolean makeRangeAware = false;
+
         private CreateTableStatement.RawStatement schemaStatement;
         private final List<CreateTypeStatement> typeStatements;
         private UpdateStatement.ParsedInsert insertStatement;
@@ -462,6 +465,20 @@ public class CQLSSTableWriter implements Closeable
             return this;
         }
 
+
+        /**
+         * Specify if the sstable writer should be vnode range aware.
+         * This will create a sstable per vnode range.
+         *
+         * @param makeRangeAware
+         * @return
+         */
+        public Builder rangeAware(boolean makeRangeAware)
+        {
+            this.makeRangeAware = makeRangeAware;
+            return this;
+        }
+
         /**
          * The INSERT statement defining the order of the values to add for a given CQL row.
          * <p>
@@ -552,6 +569,8 @@ public class CQLSSTableWriter implements Closeable
 
                 if (formatType != null)
                     writer.setSSTableFormatType(formatType);
+
+                writer.setRangeAwareWriting(makeRangeAware);
 
                 return new CQLSSTableWriter(writer, preparedInsert.left, preparedInsert.right);
             }

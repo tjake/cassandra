@@ -24,11 +24,11 @@ import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
-import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.compaction.OperationType;
+import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
 import org.apache.cassandra.db.rows.EncodingStats;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.dht.IPartitioner;
@@ -47,6 +47,7 @@ abstract class AbstractSSTableSimpleWriter implements Closeable
     protected final PartitionColumns columns;
     protected SSTableFormat.Type formatType = DatabaseDescriptor.getSSTableFormat();
     protected static AtomicInteger generation = new AtomicInteger(0);
+    protected boolean makeRangeAware = false;
 
     protected AbstractSSTableSimpleWriter(ColumnFamilyStore cfs, IPartitioner partitioner,  PartitionColumns columns)
     {
@@ -60,14 +61,25 @@ abstract class AbstractSSTableSimpleWriter implements Closeable
         this.formatType = type;
     }
 
+    protected void setRangeAwareWriting(boolean makeRangeAware)
+    {
+        this.makeRangeAware = makeRangeAware;
+    }
+
+
     protected SSTableTxnWriter createWriter()
     {
+        SerializationHeader header = new SerializationHeader(true, cfs.metadata, columns, EncodingStats.NO_STATS);
+
+        if (makeRangeAware)
+            return SSTableTxnWriter.createRangeAware(cfs, 0,  ActiveRepairService.UNREPAIRED_SSTABLE, formatType, 0, header);
+
         return SSTableTxnWriter.create(cfs,
                                        createDescriptor(cfs.getDirectories().getDirectoryForNewSSTables(), cfs.metadata.ksName, cfs.metadata.cfName, formatType),
                                        0,
                                        ActiveRepairService.UNREPAIRED_SSTABLE,
                                        0,
-                                       new SerializationHeader(true, cfs.metadata, columns, EncodingStats.NO_STATS));
+                                       header);
     }
 
     private static Descriptor createDescriptor(File directory, final String keyspace, final String columnFamily, final SSTableFormat.Type fmt)

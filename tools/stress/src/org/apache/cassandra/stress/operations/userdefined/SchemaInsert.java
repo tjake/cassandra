@@ -182,13 +182,14 @@ public class SchemaInsert extends SchemaStatement
         timeWithRetry(new ThriftRun(client));
     }
 
-    public CQLSSTableWriter createWriter(ColumnFamilyStore cfs, int bufferSize)
+    public CQLSSTableWriter createWriter(ColumnFamilyStore cfs, int bufferSize, boolean makeRangeAware)
     {
         return CQLSSTableWriter.builder()
                                .withCfs(cfs)
                                .withBufferSizeInMB(bufferSize)
                                .forTable(tableSchema)
                                .using(insertStatement)
+                               .rangeAware(makeRangeAware)
                                .build();
     }
 
