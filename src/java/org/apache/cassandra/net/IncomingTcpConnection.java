@@ -35,7 +35,9 @@ import net.jpountz.lz4.LZ4FastDecompressor;
 import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.xxhash.XXHashFactory;
 
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.Config;
+import org.apache.cassandra.utils.AffinityThread;
 import org.xerial.snappy.SnappyInputStream;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.UnknownColumnFamilyException;
@@ -43,7 +45,7 @@ import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataInputPlus.DataInputStreamPlus;
 import org.apache.cassandra.io.util.NIODataInputStream;
 
-public class IncomingTcpConnection extends FastThreadLocalThread implements Closeable
+public class IncomingTcpConnection extends AffinityThread implements Closeable
 {
     private static final Logger logger = LoggerFactory.getLogger(IncomingTcpConnection.class);
 
@@ -57,7 +59,7 @@ public class IncomingTcpConnection extends FastThreadLocalThread implements Clos
 
     public IncomingTcpConnection(int version, boolean compressed, Socket socket, Set<Closeable> group)
     {
-        super("MessagingService-Incoming-" + socket.getInetAddress());
+        super(NamedThreadFactory.cassandraThreadGroup, null, "MessagingService-Incoming-" + socket.getInetAddress());
         this.version = version;
         this.compressed = compressed;
         this.socket = socket;
@@ -83,6 +85,8 @@ public class IncomingTcpConnection extends FastThreadLocalThread implements Clos
     @Override
     public void run()
     {
+        super.run();
+
         try
         {
             if (version < MessagingService.VERSION_20)

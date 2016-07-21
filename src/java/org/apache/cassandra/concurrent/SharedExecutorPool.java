@@ -74,9 +74,12 @@ public class SharedExecutorPool
     // the collection of threads that have been asked to stop/deschedule - new workers are scheduled from here last
     final ConcurrentSkipListMap<Long, SEPWorker> descheduled = new ConcurrentSkipListMap<>();
 
+    final NamedThreadFactory threadFactory;
+
     public SharedExecutorPool(String poolName)
     {
         this.poolName = poolName;
+        threadFactory = new NamedThreadFactory(poolName);
     }
 
     void schedule(Work work)

@@ -46,11 +46,13 @@ import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.xxhash.XXHashFactory;
 
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.io.util.DataOutputStreamPlus;
 import org.apache.cassandra.io.util.BufferedDataOutputStreamPlus;
 import org.apache.cassandra.io.util.WrappedDataOutputStreamPlus;
 import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
+import org.apache.cassandra.utils.AffinityThread;
 import org.apache.cassandra.utils.CoalescingStrategies;
 import org.apache.cassandra.utils.CoalescingStrategies.Coalescable;
 import org.apache.cassandra.utils.CoalescingStrategies.CoalescingStrategy;
@@ -64,7 +66,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 
 import com.google.common.util.concurrent.Uninterruptibles;
 
-public class OutboundTcpConnection extends FastThreadLocalThread
+public class OutboundTcpConnection extends AffinityThread
 {
     private static final Logger logger = LoggerFactory.getLogger(OutboundTcpConnection.class);
 
@@ -139,7 +141,7 @@ public class OutboundTcpConnection extends FastThreadLocalThread
 
     public OutboundTcpConnection(OutboundTcpConnectionPool pool)
     {
-        super("MessagingService-Outgoing-" + pool.endPoint());
+        super(NamedThreadFactory.cassandraThreadGroup, null, "MessagingService-Outgoing-" + pool.endPoint());
         this.poolReference = pool;
         cs = newCoalescingStrategy(pool.endPoint().getHostAddress());
 
@@ -193,6 +195,8 @@ public class OutboundTcpConnection extends FastThreadLocalThread
 
     public void run()
     {
+        super.run();
+
         final int drainedMessageSize = 128;
         // keeping list (batch) size small for now; that way we don't have an unbounded array (that we never resize)
         final List<QueuedMessage> drainedMessages = new ArrayList<>(drainedMessageSize);

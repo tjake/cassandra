@@ -1095,6 +1095,11 @@ public class NodeProbe implements AutoCloseable
         }
     }
 
+    public void setCompactionIsolationRatio(double ratio)
+    {
+        compactionProxy.setIsolationRatio(ratio);
+    }
+
     public void stopById(String compactionId)
     {
         compactionProxy.stopCompactionById(compactionId);

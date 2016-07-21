@@ -23,18 +23,27 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.channels.FileChannel;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.sun.jna.LastErrorException;
-import com.sun.jna.Native;
-import com.sun.jna.Pointer;
+import com.sun.jna.*;
+import com.sun.jna.ptr.IntByReference;
 
 public final class CLibrary
 {
     private static final Logger logger = LoggerFactory.getLogger(CLibrary.class);
+
+    private static final VersionHelper UNKNOWN = new VersionHelper(0,0,0);
+    private static final VersionHelper VERSION_2_6 = new VersionHelper(2,6,0);
+
+    private static final VersionHelper version;
+    private static final int SYS_gettid = Platform.is64Bit() ? 186 : 224;
+    private static final int SYS_getcpu = 318;
+    private static final Object[] NO_ARGS = {};
 
     private static final int MCL_CURRENT;
     private static final int MCL_FUTURE;
@@ -53,6 +62,7 @@ public final class CLibrary
     private static final int POSIX_FADV_WILLNEED   = 3; /* fadvise.h */
     private static final int POSIX_FADV_DONTNEED   = 4; /* fadvise.h */
     private static final int POSIX_FADV_NOREUSE    = 5; /* fadvise.h */
+
 
     static boolean jnaAvailable = true;
     static boolean jnaLockable = false;
@@ -79,6 +89,21 @@ public final class CLibrary
             jnaAvailable = false;
         }
 
+        //Find the version name
+        final utsname uname = new utsname();
+        VersionHelper ver = UNKNOWN;
+        try
+        {
+            if(uname(uname) == 0)
+                ver = new VersionHelper(uname.getRealeaseVersion());
+        }
+        catch(Throwable e)
+        {
+            logger.warn("Failed to determine Linux version: " + e);
+        }
+
+        version = ver;
+
         if (System.getProperty("os.arch").toLowerCase().contains("ppc"))
         {
             if (System.getProperty("os.name").toLowerCase().contains("linux"))
@@ -104,6 +129,148 @@ public final class CLibrary
         }
     }
 
+    public static class cpu_set_t extends Structure
+    {
+        static List<String> FIELD_ORDER = Arrays.asList("__bits");
+        static final int  __CPU_SETSIZE = 1024;
+        static final int __NCPUBITS = 8 * NativeLong.SIZE;
+        static final int SIZE_OF_CPU_SET_T = (__CPU_SETSIZE / __NCPUBITS) * NativeLong.SIZE;
+        public NativeLong[] __bits = new NativeLong[__CPU_SETSIZE / __NCPUBITS];
+        public cpu_set_t() {
+            for(int i = 0; i < __bits.length; i++) {
+                __bits[i] = new NativeLong(0);
+            }
+        }
+
+        @Override
+        protected List getFieldOrder() {
+            return FIELD_ORDER;
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public static void __CPU_ZERO(cpu_set_t cpuset) {
+            for(NativeLong bits : cpuset.__bits) {
+                bits.setValue(0l);
+            }
+        }
+
+        public static int __CPUELT(int cpu) {
+            return cpu / __NCPUBITS;
+        }
+
+        public static long __CPUMASK(int cpu) {
+            return 1l << (cpu % __NCPUBITS);
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public static void __CPU_SET(int cpu, cpu_set_t cpuset ) {
+            cpuset.__bits[__CPUELT(cpu)].setValue(
+            cpuset.__bits[__CPUELT(cpu)].longValue() | __CPUMASK(cpu));
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public static void __CPU_CLR(int cpu, cpu_set_t cpuset ) {
+            cpuset.__bits[__CPUELT(cpu)].setValue(
+            cpuset.__bits[__CPUELT(cpu)].longValue() & ~__CPUMASK(cpu));
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public static boolean __CPU_ISSET(int cpu, cpu_set_t cpuset ) {
+            return (cpuset.__bits[__CPUELT(cpu)].longValue() & __CPUMASK(cpu)) != 0;
+        }
+    }
+
+    /** Structure describing the system and machine.  */
+    public static class utsname extends Structure {
+        public static final int _UTSNAME_LENGTH = 65;
+
+        static List<String> FIELD_ORDER = Arrays.asList(
+        "sysname",
+        "nodename",
+        "release",
+        "version",
+        "machine",
+        "domainname"
+        );
+
+        /** Name of the implementation of the operating system.  */
+        public byte[] sysname = new byte[_UTSNAME_LENGTH];
+
+        /** Name of this node on the network.  */
+        public byte[] nodename = new byte[_UTSNAME_LENGTH];
+
+        /** Current release level of this implementation.  */
+        public byte[] release = new byte[_UTSNAME_LENGTH];
+
+        /** Current version level of this release.  */
+        public byte[] version = new byte[_UTSNAME_LENGTH];
+
+        /** Name of the hardware type the system is running on.  */
+        public byte[] machine = new byte[_UTSNAME_LENGTH];
+
+        /** NIS or YP domain name */
+        public byte[] domainname = new byte[_UTSNAME_LENGTH];
+
+        @Override
+        protected List getFieldOrder() {
+            return FIELD_ORDER;
+        }
+
+        static int length(final byte[] data) {
+            int len = 0;
+            final int datalen = data.length;
+            while(len < datalen && data[len] != 0)
+                len++;
+            return len;
+        }
+
+        public String getSysname() {
+            return new String(sysname, 0, length(sysname));
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public String getNodename() {
+            return new String(nodename, 0, length(nodename));
+        }
+
+        public String getRelease() {
+            return new String(release, 0, length(release));
+        }
+
+        public String getRealeaseVersion() {
+            final String release = getRelease();
+            final int releaseLen = release.length();
+            int len = 0;
+            for(;len < releaseLen; len++) {
+                final char c = release.charAt(len);
+                if(Character.isDigit(c) || c == '.') {
+                    continue;
+                }
+                break;
+            }
+            return release.substring(0, len);
+        }
+
+        public String getVersion() {
+            return new String(version, 0, length(version));
+        }
+
+        public String getMachine() {
+            return new String(machine, 0, length(machine));
+        }
+
+        @SuppressWarnings({"UnusedDeclaration"})
+        public String getDomainname() {
+            return new String(domainname, 0, length(domainname));
+        }
+
+        @Override
+        public String toString() {
+            return getSysname() + " " + getRelease() +
+                   " " + getVersion() + " " + getMachine();
+        }
+    }
+
     private static native int mlockall(int flags) throws LastErrorException;
     private static native int munlockall() throws LastErrorException;
     private static native int fcntl(int fd, int command, long flags) throws LastErrorException;
@@ -112,6 +279,13 @@ public final class CLibrary
     private static native int fsync(int fd) throws LastErrorException;
     private static native int close(int fd) throws LastErrorException;
     private static native Pointer strerror(int errnum) throws LastErrorException;
+
+    private static native int sched_setaffinity(int pid, int cpusetsize, cpu_set_t cpuset) throws LastErrorException;
+    private static native int uname(utsname name) throws LastErrorException;
+    private static native int syscall(int number, IntByReference arg1, IntByReference arg2, IntByReference terminator) throws LastErrorException;
+    private static native int syscall(int number) throws LastErrorException;
+    private static native int sched_getcpu() throws LastErrorException;
+
 
     private static int errno(RuntimeException e)
     {
@@ -256,6 +430,124 @@ public final class CLibrary
         }
 
         return result;
+    }
+
+    public static long tryGetThreadId()
+    {
+        try
+        {
+            final long ret = syscall(SYS_gettid);
+            if (ret < 0)
+                throw new IllegalStateException("gettid failed; errno=" + Native.getLastError());
+
+            return ret;
+        }
+        catch (UnsatisfiedLinkError e)
+        {
+            // if JNA is unavailable just skipping
+        }
+        catch (RuntimeException e)
+        {
+            if (!(e instanceof LastErrorException))
+                throw e;
+
+            logger.warn(String.format("gettid failed, errno (%d).", errno(e)));
+        }
+
+        return -1L;
+    }
+
+    public static boolean trySetAffinity(final long tid, final long affinity)
+    {
+        if (tid == -1)
+            return false;
+
+        final cpu_set_t cpuset = new cpu_set_t();
+        final int size = version.isSameOrNewer(VERSION_2_6) ? cpu_set_t.SIZE_OF_CPU_SET_T : NativeLong.SIZE;
+
+        if(Platform.is64Bit())
+        {
+            cpuset.__bits[0].setValue(affinity);
+        }
+        else
+        {
+            cpuset.__bits[0].setValue(affinity & 0xFFFFFFFFL);
+            cpuset.__bits[1].setValue((affinity >>> 32) & 0xFFFFFFFFL);
+        }
+        try
+        {
+            if(sched_setaffinity((int)tid, size, cpuset) != 0)
+            {
+                throw new IllegalStateException("sched_setaffinity(0, " + size +
+                                                ", 0x" + Long.toHexString(affinity) + " failed; errno=" + Native.getLastError());
+            }
+        }
+        catch (UnsatisfiedLinkError e)
+        {
+            // if JNA is unavailable just skipping
+        }
+        catch (RuntimeException e)
+        {
+            if (!(e instanceof LastErrorException))
+                throw e;
+
+            logger.warn("sched_setaffinity(0, " + size + ", 0x" + Long.toHexString(affinity) + " failed; errno=" + errno(e));
+            return false;
+        }
+
+        return true;
+    }
+
+
+    public static int tryGetCpu() {
+        try
+        {
+            final int ret = sched_getcpu();
+            if(ret < 0)
+                throw new IllegalStateException("sched_getcpu() failed; errno=" + Native.getLastError());
+
+            return ret;
+        }
+        catch (LastErrorException e)
+        {
+            throw new IllegalStateException("sched_getcpu() failed; errno=" + e.getErrorCode(), e);
+        }
+        catch (UnsatisfiedLinkError ule) {
+            try
+            {
+                final IntByReference cpu = new IntByReference();
+                final IntByReference node = new IntByReference();
+                final int ret = syscall(SYS_getcpu, cpu, node, null);
+                if (ret != 0)
+                    throw new IllegalStateException("getcpu() failed; errno=" + Native.getLastError());
+
+                return cpu.getValue();
+            }
+            catch (UnsatisfiedLinkError ule2)
+            {
+                // if JNA is unavailable just skipping
+            }
+            catch (LastErrorException lee)
+            {
+                if(lee.getErrorCode() == 38 && Platform.is64Bit())
+                { // unknown call
+                    final Pointer getcpuAddr = new Pointer((-10L << 20) + 1024L * 2L);
+                    final Function getcpu = Function.getFunction(getcpuAddr, Function.C_CONVENTION);
+                    final IntByReference cpu = new IntByReference();
+                    if(getcpu.invokeInt(new Object[] { cpu, null, null }) < 0)
+                        throw new IllegalStateException("getcpu() failed; errno=" + Native.getLastError());
+                    else
+                        return cpu.getValue();
+
+                }
+                else
+                {
+                    throw new IllegalStateException("getcpu() failed; errno=" + lee.getErrorCode(), lee);
+                }
+            }
+        }
+
+        return -1;
     }
 
     public static int tryOpenDirectory(String path)

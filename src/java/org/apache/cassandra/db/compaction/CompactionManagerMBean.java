@@ -116,4 +116,10 @@ public interface CompactionManagerMBean
      * @param number New maximum of validator threads
      */
     public void setMaximumValidatorThreads(int number);
+
+    /**
+     * Allows user to isolate compaction threads to their own set of cores
+     * @param ratio
+     */
+    public void setIsolationRatio(double ratio);
 }

@@ -31,8 +31,9 @@ import com.google.common.primitives.Ints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.util.concurrent.FastThreadLocalThread;
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.io.compress.CompressionMetadata;
+import org.apache.cassandra.utils.AffinityThread;
 import org.apache.cassandra.utils.ChecksumType;
 import org.apache.cassandra.utils.WrappedRunnable;
 
@@ -81,7 +82,7 @@ public class CompressedInputStream extends InputStream
         this.crcCheckChanceSupplier = crcCheckChanceSupplier;
         this.checksumType = checksumType;
 
-        new FastThreadLocalThread(new Reader(source, info, dataBuffer)).start();
+        new AffinityThread(NamedThreadFactory.cassandraThreadGroup, new Reader(source, info, dataBuffer), "Compressed input reader").start();
     }
 
     private void decompressNextChunk() throws IOException

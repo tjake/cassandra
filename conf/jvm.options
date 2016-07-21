@@ -88,15 +88,6 @@
 # performance benefit (around 5%).
 -ea
 
-# enable thread priorities, primarily so we can give periodic tasks
-# a lower priority to avoid interfering with client workload
--XX:+UseThreadPriorities
-
-# allows lowering thread priority without being root on linux - probably
-# not necessary on Windows but doesn't harm anything.
-# see http://tech.stolsvik.com/2010/01/linux-java-thread-priorities-workar
--XX:ThreadPriorityPolicy=42
-
 # Enable heap-dump if there's an OOM
 -XX:+HeapDumpOnOutOfMemoryError
 
@@ -121,7 +112,7 @@
 -XX:+UseNUMA
 
 # http://www.evanjones.ca/jvm-mmap-pause.html
--XX:+PerfDisableSharedMem
+#-XX:+PerfDisableSharedMem
 
 # Prefer binding to IPv4 network intefaces (when net.ipv6.bindv6only=1). See
 # http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6342561 (short version:

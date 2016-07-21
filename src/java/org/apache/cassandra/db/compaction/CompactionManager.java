@@ -29,6 +29,7 @@ import javax.management.openmbean.OpenDataException;
 import javax.management.openmbean.TabularData;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.*;
 import org.slf4j.Logger;
@@ -38,6 +39,7 @@ import org.apache.cassandra.cache.AutoSavingCache;
 import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
+import org.apache.cassandra.concurrent.ScheduledExecutors;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
@@ -84,6 +86,7 @@ public class CompactionManager implements CompactionManagerMBean
     public static final String MBEAN_OBJECT_NAME = "org.apache.cassandra.db:type=CompactionManager";
     private static final Logger logger = LoggerFactory.getLogger(CompactionManager.class);
     public static final CompactionManager instance;
+    private static final AffinityThreadGroup compactionThreadGroup = new AffinityThreadGroup("Compaction-Thread-Group");
 
     public static final int NO_GC = Integer.MIN_VALUE;
     public static final int GC_ALL = Integer.MAX_VALUE;
@@ -111,6 +114,59 @@ public class CompactionManager implements CompactionManagerMBean
         {
             throw new RuntimeException(e);
         }
+
+
+        if (!FBUtilities.isWindows())
+        {
+            //Start checking the isolationRatio
+            ScheduledExecutors.scheduledTasks.scheduleWithFixedDelay(() -> {
+
+                double ratio = instance.isolationRatio;
+                int numCores = FBUtilities.getAvailableProcessors();
+                int activeCompactions = instance.getActiveCompactions();
+
+                // What's the point?
+                if (numCores <= 4)
+                    return;
+
+                // Default case
+                if (compactionThreadGroup.getAffinityMask() == AffinityThreadGroup.ALL_CORES &&
+                    NamedThreadFactory.cassandraThreadGroup.getAffinityMask() == AffinityThreadGroup.ALL_CORES
+                    && ratio == 0.0)
+                {
+                    return;
+                }
+
+                // Remove all isolation
+                if (ratio == 0.0 || activeCompactions == 0)
+                {
+                    compactionThreadGroup.setAffinityMask(AffinityThreadGroup.ALL_CORES);
+                    NamedThreadFactory.cassandraThreadGroup.setAffinityMask(AffinityThreadGroup.ALL_CORES);
+                    return;
+                }
+
+                long compactionMask = 0L;
+                long otherMask = 0L;
+
+                long compactionCores = (long) (numCores * ratio);
+                //compactionCores = Math.min(activeCompactions, compactionCores);
+
+                //logger.debug("Compaction cores = {}", compactionCores);
+
+                //TODO: do we need to select a cpu offset since you can
+                //specify the num cores?
+                for (int i = numCores - 1; i >= 0 ; i--)
+                {
+                    if (i >= numCores - compactionCores)
+                        compactionMask |= 1L << i;
+                    else
+                        otherMask |= 1L << i;
+                }
+
+                NamedThreadFactory.cassandraThreadGroup.setAffinityMask(otherMask);
+                compactionThreadGroup.setAffinityMask(compactionMask);
+            }, 10, 5, TimeUnit.SECONDS);
+        }
     }
 
     private final CompactionExecutor executor = new CompactionExecutor();
@@ -121,6 +177,9 @@ public class CompactionManager implements CompactionManagerMBean
     private final Multiset<ColumnFamilyStore> compactingCF = ConcurrentHashMultiset.create();
 
     private final RateLimiter compactionRateLimiter = RateLimiter.create(Double.MAX_VALUE);
+
+    //Represents the maximum number of cores to isolate compactions on
+    private double isolationRatio = 0.0d;
 
     /**
      * Gets compaction rate limiter.
@@ -1226,7 +1285,6 @@ public class CompactionManager implements CompactionManagerMBean
         Refs<SSTableReader> sstables = null;
         try
         {
-
             int gcBefore;
             int nowInSec = FBUtilities.nowInSeconds();
             UUID parentRepairSessionId = validator.desc.parentSessionId;
@@ -1641,21 +1699,29 @@ public class CompactionManager implements CompactionManagerMBean
 
         return executor.submit(runnable);
     }
+
     public int getActiveCompactions()
     {
         return CompactionMetrics.getCompactions().size();
+    }
+
+    public void setIsolationRatio(double ratio)
+    {
+        Preconditions.checkArgument(ratio >= 0.0 && ratio < 1.0);
+        logger.info("Setting compaction isolation ratio to {}", ratio);
+        this.isolationRatio = ratio;
     }
 
     private static class CompactionExecutor extends JMXEnabledThreadPoolExecutor
     {
         protected CompactionExecutor(int minThreads, int maxThreads, String name, BlockingQueue<Runnable> queue)
         {
-            super(minThreads, maxThreads, 60, TimeUnit.SECONDS, queue, new NamedThreadFactory(name, Thread.MIN_PRIORITY), "internal");
+            super(minThreads, maxThreads, 60, TimeUnit.SECONDS, queue, new NamedThreadFactory(name, compactionThreadGroup), "internal");
         }
 
         private CompactionExecutor(int threadCount, String name)
         {
-            this(threadCount, threadCount, name, new LinkedBlockingQueue<Runnable>());
+            this(threadCount, threadCount, name, new LinkedBlockingQueue<>());
         }
 
         public CompactionExecutor()
