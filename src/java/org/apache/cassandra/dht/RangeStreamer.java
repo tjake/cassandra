@@ -155,7 +155,8 @@ public class RangeStreamer
      */
     public void addRanges(String keyspaceName, Collection<Range<Token>> ranges)
     {
-        Multimap<Range<Token>, InetAddress> rangesForKeyspace = useStrictSourcesForRanges(keyspaceName)
+        boolean useStrictSource = useStrictSourcesForRanges(keyspaceName);
+        Multimap<Range<Token>, InetAddress> rangesForKeyspace = useStrictSource
                 ? getAllRangesWithStrictSourcesFor(keyspaceName, ranges) : getAllRangesWithSourcesFor(keyspaceName, ranges);
 
         if (logger.isTraceEnabled())
@@ -164,7 +165,10 @@ public class RangeStreamer
                 logger.trace(String.format("%s: range %s exists on %s", description, entry.getKey(), entry.getValue()));
         }
 
-        for (Map.Entry<InetAddress, Collection<Range<Token>>> entry : getRangeFetchMap(rangesForKeyspace, sourceFilters, keyspaceName, useStrictConsistency).asMap().entrySet())
+        Multimap<InetAddress, Range<Token>> rangeFetchMap = useStrictSource ? getRangeFetchMap(rangesForKeyspace, sourceFilters, keyspaceName, useStrictConsistency) :
+                                                                              getOptimizedRangeFetchMap(rangesForKeyspace, sourceFilters, keyspaceName);
+
+        for (Map.Entry<InetAddress, Collection<Range<Token>>> entry : rangeFetchMap.asMap().entrySet())
         {
             if (logger.isTraceEnabled())
             {
@@ -280,6 +284,16 @@ public class RangeStreamer
         return rangeSources;
     }
 
+    private static Multimap<InetAddress, Range<Token>> getOptimizedRangeFetchMap(Multimap<Range<Token>, InetAddress> rangesWithSources,
+                                                                                 Collection<ISourceFilter> sourceFilters, String keyspace)
+    {
+        RangeFetchMapCalculator calculator = new RangeFetchMapCalculator(rangesWithSources, sourceFilters, keyspace);
+        Multimap<InetAddress, Range<Token>> rangeFetchMapMap = calculator.getRangeFetchMap();
+        logger.info("Output from RangeFetchMapCalculator for keyspace " + keyspace);
+        validateRangeFetchMap(rangesWithSources, rangeFetchMapMap, keyspace);
+        return rangeFetchMapMap;
+    }
+
     /**
      * @param rangesWithSources The ranges we want to fetch (key) and their potential sources (value)
      * @param sourceFilters A (possibly empty) collection of source filters to apply. In addition to any filters given
@@ -341,6 +355,32 @@ public class RangeStreamer
                                                                  IFailureDetector fd, boolean useStrictConsistency)
     {
         return getRangeFetchMap(rangesWithSourceTarget, Collections.<ISourceFilter>singleton(new FailureDetectorSourceFilter(fd)), keyspace, useStrictConsistency);
+    }
+
+    /**
+     * Verify that source returned for each range is correct
+     * @param rangesWithSources
+     * @param rangeFetchMapMap
+     * @param keyspace
+     */
+    private static void validateRangeFetchMap(Multimap<Range<Token>, InetAddress> rangesWithSources, Multimap<InetAddress, Range<Token>> rangeFetchMapMap, String keyspace)
+    {
+        for (Map.Entry<InetAddress, Range<Token>> entry : rangeFetchMapMap.entries())
+        {
+            if(entry.getKey().equals(FBUtilities.getBroadcastAddress()))
+            {
+                throw new IllegalStateException("Trying to stream locally. Range: " + entry.getValue()
+                                                + " in keyspace " + keyspace);
+            }
+
+            if (!rangesWithSources.get(entry.getValue()).contains(entry.getKey()))
+            {
+                throw new IllegalStateException("Trying to stream from wrong endpoint. Range: " + entry.getValue()
+                                                + " in keyspace " + keyspace + " from endpoint: " + entry.getKey());
+            }
+
+            logger.info("Streaming range {} from endpoint {} for keyspace {}", entry.getValue(), entry.getKey(), keyspace);
+        }
     }
 
     // For testing purposes
