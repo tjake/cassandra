@@ -24,7 +24,6 @@ import java.nio.channels.WritableByteChannel;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
-import io.netty.util.Recycler;
 import io.netty.util.concurrent.FastThreadLocal;
 import org.apache.cassandra.config.Config;
 
@@ -44,7 +43,7 @@ public class DataOutputBuffer extends BufferedDataOutputStreamPlus
     /*
      * Only recycle OutputBuffers up to 1Mb. Larger buffers will be trimmed back to this size.
      */
-    private static final int MAX_RECYCLE_BUFFER_SIZE = 1024 * 1024;
+    private static final int MAX_RECYCLE_BUFFER_SIZE = Integer.getInteger(Config.PROPERTY_PREFIX + "dob_max_recycle_bytes", 1024 * 1024);
 
     private static final int DEFAULT_INITIAL_BUFFER_SIZE = 128;
 

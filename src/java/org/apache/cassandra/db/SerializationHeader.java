@@ -20,10 +20,6 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.stream.Collectors;
-
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
@@ -45,15 +41,15 @@ public class SerializationHeader
 {
     public static final Serializer serializer = new Serializer();
 
-    private boolean isForSSTable;
+    private final boolean isForSSTable;
 
-    private AbstractType<?> keyType;
-    private List<AbstractType<?>> clusteringTypes;
+    private final AbstractType<?> keyType;
+    private final List<AbstractType<?>> clusteringTypes;
 
-    private PartitionColumns columns;
-    private EncodingStats stats;
+    private final PartitionColumns columns;
+    private final EncodingStats stats;
 
-    private Map<ByteBuffer, AbstractType<?>> typeMap;
+    private final Map<ByteBuffer, AbstractType<?>> typeMap;
 
     private SerializationHeader(boolean isForSSTable,
                                 AbstractType<?> keyType,
@@ -109,21 +105,10 @@ public class SerializationHeader
     {
         this(isForSSTable,
              metadata.getKeyValidator(),
-             metadata.getClusteringTypes(),
+             metadata.comparator.subtypes(),
              columns,
              stats,
              null);
-    }
-
-    public void reuse(boolean isForSSTable, CFMetaData metadata,
-                      PartitionColumns columns, EncodingStats stats)
-    {
-        this.isForSSTable = isForSSTable;
-        this.keyType = metadata.getKeyValidator();
-        this.clusteringTypes = metadata.getClusteringTypes();
-        this.columns = columns;
-        this.stats = stats;
-        this.typeMap = null;
     }
 
     public PartitionColumns columns()
@@ -405,7 +390,7 @@ public class SerializationHeader
             EncodingStats stats = EncodingStats.serializer.deserialize(in);
 
             AbstractType<?> keyType = metadata.getKeyValidator();
-            List<AbstractType<?>> clusteringTypes = metadata.getClusteringTypes();
+            List<AbstractType<?>> clusteringTypes = metadata.comparator.subtypes();
 
             Columns statics, regulars;
             if (selection == null)

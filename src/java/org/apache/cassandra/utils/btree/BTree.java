@@ -1164,34 +1164,38 @@ public class BTree
     }
 
     /**
-     * Simple method to walk the btree forwards and apply a function till a stop condition it reached
+     * Simple method to walk the btree forwards or reversed and apply a function to each element
      *
      * Public method
      *
-     * @param btree
-     * @param function
-     * @param stopCondition
      */
-    public static <V> void applyForwards(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    public static <V> void apply(Object[] btree, Consumer<V> function, boolean reversed)
     {
-        applyForwardsInner(btree, function, stopCondition);
+        if (reversed)
+            applyReverse(btree, function, null);
+        else
+            applyForwards(btree, function, null);
     }
 
     /**
-    * Simple method to walk the btree forwards and apply a function to each element
-    *
-    * Public method
-    *
-    * @param btree
-    * @param function
-    */
-    public static <V> void applyForwards(Object[] btree, Consumer<V> function)
+     * Simple method to walk the btree forwards or reversed and apply a function till a stop condition is reached
+     *
+     * Public method
+     *
+     */
+    public static <V> void apply(Object[] btree, Consumer<V> function, Predicate<V> stopCondition, boolean reversed)
     {
-        applyForwardsInner(btree, function, null);
+        if (reversed)
+            applyReverse(btree, function, stopCondition);
+        else
+            applyForwards(btree, function, stopCondition);
     }
 
+
+
+
     /**
-     * Simple method to walk the btree forwards and apply a function till a stop condition it reached
+     * Simple method to walk the btree forwards and apply a function till a stop condition is reached
      *
      * Private method
      *
@@ -1199,7 +1203,7 @@ public class BTree
      * @param function
      * @param stopCondition
      */
-    private static <V> boolean applyForwardsInner(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    private static <V> boolean applyForwards(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
     {
         boolean isLeaf = isLeaf(btree);
         int childOffset = isLeaf ? Integer.MAX_VALUE : getChildStart(btree);
@@ -1219,7 +1223,7 @@ public class BTree
             }
             else
             {
-                if (applyForwardsInner((Object[]) current, function, stopCondition))
+                if (applyForwards((Object[]) current, function, stopCondition))
                     return true;
             }
         }
@@ -1228,34 +1232,7 @@ public class BTree
     }
 
     /**
-     * Simple method to walk the btree in reverse and apply a function till a stop condition it reached
-     *
-     * Public method
-     *
-     * @param btree
-     * @param function
-     * @param stopCondition
-     */
-    public static <V> void applyReverse(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
-    {
-        applyReverseInner(btree, function, stopCondition);
-    }
-
-    /**
-     * Simple method to walk the btree in reverse and apply a function to each element
-     *
-     * Public method
-     *
-     * @param btree
-     * @param function
-     */
-    public static <V> void applyReverse(Object[] btree, Consumer<V> function)
-    {
-        applyReverse(btree, function, null);
-    }
-
-    /**
-     * Simple method to walk the btree in reverse and apply a function till a stop condition it reached
+     * Simple method to walk the btree in reverse and apply a function till a stop condition is reached
      *
      * Private method
      *
@@ -1263,7 +1240,7 @@ public class BTree
      * @param function
      * @param stopCondition
      */
-    private static <V> boolean applyReverseInner(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
+    private static <V> boolean applyReverse(Object[] btree, Consumer<V> function, Predicate<V> stopCondition)
     {
         boolean isLeaf = isLeaf(btree);
         int childOffset = isLeaf ? 0 : getChildStart(btree);
@@ -1302,7 +1279,7 @@ public class BTree
             }
             else
             {
-                if (applyReverseInner((Object[]) current, function, stopCondition))
+                if (applyReverse((Object[]) current, function, stopCondition))
                     return true;
             }
         }

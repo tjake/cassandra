@@ -126,7 +126,6 @@ public final class CFMetaData
 
     //For hot path serialization it's often easier to store this info here
     private volatile ColumnFilter allColumnFilter;
-    private volatile List<AbstractType<?>> clusteringTypes;
 
     /*
      * All of these methods will go away once CFMetaData becomes completely immutable.
@@ -334,7 +333,6 @@ public final class CFMetaData
             this.compactValueColumn = CompactTables.getCompactValueColumn(partitionColumns, isSuper());
 
         this.allColumnFilter = ColumnFilter.all(this);
-        this.clusteringTypes = Lists.transform(clusteringColumns, column -> column.type);
     }
 
     public Indexes getIndexes()
@@ -345,11 +343,6 @@ public final class CFMetaData
     public ColumnFilter getAllColumnFilter()
     {
         return allColumnFilter;
-    }
-
-    public List<AbstractType<?>> getClusteringTypes()
-    {
-        return clusteringTypes;
     }
 
     public static CFMetaData create(String ksName,

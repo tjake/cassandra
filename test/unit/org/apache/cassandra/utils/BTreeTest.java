@@ -136,7 +136,7 @@ public class BTreeTest
         Object[] btree = BTree.build(input, noOp);
 
         final List<Integer> result = new ArrayList<>();
-        BTree.<Integer>applyForwards(btree, i -> result.add(i));
+        BTree.<Integer>apply(btree, i -> result.add(i), false);
 
         org.junit.Assert.assertArrayEquals(input.toArray(),result.toArray());
     }
@@ -148,7 +148,7 @@ public class BTreeTest
         Object[] btree = BTree.build(input, noOp);
 
         final List<Integer> result = new ArrayList<>();
-        BTree.<Integer>applyReverse(btree, i -> result.add(i));
+        BTree.<Integer>apply(btree, i -> result.add(i), true);
 
         org.junit.Assert.assertArrayEquals(Lists.reverse(input).toArray(),result.toArray());
     }

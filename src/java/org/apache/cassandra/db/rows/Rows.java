@@ -26,6 +26,7 @@ import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.partitions.PartitionStatisticsCollector;
 import org.apache.cassandra.utils.MergeIterator;
+import org.apache.cassandra.utils.WrappedInt;
 import org.apache.cassandra.utils.btree.BTree;
 
 /**
@@ -74,18 +75,14 @@ public abstract class Rows
         collector.update(row.deletion().time());
 
         //we have to wrap these for the lambda
-        final int[] columnCount = new int[]{0};
-        final int[] cellCount = new int[]{0};
+        final WrappedInt columnCount = new WrappedInt(0);
+        final WrappedInt cellCount = new WrappedInt(0);
 
-        assert row instanceof BTreeRow;
-        Object[] btree = ((BTreeRow)row).btree;
-
-
-        BTree.<ColumnData>applyForwards(btree, cd -> {
+        row.apply(cd -> {
             if (cd.column().isSimple())
             {
-                ++columnCount[0];
-                ++cellCount[0];
+                columnCount.increment();
+                cellCount.increment();
                 Cells.collectStats((Cell) cd, collector);
             }
             else
@@ -94,18 +91,18 @@ public abstract class Rows
                 collector.update(complexData.complexDeletion());
                 if (complexData.hasCells())
                 {
-                    ++columnCount[0];
+                    columnCount.increment();
                     for (Cell cell : complexData)
                     {
-                        ++cellCount[0];
+                        cellCount.increment();
                         Cells.collectStats(cell, collector);
                     }
                 }
             }
-        });
+        }, false);
 
-        collector.updateColumnSetPerRow(columnCount[0]);
-        return cellCount[0];
+        collector.updateColumnSetPerRow(columnCount.get());
+        return cellCount.get();
     }
 
     /**

@@ -29,8 +29,6 @@ import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.utils.SearchIterator;
 import org.apache.cassandra.utils.WrappedException;
-import org.apache.cassandra.utils.btree.BTree;
-import org.apache.cassandra.utils.btree.BTreeSearchIterator;
 
 /**
  * Serialize/deserialize a single Unfiltered (both on-wire and on-disk).
@@ -229,13 +227,11 @@ public class UnfilteredSerializer
         if ((flags & HAS_ALL_COLUMNS) == 0)
             Columns.serializer.serializeSubset(Collections2.transform(row, ColumnData::column), headerColumns, out);
 
-        assert row instanceof BTreeRow;
-        Object[] btree = ((BTreeRow)row).btree;
         SearchIterator<ColumnDefinition, ColumnDefinition> si = headerColumns.iterator();
 
         try
         {
-            BTree.<ColumnData>applyForwards(btree, cd -> {
+            row.apply(cd -> {
                 // We can obtain the column for data directly from data.column(). However, if the cell/complex data
                 // originates from a sstable, the column we'll get will have the type used when the sstable was serialized,
                 // and if that type have been recently altered, that may not be the type we want to serialize the column
@@ -255,7 +251,7 @@ public class UnfilteredSerializer
                 {
                     throw new WrappedException(e);
                 }
-            });
+            }, false);
         }
         catch (WrappedException e)
         {
@@ -523,8 +519,7 @@ public class UnfilteredSerializer
 
             try
             {
-                BTree.<ColumnDefinition>applyForwards(columns.columns, column ->
-                {
+                columns.apply(column -> {
                     try
                     {
                         if (column.isSimple())
@@ -536,7 +531,7 @@ public class UnfilteredSerializer
                     {
                         throw new WrappedException(e);
                     }
-                });
+                }, false);
             }
             catch (WrappedException e)
             {

@@ -29,6 +29,9 @@ import io.netty.util.concurrent.FastThreadLocalThread;
 
 /**
  * Created to test perf of FastThreadLocal
+ *
+ * Used in MutationBench via:
+ * jvmArgsAppend = {"-Djmh.executor=CUSTOM", "-Djmh.executor.class=org.apache.cassandra.test.microbench.FastThreadExecutor"}
  */
 public class FastThreadExecutor extends AbstractExecutorService
 {

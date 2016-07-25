@@ -82,24 +82,13 @@ public class UnfilteredRowIteratorSerializer
 
     // Should only be used for the on-wire format.
 
-    private static final FastThreadLocal<SerializationHeader> serializationHeader = new FastThreadLocal<>();
-
     public void serialize(UnfilteredRowIterator iterator, ColumnFilter selection, DataOutputPlus out, int version, int rowEstimate) throws IOException
     {
 
-        SerializationHeader header = serializationHeader.get();
-        if (header == null)
-        {
-            header = new SerializationHeader(false,
+        SerializationHeader header = new SerializationHeader(false,
                                              iterator.metadata(),
                                              iterator.columns(),
                                              iterator.stats());
-            serializationHeader.set(header);
-        }
-        else
-        {
-            header.reuse(false, iterator.metadata(), iterator.columns(), iterator.stats());
-        }
 
         serialize(iterator, header, selection, out, version, rowEstimate);
     }
