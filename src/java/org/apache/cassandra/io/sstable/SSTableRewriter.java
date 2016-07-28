@@ -53,7 +53,7 @@ import org.apache.cassandra.utils.concurrent.Transactional;
 public class SSTableRewriter extends Transactional.AbstractTransactional implements Transactional
 {
     @VisibleForTesting
-    public static boolean disableEarlyOpeningForTests = false;
+    public static boolean disableEarlyOpeningForTests = true;
 
     private final long preemptiveOpenInterval;
     private final long maxAge;
@@ -131,9 +131,9 @@ public class SSTableRewriter extends Transactional.AbstractTransactional impleme
     {
         // we do this before appending to ensure we can resetAndTruncate() safely if the append fails
         DecoratedKey key = partition.partitionKey();
-        maybeReopenEarly(key);
+        //maybeReopenEarly(key);
         RowIndexEntry index = writer.append(partition);
-        if (!transaction.isOffline() && index != null)
+        /*if (!transaction.isOffline() && index != null)
         {
             for (SSTableReader reader : transaction.originals())
             {
@@ -143,7 +143,7 @@ public class SSTableRewriter extends Transactional.AbstractTransactional impleme
                     break;
                 }
             }
-        }
+        }*/
         return index;
     }
 
