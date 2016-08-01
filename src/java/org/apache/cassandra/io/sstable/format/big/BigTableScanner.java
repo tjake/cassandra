@@ -95,7 +95,7 @@ public class BigTableScanner implements ISSTableScanner
     {
         assert sstable != null;
 
-        this.dfile = limiter == null ? sstable.openDataReader() : sstable.openDataReader(limiter);
+        this.dfile = sstable.openDataReader(); // : sstable.openDataReader(limiter);
         this.ifile = sstable.openIndexReader();
         this.sstable = sstable;
         this.columns = columns;
