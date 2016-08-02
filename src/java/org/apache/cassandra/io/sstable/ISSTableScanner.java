@@ -29,5 +29,6 @@ public interface ISSTableScanner extends UnfilteredPartitionIterator
 {
     public long getLengthInBytes();
     public long getCurrentPosition();
+    public double getCompressionRatio();
     public String getBackingFiles();
 }

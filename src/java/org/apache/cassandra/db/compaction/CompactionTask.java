@@ -27,6 +27,8 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import com.google.common.primitives.Ints;
+import com.google.common.util.concurrent.RateLimiter;
 
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.compaction.writers.CompactionAwareWriter;
@@ -41,6 +43,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.compaction.CompactionManager.CompactionExecutorStatsCollector;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
+import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.Refs;
@@ -149,13 +152,17 @@ public class CompactionTask extends AbstractCompactionTask
 
         logger.debug("Compacting ({}) {}", taskId, ssTableLoggerMsg);
 
+        RateLimiter limiter = CompactionManager.instance.getRateLimiter();
         long start = System.nanoTime();
         long startTime = System.currentTimeMillis();
         long totalKeysWritten = 0;
         long estimatedKeys = 0;
+        long inputSizeBytes = 0;
         try (CompactionController controller = getCompactionController(transaction.originals()))
         {
             Set<SSTableReader> actuallyCompact = Sets.difference(transaction.originals(), controller.getFullyExpiredSSTables());
+            for (SSTableReader reader : actuallyCompact)
+                inputSizeBytes += reader.onDiskLength();
 
             Collection<SSTableReader> newSStables;
 
@@ -173,6 +180,7 @@ public class CompactionTask extends AbstractCompactionTask
                 if (collector != null)
                     collector.beginCompaction(ci);
                 long lastCheckObsoletion = start;
+                long bytesRead = scanners.getTotalBytesScanned();
 
                 if (!controller.cfs.getCompactionStrategyManager().isActive())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
@@ -187,6 +195,17 @@ public class CompactionTask extends AbstractCompactionTask
 
                         if (writer.append(ci.next()))
                             totalKeysWritten++;
+
+                        //Rate limit the scanners, and account for compression
+                        long totalBytesRead = scanners.getTotalBytesScanned();
+                        int lengthRead = Ints.checkedCast(totalBytesRead - bytesRead);
+                        double compressionRatio = scanners.getCurrentCompressionRatio();
+                        if (compressionRatio != MetadataCollector.NO_COMPRESSION_RATIO)
+                            lengthRead *= compressionRatio;
+
+                        limiter.acquire(lengthRead);
+
+                        bytesRead = totalBytesRead;
 
                         if (System.nanoTime() - lastCheckObsoletion > TimeUnit.MINUTES.toNanos(1L))
                         {
@@ -213,7 +232,7 @@ public class CompactionTask extends AbstractCompactionTask
 
             long durationInNano = System.nanoTime() - start;
             long dTime = TimeUnit.NANOSECONDS.toMillis(durationInNano);
-            long startsize = SSTableReader.getTotalBytes(transaction.originals());
+            long startsize = inputSizeBytes;
             long endsize = SSTableReader.getTotalBytes(newSStables);
             double ratio = (double) endsize / (double) startsize;
 

@@ -35,8 +35,10 @@ import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.io.compress.CompressionMetadata;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
@@ -265,7 +267,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
                 {
                     // L0 makes no guarantees about overlapping-ness.  Just create a direct scanner for each
                     for (SSTableReader sstable : byLevel.get(level))
-                        scanners.add(sstable.getScanner(ranges, CompactionManager.instance.getRateLimiter()));
+                        scanners.add(sstable.getScanner(ranges, null));
                 }
                 else
                 {
@@ -325,6 +327,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
 
         private ISSTableScanner currentScanner;
         private long positionOffset;
+        SSTableReader currentSSTable;
 
         public LeveledScanner(Collection<SSTableReader> sstables, Collection<Range<Token>> ranges)
         {
@@ -349,7 +352,9 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
             Collections.sort(this.sstables, SSTableReader.sstableComparator);
             sstableIterator = this.sstables.iterator();
             assert sstableIterator.hasNext(); // caller should check intersecting first
-            currentScanner = sstableIterator.next().getScanner(ranges, CompactionManager.instance.getRateLimiter());
+            currentSSTable = sstableIterator.next();
+            currentScanner = currentSSTable.getScanner(ranges, null);
+
         }
 
         public static Collection<SSTableReader> intersecting(Collection<SSTableReader> sstables, Collection<Range<Token>> ranges)
@@ -399,7 +404,8 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
                     currentScanner = null;
                     return endOfData();
                 }
-                currentScanner = sstableIterator.next().getScanner(ranges, CompactionManager.instance.getRateLimiter());
+                currentSSTable = sstableIterator.next();
+                currentScanner = currentSSTable.getScanner(ranges, null);
             }
         }
 
@@ -417,6 +423,11 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
         public long getCurrentPosition()
         {
             return positionOffset + (currentScanner == null ? 0L : currentScanner.getCurrentPosition());
+        }
+
+        public double getCompressionRatio()
+        {
+            return currentSSTable == null ? MetadataCollector.NO_COMPRESSION_RATIO : currentSSTable.getCompressionRatio();
         }
 
         public String getBackingFiles()

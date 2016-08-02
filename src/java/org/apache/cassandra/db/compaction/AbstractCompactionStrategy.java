@@ -283,12 +283,11 @@ public abstract class AbstractCompactionStrategy
     @SuppressWarnings("resource")
     public ScannerList getScanners(Collection<SSTableReader> sstables, Collection<Range<Token>> ranges)
     {
-        RateLimiter limiter = CompactionManager.instance.getRateLimiter();
         ArrayList<ISSTableScanner> scanners = new ArrayList<ISSTableScanner>();
         try
         {
             for (SSTableReader sstable : sstables)
-                scanners.add(sstable.getScanner(ranges, limiter));
+                scanners.add(sstable.getScanner(ranges, null));
         }
         catch (Throwable t)
         {
@@ -339,6 +338,30 @@ public abstract class AbstractCompactionStrategy
         public ScannerList(List<ISSTableScanner> scanners)
         {
             this.scanners = scanners;
+        }
+
+        public long getTotalBytesScanned()
+        {
+            long bytesScanned = 0L;
+            for (ISSTableScanner scanner : scanners)
+                bytesScanned += scanner.getCurrentPosition();
+
+            return bytesScanned;
+        }
+
+        public double getCurrentCompressionRatio()
+        {
+            double compressionRatio = MetadataCollector.NO_COMPRESSION_RATIO;
+
+            for (ISSTableScanner scanner : scanners)
+            {
+                if (scanner.getCurrentPosition() == scanner.getLengthInBytes())
+                    continue;
+
+                compressionRatio = scanner.getCompressionRatio();
+            }
+
+            return compressionRatio;
         }
 
         public void close()
