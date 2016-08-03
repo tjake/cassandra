@@ -370,9 +370,9 @@ public class CompactionIteratorTest
         }
 
         @Override
-        public double getCompressionRatio()
+        public long getCompressedLengthInBytes()
         {
-            return MetadataCollector.NO_COMPRESSION_RATIO;
+            return 0;
         }
 
         @Override

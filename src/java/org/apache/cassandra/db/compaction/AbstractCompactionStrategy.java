@@ -23,7 +23,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
-import com.google.common.util.concurrent.RateLimiter;
 
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.SerializationHeader;
@@ -349,19 +348,30 @@ public abstract class AbstractCompactionStrategy
             return bytesScanned;
         }
 
-        public double getCurrentCompressionRatio()
+        public long getTotalCompressedSize()
         {
-            double compressionRatio = MetadataCollector.NO_COMPRESSION_RATIO;
+            long compressedSize = 0;
+            for (ISSTableScanner scanner : scanners)
+                compressedSize += scanner.getCompressedLengthInBytes();
+
+            return compressedSize;
+        }
+
+        public double getCompressionRatio()
+        {
+            double compressed = 0.0;
+            double uncompressed = 0.0;
 
             for (ISSTableScanner scanner : scanners)
             {
-                if (scanner.getCurrentPosition() == scanner.getLengthInBytes())
-                    continue;
-
-                compressionRatio = scanner.getCompressionRatio();
+                compressed += scanner.getCompressedLengthInBytes();
+                uncompressed += scanner.getLengthInBytes();
             }
 
-            return compressionRatio;
+            if (compressed == uncompressed || uncompressed == 0)
+                return MetadataCollector.NO_COMPRESSION_RATIO;
+
+            return compressed / uncompressed;
         }
 
         public void close()

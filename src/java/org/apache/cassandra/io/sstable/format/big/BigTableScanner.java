@@ -223,9 +223,9 @@ public class BigTableScanner implements ISSTableScanner
         return dfile.getFilePointer();
     }
 
-    public double getCompressionRatio()
+    public long getCompressedLengthInBytes()
     {
-        return sstable.getCompressionRatio();
+        return sstable.onDiskLength();
     }
 
     public String getBackingFiles()
@@ -387,9 +387,9 @@ public class BigTableScanner implements ISSTableScanner
             return 0;
         }
 
-        public double getCompressionRatio()
+        public long getCompressedLengthInBytes()
         {
-            return sstable.getCompressionRatio();
+            return 0;
         }
 
         public String getBackingFiles()

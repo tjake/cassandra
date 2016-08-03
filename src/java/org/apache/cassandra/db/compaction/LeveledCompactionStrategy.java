@@ -35,10 +35,8 @@ import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.io.compress.CompressionMetadata;
 import org.apache.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
-import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
@@ -324,6 +322,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
         private final List<SSTableReader> sstables;
         private final Iterator<SSTableReader> sstableIterator;
         private final long totalLength;
+        private final long compressedLength;
 
         private ISSTableScanner currentScanner;
         private long positionOffset;
@@ -336,6 +335,7 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
             // add only sstables that intersect our range, and estimate how much data that involves
             this.sstables = new ArrayList<>(sstables.size());
             long length = 0;
+            long cLength = 0;
             for (SSTableReader sstable : sstables)
             {
                 this.sstables.add(sstable);
@@ -346,9 +346,11 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
                     estKeysInRangeRatio = ((double) sstable.estimatedKeysForRanges(ranges)) / estimatedKeys;
 
                 length += sstable.uncompressedLength() * estKeysInRangeRatio;
+                cLength += sstable.onDiskLength() * estKeysInRangeRatio;
             }
 
             totalLength = length;
+            compressedLength = cLength;
             Collections.sort(this.sstables, SSTableReader.sstableComparator);
             sstableIterator = this.sstables.iterator();
             assert sstableIterator.hasNext(); // caller should check intersecting first
@@ -425,9 +427,9 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
             return positionOffset + (currentScanner == null ? 0L : currentScanner.getCurrentPosition());
         }
 
-        public double getCompressionRatio()
+        public long getCompressedLengthInBytes()
         {
-            return currentSSTable == null ? MetadataCollector.NO_COMPRESSION_RATIO : currentSSTable.getCompressionRatio();
+            return compressedLength;
         }
 
         public String getBackingFiles()

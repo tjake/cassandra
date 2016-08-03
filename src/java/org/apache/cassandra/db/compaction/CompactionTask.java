@@ -157,13 +157,10 @@ public class CompactionTask extends AbstractCompactionTask
         long startTime = System.currentTimeMillis();
         long totalKeysWritten = 0;
         long estimatedKeys = 0;
-        long inputSizeBytes = 0;
+        long inputSizeBytes;
         try (CompactionController controller = getCompactionController(transaction.originals()))
         {
             Set<SSTableReader> actuallyCompact = Sets.difference(transaction.originals(), controller.getFullyExpiredSSTables());
-            for (SSTableReader reader : actuallyCompact)
-                inputSizeBytes += reader.onDiskLength();
-
             Collection<SSTableReader> newSStables;
 
             long[] mergedRowCounts;
@@ -180,7 +177,10 @@ public class CompactionTask extends AbstractCompactionTask
                 if (collector != null)
                     collector.beginCompaction(ci);
                 long lastCheckObsoletion = start;
-                long bytesRead = scanners.getTotalBytesScanned();
+                inputSizeBytes = scanners.getTotalCompressedSize();
+                double compressionRatio = scanners.getCompressionRatio();
+                if (compressionRatio == MetadataCollector.NO_COMPRESSION_RATIO)
+                    compressionRatio = 1.0;
 
                 if (!controller.cfs.getCompactionStrategyManager().isActive())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
@@ -193,19 +193,17 @@ public class CompactionTask extends AbstractCompactionTask
                         if (ci.isStopRequested())
                             throw new CompactionInterruptedException(ci.getCompactionInfo());
 
+                        long startOffset = scanners.getTotalBytesScanned();
+
                         if (writer.append(ci.next()))
                             totalKeysWritten++;
 
+                        long endOffset = scanners.getTotalBytesScanned();
+
                         //Rate limit the scanners, and account for compression
-                        long totalBytesRead = scanners.getTotalBytesScanned();
-                        int lengthRead = Ints.checkedCast(totalBytesRead - bytesRead);
-                        double compressionRatio = scanners.getCurrentCompressionRatio();
-                        if (compressionRatio != MetadataCollector.NO_COMPRESSION_RATIO)
-                            lengthRead *= compressionRatio;
+                        int lengthRead = (int) (Ints.checkedCast(endOffset - startOffset) * compressionRatio);
+                        limiter.acquire(lengthRead + 1);
 
-                        limiter.acquire(lengthRead);
-
-                        bytesRead = totalBytesRead;
 
                         if (System.nanoTime() - lastCheckObsoletion > TimeUnit.MINUTES.toNanos(1L))
                         {
