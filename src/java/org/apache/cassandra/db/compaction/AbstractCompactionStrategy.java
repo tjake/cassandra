@@ -343,7 +343,7 @@ public abstract class AbstractCompactionStrategy
         {
             long bytesScanned = 0L;
             for (ISSTableScanner scanner : scanners)
-                bytesScanned += scanner.getCurrentPosition();
+                bytesScanned += scanner.getBytesScanned();
 
             return bytesScanned;
         }

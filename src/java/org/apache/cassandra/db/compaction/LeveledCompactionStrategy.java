@@ -326,7 +326,8 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
 
         private ISSTableScanner currentScanner;
         private long positionOffset;
-        SSTableReader currentSSTable;
+        private SSTableReader currentSSTable;
+        private long totalBytesScanned = 0;
 
         public LeveledScanner(Collection<SSTableReader> sstables, Collection<Range<Token>> ranges)
         {
@@ -399,6 +400,8 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
                     return currentScanner.next();
 
                 positionOffset += currentScanner.getLengthInBytes();
+                totalBytesScanned += currentScanner.getBytesScanned();
+
                 currentScanner.close();
                 if (!sstableIterator.hasNext())
                 {
@@ -430,6 +433,11 @@ public class LeveledCompactionStrategy extends AbstractCompactionStrategy
         public long getCompressedLengthInBytes()
         {
             return compressedLength;
+        }
+
+        public long getBytesScanned()
+        {
+            return currentScanner == null ? totalBytesScanned : totalBytesScanned + currentScanner.getBytesScanned();
         }
 
         public String getBackingFiles()

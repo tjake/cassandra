@@ -182,6 +182,8 @@ public class CompactionTask extends AbstractCompactionTask
                 if (compressionRatio == MetadataCollector.NO_COMPRESSION_RATIO)
                     compressionRatio = 1.0;
 
+                long lastBytesScanned = 0;
+
                 if (!controller.cfs.getCompactionStrategyManager().isActive())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
 
@@ -193,17 +195,17 @@ public class CompactionTask extends AbstractCompactionTask
                         if (ci.isStopRequested())
                             throw new CompactionInterruptedException(ci.getCompactionInfo());
 
-                        long startOffset = scanners.getTotalBytesScanned();
-
                         if (writer.append(ci.next()))
                             totalKeysWritten++;
 
-                        long endOffset = scanners.getTotalBytesScanned();
+
+                        long bytesScanned = scanners.getTotalBytesScanned();
 
                         //Rate limit the scanners, and account for compression
-                        int lengthRead = (int) (Ints.checkedCast(endOffset - startOffset) * compressionRatio);
+                        int lengthRead = (int) (Ints.checkedCast(bytesScanned - lastBytesScanned) * compressionRatio);
                         limiter.acquire(lengthRead + 1);
 
+                        lastBytesScanned = bytesScanned;
 
                         if (System.nanoTime() - lastCheckObsoletion > TimeUnit.MINUTES.toNanos(1L))
                         {

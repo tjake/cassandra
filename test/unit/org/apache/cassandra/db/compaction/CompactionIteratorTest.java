@@ -370,6 +370,12 @@ public class CompactionIteratorTest
         }
 
         @Override
+        public long getBytesScanned()
+        {
+            return 0;
+        }
+
+        @Override
         public long getCompressedLengthInBytes()
         {
             return 0;

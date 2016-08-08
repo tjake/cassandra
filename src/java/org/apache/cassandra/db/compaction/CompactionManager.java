@@ -1094,13 +1094,13 @@ public class CompactionManager implements CompactionManagerMBean
              CompactionIterator ci = new CompactionIterator(OperationType.CLEANUP, Collections.singletonList(scanner), controller, nowInSec, UUIDGen.getTimeUUID(), metrics))
         {
             writer.switchWriter(createWriter(cfs, compactionFileLocation, expectedBloomFilterSize, sstable.getSSTableMetadata().repairedAt, sstable, txn));
+            long lastBytesScanned = 0;
+
 
             while (ci.hasNext())
             {
                 if (ci.isStopRequested())
                     throw new CompactionInterruptedException(ci.getCompactionInfo());
-
-
 
                 try (UnfilteredRowIterator partition = ci.next();
                      UnfilteredRowIterator notCleaned = cleanupStrategy.cleanup(partition))
@@ -1108,15 +1108,15 @@ public class CompactionManager implements CompactionManagerMBean
                     if (notCleaned == null)
                         continue;
 
-                    long startOffset = scanner.getCurrentPosition();
-
                     if (writer.append(notCleaned) != null)
                         totalkeysWritten++;
 
-                    long endOffset = scanner.getCurrentPosition();
+                    long bytesScanned = scanner.getBytesScanned();
 
-                    int lengthRead = (int) (Ints.checkedCast(endOffset - startOffset) * compressionRatio);
+                    int lengthRead = (int) (Ints.checkedCast(bytesScanned - lastBytesScanned) * compressionRatio);
                     limiter.acquire(lengthRead + 1);
+
+                    lastBytesScanned = bytesScanned;
                 }
             }
 
