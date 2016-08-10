@@ -504,7 +504,10 @@ public abstract class CommitLogSegment
             IntegerInterval dirtyInterval = dirty.getValue();
             IntegerInterval.Set cleanSet = cfClean.get(cfId);
             if (cleanSet == null || !cleanSet.covers(dirtyInterval))
+            {
+                logger.debug("cdid = {}, cleanset = {}, dirtyset = {}", cfId, cleanSet, dirtyInterval);
                 r.add(dirty.getKey());
+            }
         }
         return r;
     }
