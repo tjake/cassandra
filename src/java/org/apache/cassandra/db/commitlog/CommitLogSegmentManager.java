@@ -323,7 +323,12 @@ public class CommitLogSegmentManager
 
             CommitLogSegment first;
             if ((first = activeSegments.peek()) != null && first.id <= last.id)
+            {
                 logger.error("Failed to force-recycle all segments; at least one segment is still in use with dirty CFs. {} <= {}", first.id, last.id);
+
+                logger.error("Dirty CFs = {}", Iterables.toString(first.getDirtyCFIDs()));
+            }
+
         }
         catch (Throwable t)
         {
