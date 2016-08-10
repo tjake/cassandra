@@ -323,7 +323,7 @@ public class CommitLogSegmentManager
 
             CommitLogSegment first;
             if ((first = activeSegments.peek()) != null && first.id <= last.id)
-                logger.error("Failed to force-recycle all segments; at least one segment is still in use with dirty CFs.");
+                logger.error("Failed to force-recycle all segments; at least one segment is still in use with dirty CFs. {} <= {}", first.id, last.id);
         }
         catch (Throwable t)
         {
@@ -452,7 +452,7 @@ public class CommitLogSegmentManager
                 {
                     // even though we remove the schema entry before a final flush when dropping a CF,
                     // it's still possible for a writer to race and finish his append after the flush.
-                    logger.trace("Marking clean CF {} that doesn't exist anymore", dirtyCFId);
+                    logger.debug("Marking clean CF {} that doesn't exist anymore", dirtyCFId);
                     segment.markClean(dirtyCFId, ReplayPosition.NONE, segment.getContext());
                 }
                 else if (!flushes.containsKey(dirtyCFId))
