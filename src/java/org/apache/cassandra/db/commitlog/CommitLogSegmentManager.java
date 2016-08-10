@@ -318,6 +318,8 @@ public class CommitLogSegmentManager
             for (CommitLogSegment segment : activeSegments)
                 if (segment.isUnused())
                     recycleSegment(segment);
+                else
+                    logger.debug("Did not recycle segment {} because it is fully used", segment.id);
 
             CommitLogSegment first;
             if ((first = activeSegments.peek()) != null && first.id <= last.id)

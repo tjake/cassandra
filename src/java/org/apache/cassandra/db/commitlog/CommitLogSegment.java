@@ -453,6 +453,8 @@ public abstract class CommitLogSegment
      */
     public synchronized void markClean(UUID cfId, ReplayPosition startPosition, ReplayPosition endPosition)
     {
+        logger.debug("Marking clean cfid = {}, segmentid = {}, startPos = {}, endPos = {}", cfId, id, startPosition, endPosition);
+
         if (startPosition.segment > id || endPosition.segment < id)
             return;
         if (!cfDirty.containsKey(cfId))
@@ -467,7 +469,10 @@ public abstract class CommitLogSegment
     {
         // if we're still allocating from this segment, don't touch anything since it can't be done thread-safely
         if (isStillAllocating())
+        {
+            logger.debug("Segment {} still allocating, not ready", id);
             return;
+        }
 
         Iterator<Map.Entry<UUID, IntegerInterval.Set>> iter = cfClean.entrySet().iterator();
         while (iter.hasNext())
@@ -512,7 +517,10 @@ public abstract class CommitLogSegment
         // if room to allocate, we're still in use as the active allocatingFrom,
         // so we don't want to race with updates to cfClean with removeCleanFromDirty
         if (isStillAllocating())
+        {
+            logger.debug("Segment {} still allocating, not ready", id);
             return false;
+        }
 
         removeCleanFromDirty();
         return cfDirty.isEmpty();
