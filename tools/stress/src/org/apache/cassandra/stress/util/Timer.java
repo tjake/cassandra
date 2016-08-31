@@ -21,138 +21,34 @@ package org.apache.cassandra.stress.util;
  */
 
 
-import java.util.concurrent.CountDownLatch;
-
-import org.HdrHistogram.Histogram;
+import org.apache.cassandra.stress.StressAction.MeasurementSink;
 
 // a timer - this timer must be used by a single thread, and co-ordinates with other timers by
 public final class Timer
 {
-    private Histogram responseTime = new Histogram(3);
-    private Histogram serviceTime = new Histogram(3);
-    private Histogram waitTime = new Histogram(3);
+    private final String opType;
+    private final MeasurementSink sink;
 
     // event timing info
     private long intendedTimeNs;
     private long startTimeNs;
-    private long endTimeNs;
 
-
-    // aggregate info
-    private long errorCount;
-    private long partitionCount;
-    private long rowCount;
-    private long max;
-    private long maxStart;
-    private long upToDateAsOf;
-    private long lastSnap = System.nanoTime();
-
-    // communication with summary/logging thread
-    private volatile CountDownLatch reportRequest;
-    volatile TimingInterval report;
-    private volatile TimingInterval finalReport;
-    private final boolean isFixed;
-
-    public Timer(boolean isFixed)
+    public Timer(String opType, MeasurementSink sink)
     {
-        this.isFixed = isFixed;
+        this.opType = opType;
+        this.sink = sink;
     }
 
-    public boolean running()
-    {
-        return finalReport == null;
-    }
 
     public void stop(long partitionCount, long rowCount, boolean error)
     {
-        endTimeNs = System.nanoTime();
-        maybeReport();
-        long now = System.nanoTime();
-        if (intendedTimeNs != 0)
-        {
-            long rTime = endTimeNs - intendedTimeNs;
-            responseTime.recordValue(rTime);
-            long wTime = startTimeNs - intendedTimeNs;
-            waitTime.recordValue(wTime);
-        }
-
-        long sTime = endTimeNs - startTimeNs;
-        serviceTime.recordValue(sTime);
-
-        if (sTime > max)
-        {
-            maxStart = startTimeNs;
-            max = sTime;
-        }
-        this.partitionCount += partitionCount;
-        this.rowCount += rowCount;
-        if (error)
-            this.errorCount++;
-        upToDateAsOf = now;
+        sink.record(opType, intendedTimeNs, startTimeNs, System.nanoTime(), rowCount, partitionCount, error);
         resetTimes();
     }
 
     private void resetTimes()
     {
-        intendedTimeNs = startTimeNs = endTimeNs = 0;
-    }
-
-    private TimingInterval buildReport()
-    {
-        final TimingInterval report = new TimingInterval(lastSnap, upToDateAsOf, maxStart, partitionCount,
-                rowCount, errorCount, responseTime, serviceTime, waitTime, isFixed);
-        // reset counters
-        partitionCount = 0;
-        rowCount = 0;
-        max = 0;
-        errorCount = 0;
-        lastSnap = upToDateAsOf;
-        responseTime = new Histogram(3);
-        serviceTime = new Histogram(3);
-        waitTime = new Histogram(3);
-
-        return report;
-    }
-
-    // checks to see if a report has been requested, and if so produces the report, signals and clears the request
-    private void maybeReport()
-    {
-        if (reportRequest != null)
-        {
-            synchronized (this)
-            {
-                report = buildReport();
-                reportRequest.countDown();
-                reportRequest = null;
-            }
-        }
-    }
-
-    // checks to see if the timer is dead; if not requests a report, and otherwise fulfills the request itself
-    synchronized void requestReport(CountDownLatch signal)
-    {
-        if (finalReport != null)
-        {
-            report = finalReport;
-            finalReport = new TimingInterval(0);
-            signal.countDown();
-        }
-        else
-            reportRequest = signal;
-    }
-
-    // closes the timer; if a request is outstanding, it furnishes the request, otherwise it populates finalReport
-    public synchronized void close()
-    {
-        if (reportRequest == null)
-            finalReport = buildReport();
-        else
-        {
-            finalReport = new TimingInterval(0);
-            report = buildReport();
-            reportRequest.countDown();
-            reportRequest = null;
-        }
+        intendedTimeNs = startTimeNs = 0;
     }
 
     public void intendedTimeNs(long v)

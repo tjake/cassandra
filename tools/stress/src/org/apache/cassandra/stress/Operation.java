@@ -106,7 +106,7 @@ public abstract class Operation
                 exceptionMessage = getExceptionMessage(e);
             }
         }
-        
+
         timer.stop(run.partitionCount(), run.rowCount(), !success);
 
         if (!success)
@@ -136,11 +136,6 @@ public abstract class Operation
             throw new IOException(message);
         else if (settings.log.level.compareTo(SettingsLog.Level.MINIMAL) > 0)
             System.err.println(message);
-    }
-
-    public void close()
-    {
-        timer.close();
     }
 
     public void intendedStartNs(long intendedTime)

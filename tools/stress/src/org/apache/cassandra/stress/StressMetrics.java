@@ -25,37 +25,49 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Queue;
+import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import org.HdrHistogram.Histogram;
 import org.HdrHistogram.HistogramLogWriter;
+import org.apache.cassandra.stress.StressAction.Consumer;
+import org.apache.cassandra.stress.StressAction.MeasurementSink;
+import org.apache.cassandra.stress.StressAction.OpMeasurement;
+import org.apache.cassandra.stress.settings.SettingsLog.Level;
 import org.apache.cassandra.stress.settings.StressSettings;
 import org.apache.cassandra.stress.util.JmxCollector;
-import org.apache.cassandra.stress.util.Timing;
+import org.apache.cassandra.stress.util.JmxCollector.GcStats;
 import org.apache.cassandra.stress.util.TimingInterval;
 import org.apache.cassandra.stress.util.TimingIntervals;
 import org.apache.cassandra.stress.util.Uncertainty;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 
-public class StressMetrics
-{
+import jdk.nashorn.internal.runtime.Timing;
 
+public class StressMetrics implements MeasurementSink
+{
+    private final List<Consumer> consumers = new ArrayList<>();
     private final PrintStream output;
     private final Thread thread;
     private final Uncertainty rowRateUncertainty = new Uncertainty();
     private final CountDownLatch stopped = new CountDownLatch(1);
-    private final Timing timing;
     private final Callable<JmxCollector.GcStats> gcStatsCollector;
     private final HistogramLogWriter histogramWriter;
     private final long epochNs = System.nanoTime();
     private final long epochMs = System.currentTimeMillis();
 
-    private volatile JmxCollector.GcStats totalGcStats;
+    private volatile JmxCollector.GcStats totalGcStats = new GcStats(0);
 
     private volatile boolean stop = false;
     private volatile boolean cancelled = false;
@@ -92,10 +104,9 @@ public class StressMetrics
         }
         catch (Throwable t)
         {
-            switch (settings.log.level)
+            if (settings.log.level == Level.VERBOSE)
             {
-                case VERBOSE:
-                    t.printStackTrace();
+                t.printStackTrace();
             }
             System.err.println("Failed to connect over JMX; not collecting these stats");
             gcStatsCollector = new Callable<JmxCollector.GcStats>()
@@ -107,50 +118,56 @@ public class StressMetrics
             };
         }
         this.gcStatsCollector = gcStatsCollector;
-        this.timing = new Timing(settings.rate.isFixed);
-
+        this.totalCurrentInterval = new TimingInterval(settings.rate.isFixed);
+        this.totalSummaryInterval = new TimingInterval(settings.rate.isFixed);
         printHeader("", output);
         thread = new Thread(new Runnable()
         {
             @Override
             public void run()
             {
-                timing.start();
-                try {
-
+                int interval = 1;
+                long reportingStartNs = System.nanoTime();
+                final long parkIntervalNs = TimeUnit.MILLISECONDS.toNanos(logIntervalMillis);
+                try
+                {
                     while (!stop)
                     {
-                        try
-                        {
-                            long sleepNanos = timing.getHistory().endNanos() - System.nanoTime();
-                            long sleep = (sleepNanos / 1000000) + logIntervalMillis;
-
-                            if (sleep < logIntervalMillis >>> 3)
-                                // if had a major hiccup, sleep full interval
-                                Thread.sleep(logIntervalMillis);
-                            else
-                                Thread.sleep(sleep);
-
-                            update();
-                        } catch (InterruptedException e)
+                        final long wakupTarget = reportingStartNs + parkIntervalNs;
+                        sleepUntil(wakupTarget);
+                        if (stop)
                         {
                             break;
                         }
+                        interval++;
+                        final long beforeUpdate = System.nanoTime();
+                        update(wakupTarget, parkIntervalNs);
+                        System.out.println("update took: "+TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - beforeUpdate)+"us");
+                        reportingStartNs += parkIntervalNs;
                     }
 
-                    update();
+                    final long end = System.nanoTime();
+                    update(end, end - reportingStartNs);
                 }
-                catch (InterruptedException e)
-                {}
                 catch (Exception e)
                 {
+                    e.printStackTrace();
                     cancel();
-                    e.printStackTrace(StressMetrics.this.output);
                 }
                 finally
                 {
                     rowRateUncertainty.wakeAll();
                     stopped.countDown();
+                }
+            }
+
+            private void sleepUntil(final long until)
+            {
+                long parkFor;
+                while (!stop &&
+                       (parkFor = until - System.nanoTime()) > 0)
+                {
+                    LockSupport.parkNanos(parkFor);
                 }
             }
         });
@@ -182,33 +199,121 @@ public class StressMetrics
         stopped.await();
     }
 
-    private void update() throws InterruptedException
+    private final Map<String, TimingInterval> opToTimingIntervalCurrent = new TreeMap<>();
+    private final Map<String, TimingInterval> opToTimingIntervalSummary = new TreeMap<>();
+    private final Queue<OpMeasurement> leftovers = new ArrayDeque<>();
+    private final TimingInterval totalCurrentInterval;
+    private final TimingInterval totalSummaryInterval;
+    @Override
+    public void record(String opType, long intended, long started, long ended, long rowCnt, long partitionCnt,
+            boolean err)
     {
-        Timing.TimingResult<JmxCollector.GcStats> result = timing.snap(gcStatsCollector);
-        totalGcStats = JmxCollector.GcStats.aggregate(Arrays.asList(totalGcStats, result.extra));
-        TimingInterval current = result.intervals.combine();
-        TimingInterval history = timing.getHistory().combine();
-        rowRateUncertainty.update(current.adjustedRowRate());
-        if (current.operationCount() != 0)
+        TimingInterval current = opToTimingIntervalCurrent.computeIfAbsent(opType, k -> new TimingInterval(totalCurrentInterval.isFixed));
+        record(current, intended, started, ended, rowCnt, partitionCnt, err);
+    }
+
+    private void record(TimingInterval t, long intended, long started, long ended, long rowCnt, long partitionCnt,
+            boolean err)
+    {
+        t.rowCount += rowCnt;
+        t.partitionCount += partitionCnt;
+        if (err)
+            t.errorCount++;
+        if (intended != 0) {
+            t.responseTime().recordValue(ended-intended);
+            t.waitTime().recordValue(started-intended);
+        }
+        final long sTime = ended-started;
+        t.serviceTime().recordValue(sTime);
+    }
+
+    private void update(long intervalEnd, long parkIntervalNs) throws InterruptedException
+    {
+
+        drainConsumerMeasurements(intervalEnd, parkIntervalNs);
+
+        GcStats gcStats = null;
+        try
+        {
+            gcStats = gcStatsCollector.call();
+        }
+        catch (Exception e)
+        {
+            gcStats = new GcStats(0);
+        }
+        totalGcStats = JmxCollector.GcStats.aggregate(Arrays.asList(totalGcStats, gcStats));
+
+        rowRateUncertainty.update(totalCurrentInterval.adjustedRowRate());
+        if (totalCurrentInterval.operationCount() != 0)
         {
             // if there's a single operation we only print the total
-            final boolean logPerOpSummaryLine = result.intervals.intervals().size() > 1;
+            final boolean logPerOpSummaryLine = opToTimingIntervalCurrent.size() > 1;
 
-            for (Map.Entry<String, TimingInterval> type : result.intervals.intervals().entrySet())
+            for (Map.Entry<String, TimingInterval> type : opToTimingIntervalCurrent.entrySet())
             {
                 final String opName = type.getKey();
                 final TimingInterval opInterval = type.getValue();
                 if (logPerOpSummaryLine)
                 {
-                    printRow("", opName, opInterval, timing.getHistory().get(type.getKey()), result.extra, rowRateUncertainty, output);
+                    printRow("", opName, opInterval, opToTimingIntervalSummary.get(opName), gcStats, rowRateUncertainty, output);
                 }
                 logHistograms(opName, opInterval);
+                opInterval.reset();
             }
 
-            printRow("", "total", current, history, result.extra, rowRateUncertainty, output);
+            printRow("", "total", totalCurrentInterval, totalSummaryInterval, gcStats, rowRateUncertainty, output);
+            totalCurrentInterval.reset();
         }
-        if (timing.done())
-            stop = true;
+    }
+
+    private void drainConsumerMeasurements(long intervalEnd, long parkIntervalNs)
+    {
+        // record leftover measurements if any
+        int leftoversSize = leftovers.size();
+        for (int i=0;i<leftoversSize;i++)
+        {
+            OpMeasurement last = leftovers.poll();
+            if (last.ended <= intervalEnd)
+            {
+                record(last.opType, last.intended, last.started, last.ended, last.rowCnt, last.partitionCnt, last.err);
+                // round robin-ish redistribution of leftovers
+                consumers.get(i%consumers.size()).measurementsIn.offer(last);
+            }
+            else
+            {
+                // no record for you! wait one interval!
+                leftovers.offer(last);
+            }
+        }
+        // record interval collected measurements
+        for (Consumer c: consumers) {
+            Queue<OpMeasurement> in = c.measurementsOut;
+            Queue<OpMeasurement> out = c.measurementsIn;
+            OpMeasurement last;
+            while ((last = in.poll()) != null)
+            {
+                if (last.ended > intervalEnd)
+                {
+                    // measurements for any given consumer are ordered, we stop when we stop.
+                    leftovers.add(last);
+                    break;
+                }
+                record(last.opType, last.intended, last.started, last.ended, last.rowCnt, last.partitionCnt, last.err);
+                out.offer(last);
+            }
+        }
+        // set timestamps and summarize
+        for (Entry<String, TimingInterval> currPerOp : opToTimingIntervalCurrent.entrySet()) {
+            currPerOp.getValue().endNanos(intervalEnd);
+            currPerOp.getValue().startNanos(intervalEnd-parkIntervalNs);
+            TimingInterval summaryPerOp = opToTimingIntervalSummary.computeIfAbsent(currPerOp.getKey(), k -> new TimingInterval(totalCurrentInterval.isFixed));
+            summaryPerOp.add(currPerOp.getValue());
+            totalCurrentInterval.add(currPerOp.getValue());
+        }
+        totalCurrentInterval.endNanos(intervalEnd);
+        totalCurrentInterval.startNanos(intervalEnd-parkIntervalNs);
+
+        totalSummaryInterval.add(totalCurrentInterval);
     }
 
 
@@ -278,8 +383,8 @@ public class StressMetrics
         output.println("\n");
         output.println("Results:");
 
-        TimingIntervals opHistory = timing.getHistory();
-        TimingInterval history = opHistory.combine();
+        TimingIntervals opHistory = new TimingIntervals(opToTimingIntervalSummary);
+        TimingInterval history = this.totalSummaryInterval;
         output.println(String.format("Op rate                   : %,8.0f op/s  %s", history.opRate(), opHistory.opRates()));
         output.println(String.format("Partition rate            : %,8.0f pk/s  %s", history.partitionRate(), opHistory.partitionRates()));
         output.println(String.format("Row rate                  : %,8.0f row/s %s", history.rowRate(), opHistory.rowRates()));
@@ -310,7 +415,7 @@ public class StressMetrics
         printHeader(String.format(formatstr, "id"), out);
         for (int i = 0 ; i < ids.size() ; i++)
         {
-            for (Map.Entry<String, TimingInterval> type : summarise.get(i).timing.getHistory().intervals().entrySet())
+            for (Map.Entry<String, TimingInterval> type : summarise.get(i).opToTimingIntervalSummary.entrySet())
             {
                 printRow(String.format(formatstr, ids.get(i)),
                          type.getKey(),
@@ -320,7 +425,7 @@ public class StressMetrics
                          summarise.get(i).rowRateUncertainty,
                          out);
             }
-            TimingInterval hist = summarise.get(i).timing.getHistory().combine();
+            TimingInterval hist = summarise.get(i).totalSummaryInterval;
             printRow(String.format(formatstr, ids.get(i)),
                     "total",
                     hist,
@@ -332,14 +437,20 @@ public class StressMetrics
         }
     }
 
-    public Timing getTiming()
-    {
-        return timing;
-    }
-
     public boolean wasCancelled()
     {
         return cancelled;
     }
+
+    public void add(Consumer consumer)
+    {
+        consumers.add(consumer);
+    }
+
+    public double opRate()
+    {
+        return totalSummaryInterval.opRate();
+    }
+
 
 }
