@@ -140,9 +140,7 @@ public class StressMetrics implements MeasurementSink
                             break;
                         }
                         interval++;
-                        final long beforeUpdate = System.nanoTime();
                         update(wakupTarget, parkIntervalNs);
-                        System.out.println("update took: "+TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - beforeUpdate)+"us");
                         reportingStartNs += parkIntervalNs;
                     }
 
