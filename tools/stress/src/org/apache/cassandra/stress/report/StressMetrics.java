@@ -276,7 +276,7 @@ public class StressMetrics implements MeasurementSink
             {
                 record(last.opType, last.intended, last.started, last.ended, last.rowCnt, last.partitionCnt, last.err);
                 // round robin-ish redistribution of leftovers
-                consumers.get(i%consumers.size()).measurementsIn.offer(last);
+                consumers.get(i%consumers.size()).measurementsRecycling.offer(last);
             }
             else
             {
@@ -286,8 +286,8 @@ public class StressMetrics implements MeasurementSink
         }
         // record interval collected measurements
         for (Consumer c: consumers) {
-            Queue<OpMeasurement> in = c.measurementsOut;
-            Queue<OpMeasurement> out = c.measurementsIn;
+            Queue<OpMeasurement> in = c.measurementsReporting;
+            Queue<OpMeasurement> out = c.measurementsRecycling;
             OpMeasurement last;
             while ((last = in.poll()) != null)
             {

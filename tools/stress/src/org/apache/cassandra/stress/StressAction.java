@@ -383,8 +383,8 @@ public class StressAction implements Runnable
         private final CountDownLatch done;
         private final CountDownLatch start;
         private final CountDownLatch releaseConsumers;
-        public final Queue<OpMeasurement> measurementsIn;
-        public final Queue<OpMeasurement> measurementsOut;
+        public final Queue<OpMeasurement> measurementsRecycling;
+        public final Queue<OpMeasurement> measurementsReporting;
         public Consumer(OpDistributionFactory operations,
                         boolean isWarmup,
                         CountDownLatch done,
@@ -400,8 +400,8 @@ public class StressAction implements Runnable
             this.releaseConsumers = releaseConsumers;
             this.metrics = metrics;
             this.opStream = new StreamOfOperations(opDistribution, rateLimiter, workManager);
-            this.measurementsIn =  new SpscChunkedArrayQueue<OpMeasurement>(2048, 8*1024);
-            this.measurementsOut =  new SpscUnboundedArrayQueue<OpMeasurement>(2048);
+            this.measurementsRecycling =  new SpscChunkedArrayQueue<OpMeasurement>(2048, 8*1024);
+            this.measurementsReporting =  new SpscUnboundedArrayQueue<OpMeasurement>(2048);
             metrics.add(this);
         }
 
@@ -488,7 +488,7 @@ public class StressAction implements Runnable
         @Override
         public void record(String opType, long intended, long started, long ended, long rowCnt, long partitionCnt, boolean err)
         {
-            OpMeasurement opMeasurement = measurementsIn.poll();
+            OpMeasurement opMeasurement = measurementsRecycling.poll();
             if(opMeasurement == null) {
                 opMeasurement = new OpMeasurement();
             }
@@ -499,7 +499,7 @@ public class StressAction implements Runnable
             opMeasurement.rowCnt = rowCnt;
             opMeasurement.partitionCnt = partitionCnt;
             opMeasurement.err = err;
-            measurementsOut.offer(opMeasurement);
+            measurementsReporting.offer(opMeasurement);
         }
     }
 }
