@@ -47,8 +47,7 @@ public final class TimingInterval
 
     public String toString()
     {
-        return String.format("Start: %d end: %d maxLatency: %d pauseStart: %d" +
-                             " pCount: %d rcount: %d opCount: %d errors: %d",
+        return String.format("Start: %d end: %d maxLatency: %d pCount: %d rcount: %d opCount: %d errors: %d",
                              startNs, endNs, getLatencyHistogram().getMaxValue(),
                              partitionCount, rowCount, getLatencyHistogram().getTotalCount(), errorCount);
     }
