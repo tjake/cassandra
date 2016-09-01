@@ -216,15 +216,16 @@ public final class TimingInterval
         this.errorCount += value.errorCount;
         this.rowCount += value.rowCount;
         this.partitionCount += value.partitionCount;
-        if(value.responseTime.getTotalCount() != 0)
+
+        if (value.responseTime.getTotalCount() != 0)
         {
             this.responseTime.add(value.responseTime);
         }
-        if(value.serviceTime.getTotalCount() != 0)
+        if (value.serviceTime.getTotalCount() != 0)
         {
-            value.serviceTime.add(value.serviceTime);
+            this.serviceTime.add(value.serviceTime);
         }
-        if(value.waitTime.getTotalCount() != 0)
+        if (value.waitTime.getTotalCount() != 0)
         {
             this.waitTime.add(value.waitTime);
         }
