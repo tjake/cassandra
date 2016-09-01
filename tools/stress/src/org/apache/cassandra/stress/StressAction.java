@@ -365,12 +365,14 @@ public class StressAction implements Runnable
             workManager.stop();
         }
     }
-    public static class OpMeasurement {
+    public static class OpMeasurement
+    {
         public String opType;
         public long intended,started,ended,rowCnt,partitionCnt;
         public boolean err;
     }
-    public interface MeasurementSink {
+    public interface MeasurementSink
+    {
         void record(String opType,long intended, long started, long ended, long rowCnt, long partitionCnt, boolean err);
     }
     public class Consumer extends Thread implements MeasurementSink
