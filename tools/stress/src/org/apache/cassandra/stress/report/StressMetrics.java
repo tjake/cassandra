@@ -40,7 +40,6 @@ import java.util.concurrent.locks.LockSupport;
 
 import org.HdrHistogram.Histogram;
 import org.HdrHistogram.HistogramLogWriter;
-import org.apache.cassandra.stress.StressAction;
 import org.apache.cassandra.stress.StressAction.Consumer;
 import org.apache.cassandra.stress.StressAction.MeasurementSink;
 import org.apache.cassandra.stress.StressAction.OpMeasurement;
@@ -51,8 +50,6 @@ import org.apache.cassandra.stress.util.JmxCollector.GcStats;
 import org.apache.cassandra.stress.util.Uncertainty;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang3.time.DurationFormatUtils;
-
-import jdk.nashorn.internal.runtime.Timing;
 
 public class StressMetrics implements MeasurementSink
 {
@@ -336,8 +333,12 @@ public class StressMetrics implements MeasurementSink
         if (histogram.getTotalCount() != 0)
         {
             histogram.setTag(opName);
-            histogram.setStartTimeStamp(epochMs + NANOSECONDS.toMillis(startNs - epochNs));
-            histogram.setEndTimeStamp(epochMs + NANOSECONDS.toMillis(endNs - epochNs));
+            final long relativeStartNs = startNs - epochNs;
+            final long startMs = (long) (1000 *((epochMs + NANOSECONDS.toMillis(relativeStartNs))/1000.0));
+            histogram.setStartTimeStamp(startMs);
+            final long relativeEndNs = endNs - epochNs;
+            final long endMs = (long) (1000 *((epochMs + NANOSECONDS.toMillis(relativeEndNs))/1000.0));
+            histogram.setEndTimeStamp(endMs);
             histogramWriter.outputIntervalHistogram(histogram);
         }
     }
