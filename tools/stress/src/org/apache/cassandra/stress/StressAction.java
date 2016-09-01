@@ -370,6 +370,12 @@ public class StressAction implements Runnable
         public String opType;
         public long intended,started,ended,rowCnt,partitionCnt;
         public boolean err;
+        @Override
+        public String toString()
+        {
+            return "OpMeasurement [opType=" + opType + ", intended=" + intended + ", started=" + started + ", ended="
+                    + ended + ", rowCnt=" + rowCnt + ", partitionCnt=" + partitionCnt + ", err=" + err + "]";
+        }
     }
     public interface MeasurementSink
     {
