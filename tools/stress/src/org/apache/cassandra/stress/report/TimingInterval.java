@@ -1,4 +1,4 @@
-package org.apache.cassandra.stress.util;
+package org.apache.cassandra.stress.report;
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one

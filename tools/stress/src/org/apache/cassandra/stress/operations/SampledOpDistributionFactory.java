@@ -31,7 +31,7 @@ import org.apache.cassandra.stress.StressAction.MeasurementSink;
 import org.apache.cassandra.stress.generate.DistributionFactory;
 import org.apache.cassandra.stress.generate.DistributionFixed;
 import org.apache.cassandra.stress.generate.PartitionGenerator;
-import org.apache.cassandra.stress.util.Timer;
+import org.apache.cassandra.stress.report.Timer;
 import org.apache.commons.math3.distribution.EnumeratedDistribution;
 import org.apache.commons.math3.util.Pair;
 

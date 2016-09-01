@@ -30,6 +30,7 @@ import java.util.concurrent.locks.LockSupport;
 
 import org.apache.cassandra.stress.operations.OpDistribution;
 import org.apache.cassandra.stress.operations.OpDistributionFactory;
+import org.apache.cassandra.stress.report.StressMetrics;
 import org.apache.cassandra.stress.settings.ConnectionAPI;
 import org.apache.cassandra.stress.settings.SettingsCommand;
 import org.apache.cassandra.stress.settings.StressSettings;
@@ -365,9 +366,9 @@ public class StressAction implements Runnable
         }
     }
     public static class OpMeasurement {
-        String opType;
-        long intended,started,ended,rowCnt,partitionCnt;
-        boolean err;
+        public String opType;
+        public long intended,started,ended,rowCnt,partitionCnt;
+        public boolean err;
     }
     public interface MeasurementSink {
         void record(String opType,long intended, long started, long ended, long rowCnt, long partitionCnt, boolean err);
@@ -380,8 +381,8 @@ public class StressAction implements Runnable
         private final CountDownLatch done;
         private final CountDownLatch start;
         private final CountDownLatch releaseConsumers;
-        final Queue<OpMeasurement> measurementsIn;
-        final Queue<OpMeasurement> measurementsOut;
+        public final Queue<OpMeasurement> measurementsIn;
+        public final Queue<OpMeasurement> measurementsOut;
         public Consumer(OpDistributionFactory operations,
                         boolean isWarmup,
                         CountDownLatch done,

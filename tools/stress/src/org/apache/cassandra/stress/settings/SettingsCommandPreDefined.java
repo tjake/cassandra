@@ -38,8 +38,8 @@ import org.apache.cassandra.stress.operations.FixedOpDistribution;
 import org.apache.cassandra.stress.operations.OpDistribution;
 import org.apache.cassandra.stress.operations.OpDistributionFactory;
 import org.apache.cassandra.stress.operations.predefined.PredefinedOperation;
+import org.apache.cassandra.stress.report.Timer;
 import org.apache.cassandra.stress.util.MultiPrintStream;
-import org.apache.cassandra.stress.util.Timer;
 
 // Settings unique to the mixed command type
 public class SettingsCommandPreDefined extends SettingsCommand

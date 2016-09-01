@@ -1,4 +1,4 @@
-package org.apache.cassandra.stress;
+package org.apache.cassandra.stress.report;
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -40,6 +40,7 @@ import java.util.concurrent.locks.LockSupport;
 
 import org.HdrHistogram.Histogram;
 import org.HdrHistogram.HistogramLogWriter;
+import org.apache.cassandra.stress.StressAction;
 import org.apache.cassandra.stress.StressAction.Consumer;
 import org.apache.cassandra.stress.StressAction.MeasurementSink;
 import org.apache.cassandra.stress.StressAction.OpMeasurement;
@@ -47,8 +48,6 @@ import org.apache.cassandra.stress.settings.SettingsLog.Level;
 import org.apache.cassandra.stress.settings.StressSettings;
 import org.apache.cassandra.stress.util.JmxCollector;
 import org.apache.cassandra.stress.util.JmxCollector.GcStats;
-import org.apache.cassandra.stress.util.TimingInterval;
-import org.apache.cassandra.stress.util.TimingIntervals;
 import org.apache.cassandra.stress.util.Uncertainty;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang3.time.DurationFormatUtils;
@@ -72,6 +71,14 @@ public class StressMetrics implements MeasurementSink
     private volatile boolean stop = false;
     private volatile boolean cancelled = false;
 
+
+    // collected data for intervals and summary
+    private final Map<String, TimingInterval> opTypeToCurrentTimingInterval = new TreeMap<>();
+    private final Map<String, TimingInterval> opTypeToSummaryTimingInterval = new TreeMap<>();
+    private final Queue<OpMeasurement> leftovers = new ArrayDeque<>();
+    private final TimingInterval totalCurrentInterval;
+    private final TimingInterval totalSummaryInterval;
+
     public StressMetrics(PrintStream output, final long logIntervalMillis, StressSettings settings)
     {
         this.output = output;
@@ -82,9 +89,10 @@ public class StressMetrics implements MeasurementSink
                 histogramWriter = new HistogramLogWriter(settings.log.hdrFile);
                 histogramWriter.outputComment("Logging op latencies for Cassandra Stress");
                 histogramWriter.outputLogFormatVersion();
-                histogramWriter.outputBaseTime(epochMs);
-                histogramWriter.setBaseTime(epochMs);
-                histogramWriter.outputStartTime(epochMs);
+                final long roundedEpoch = epochMs - (epochMs%1000);
+                histogramWriter.outputBaseTime(roundedEpoch);
+                histogramWriter.setBaseTime(roundedEpoch);
+                histogramWriter.outputStartTime(roundedEpoch);
                 histogramWriter.outputLegend();
             }
             catch (FileNotFoundException e)
@@ -121,57 +129,11 @@ public class StressMetrics implements MeasurementSink
         this.totalCurrentInterval = new TimingInterval(settings.rate.isFixed);
         this.totalSummaryInterval = new TimingInterval(settings.rate.isFixed);
         printHeader("", output);
-        thread = new Thread(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                int interval = 1;
-                long reportingStartNs = System.nanoTime();
-                final long parkIntervalNs = TimeUnit.MILLISECONDS.toNanos(logIntervalMillis);
-                try
-                {
-                    while (!stop)
-                    {
-                        final long wakupTarget = reportingStartNs + parkIntervalNs;
-                        sleepUntil(wakupTarget);
-                        if (stop)
-                        {
-                            break;
-                        }
-                        interval++;
-                        update(wakupTarget, parkIntervalNs);
-                        reportingStartNs += parkIntervalNs;
-                    }
-
-                    final long end = System.nanoTime();
-                    update(end, end - reportingStartNs);
-                }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                    cancel();
-                }
-                finally
-                {
-                    rowRateUncertainty.wakeAll();
-                    stopped.countDown();
-                }
-            }
-
-            private void sleepUntil(final long until)
-            {
-                long parkFor;
-                while (!stop &&
-                       (parkFor = until - System.nanoTime()) > 0)
-                {
-                    LockSupport.parkNanos(parkFor);
-                }
-            }
+        thread = new Thread(() -> {
+            reportingLoop(logIntervalMillis);
         });
         thread.setName("StressMetrics");
     }
-
     public void start()
     {
         thread.start();
@@ -197,21 +159,63 @@ public class StressMetrics implements MeasurementSink
         stopped.await();
     }
 
-    private final Map<String, TimingInterval> opToTimingIntervalCurrent = new TreeMap<>();
-    private final Map<String, TimingInterval> opToTimingIntervalSummary = new TreeMap<>();
-    private final Queue<OpMeasurement> leftovers = new ArrayDeque<>();
-    private final TimingInterval totalCurrentInterval;
-    private final TimingInterval totalSummaryInterval;
-    @Override
-    public void record(String opType, long intended, long started, long ended, long rowCnt, long partitionCnt,
-            boolean err)
+
+    private void reportingLoop(final long logIntervalMillis)
     {
-        TimingInterval current = opToTimingIntervalCurrent.computeIfAbsent(opType, k -> new TimingInterval(totalCurrentInterval.isFixed));
+        // align report timing to the nearest second
+        final long currentTimeMs = System.currentTimeMillis();
+        final long startTimeMs = currentTimeMs - (currentTimeMs % 1000);
+        // reporting interval starts rounded to the second
+        long reportingStartNs = (System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(currentTimeMs - startTimeMs));
+        final long parkIntervalNs = TimeUnit.MILLISECONDS.toNanos(logIntervalMillis);
+        try
+        {
+            while (!stop)
+            {
+                final long wakupTarget = reportingStartNs + parkIntervalNs;
+                sleepUntil(wakupTarget);
+                if (stop)
+                {
+                    break;
+                }
+                recordInterval(wakupTarget, parkIntervalNs);
+                reportingStartNs += parkIntervalNs;
+            }
+
+            final long end = System.nanoTime();
+            recordInterval(end, end - reportingStartNs);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            cancel();
+        }
+        finally
+        {
+            rowRateUncertainty.wakeAll();
+            stopped.countDown();
+        }
+    }
+
+
+    private void sleepUntil(final long until)
+    {
+        long parkFor;
+        while (!stop &&
+               (parkFor = until - System.nanoTime()) > 0)
+        {
+            LockSupport.parkNanos(parkFor);
+        }
+    }
+
+    @Override
+    public void record(String opType, long intended, long started, long ended, long rowCnt, long partitionCnt, boolean err)
+    {
+        TimingInterval current = opTypeToCurrentTimingInterval.computeIfAbsent(opType, k -> new TimingInterval(totalCurrentInterval.isFixed));
         record(current, intended, started, ended, rowCnt, partitionCnt, err);
     }
 
-    private void record(TimingInterval t, long intended, long started, long ended, long rowCnt, long partitionCnt,
-            boolean err)
+    private void record(TimingInterval t, long intended, long started, long ended, long rowCnt, long partitionCnt, boolean err)
     {
         t.rowCount += rowCnt;
         t.partitionCount += partitionCnt;
@@ -225,7 +229,7 @@ public class StressMetrics implements MeasurementSink
         t.serviceTime().recordValue(sTime);
     }
 
-    private void update(long intervalEnd, long parkIntervalNs) throws InterruptedException
+    private void recordInterval(long intervalEnd, long parkIntervalNs) throws InterruptedException
     {
 
         drainConsumerMeasurements(intervalEnd, parkIntervalNs);
@@ -245,15 +249,15 @@ public class StressMetrics implements MeasurementSink
         if (totalCurrentInterval.operationCount() != 0)
         {
             // if there's a single operation we only print the total
-            final boolean logPerOpSummaryLine = opToTimingIntervalCurrent.size() > 1;
+            final boolean logPerOpSummaryLine = opTypeToCurrentTimingInterval.size() > 1;
 
-            for (Map.Entry<String, TimingInterval> type : opToTimingIntervalCurrent.entrySet())
+            for (Map.Entry<String, TimingInterval> type : opTypeToCurrentTimingInterval.entrySet())
             {
                 final String opName = type.getKey();
                 final TimingInterval opInterval = type.getValue();
                 if (logPerOpSummaryLine)
                 {
-                    printRow("", opName, opInterval, opToTimingIntervalSummary.get(opName), gcStats, rowRateUncertainty, output);
+                    printRow("", opName, opInterval, opTypeToSummaryTimingInterval.get(opName), gcStats, rowRateUncertainty, output);
                 }
                 logHistograms(opName, opInterval);
                 opInterval.reset();
@@ -301,10 +305,10 @@ public class StressMetrics implements MeasurementSink
             }
         }
         // set timestamps and summarize
-        for (Entry<String, TimingInterval> currPerOp : opToTimingIntervalCurrent.entrySet()) {
+        for (Entry<String, TimingInterval> currPerOp : opTypeToCurrentTimingInterval.entrySet()) {
             currPerOp.getValue().endNanos(intervalEnd);
             currPerOp.getValue().startNanos(intervalEnd-parkIntervalNs);
-            TimingInterval summaryPerOp = opToTimingIntervalSummary.computeIfAbsent(currPerOp.getKey(), k -> new TimingInterval(totalCurrentInterval.isFixed));
+            TimingInterval summaryPerOp = opTypeToSummaryTimingInterval.computeIfAbsent(currPerOp.getKey(), k -> new TimingInterval(totalCurrentInterval.isFixed));
             summaryPerOp.add(currPerOp.getValue());
             totalCurrentInterval.add(currPerOp.getValue());
         }
@@ -381,7 +385,7 @@ public class StressMetrics implements MeasurementSink
         output.println("\n");
         output.println("Results:");
 
-        TimingIntervals opHistory = new TimingIntervals(opToTimingIntervalSummary);
+        TimingIntervals opHistory = new TimingIntervals(opTypeToSummaryTimingInterval);
         TimingInterval history = this.totalSummaryInterval;
         output.println(String.format("Op rate                   : %,8.0f op/s  %s", history.opRate(), opHistory.opRates()));
         output.println(String.format("Partition rate            : %,8.0f pk/s  %s", history.partitionRate(), opHistory.partitionRates()));
@@ -413,7 +417,7 @@ public class StressMetrics implements MeasurementSink
         printHeader(String.format(formatstr, "id"), out);
         for (int i = 0 ; i < ids.size() ; i++)
         {
-            for (Map.Entry<String, TimingInterval> type : summarise.get(i).opToTimingIntervalSummary.entrySet())
+            for (Map.Entry<String, TimingInterval> type : summarise.get(i).opTypeToSummaryTimingInterval.entrySet())
             {
                 printRow(String.format(formatstr, ids.get(i)),
                          type.getKey(),
@@ -449,6 +453,4 @@ public class StressMetrics implements MeasurementSink
     {
         return totalSummaryInterval.opRate();
     }
-
-
 }

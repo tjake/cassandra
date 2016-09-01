@@ -1,4 +1,4 @@
-package org.apache.cassandra.stress.util;
+package org.apache.cassandra.stress.report;
 
 import java.util.Arrays;
 import java.util.Map;
