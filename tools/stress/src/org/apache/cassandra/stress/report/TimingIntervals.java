@@ -26,6 +26,11 @@ public class TimingIntervals
 
     public String str(TimingInterval.TimingParameter value, double rank, String unit)
     {
+        if (intervals.size() == 0)
+        {
+            return "[]";
+        }
+
         StringBuilder sb = new StringBuilder("[");
 
         for (Map.Entry<String, TimingInterval> entry : intervals.entrySet())
